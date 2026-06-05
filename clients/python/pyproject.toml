@@ -1,0 +1,5 @@
+# メタデータは setup.cfg に置く (古い setuptools でも正しく読めるため。理由は setup.cfg 冒頭参照)。
+# ここはビルドバックエンドの宣言のみ。
+[build-system]
+requires = ["setuptools>=40.8.0"]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,470 @@
+// 自動生成 (scripts/gen-grpc-proto.mjs)。手で編集しない (npm run build:grpc-proto)。
+// request は scalar/string配列を protobuf 型に、object/動的な葉は JSON 文字列 (proto-loader が
+// 生 JS を Struct に変換しないため)。response は dynamic なので JsonRpc(json) で運ぶ。
+syntax = "proto3";
+package sesame;
+
+service Sesame {
+  rpc ScheduleGetScheduleList (ScheduleGetScheduleListRequest) returns (JsonRpc);
+  rpc ScheduleCancelSchedule (ScheduleCancelScheduleRequest) returns (JsonRpc);
+  rpc OrgGetEmployees (OrgGetEmployeesRequest) returns (JsonRpc);
+  rpc OrgGetCurrentUserInfo (OrgGetCurrentUserInfoRequest) returns (JsonRpc);
+  rpc OrgAddEmployees (OrgAddEmployeesRequest) returns (JsonRpc);
+  rpc OrgUpdateEmployee (OrgUpdateEmployeeRequest) returns (JsonRpc);
+  rpc OrgRemoveEmployees (OrgRemoveEmployeesRequest) returns (JsonRpc);
+  rpc OrgReorderEmployees (OrgReorderEmployeesRequest) returns (JsonRpc);
+  rpc OrgQueryByCS (OrgQueryByCSRequest) returns (JsonRpc);
+  rpc OrgConfirmQueryByCS (OrgConfirmQueryByCSRequest) returns (JsonRpc);
+  rpc OrgGetEmployeeGroups (OrgGetEmployeeGroupsRequest) returns (JsonRpc);
+  rpc OrgAddEmployeeGroup (OrgAddEmployeeGroupRequest) returns (JsonRpc);
+  rpc OrgUpdateEmployeeGroup (OrgUpdateEmployeeGroupRequest) returns (JsonRpc);
+  rpc OrgRemoveEmployeeGroups (OrgRemoveEmployeeGroupsRequest) returns (JsonRpc);
+  rpc OrgGetEmployeeGroupBindDeviceGroup (OrgGetEmployeeGroupBindDeviceGroupRequest) returns (JsonRpc);
+  rpc OrgAddEmployeeInGroup (OrgAddEmployeeInGroupRequest) returns (JsonRpc);
+  rpc OrgRemoveEmployeeInGroup (OrgRemoveEmployeeInGroupRequest) returns (JsonRpc);
+  rpc OrgRemoveEmployeeGroupBindDeviceGroup (OrgRemoveEmployeeGroupBindDeviceGroupRequest) returns (JsonRpc);
+  rpc OrgGetTags (OrgGetTagsRequest) returns (JsonRpc);
+  rpc OrgPostTag (OrgPostTagRequest) returns (JsonRpc);
+  rpc OrgRemoveTag (OrgRemoveTagRequest) returns (JsonRpc);
+  rpc OrgGetDeviceGroups (OrgGetDeviceGroupsRequest) returns (JsonRpc);
+  rpc OrgAddDeviceGroup (OrgAddDeviceGroupRequest) returns (JsonRpc);
+  rpc OrgUpdateDeviceGroup (OrgUpdateDeviceGroupRequest) returns (JsonRpc);
+  rpc OrgRemoveDeviceGroups (OrgRemoveDeviceGroupsRequest) returns (JsonRpc);
+  rpc OrgAddDeviceInGroup (OrgAddDeviceInGroupRequest) returns (JsonRpc);
+  rpc OrgRemoveDeviceInGroup (OrgRemoveDeviceInGroupRequest) returns (JsonRpc);
+  rpc OrgGetDeviceGroupBindUserGroup (OrgGetDeviceGroupBindUserGroupRequest) returns (JsonRpc);
+  rpc OrgRemoveDeviceGroupBindUserGroup (OrgRemoveDeviceGroupBindUserGroupRequest) returns (JsonRpc);
+  rpc OrgShareDeviceKeysToEmployees (OrgShareDeviceKeysToEmployeesRequest) returns (JsonRpc);
+  rpc OrgShareDeviceGroupKeysToEmployeeGroup (OrgShareDeviceGroupKeysToEmployeeGroupRequest) returns (JsonRpc);
+  rpc OrgGetEmployeeDeviceKeys (OrgGetEmployeeDeviceKeysRequest) returns (JsonRpc);
+  rpc OrgRemoveEmployeeDeviceKey (OrgRemoveEmployeeDeviceKeyRequest) returns (JsonRpc);
+  rpc OrgUpdateGuestKeyTag (OrgUpdateGuestKeyTagRequest) returns (JsonRpc);
+  rpc OrgGenerateGuestQR (OrgGenerateGuestQRRequest) returns (JsonRpc);
+  rpc OrgGetDeviceEmployeeKeys (OrgGetDeviceEmployeeKeysRequest) returns (JsonRpc);
+  rpc CompanyGetCompanies (CompanyGetCompaniesRequest) returns (JsonRpc);
+  rpc CompanyUpdateCompanyName (CompanyUpdateCompanyNameRequest) returns (JsonRpc);
+  rpc CompanyAddCompany (CompanyAddCompanyRequest) returns (JsonRpc);
+  rpc CompanyGetPaymentConfig (CompanyGetPaymentConfigRequest) returns (JsonRpc);
+  rpc AccessGetCards (AccessGetCardsRequest) returns (JsonRpc);
+  rpc AccessGetPasscodes (AccessGetPasscodesRequest) returns (JsonRpc);
+  rpc AccessPostCards (AccessPostCardsRequest) returns (JsonRpc);
+  rpc AccessPostPasscodes (AccessPostPasscodesRequest) returns (JsonRpc);
+  rpc AccessDelCards (AccessDelCardsRequest) returns (JsonRpc);
+  rpc AccessDelPasscodes (AccessDelPasscodesRequest) returns (JsonRpc);
+  rpc AccessClearCards (AccessClearCardsRequest) returns (JsonRpc);
+  rpc AccessClearPasscodes (AccessClearPasscodesRequest) returns (JsonRpc);
+  rpc AccessUpdateCardName (AccessUpdateCardNameRequest) returns (JsonRpc);
+  rpc AccessUpdatePasscodeName (AccessUpdatePasscodeNameRequest) returns (JsonRpc);
+  rpc AccessUpdateCardOwner (AccessUpdateCardOwnerRequest) returns (JsonRpc);
+  rpc IotSendIotCmd (IotSendIotCmdRequest) returns (JsonRpc);
+  rpc IotSubscribeIotResponse (IotSubscribeIotResponseRequest) returns (JsonRpc);
+  rpc IotSendIotCmdAwait (IotSendIotCmdAwaitRequest) returns (JsonRpc);
+  rpc IotSetHub3LedDuty (IotSetHub3LedDutyRequest) returns (JsonRpc);
+  rpc IotHub3RelaySwitch (IotHub3RelaySwitchRequest) returns (JsonRpc);
+  rpc IotAddSesameToHub3 (IotAddSesameToHub3Request) returns (JsonRpc);
+  rpc IotRemoveSesameFromHub3 (IotRemoveSesameFromHub3Request) returns (JsonRpc);
+  rpc IotStartFirmwareUpdate (IotStartFirmwareUpdateRequest) returns (JsonRpc);
+  rpc IotClearHub3WifiSsid (IotClearHub3WifiSsidRequest) returns (JsonRpc);
+  rpc IotGetMatterPairingCode (IotGetMatterPairingCodeRequest) returns (JsonRpc);
+  rpc IotOpenMatterPairingWindow (IotOpenMatterPairingWindowRequest) returns (JsonRpc);
+  rpc PresetirSendIR (PresetirSendIRRequest) returns (JsonRpc);
+  rpc PresetirEmitAir (PresetirEmitAirRequest) returns (JsonRpc);
+  rpc PresetirEmitButton (PresetirEmitButtonRequest) returns (JsonRpc);
+  rpc Status (StatusRequest) returns (JsonRpc);
+  rpc AccountWhoami (AccountWhoamiRequest) returns (JsonRpc);
+  rpc LockLock (LockLockRequest) returns (JsonRpc);
+  rpc LockUnlock (LockUnlockRequest) returns (JsonRpc);
+  rpc LockToggle (LockToggleRequest) returns (JsonRpc);
+  rpc LockClick (LockClickRequest) returns (JsonRpc);
+  rpc LockStatus (LockStatusRequest) returns (JsonRpc);
+  rpc DevicesList (DevicesListRequest) returns (JsonRpc);
+  rpc DeviceHistory (DeviceHistoryRequest) returns (JsonRpc);
+  rpc DeviceBattery (DeviceBatteryRequest) returns (JsonRpc);
+  rpc IrSend (IrSendRequest) returns (JsonRpc);
+  rpc IrListKeys (IrListKeysRequest) returns (JsonRpc);
+  rpc Discover (DiscoverRequest) returns (JsonRpc);
+  // イベント購読 (topics を渡し event を stream で受ける)。payload は JSON 文字列。
+  rpc Subscribe (SubReq) returns (stream Event);
+  // 後方互換: 任意の JSON-RPC を文字列で運ぶ汎用経路 (型付きに無い新 op 用)。
+  rpc Invoke (JsonRpc) returns (JsonRpc);
+}
+
+message ScheduleGetScheduleListRequest {
+  string subUUID = 1;
+  double timeoutMs = 2;
+}
+message ScheduleCancelScheduleRequest {
+  string subUUID = 1;
+  string scheduleId = 2;
+  double timeoutMs = 3;
+}
+message OrgGetEmployeesRequest {
+  string companyID = 1;
+  double timeoutMs = 2;
+}
+message OrgGetCurrentUserInfoRequest {
+  double timeoutMs = 1;
+}
+message OrgAddEmployeesRequest {
+  string items = 1;
+  double timeoutMs = 2;
+}
+message OrgUpdateEmployeeRequest {
+  string companyID = 1;
+  string data = 2;
+  double timeoutMs = 3;
+}
+message OrgRemoveEmployeesRequest {
+  string items = 1;
+  double timeoutMs = 2;
+}
+message OrgReorderEmployeesRequest {
+  string items = 1;
+  double timeoutMs = 2;
+}
+message OrgQueryByCSRequest {
+  string keyword = 1;
+  double timeoutMs = 2;
+}
+message OrgConfirmQueryByCSRequest {
+  string email = 1;
+  double timeoutMs = 2;
+}
+message OrgGetEmployeeGroupsRequest {
+  string companyID = 1;
+  double timeoutMs = 2;
+}
+message OrgAddEmployeeGroupRequest {
+  string companyID = 1;
+  string item = 2;
+  double timeoutMs = 3;
+}
+message OrgUpdateEmployeeGroupRequest {
+  string companyID = 1;
+  string item = 2;
+  double timeoutMs = 3;
+}
+message OrgRemoveEmployeeGroupsRequest {
+  string companyID = 1;
+  string gids = 2;
+  double timeoutMs = 3;
+}
+message OrgGetEmployeeGroupBindDeviceGroupRequest {
+  string gid = 1;
+  double timeoutMs = 2;
+}
+message OrgAddEmployeeInGroupRequest {
+  string companyID = 1;
+  string gid = 2;
+  string uuids = 3;
+  string items = 4;
+  double timeoutMs = 5;
+}
+message OrgRemoveEmployeeInGroupRequest {
+  string companyID = 1;
+  string gid = 2;
+  string uuids = 3;
+  string items = 4;
+  double timeoutMs = 5;
+}
+message OrgRemoveEmployeeGroupBindDeviceGroupRequest {
+  string companyID = 1;
+  string data = 2;
+  double timeoutMs = 3;
+}
+message OrgGetTagsRequest {
+  string companyID = 1;
+  double timeoutMs = 2;
+}
+message OrgPostTagRequest {
+  string companyID = 1;
+  string data = 2;
+  double timeoutMs = 3;
+}
+message OrgRemoveTagRequest {
+  string companyID = 1;
+  string data = 2;
+  double timeoutMs = 3;
+}
+message OrgGetDeviceGroupsRequest {
+  string companyID = 1;
+  double timeoutMs = 2;
+}
+message OrgAddDeviceGroupRequest {
+  string companyID = 1;
+  string name = 2;
+  repeated string uuids = 3;
+  double timeoutMs = 4;
+}
+message OrgUpdateDeviceGroupRequest {
+  string companyID = 1;
+  string item = 2;
+  double timeoutMs = 3;
+}
+message OrgRemoveDeviceGroupsRequest {
+  string companyID = 1;
+  string groupIds = 2;
+  double timeoutMs = 3;
+}
+message OrgAddDeviceInGroupRequest {
+  string companyID = 1;
+  string gid = 2;
+  string uuids = 3;
+  string items = 4;
+  double timeoutMs = 5;
+}
+message OrgRemoveDeviceInGroupRequest {
+  string companyID = 1;
+  string gid = 2;
+  string uuids = 3;
+  string items = 4;
+  double timeoutMs = 5;
+}
+message OrgGetDeviceGroupBindUserGroupRequest {
+  string gid = 1;
+  double timeoutMs = 2;
+}
+message OrgRemoveDeviceGroupBindUserGroupRequest {
+  string companyID = 1;
+  string data = 2;
+  double timeoutMs = 3;
+}
+message OrgShareDeviceKeysToEmployeesRequest {
+  string items = 1;
+  double timeoutMs = 2;
+}
+message OrgShareDeviceGroupKeysToEmployeeGroupRequest {
+  string companyID = 1;
+  string item = 2;
+  double timeoutMs = 3;
+}
+message OrgGetEmployeeDeviceKeysRequest {
+  string subUUID = 1;
+  double timeoutMs = 2;
+}
+message OrgRemoveEmployeeDeviceKeyRequest {
+  string data = 1;
+  double timeoutMs = 2;
+}
+message OrgUpdateGuestKeyTagRequest {
+  string data = 1;
+  double timeoutMs = 2;
+}
+message OrgGenerateGuestQRRequest {
+  string data = 1;
+  double timeoutMs = 2;
+}
+message OrgGetDeviceEmployeeKeysRequest {
+  string deviceUUID = 1;
+  string companyID = 2;
+  double limit = 3;
+  double timeoutMs = 4;
+}
+message CompanyGetCompaniesRequest {
+  double timeoutMs = 1;
+}
+message CompanyUpdateCompanyNameRequest {
+  string companyID = 1;
+  string name = 2;
+  double timeoutMs = 3;
+}
+message CompanyAddCompanyRequest {
+  string name = 1;
+  string employeeEmail = 2;
+  string subUUID = 3;
+  double timeoutMs = 4;
+}
+message CompanyGetPaymentConfigRequest {
+  string companyID = 1;
+  double timeoutMs = 2;
+}
+message AccessGetCardsRequest {
+  repeated string deviceUUIDs = 1;
+  double timeoutMs = 2;
+}
+message AccessGetPasscodesRequest {
+  repeated string deviceUUIDs = 1;
+  double timeoutMs = 2;
+}
+message AccessPostCardsRequest {
+  string deviceUUID = 1;
+  string list = 2;
+  double timeoutMs = 3;
+}
+message AccessPostPasscodesRequest {
+  string deviceUUID = 1;
+  string list = 2;
+  double timeoutMs = 3;
+}
+message AccessDelCardsRequest {
+  string items = 1;
+}
+message AccessDelPasscodesRequest {
+  string items = 1;
+}
+message AccessClearCardsRequest {
+  string deviceUUID = 1;
+  double timeoutMs = 2;
+}
+message AccessClearPasscodesRequest {
+  string deviceUUID = 1;
+  double timeoutMs = 2;
+}
+message AccessUpdateCardNameRequest {
+  string item = 1;
+  double timeoutMs = 2;
+}
+message AccessUpdatePasscodeNameRequest {
+  string item = 1;
+  double timeoutMs = 2;
+}
+message AccessUpdateCardOwnerRequest {
+  string cardID = 1;
+  string ownerSubUUID = 2;
+  double timeoutMs = 3;
+}
+message IotSendIotCmdRequest {
+  string topic = 1;
+  string payload = 2;
+  string op = 3;
+}
+message IotSubscribeIotResponseRequest {
+  string params = 1;
+}
+message IotSendIotCmdAwaitRequest {
+  string topic = 1;
+  string payload = 2;
+  double cmd = 3;
+  string deviceId = 4;
+  double timeoutMs = 5;
+}
+message IotSetHub3LedDutyRequest {
+  string deviceId = 1;
+  string secretKey = 2;
+  string hub3Id = 3;
+  double op = 4;
+  double duty = 5;
+  double timeoutMs = 6;
+}
+message IotHub3RelaySwitchRequest {
+  string deviceId = 1;
+  string secretKey = 2;
+  string hub3Id = 3;
+  double op = 4;
+}
+message IotAddSesameToHub3Request {
+  string hub3Id = 1;
+  string secretKey = 2;
+  string sesameId = 3;
+  string ssmSecKa = 4;
+  string nickName = 5;
+  string deviceModel = 6;
+  double timeoutMs = 7;
+}
+message IotRemoveSesameFromHub3Request {
+  string params = 1;
+}
+message IotStartFirmwareUpdateRequest {
+  string deviceId = 1;
+  string hub3Id = 2;
+  string secretKey = 3;
+}
+message IotClearHub3WifiSsidRequest {
+  string deviceId = 1;
+  string secretKey = 2;
+  string hub3Id = 3;
+}
+message IotGetMatterPairingCodeRequest {
+  string deviceId = 1;
+  string secretKey = 2;
+  string hub3Id = 3;
+  double timeoutMs = 4;
+}
+message IotOpenMatterPairingWindowRequest {
+  string deviceId = 1;
+  string secretKey = 2;
+  string hub3Id = 3;
+  double timeoutMs = 4;
+}
+message PresetirSendIRRequest {
+  string deviceId = 1;
+  string command = 2;
+  double irType = 3;
+  string companyID = 4;
+  string irDeviceUUID = 5;
+  string operation = 6;
+  double timeoutMs = 7;
+}
+message PresetirEmitAirRequest {
+  string deviceId = 1;
+  string companyID = 2;
+  double code = 3;
+  string irDeviceUUID = 4;
+  double timeoutMs = 5;
+  bool power = 6;
+  double temperature = 7;
+  double mode = 8;
+  double fanSpeed = 9;
+  double windDirection = 10;
+  bool autoSwing = 11;
+  string keyType = 12;
+}
+message PresetirEmitButtonRequest {
+  string deviceId = 1;
+  string companyID = 2;
+  double code = 3;
+  double irType = 4;
+  string buttonType = 5;
+  string irDeviceUUID = 6;
+  double timeoutMs = 7;
+}
+message StatusRequest {
+}
+message AccountWhoamiRequest {
+}
+message LockLockRequest {
+  string name = 1;
+  string deviceUUID = 2;
+  string secretKey = 3;
+}
+message LockUnlockRequest {
+  string name = 1;
+  string deviceUUID = 2;
+  string secretKey = 3;
+}
+message LockToggleRequest {
+  string name = 1;
+  string deviceUUID = 2;
+  string secretKey = 3;
+}
+message LockClickRequest {
+  string name = 1;
+  string deviceUUID = 2;
+  string secretKey = 3;
+}
+message LockStatusRequest {
+  string deviceUUID = 1;
+}
+message DevicesListRequest {
+}
+message DeviceHistoryRequest {
+  string deviceUUID = 1;
+  double pageSize = 2;
+}
+message DeviceBatteryRequest {
+  string deviceUUID = 1;
+  double pageSize = 2;
+}
+message IrSendRequest {
+  string remote = 1;
+  string key = 2;
+}
+message IrListKeysRequest {
+  string remote = 1;
+}
+message DiscoverRequest {
+}
+
+message SubReq { string token = 1; repeated string topics = 2; }
+message Event { string topic = 1; string json = 2; }
+message JsonRpc { string json = 1; }

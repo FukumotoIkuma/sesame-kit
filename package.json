@@ -1,0 +1,95 @@
+{
+  "name": "sesame-kit",
+  "version": "0.4.0",
+  "private": true,
+  "description": "SESAME cloud CLI & library (lock control + Hub3 IR + device management). Node.js port of biz3 React app with the Cognito consumer client swapped in for long-lived sessions.",
+  "author": "Ikuma Fukumoto",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./auth": {
+      "types": "./types/auth.d.ts",
+      "default": "./src/auth.js"
+    },
+    "./transport": {
+      "types": "./types/transport.d.ts",
+      "default": "./src/transport.js"
+    },
+    "./config": {
+      "types": "./types/config.d.ts",
+      "default": "./src/config.js"
+    },
+    "./tokens": {
+      "types": "./types/tokens.d.ts",
+      "default": "./src/tokens.js"
+    },
+    "./crypto": {
+      "types": "./types/crypto.d.ts",
+      "default": "./src/crypto.js"
+    },
+    "./lock": {
+      "types": "./types/lock.d.ts",
+      "default": "./src/lock.js"
+    },
+    "./ir": {
+      "types": "./types/ir.d.ts",
+      "default": "./src/ir.js"
+    },
+    "./devices": {
+      "types": "./types/devices.d.ts",
+      "default": "./src/devices.js"
+    }
+  },
+  "bin": {
+    "sesame": "./bin/sesame.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "types/",
+    "vendor/",
+    "README.md",
+    "LICENSE",
+    "LICENSE.biz3"
+  ],
+  "scripts": {
+    "cli": "node bin/sesame.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build:types": "tsc -p tsconfig.json",
+    "build:rpc-schema": "node scripts/gen-rpc-schema.mjs",
+    "build:grpc-proto": "node scripts/gen-grpc-proto.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs",
+    "prepack": "tsc -p tsconfig.json && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1057.0",
+    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
+    "@inquirer/prompts": "^8.5.2",
+    "commander": "^15.0.0",
+    "ink": "^7.0.5",
+    "ink-select-input": "^6.2.0",
+    "ink-text-input": "^6.0.0",
+    "node-aes-cmac": "^0.1.1",
+    "react": "^19.2.7",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  },
+  "optionalDependencies": {
+    "@abandonware/noble": "^1.9.2-25"
+  }
+}

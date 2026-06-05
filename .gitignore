@@ -1,0 +1,23 @@
+node_modules/
+# 旧構成 (プロジェクトルート保存) の残骸; 0.2 以降は ~/.config/sesame-hub3/ に保存
+.env
+.env.local
+.secrets.json
+.tokens.json
+.login_state.json
+.cache/
+*.log
+scratch/
+# ユーザ固有の IR キーマッピング (migrate 用の個人 artifact)
+keys.json
+# 開発中の一時テストスクリプト (_*.mjs パターンで pollute されがち)
+_*.mjs
+
+# 参照用 SesameSDK (一次ソース・コミットしない)
+/_sesame_sdk_ref/
+
+# Python client build artifacts
+clients/python/build/
+clients/python/*.egg-info/
+__pycache__/
+*.pyc

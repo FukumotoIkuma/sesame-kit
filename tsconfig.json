@@ -1,0 +1,19 @@
+{
+  "//": "JSDoc から .d.ts を機械生成するためだけの設定 (実行時は素の JS)。`npm run build:types` で types/ に出力。",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": true,
+    "outDir": "types",
+    "rootDir": "src",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "strict": false,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.js"],
+  "exclude": ["node_modules", "tests", "types"]
+}

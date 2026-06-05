@@ -1,0 +1,208 @@
+// sesame serve の薄い公式 JS クライアント (Node 18+, 依存ゼロ)。
+// 別プロセスで動いている serve デーモンに繋ぐ用途。
+//
+//   import { SesameClient } from "./sesame-client.mjs";
+//   const c = SesameClient.unix();                 // 既定 UDS パス (POSIX。sesame serve で起動)
+//   console.log(await c.unlock("front"));
+//   await c.subscribe(["lockState"], (topic, p) => console.log("EVENT", topic, p));
+//
+//   const h = SesameClient.http("http://127.0.0.1:8080"); // token は serve.token から自動
+//   const w = await SesameClient.ws("ws://127.0.0.1:8081"); // Windows でも全二重 (要 Node22+ or ws)
+//
+// 失敗は SesameError(message, kind) を throw (kind: not_authenticated / connection_lost / timeout)。
+// subscribe は **常に await** すること (接続/認証エラーを取りこぼさないため)。
+
+import net from "node:net";
+import readline from "node:readline";
+import os from "node:os";
+import { join } from "node:path";
+import { readFileSync } from "node:fs";
+
+function defaultSocketPath() {
+  const base = process.env.XDG_CONFIG_HOME || join(os.homedir(), ".config");
+  return join(base, "sesame-hub3", "sesame.sock");
+}
+function defaultTokenPath() {
+  const base = process.env.XDG_CONFIG_HOME || join(os.homedir(), ".config");
+  return join(base, "sesame-hub3", "serve.token");
+}
+function defaultToken() {
+  try { return readFileSync(defaultTokenPath(), "utf8").trim(); } catch { return null; }
+}
+
+export class SesameError extends Error {
+  constructor(message, kind, code) { super(message); this.name = "SesameError"; this.kind = kind; this.code = code; }
+}
+
+export class SesameClient {
+  constructor(transport) { this._t = transport; }
+
+  static unix(path = defaultSocketPath()) {
+    if (process.platform === "win32") {
+      throw new SesameError("Unix socket は POSIX 専用です。Windows では SesameClient.http() か .ws() を使ってください", "not_implemented");
+    }
+    return new SesameClient(new StreamTransport(path));
+  }
+  static http(base = "http://127.0.0.1:8080", token = defaultToken()) {
+    return new SesameClient(new HttpTransport(base.replace(/\/$/, ""), token));
+  }
+  /** WebSocket クライアント。`ws` パッケージ(ヘッダ認証可)を優先し、無ければ global WebSocket (await 必須)。 */
+  static async ws(url = "ws://127.0.0.1:8081", token = defaultToken()) {
+    // ws パッケージは upgrade で Authorization ヘッダを送れる (token を URL に載せず済む)。
+    // 無ければ global WebSocket (ブラウザ/Node22+) にフォールバックし URL ?token= を使う。
+    const pkg = await import("ws").then((m) => m.WebSocket).catch(() => null);
+    const WS = pkg || globalThis.WebSocket;
+    if (!WS) throw new SesameError("WebSocket が無い。Node 18+ で `npm i ws`、または Node 22+ が必要です", "not_implemented");
+    const t = new WsTransport(WS, url, token, /* useHeader */ !!pkg);
+    await t.ready();
+    return new SesameClient(t);
+  }
+
+  async call(method, params = {}) {
+    const resp = await this._t.request({ jsonrpc: "2.0", method, params }); // id は transport が採番
+    if (resp.error) throw new SesameError(resp.error.message, resp.error.data?.kind, resp.error.code);
+    return resp.result;
+  }
+  /** topics を購読。常に await すること (接続/認証/不正 topic エラーが throw で返る)。 */
+  async subscribe(topics, onEvent) {
+    const resp = await this._t.subscribe(topics, onEvent);
+    // UDS/WS は購読要求の応答 (msg) を返す。error があれば握り潰さず throw (不正 topic 等)。
+    if (resp && resp.error) throw new SesameError(resp.error.message, resp.error.data?.kind, resp.error.code);
+    return resp?.result;
+  }
+  async discover() { return this.call("rpc.discover"); }
+
+  unlock(name, kw = {}) { return this.call("lock.unlock", name ? { name, ...kw } : kw); }
+  lock(name, kw = {}) { return this.call("lock.lock", name ? { name, ...kw } : kw); }
+  status() { return this.call("status"); }
+  devices() { return this.call("devices.list"); }
+  close() { this._t.close(); }
+}
+
+/** 受信行を id/event で振り分ける共通処理 (UDS/WS で共有)。 */
+function routeMessage(self, line) {
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; } // 壊れた行で落ちない
+  if ("id" in msg && self._pending.has(msg.id)) {
+    const { resolve } = self._pending.get(msg.id); self._pending.delete(msg.id); resolve(msg);
+  } else if (typeof msg.method === "string" && msg.method.startsWith("event.")) {
+    self._onEvent?.(msg.method.slice("event.".length), msg.params);
+  }
+}
+
+class StreamTransport {
+  constructor(path) {
+    this._ids = 0; this._pending = new Map(); this._onEvent = null; this._fatal = null;
+    this._sock = net.connect(path);
+    this._sock.on("error", (e) => {
+      const msg = (e.code === "ENOENT" || e.code === "ECONNREFUSED")
+        ? `sesame serve が起動していません (socket: ${path})。別ターミナルで \`sesame serve\` を実行してください`
+        : `socket エラー: ${e.message}`;
+      this._fatal = new SesameError(msg, "connection_lost");
+      for (const { reject } of this._pending.values()) reject(this._fatal);
+      this._pending.clear();
+    });
+    const rl = readline.createInterface({ input: this._sock });
+    rl.on("error", () => { /* socket 'error' 側で処理 */ });
+    rl.on("line", (line) => { if (line.trim()) routeMessage(this, line); });
+  }
+  request(msg) {
+    if (this._fatal) return Promise.reject(this._fatal);
+    const id = ++this._ids;
+    return new Promise((resolve, reject) => {
+      const to = setTimeout(() => { this._pending.delete(id); reject(new SesameError("request timed out", "timeout")); }, 20000);
+      this._pending.set(id, { resolve: (m) => { clearTimeout(to); resolve(m); }, reject: (e) => { clearTimeout(to); reject(e); } });
+      this._sock.write(JSON.stringify({ ...msg, id }) + "\n");
+    });
+  }
+  subscribe(topics, onEvent) { this._onEvent = onEvent; return this.request({ jsonrpc: "2.0", method: "events.subscribe", params: { topics } }); }
+  close() { this._sock.destroy(); }
+}
+
+class WsTransport {
+  constructor(WS, url, token, useHeader) {
+    this._ids = 0; this._pending = new Map(); this._onEvent = null; this._fatal = null;
+    // ヘッダ送信可 (ws パッケージ) なら Authorization ヘッダ、不可 (ブラウザ) なら URL ?token=。
+    this._ws = useHeader && token
+      ? new WS(url, { headers: { authorization: `Bearer ${token}` } })
+      : new WS(url + (url.includes("?") ? "&" : "?") + (token ? `token=${token}` : ""));
+    this._open = new Promise((resolve, reject) => {
+      const fail = (e) => { this._fatal = e; for (const { reject: rj } of this._pending.values()) rj(e); this._pending.clear(); reject(e); };
+      this._ws.addEventListener("open", () => resolve());
+      // 握手 401 (verifyClient 拒否) は error として届く。message に 401 を含めば認証失敗。
+      this._ws.addEventListener("error", (ev) => {
+        const m = String(ev?.message || ev?.error?.message || "");
+        if (/401|403|unauthorized/i.test(m)) fail(new SesameError("unauthorized (token 不一致/未指定)", "not_authenticated", 401));
+        else fail(new SesameError(`ws 接続失敗 (${url})。sesame serve --ws を起動しましたか?`, "connection_lost"));
+      });
+      // 念のため close 1008 も認証失敗として扱う (open が先勝ちした場合の保険)。
+      this._ws.addEventListener("close", (ev) => { if (ev.code === 1008) fail(new SesameError("unauthorized (token)", "not_authenticated", 1008)); });
+    });
+    this._open.catch(() => {}); // unhandled rejection 抑止 (ready() で受ける)
+    this._ws.addEventListener("message", (ev) => routeMessage(this, typeof ev.data === "string" ? ev.data : ev.data.toString()));
+  }
+  ready() { return this._open; }
+  async request(msg) {
+    if (this._fatal) return Promise.reject(this._fatal);
+    await this._open;
+    if (this._fatal) return Promise.reject(this._fatal);
+    const id = ++this._ids;
+    return new Promise((resolve, reject) => {
+      const to = setTimeout(() => { this._pending.delete(id); reject(new SesameError("request timed out", "timeout")); }, 20000);
+      this._pending.set(id, { resolve: (m) => { clearTimeout(to); resolve(m); }, reject });
+      this._ws.send(JSON.stringify({ ...msg, id }));
+    });
+  }
+  subscribe(topics, onEvent) { this._onEvent = onEvent; return this.request({ jsonrpc: "2.0", method: "events.subscribe", params: { topics } }); }
+  close() { try { this._ws.close(); } catch { /* ignore */ } }
+}
+
+class HttpTransport {
+  constructor(base, token) { this._base = base; this._token = token; this._ids = 0; }
+  _headers() { return this._token ? { "content-type": "application/json", authorization: `Bearer ${this._token}` } : { "content-type": "application/json" }; }
+  _unauthorized() {
+    return this._token
+      ? new SesameError("unauthorized (token 不一致)", "not_authenticated", 401)
+      : new SesameError(`token が見つかりません。\`sesame serve --http\` で起動すると ${defaultTokenPath()} に保存されます`, "not_authenticated", 401);
+  }
+  async request(msg) {
+    let r;
+    try {
+      r = await fetch(`${this._base}/rpc`, { method: "POST", headers: this._headers(), body: JSON.stringify({ ...msg, id: ++this._ids }) });
+    } catch (e) {
+      throw new SesameError(`接続失敗: ${e.message}。\`sesame serve --http\` を起動しましたか?`, "connection_lost");
+    }
+    if (r.status === 401) throw this._unauthorized();
+    return r.status === 204 ? { id: this._ids, result: null } : r.json();
+  }
+  async subscribe(topics, onEvent) {
+    const url = `${this._base}/events?topics=${topics.join(",")}` + (this._token ? `&token=${this._token}` : "");
+    let res;
+    try { res = await fetch(url, { headers: this._headers() }); }
+    catch (e) { throw new SesameError(`events 接続失敗: ${e.message}`, "connection_lost"); }
+    if (res.status === 401) throw this._unauthorized();
+    if (res.status >= 400) { // 400 = 不正 topic 等。黙ってストリームを張らず明示エラーに。
+      let detail = ""; try { detail = JSON.stringify(await res.json()); } catch { /* ignore */ }
+      throw new SesameError(`events 購読失敗 (HTTP ${res.status}): ${detail}`, "bad_params", res.status);
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let nl;
+          while ((nl = buf.indexOf("\n\n")) >= 0) {
+            const block = buf.slice(0, nl); buf = buf.slice(nl + 2);
+            const line = block.split("\n").find((l) => l.startsWith("data: "));
+            if (line) { let m; try { m = JSON.parse(line.slice(6)); } catch { continue; } if (m.method?.startsWith("event.")) onEvent(m.method.slice(6), m.params); }
+          }
+        }
+      } catch (e) { console.error("[sesame] subscribe error:", e.message); }
+    })();
+  }
+  close() {}
+}

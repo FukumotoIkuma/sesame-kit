@@ -1,0 +1,1 @@
+{"version":3,"file":"ws.d.ts","sourceRoot":"","sources":["../../../src/serve/framing/ws.js"],"names":[],"mappings":"AASA;;;;GAIG;AACH,uCAJW,OAAO,cAAc,EAAE,MAAM,yBAC7B;IAAE,IAAI,CAAC,EAAC,MAAM,CAAC;IAAC,IAAI,EAAC,MAAM,CAAC;IAAC,KAAK,EAAC,MAAM,CAAA;CAAE,GACzC,OAAO,CAAC;IAAE,IAAI,EAAC,MAAI,OAAO,CAAC,IAAI,CAAC,CAAA;CAAE,CAAC,CA2C/C"}

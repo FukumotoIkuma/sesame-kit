@@ -1,0 +1,340 @@
+// access.js (cards / passcodes) の単体テスト。
+// biz3ManageAccessCtlAuthData の各 op の送信フレーム正確性 (action/op/フィールド名/ネスト構造) と
+// pub*LinkedIDs の async push 集約・応答パースを検証する。
+// vendor reference: references_web/src/api/useManageAuthData.js
+import { describe, it, expect } from "vitest";
+import {
+  getCards,
+  getPasscodes,
+  postCards,
+  postPasscodes,
+  delCards,
+  delPasscodes,
+  clearCards,
+  clearPasscodes,
+  updateCardName,
+  updatePasscodeName,
+  updateCardOwner,
+} from "../../src/access.js";
+
+// ---------- request 系 mock client ----------
+// request(frame) を記録し固定応答を返す。
+function requestClient(reply) {
+  const sent = [];
+  return {
+    sent,
+    async request(frame) {
+      sent.push(frame);
+      return reply;
+    },
+    // get 系を誤って呼んだら検知できるようにダミー
+    send() {
+      throw new Error("unexpected send() call");
+    },
+    subscribe() {
+      throw new Error("unexpected subscribe() call");
+    },
+  };
+}
+
+// ---------- subscribe/send 系 mock client (getCards/getPasscodes 用) ----------
+// subscribe(key, fn) でハンドラを登録、send(frame) を記録。
+// テスト側から emit(key, msg) で push を流せる。
+function pushClient() {
+  const sent = [];
+  /** @type {Map<string, Set<Function>>} */
+  const subs = new Map();
+  return {
+    sent,
+    subs,
+    send(frame) {
+      sent.push(frame);
+    },
+    subscribe(key, fn) {
+      let set = subs.get(key);
+      if (!set) {
+        set = new Set();
+        subs.set(key, set);
+      }
+      set.add(fn);
+      return () => set.delete(fn);
+    },
+    emit(key, msg) {
+      const set = subs.get(key);
+      if (!set) return;
+      for (const fn of [...set]) fn(msg);
+    },
+    request() {
+      throw new Error("unexpected request() call");
+    },
+  };
+}
+
+const ACTION = "biz3ManageAccessCtlAuthData";
+
+describe("getCards", () => {
+  it("送信フレームは obj.devices にカンマ連結文字列 / op:getCards", async () => {
+    const c = pushClient();
+    const p = getCards(c, { deviceUUIDs: ["uuid-A", "uuid-B"] });
+    // 送信直後にフレームを検証
+    expect(c.sent).toHaveLength(1);
+    expect(c.sent[0]).toEqual({
+      action: ACTION,
+      obj: { devices: "uuid-A,uuid-B" },
+      op: "getCards",
+    });
+    // 完了通知で解決させる
+    c.emit(`${ACTION}:getCards`, { action: ACTION, op: "getCards" });
+    await p;
+  });
+
+  it("pubCardLinkedIDs を deviceUUID/page で集約し、完了通知で確定する", async () => {
+    const c = pushClient();
+    const p = getCards(c, { deviceUUIDs: ["dev1", "dev2"] });
+
+    // dev1 page1 (置換)
+    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+      action: ACTION,
+      op: "pubCardLinkedIDs",
+      data: {
+        deviceUUID: "dev1",
+        page: 1,
+        list: [{ cardID: "C1", name: "card1", nameUUID: "n1", cardType: 1, subUUID: "s1" }],
+      },
+    });
+    // dev1 page2 (累積)
+    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+      action: ACTION,
+      op: "pubCardLinkedIDs",
+      data: {
+        deviceUUID: "dev1",
+        page: 2,
+        list: [{ cardID: "C2", name: "card2", nameUUID: "n2", cardType: 1, subUUID: "s2" }],
+      },
+    });
+    // dev2 page1 — C1 を共有 (横断集約で uuids が 2件になる)
+    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+      action: ACTION,
+      op: "pubCardLinkedIDs",
+      data: {
+        deviceUUID: "dev2",
+        page: 1,
+        list: [{ cardID: "C1", name: "card1", nameUUID: "n1", cardType: 1, subUUID: "s1" }],
+      },
+    });
+
+    c.emit(`${ACTION}:getCards`, { action: ACTION, op: "getCards" });
+    const r = await p;
+
+    expect(r.byDevice.dev1).toHaveLength(2);
+    expect(r.byDevice.dev1.map((x) => x.cardID)).toEqual(["C1", "C2"]);
+    expect(r.byDevice.dev2).toHaveLength(1);
+
+    // 横断集約: C1 は dev1/dev2 両方
+    const c1 = r.items.filter((x) => x.cardID === "C1");
+    expect(c1).toHaveLength(2); // 各 deviceUUID 分の要素が push される (biz3:170 と同じ)
+    expect(c1[0].uuids.sort()).toEqual(["dev1", "dev2"]);
+  });
+
+  it("page===1 が後から来たら置換 (累積ではない)", async () => {
+    const c = pushClient();
+    const p = getCards(c, { deviceUUIDs: ["dev1"] });
+    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+      data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "OLD" }] },
+    });
+    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+      data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "NEW" }] },
+    });
+    c.emit(`${ACTION}:getCards`, {});
+    const r = await p;
+    expect(r.byDevice.dev1.map((x) => x.cardID)).toEqual(["NEW"]);
+  });
+
+  it("deviceUUIDs 空なら送信せず空を返す", async () => {
+    const c = pushClient();
+    const r = await getCards(c, { deviceUUIDs: [] });
+    expect(c.sent).toHaveLength(0);
+    expect(r).toEqual({ byDevice: {}, items: [] });
+  });
+
+  it("完了通知が来なければ timeout で reject", async () => {
+    const c = pushClient();
+    await expect(getCards(c, { deviceUUIDs: ["dev1"], timeoutMs: 20 })).rejects.toThrow(/getCards timeout/);
+  });
+});
+
+describe("getPasscodes", () => {
+  it("op:getPasscodes / 応答 op:pubPasscodeLinkedIDs を passwordID で集約", async () => {
+    const c = pushClient();
+    const p = getPasscodes(c, { deviceUUIDs: ["dev1"] });
+    expect(c.sent[0]).toEqual({
+      action: ACTION,
+      obj: { devices: "dev1" },
+      op: "getPasscodes",
+    });
+    c.emit(`${ACTION}:pubPasscodeLinkedIDs`, {
+      data: {
+        deviceUUID: "dev1",
+        page: 1,
+        list: [{ passwordID: "P1", keyBoardPassCode: "0102", name: "pc1" }],
+      },
+    });
+    c.emit(`${ACTION}:getPasscodes`, {});
+    const r = await p;
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].passwordID).toBe("P1");
+    expect(r.items[0].uuids).toEqual(["dev1"]);
+  });
+});
+
+describe("postCards", () => {
+  it("deviceUUID / list をトップレベルに置く (obj ラップしない)", async () => {
+    const c = requestClient({ success: true });
+    const list = [{ cardID: "C1", nameUUID: "n1", name: "x", cardType: 1 }];
+    await postCards(c, { deviceUUID: "dev1", list });
+    expect(c.sent[0]).toEqual({ action: ACTION, deviceUUID: "dev1", list, op: "postCards" });
+    expect(c.sent[0]).not.toHaveProperty("obj");
+  });
+
+  it("list 空なら送信せず null", async () => {
+    const c = requestClient({ success: true });
+    expect(await postCards(c, { deviceUUID: "dev1", list: [] })).toBeNull();
+    expect(c.sent).toHaveLength(0);
+  });
+
+  it("success:false は throw", async () => {
+    const c = requestClient({ success: false, message: "nope" });
+    await expect(postCards(c, { deviceUUID: "dev1", list: [{ cardID: "C1" }] })).rejects.toThrow(
+      /postCards failed: nope/,
+    );
+  });
+});
+
+describe("postPasscodes", () => {
+  it("deviceUUID / list トップレベル / op:postPasscodes", async () => {
+    const c = requestClient({ success: true });
+    const list = [{ passwordID: "P1" }];
+    await postPasscodes(c, { deviceUUID: "dev1", list });
+    expect(c.sent[0]).toEqual({ action: ACTION, deviceUUID: "dev1", list, op: "postPasscodes" });
+  });
+
+  it("list 空なら null", async () => {
+    const c = requestClient({ success: true });
+    expect(await postPasscodes(c, { deviceUUID: "dev1", list: [] })).toBeNull();
+  });
+});
+
+describe("delCards", () => {
+  // biz3 は delCards に応答ハンドラを持たない → fire-and-forget (send) で投げる。
+  it("send で items をトップレベルに置く {deviceID, cardID} / op:delCards", () => {
+    const c = pushClient();
+    const items = [{ deviceID: "dev1", cardID: "C1" }];
+    expect(delCards(c, { items })).toBe(true);
+    expect(c.sent[0]).toEqual({ action: ACTION, items, op: "delCards" });
+    expect(c.sent[0]).not.toHaveProperty("obj");
+    expect(c.sent[0]).not.toHaveProperty("deviceUUID");
+  });
+
+  it("items 空なら送信せず false", () => {
+    const c = pushClient();
+    expect(delCards(c, { items: [] })).toBe(false);
+    expect(c.sent).toHaveLength(0);
+  });
+});
+
+describe("delPasscodes", () => {
+  it("send で items トップレベル {deviceID, passwordID} / op:delPasscodes", () => {
+    const c = pushClient();
+    const items = [{ deviceID: "dev1", passwordID: "P1" }];
+    expect(delPasscodes(c, { items })).toBe(true);
+    expect(c.sent[0]).toEqual({ action: ACTION, items, op: "delPasscodes" });
+  });
+
+  it("items 空なら送信せず false", () => {
+    const c = pushClient();
+    expect(delPasscodes(c, { items: [] })).toBe(false);
+    expect(c.sent).toHaveLength(0);
+  });
+});
+
+describe("clearCards", () => {
+  it("obj.devices は単一 deviceUUID 文字列 (カンマ連結しない) / op:clearCards", async () => {
+    const c = requestClient({ success: true });
+    await clearCards(c, { deviceUUID: "dev1" });
+    expect(c.sent[0]).toEqual({ action: ACTION, obj: { devices: "dev1" }, op: "clearCards" });
+  });
+
+  it("deviceUUID 無しなら null", async () => {
+    const c = requestClient({ success: true });
+    expect(await clearCards(c, { deviceUUID: "" })).toBeNull();
+    expect(c.sent).toHaveLength(0);
+  });
+});
+
+describe("clearPasscodes", () => {
+  it("obj.devices 単一 / op:clearPasscodes", async () => {
+    const c = requestClient({ success: true });
+    await clearPasscodes(c, { deviceUUID: "dev1" });
+    expect(c.sent[0]).toEqual({ action: ACTION, obj: { devices: "dev1" }, op: "clearPasscodes" });
+  });
+});
+
+describe("updateCardName", () => {
+  it("obj に item を展開 / op:updateCardName", async () => {
+    const c = requestClient({ success: true, reqContext: {} });
+    const item = {
+      cardID: "C1",
+      name: "新名",
+      cardNameUUID: "11111111-1111-4111-8111-111111111111",
+      timestamp: 123,
+      cardType: 1,
+      stpDeviceUUID: "dev1",
+    };
+    await updateCardName(c, { item });
+    expect(c.sent[0]).toEqual({ action: ACTION, obj: { ...item }, op: "updateCardName" });
+  });
+
+  it("応答メッセージ (reqContext 含む) をそのまま返す", async () => {
+    const reply = {
+      success: true,
+      reqContext: { name: "新名", stpDeviceUUID: "dev1", cardID: "C1", cardNameUUID: "u" },
+    };
+    const c = requestClient(reply);
+    const r = await updateCardName(c, { item: { cardID: "C1" } });
+    expect(r).toBe(reply);
+  });
+});
+
+describe("updatePasscodeName", () => {
+  it("obj に item 展開 / op:updatePasscodeName", async () => {
+    const c = requestClient({ success: true });
+    const item = {
+      stpDeviceUUID: "dev1",
+      keyBoardPassCode: "0102",
+      keyBoardPassCodeNameUUID: "22222222-2222-4222-8222-222222222222",
+      name: "pc",
+    };
+    await updatePasscodeName(c, { item });
+    expect(c.sent[0]).toEqual({ action: ACTION, obj: { ...item }, op: "updatePasscodeName" });
+  });
+});
+
+describe("updateCardOwner", () => {
+  it("obj:{cardID, ownerSubUUID} / op:updateCardOwner", async () => {
+    const c = requestClient({ success: true });
+    await updateCardOwner(c, { cardID: "C1", ownerSubUUID: "sub-1" });
+    expect(c.sent[0]).toEqual({ action: ACTION, obj: { cardID: "C1", ownerSubUUID: "sub-1" }, op: "updateCardOwner" });
+  });
+
+  it("空文字 ownerSubUUID は送信する (未割当解除)", async () => {
+    const c = requestClient({ success: true });
+    await updateCardOwner(c, { cardID: "C1", ownerSubUUID: "" });
+    expect(c.sent[0].obj).toEqual({ cardID: "C1", ownerSubUUID: "" });
+  });
+
+  it("ownerSubUUID undefined なら送信せず null (biz3: 'ownerSubUUID' in item)", async () => {
+    const c = requestClient({ success: true });
+    expect(await updateCardOwner(c, { cardID: "C1" })).toBeNull();
+    expect(c.sent).toHaveLength(0);
+  });
+});

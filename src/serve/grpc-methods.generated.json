@@ -1,0 +1,378 @@
+{
+  "ScheduleGetScheduleList": {
+    "method": "schedule.getScheduleList",
+    "jsonFields": []
+  },
+  "ScheduleCancelSchedule": {
+    "method": "schedule.cancelSchedule",
+    "jsonFields": []
+  },
+  "OrgGetEmployees": {
+    "method": "org.getEmployees",
+    "jsonFields": []
+  },
+  "OrgGetCurrentUserInfo": {
+    "method": "org.getCurrentUserInfo",
+    "jsonFields": []
+  },
+  "OrgAddEmployees": {
+    "method": "org.addEmployees",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "OrgUpdateEmployee": {
+    "method": "org.updateEmployee",
+    "jsonFields": [
+      "data"
+    ]
+  },
+  "OrgRemoveEmployees": {
+    "method": "org.removeEmployees",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "OrgReorderEmployees": {
+    "method": "org.reorderEmployees",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "OrgQueryByCS": {
+    "method": "org.queryByCS",
+    "jsonFields": []
+  },
+  "OrgConfirmQueryByCS": {
+    "method": "org.confirmQueryByCS",
+    "jsonFields": []
+  },
+  "OrgGetEmployeeGroups": {
+    "method": "org.getEmployeeGroups",
+    "jsonFields": []
+  },
+  "OrgAddEmployeeGroup": {
+    "method": "org.addEmployeeGroup",
+    "jsonFields": [
+      "item"
+    ]
+  },
+  "OrgUpdateEmployeeGroup": {
+    "method": "org.updateEmployeeGroup",
+    "jsonFields": [
+      "item"
+    ]
+  },
+  "OrgRemoveEmployeeGroups": {
+    "method": "org.removeEmployeeGroups",
+    "jsonFields": [
+      "gids"
+    ]
+  },
+  "OrgGetEmployeeGroupBindDeviceGroup": {
+    "method": "org.getEmployeeGroupBindDeviceGroup",
+    "jsonFields": []
+  },
+  "OrgAddEmployeeInGroup": {
+    "method": "org.addEmployeeInGroup",
+    "jsonFields": [
+      "uuids",
+      "items"
+    ]
+  },
+  "OrgRemoveEmployeeInGroup": {
+    "method": "org.removeEmployeeInGroup",
+    "jsonFields": [
+      "uuids",
+      "items"
+    ]
+  },
+  "OrgRemoveEmployeeGroupBindDeviceGroup": {
+    "method": "org.removeEmployeeGroupBindDeviceGroup",
+    "jsonFields": [
+      "data"
+    ]
+  },
+  "OrgGetTags": {
+    "method": "org.getTags",
+    "jsonFields": []
+  },
+  "OrgPostTag": {
+    "method": "org.postTag",
+    "jsonFields": [
+      "data"
+    ]
+  },
+  "OrgRemoveTag": {
+    "method": "org.removeTag",
+    "jsonFields": [
+      "data"
+    ]
+  },
+  "OrgGetDeviceGroups": {
+    "method": "org.getDeviceGroups",
+    "jsonFields": []
+  },
+  "OrgAddDeviceGroup": {
+    "method": "org.addDeviceGroup",
+    "jsonFields": []
+  },
+  "OrgUpdateDeviceGroup": {
+    "method": "org.updateDeviceGroup",
+    "jsonFields": [
+      "item"
+    ]
+  },
+  "OrgRemoveDeviceGroups": {
+    "method": "org.removeDeviceGroups",
+    "jsonFields": [
+      "groupIds"
+    ]
+  },
+  "OrgAddDeviceInGroup": {
+    "method": "org.addDeviceInGroup",
+    "jsonFields": [
+      "uuids",
+      "items"
+    ]
+  },
+  "OrgRemoveDeviceInGroup": {
+    "method": "org.removeDeviceInGroup",
+    "jsonFields": [
+      "uuids",
+      "items"
+    ]
+  },
+  "OrgGetDeviceGroupBindUserGroup": {
+    "method": "org.getDeviceGroupBindUserGroup",
+    "jsonFields": []
+  },
+  "OrgRemoveDeviceGroupBindUserGroup": {
+    "method": "org.removeDeviceGroupBindUserGroup",
+    "jsonFields": [
+      "data"
+    ]
+  },
+  "OrgShareDeviceKeysToEmployees": {
+    "method": "org.shareDeviceKeysToEmployees",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "OrgShareDeviceGroupKeysToEmployeeGroup": {
+    "method": "org.shareDeviceGroupKeysToEmployeeGroup",
+    "jsonFields": [
+      "item"
+    ]
+  },
+  "OrgGetEmployeeDeviceKeys": {
+    "method": "org.getEmployeeDeviceKeys",
+    "jsonFields": []
+  },
+  "OrgRemoveEmployeeDeviceKey": {
+    "method": "org.removeEmployeeDeviceKey",
+    "jsonFields": [
+      "data"
+    ]
+  },
+  "OrgUpdateGuestKeyTag": {
+    "method": "org.updateGuestKeyTag",
+    "jsonFields": [
+      "data"
+    ]
+  },
+  "OrgGenerateGuestQR": {
+    "method": "org.generateGuestQR",
+    "jsonFields": [
+      "data"
+    ]
+  },
+  "OrgGetDeviceEmployeeKeys": {
+    "method": "org.getDeviceEmployeeKeys",
+    "jsonFields": []
+  },
+  "CompanyGetCompanies": {
+    "method": "company.getCompanies",
+    "jsonFields": []
+  },
+  "CompanyUpdateCompanyName": {
+    "method": "company.updateCompanyName",
+    "jsonFields": []
+  },
+  "CompanyAddCompany": {
+    "method": "company.addCompany",
+    "jsonFields": []
+  },
+  "CompanyGetPaymentConfig": {
+    "method": "company.getPaymentConfig",
+    "jsonFields": []
+  },
+  "AccessGetCards": {
+    "method": "access.getCards",
+    "jsonFields": []
+  },
+  "AccessGetPasscodes": {
+    "method": "access.getPasscodes",
+    "jsonFields": []
+  },
+  "AccessPostCards": {
+    "method": "access.postCards",
+    "jsonFields": [
+      "list"
+    ]
+  },
+  "AccessPostPasscodes": {
+    "method": "access.postPasscodes",
+    "jsonFields": [
+      "list"
+    ]
+  },
+  "AccessDelCards": {
+    "method": "access.delCards",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "AccessDelPasscodes": {
+    "method": "access.delPasscodes",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "AccessClearCards": {
+    "method": "access.clearCards",
+    "jsonFields": []
+  },
+  "AccessClearPasscodes": {
+    "method": "access.clearPasscodes",
+    "jsonFields": []
+  },
+  "AccessUpdateCardName": {
+    "method": "access.updateCardName",
+    "jsonFields": [
+      "item"
+    ]
+  },
+  "AccessUpdatePasscodeName": {
+    "method": "access.updatePasscodeName",
+    "jsonFields": [
+      "item"
+    ]
+  },
+  "AccessUpdateCardOwner": {
+    "method": "access.updateCardOwner",
+    "jsonFields": []
+  },
+  "IotSendIotCmd": {
+    "method": "iot.sendIotCmd",
+    "jsonFields": []
+  },
+  "IotSubscribeIotResponse": {
+    "method": "iot.subscribeIotResponse",
+    "jsonFields": [
+      "params"
+    ]
+  },
+  "IotSendIotCmdAwait": {
+    "method": "iot.sendIotCmdAwait",
+    "jsonFields": []
+  },
+  "IotSetHub3LedDuty": {
+    "method": "iot.setHub3LedDuty",
+    "jsonFields": []
+  },
+  "IotHub3RelaySwitch": {
+    "method": "iot.hub3RelaySwitch",
+    "jsonFields": []
+  },
+  "IotAddSesameToHub3": {
+    "method": "iot.addSesameToHub3",
+    "jsonFields": []
+  },
+  "IotRemoveSesameFromHub3": {
+    "method": "iot.removeSesameFromHub3",
+    "jsonFields": [
+      "params"
+    ]
+  },
+  "IotStartFirmwareUpdate": {
+    "method": "iot.startFirmwareUpdate",
+    "jsonFields": []
+  },
+  "IotClearHub3WifiSsid": {
+    "method": "iot.clearHub3WifiSsid",
+    "jsonFields": []
+  },
+  "IotGetMatterPairingCode": {
+    "method": "iot.getMatterPairingCode",
+    "jsonFields": []
+  },
+  "IotOpenMatterPairingWindow": {
+    "method": "iot.openMatterPairingWindow",
+    "jsonFields": []
+  },
+  "PresetirSendIR": {
+    "method": "presetir.sendIR",
+    "jsonFields": []
+  },
+  "PresetirEmitAir": {
+    "method": "presetir.emitAir",
+    "jsonFields": []
+  },
+  "PresetirEmitButton": {
+    "method": "presetir.emitButton",
+    "jsonFields": []
+  },
+  "Status": {
+    "method": "status",
+    "jsonFields": []
+  },
+  "AccountWhoami": {
+    "method": "account.whoami",
+    "jsonFields": []
+  },
+  "LockLock": {
+    "method": "lock.lock",
+    "jsonFields": []
+  },
+  "LockUnlock": {
+    "method": "lock.unlock",
+    "jsonFields": []
+  },
+  "LockToggle": {
+    "method": "lock.toggle",
+    "jsonFields": []
+  },
+  "LockClick": {
+    "method": "lock.click",
+    "jsonFields": []
+  },
+  "LockStatus": {
+    "method": "lock.status",
+    "jsonFields": []
+  },
+  "DevicesList": {
+    "method": "devices.list",
+    "jsonFields": []
+  },
+  "DeviceHistory": {
+    "method": "device.history",
+    "jsonFields": []
+  },
+  "DeviceBattery": {
+    "method": "device.battery",
+    "jsonFields": []
+  },
+  "IrSend": {
+    "method": "ir.send",
+    "jsonFields": []
+  },
+  "IrListKeys": {
+    "method": "ir.listKeys",
+    "jsonFields": []
+  },
+  "Discover": {
+    "method": "rpc.discover",
+    "jsonFields": []
+  }
+}

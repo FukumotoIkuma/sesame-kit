@@ -1,0 +1,400 @@
+// `sesame iot …` コマンド群。
+//
+// 本体ロジックは src/iot.js (biz3OperateIoT / op='cmd')。LED 調光 / LTE リレー /
+// ファームウェア更新 / WiFi 設定クリア / Matter ペアリング / ぶら下がり Sesame の
+// 追加・削除を Hub3 (WiFi/LTE) 経由で操作する。ここは commander への配線と
+// 入出力整形のみを担う。
+//
+// ctx 契約 (cli.js makeCtx が供給。詳細は schedule.js のコメント):
+//   ctx.withHub(fn)   : connect → fn(hub, {opts, paths}) → close。
+//                       hub.iot.<op>(params) で本体を呼ぶ (companyID 不要な op が多いので
+//                       基本 withHub。namespace は client を第1引数に注入する)。
+//   ctx.out / die / canPrompt / prompts は schedule.js と同じ。
+//   ctx.loadCtx().configStore.load() で config (hub3s/locks) を引いて補完に使う。
+//
+// iot op の引数は全て deviceId(対象 UUID) / secretKey(32hex, CMAC 署名用) / hub3Id(topic 用,
+// 親 Hub3 または自身) を取る。これらは --device / --secret / --hub3 で受ける。省略時は
+// config (hub3s/locks) や hub.listDevices() から補完を試み、不可なら die(...,2)。
+//
+// 重要 (本体 JSDoc 由来):
+//   - LED(92) / Matter(137,153) は応答 push を待つ (sendIotCmdAwait)。
+//   - RELAY(208) / WIFI_CLEAR(210) は biz3 web に応答コールバックが無く未確認のため
+//     fire-and-forget。送信成功 = 受理ではない点に注意。
+//   - firmware-update は長時間にわたり複数回 progress push が来る。versionTag があれば完了。
+
+/**
+ * @param {import("commander").Command} program
+ * @param {object} ctx cli.js makeCtx() が供給する共有コンテキスト
+ */
+export function registerIotCommands(program, ctx) {
+  const iot = program
+    .command("iot")
+    .description("Hub3 経由のデバイス制御 (biz3OperateIoT: LED/リレー/DFU/WiFi/Matter/Sesame追加)");
+
+  // --- 全 iot サブコマンド共通: 対象デバイスの指定オプション ---
+  // 各サブコマンドに付与する (commander は親に付けても子へ継承しないため個別に付ける)。
+  const withDeviceOpts = (cmd) =>
+    cmd
+      .option("--device <uuid>", "対象デバイスの UUID (payload の device_id)")
+      .option("--secret <hex>", "対象デバイスの secretKey (32hex, CMAC 署名用)")
+      .option("--hub3 <uuid>", "topic 用の親 Hub3 UUID (省略時は --device を流用。WiFi モデルは自身)");
+
+  // ---- iot led <duty> ----
+  // LED 調光 (cmdCode=92)。op=0x01 set / 0x02 get。get でも duty ダミーが要る (本体仕様)。
+  withDeviceOpts(
+    iot.command("led [duty]").description("Hub3 本体 LED の調光 set/get (cmdCode=92。--get で取得)"),
+  )
+    .option("--get", "現在値を取得 (op=0x02)。duty 省略可")
+    .action((duty, options) =>
+      ctx.withHub(async (hub, { opts }) => {
+        const { deviceId, secretKey, hub3Id } = await resolveTarget(ctx, hub, options, {
+          needSecret: true,
+        });
+        const isGet = !!options.get;
+        // get/set どちらも duty バイトが必要 (本体: get 時もダミー必須)。
+        const dutyNum = duty === undefined ? 0 : Number(duty);
+        if (!isGet && duty === undefined) {
+          ctx.die("set には duty (0..255) が必要です: sesame iot led <duty> [--device ... --secret ...]", 2);
+          return;
+        }
+        if (!Number.isInteger(dutyNum) || dutyNum < 0 || dutyNum > 255) {
+          ctx.die("duty は 0..255 の整数で指定してください。", 2);
+          return;
+        }
+        const res = await hub.iot.setHub3LedDuty({
+          deviceId,
+          secretKey,
+          hub3Id,
+          op: isGet ? 0x02 : 0x01,
+          duty: dutyNum,
+        });
+        ctx.out(opts.json, () => {
+          if (isGet) console.log(`LED duty: ${res.ledDuty ?? "(no data)"}`);
+          else console.log(`OK: set LED duty = ${dutyNum} (応答 ledDuty=${res.ledDuty ?? "?"})`);
+        }, { ok: true, op: isGet ? "get" : "set", duty: isGet ? undefined : dutyNum, ledDuty: res.ledDuty });
+      }),
+    );
+
+  // ---- iot relay <on|off> ----
+  // LTE リレー開閉 (cmdCode=208)。応答 push 未確認のため fire-and-forget (送信のみ)。
+  withDeviceOpts(
+    iot.command("relay <state>")
+      .description("Hub3 LTE リレー開閉 (cmdCode=208。on|off。応答未確認の fire-and-forget)")
+      .addHelpText("after", `
+⚠️ on=0x01 / off=0x00 の op 割当は biz3 ソース上で未確認 (VIotSwitch は単純トグル)。
+   off が実機で無視される/別挙動になる可能性があり、実機ログでの確認が必要。`),
+  ).action((state, options) =>
+    ctx.withHub(async (hub, { opts }) => {
+      const s = String(state).toLowerCase();
+      if (s !== "on" && s !== "off") {
+        ctx.die("state は on|off で指定してください。", 2);
+        return;
+      }
+      const { deviceId, secretKey, hub3Id } = await resolveTarget(ctx, hub, options, {
+        needSecret: true,
+      });
+      // 本体 hub3RelaySwitch の op は既定 0x01 (開閉操作)。on/off の値割当は本体仕様上
+      // 未確認 (biz3: VIotSwitch は単純トグル) のため on=0x01 / off=0x00 を当てる。
+      hub.iot.hub3RelaySwitch({ deviceId, secretKey, hub3Id, op: s === "on" ? 0x01 : 0x00 });
+      ctx.out(opts.json, () => {
+        console.log(`OK: relay ${s} を送信 (fire-and-forget。応答 push は未確認)`);
+      }, { ok: true, sent: true, state: s, note: "fire-and-forget (応答未確認)" });
+    }),
+  );
+
+  // ---- iot firmware-update ----
+  // DFU トリガ (cmdCode=0x03)。progress push を複数回受ける。versionTag で完了。
+  withDeviceOpts(
+    iot.command("firmware-update").description("ファームウェア更新 (DFU) をトリガし進捗を表示 (cmdCode=0x03)"),
+  )
+    .option("--wait <sec>", "進捗購読を継続する秒数 (既定 120)", "120")
+    .action((options) =>
+      ctx.withHub(async (hub, { opts }) => {
+        const { deviceId, secretKey, hub3Id } = await resolveTarget(ctx, hub, options, {
+          needSecret: true,
+        });
+        const waitSec = Number(options.wait) || 120;
+        const events = [];
+        // 進捗は長時間・複数回。--json 時は溜めて最後にまとめて出す。
+        const unsub = hub.iot.startFirmwareUpdate({
+          deviceId,
+          hub3Id,
+          secretKey,
+          onProgress: (data) => {
+            events.push(data);
+            if (!opts.json) {
+              const p = data?.progress;
+              const v = data?.versionTag;
+              console.log(`  progress=${p ?? "?"}${v ? `  versionTag=${v} (完了)` : ""}`);
+            }
+          },
+        });
+        if (!opts.json) console.log(`DFU 送信。進捗を ${waitSec}s 購読します (Ctrl-C で中断)…`);
+        // versionTag を観測したら早期終了、なければ waitSec まで待つ。
+        await waitForCompletion(events, waitSec * 1000);
+        unsub();
+        const done = events.some((e) => e?.versionTag);
+        ctx.out(opts.json, () => {
+          console.log(done ? "OK: firmware update 完了 (versionTag 受信)" : "(タイムアウト: 完了 push 未受信。バックグラウンドで継続している可能性)");
+        }, { ok: true, completed: done, events });
+      }),
+    );
+
+  // ---- iot wifi-clear ----
+  // 保存 WiFi 設定クリア (cmdCode=210)。応答未確認の fire-and-forget。
+  withDeviceOpts(
+    iot.command("wifi-clear").description("Hub3 の保存 WiFi 設定をクリア (cmdCode=210。応答未確認の fire-and-forget)"),
+  ).action((options) =>
+    ctx.withHub(async (hub, { opts }) => {
+      const { deviceId, secretKey, hub3Id } = await resolveTarget(ctx, hub, options, {
+        needSecret: true,
+      });
+      hub.iot.clearHub3WifiSsid({ deviceId, secretKey, hub3Id });
+      ctx.out(opts.json, () => {
+        console.log("OK: wifi-clear を送信 (fire-and-forget。応答 push は未確認)");
+      }, { ok: true, sent: true, note: "fire-and-forget (応答未確認)" });
+    }),
+  );
+
+  // ---- iot matter-code ----
+  // Matter ペアリングコード取得 (cmdCode=137)。応答待ち。
+  withDeviceOpts(
+    iot.command("matter-code").description("Matter ペアリングコード (QR/手動コード) を取得 (cmdCode=137)"),
+  ).action((options) =>
+    ctx.withHub(async (hub, { opts }) => {
+      const { deviceId, secretKey, hub3Id } = await resolveTarget(ctx, hub, options, {
+        needSecret: true,
+      });
+      const res = await hub.iot.getMatterPairingCode({ deviceId, secretKey, hub3Id });
+      ctx.out(opts.json, () => {
+        console.log(`QR code:     ${res.qrCode ?? "(none)"}`);
+        console.log(`Manual code: ${res.manualCode ?? "(none)"}`);
+      }, { ok: true, qrCode: res.qrCode, manualCode: res.manualCode });
+    }),
+  );
+
+  // ---- iot matter-open ----
+  // Matter ペアリング窓を開く (cmdCode=153)。statusCode===0 で成功。
+  withDeviceOpts(
+    iot.command("matter-open").description("Matter ペアリング窓を開く (cmdCode=153。statusCode=0 で成功)"),
+  ).action((options) =>
+    ctx.withHub(async (hub, { opts }) => {
+      const { deviceId, secretKey, hub3Id } = await resolveTarget(ctx, hub, options, {
+        needSecret: true,
+      });
+      const res = await hub.iot.openMatterPairingWindow({ deviceId, secretKey, hub3Id });
+      // statusCode が無い応答 (フィールド名違い/省略の可能性。応答構造は実機未確認) は
+      // 失敗と断定せず "不明" として区別する。
+      const hasStatus = res.statusCode != null;
+      const okStatus = res.statusCode === 0;
+      ctx.out(opts.json, () => {
+        if (!hasStatus) {
+          console.log("応答は受信しましたが statusCode 不明 (応答構造は未確認)");
+        } else {
+          console.log(okStatus ? "OK: ペアリング窓を開きました" : `statusCode=${res.statusCode} (失敗の可能性)`);
+        }
+      }, { ok: hasStatus ? okStatus : null, statusCode: res.statusCode ?? null });
+    }),
+  );
+
+  // ---- iot add-sesame ----
+  // Hub3 にぶら下がり Sesame を追加 (cmdCode=101)。--hub3/--secret は親 Hub3、
+  // --sesame/--ssm-sec/--model は追加する Sesame。
+  iot
+    .command("add-sesame")
+    .description("Hub3 にぶら下がり Sesame を追加 (cmdCode=101)")
+    .option("--hub3 <uuid>", "親 Hub3 の UUID (payload device_id + topic)")
+    .option("--secret <hex>", "親 Hub3 の secretKey (32hex, 署名用)")
+    .option("--sesame <uuid>", "追加する Sesame の UUID")
+    .option("--ssm-sec <hex>", "追加する Sesame の secretKey (32hex, ssmSecKa)")
+    .option("--nick <name>", "ニックネーム (任意)")
+    .option("--model <model>", "Sesame の deviceModel (例 sesame_5。productType 導出に必須)")
+    .action((options) => runSesameItem(ctx, options, "add"));
+
+  // ---- iot rm-sesame ----
+  // Hub3 からぶら下がり Sesame を削除 (cmdCode=103)。payload は add と同形。
+  iot
+    .command("rm-sesame")
+    .description("Hub3 からぶら下がり Sesame を削除 (cmdCode=103。payload は add と同形)")
+    .option("--hub3 <uuid>", "親 Hub3 の UUID (payload device_id + topic)")
+    .option("--secret <hex>", "親 Hub3 の secretKey (32hex, 署名用)")
+    .option("--sesame <uuid>", "削除する Sesame の UUID")
+    .option("--ssm-sec <hex>", "削除する Sesame の secretKey (32hex, ssmSecKa)")
+    .option("--nick <name>", "ニックネーム (任意)")
+    .option("--model <model>", "Sesame の deviceModel (例 sesame_5。productType 導出に必須)")
+    .action((options) => runSesameItem(ctx, options, "remove"));
+}
+
+// ---------- ヘルパ ----------
+
+/**
+ * 対象デバイスの deviceId / secretKey / hub3Id を解決する。
+ *
+ * 優先順位:
+ *   1. --device / --secret / --hub3 が指定されていればそれ。
+ *   2. config (hub3s + locks。secretKey を持つのは locks のみ) と hub.listDevices()
+ *      (secretKey 付き) を突き合わせ、対話可能なら選択、1 件なら自動採用。
+ *   3. 不足かつ非対話なら die(...,2) で必須を案内。
+ *
+ * @returns {Promise<{deviceId:string, secretKey:string|undefined, hub3Id:string|undefined}>}
+ */
+async function resolveTarget(ctx, hub, options, { needSecret }) {
+  let deviceId = options.device;
+  let secretKey = options.secret;
+  const hub3Id = options.hub3; // topic 用。未指定なら本体側が deviceId を流用。
+
+  if (deviceId && (secretKey || !needSecret)) {
+    return { deviceId, secretKey, hub3Id };
+  }
+
+  // 候補を集める: server の listDevices (secretKey 付き) を最優先。失敗時は config を使う。
+  let devices = [];
+  try {
+    devices = await hub.listDevices();
+  } catch {
+    devices = [];
+  }
+
+  // deviceId 指定済みで secretKey だけ足りない → 一覧から該当 UUID の secretKey を補完。
+  if (deviceId && needSecret && !secretKey) {
+    const hit = devices.find((d) => normUuid(d.deviceUUID) === normUuid(deviceId));
+    if (hit?.secretKey) secretKey = hit.secretKey;
+    if (!secretKey) {
+      ctx.die(
+        `secretKey が解決できません。--secret <32hex> を指定してください (device=${deviceId})。`,
+        2,
+      );
+    }
+    return { deviceId, secretKey, hub3Id };
+  }
+
+  // deviceId 未指定 → 一覧から選択 / 自動採用。
+  if (!deviceId) {
+    const candidates = devices.filter((d) => d.deviceUUID);
+    if (candidates.length === 0) {
+      // config fallback (secretKey を持つ locks のみ secretKey 補完可能)。
+      const cfg = ctx.loadCtx().configStore.load();
+      const fromCfg = configCandidates(cfg);
+      if (fromCfg.length === 0) {
+        ctx.die("対象デバイスが見つかりません。--device <uuid> --secret <32hex> を指定してください。", 2);
+        return { deviceId, secretKey, hub3Id };
+      }
+      return pickFromList(ctx, fromCfg, needSecret, hub3Id);
+    }
+
+    if (candidates.length === 1) {
+      deviceId = candidates[0].deviceUUID;
+      secretKey = secretKey || candidates[0].secretKey;
+    } else if (ctx.canPrompt()) {
+      const picked = await ctx.prompts.selectFromList(
+        "対象デバイスを選択",
+        candidates,
+        (d) => `${d.deviceName || "(no name)"}\t${d.deviceModel || "?"}\t${d.deviceUUID}`,
+      );
+      deviceId = picked?.deviceUUID;
+      secretKey = secretKey || picked?.secretKey;
+    } else {
+      const summary = candidates
+        .map((d) => `  ${d.deviceUUID}\t${d.deviceModel || "?"}\t${d.deviceName || ""}`)
+        .join("\n");
+      ctx.die(`複数のデバイスがあるため --device 指定が必要です:\n${summary}`, 2);
+      return { deviceId, secretKey, hub3Id };
+    }
+  }
+
+  if (needSecret && !secretKey) {
+    ctx.die(`secretKey が解決できません。--secret <32hex> を指定してください (device=${deviceId || "?"})。`, 2);
+  }
+  return { deviceId, secretKey, hub3Id };
+}
+
+/** config の locks (secretKey 付き) と hub3s から候補配列を作る。 */
+function configCandidates(cfg) {
+  const out = [];
+  for (const [name, l] of Object.entries(cfg.locks || {})) {
+    out.push({ deviceUUID: l.deviceUUID, secretKey: l.secretKey, deviceModel: l.model, deviceName: l.alias || name });
+  }
+  for (const [name, h] of Object.entries(cfg.hub3s || {})) {
+    // hub3s は secretKey を持たない (config 仕様)。secretKey 必須 op では別途 --secret が要る。
+    out.push({ deviceUUID: h.deviceId, secretKey: undefined, deviceModel: "hub_3", deviceName: h.name || name });
+  }
+  return out;
+}
+
+/** 候補配列から対話/自動選択し target を返す共通処理。 */
+async function pickFromList(ctx, candidates, needSecret, hub3Id) {
+  let chosen;
+  if (candidates.length === 1) {
+    chosen = candidates[0];
+  } else if (ctx.canPrompt()) {
+    chosen = await ctx.prompts.selectFromList(
+      "対象デバイスを選択 (config)",
+      candidates,
+      (d) => `${d.deviceName || "(no name)"}\t${d.deviceModel || "?"}\t${d.deviceUUID}`,
+    );
+  } else {
+    const summary = candidates
+      .map((d) => `  ${d.deviceUUID}\t${d.deviceModel || "?"}\t${d.deviceName || ""}`)
+      .join("\n");
+    ctx.die(`複数の候補があるため --device 指定が必要です:\n${summary}`, 2);
+    return { deviceId: undefined, secretKey: undefined, hub3Id };
+  }
+  if (needSecret && !chosen?.secretKey) {
+    ctx.die(`secretKey が解決できません (device=${chosen?.deviceUUID})。--secret <32hex> を指定してください。`, 2);
+  }
+  return { deviceId: chosen?.deviceUUID, secretKey: chosen?.secretKey, hub3Id };
+}
+
+/** add-sesame / rm-sesame の共通処理。 */
+function runSesameItem(ctx, options, mode) {
+  return ctx.withHub(async (hub, { opts }) => {
+    const hub3Id = options.hub3;
+    const secretKey = options.secret;
+    const sesameId = options.sesame;
+    const ssmSecKa = options.ssmSec;
+    const deviceModel = options.model;
+    const nickName = options.nick;
+
+    // いずれも署名鍵 (親 Hub3) や Sesame の鍵を含むため、対話補完はせず明示必須とする
+    // (鍵を取り違えると別デバイスへ書き込む危険があるため安全側に倒す)。
+    const missing = [];
+    if (!hub3Id) missing.push("--hub3 <親Hub3 UUID>");
+    if (!secretKey) missing.push("--secret <親Hub3 secretKey 32hex>");
+    if (!sesameId) missing.push("--sesame <Sesame UUID>");
+    if (!ssmSecKa) missing.push("--ssm-sec <Sesame secretKey 32hex>");
+    if (!deviceModel) missing.push("--model <deviceModel 例 sesame_5>");
+    if (missing.length > 0) {
+      ctx.die(`必須オプション不足: ${missing.join(" ")}`, 2);
+      return;
+    }
+
+    const params = { hub3Id, secretKey, sesameId, ssmSecKa, nickName, deviceModel };
+    const res = mode === "add"
+      ? await hub.iot.addSesameToHub3(params)
+      : await hub.iot.removeSesameFromHub3(params);
+    ctx.out(opts.json, () => {
+      console.log(`OK: ${mode === "add" ? "added" : "removed"} sesame ${sesameId} (hub3=${hub3Id})`);
+      if (res.ssks !== undefined) console.log(`  ssks: ${JSON.stringify(res.ssks)}`);
+    }, { ok: true, mode, sesameId, hub3Id, ssks: res.ssks });
+  });
+}
+
+/**
+ * firmware progress の versionTag (完了) を待つ。完了 push を見たら即解決、
+ * なければ maxMs まで待つ。events は onProgress が随時 push する共有配列。
+ */
+function waitForCompletion(events, maxMs) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const tick = setInterval(() => {
+      if (events.some((e) => e?.versionTag) || Date.now() - start >= maxMs) {
+        clearInterval(tick);
+        resolve();
+      }
+    }, 250);
+  });
+}
+
+function normUuid(s) {
+  return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
+}
