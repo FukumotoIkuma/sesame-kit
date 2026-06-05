@@ -1,217 +1,218 @@
-# sesame-kit — SESAME クラウド CLI & ライブラリ (非公式)
+<!-- English | [日本語](./README.ja.md) -->
 
-公式 SESAME iOS / Android アプリと同じ Cognito Consumer Client で、SESAME クラウドの WebSocket API を叩く Node.js 実装。ロックの開閉、Hub3 IR の発射・学習、デバイス管理、開閉履歴、電池残量を CLI とライブラリで提供する。`sesame serve` を使えば全機能を JSON-RPC として公開し、任意の言語から組み込める。
+# sesame-kit — SESAME cloud CLI & library (unofficial)
 
-## 何ができるか
+A Node.js CLI and library that drives the SESAME cloud WebSocket API using the same Cognito consumer client as the official SESAME iOS / Android apps. It covers lock control, Hub3 IR (emit and learn), device management, history, and battery level. With `sesame serve` it exposes every feature as JSON-RPC so you can drive SESAME from any language.
 
-- ロック制御: 施錠 / 解錠 / トグル / SESAME Bot クリック
-- Hub3 IR: 既存リモコンの発射、物理リモコンからの学習、リモコン / キー CRUD、プリセット DB 検索
-- デバイス管理: 一覧、リネーム、削除、現在状態、state push 購読
-- 履歴: ロック開閉履歴、電池残量履歴
-- アクセス制御: NFC カード / キーパッド暗証番号の DB 同期
-- 予約 / 会社・組織: スケジュール、法人機能 (社員・役割・デバイスグループ・鍵共有)
-- Hub3 IoT: LED 調光、LTE リレー、ファーム更新、Matter ペアリング
-- BLE 直接制御: Bluetooth でロックを直接操作する。autolock 等の設定系は BLE でのみ実機に反映される
-- 言語非依存バックエンド: `sesame serve` が全機能を stdio / UDS / HTTP / WS / gRPC に JSON-RPC として公開する
-- 対話モード、ライブラリ API
+> 日本語版: [README.ja.md](./README.ja.md)
 
-詳細は [コマンドリファレンス](./docs/commands.md) / [ライブラリ利用](./docs/library.md) / [設計ノート](./docs/architecture.md) を参照。
+## Features
 
-## 出自 (Lineage)
+- Lock control: lock / unlock / toggle / SESAME Bot click
+- Hub3 IR: emit existing remotes, learn from a physical remote, remote / key CRUD, preset DB search
+- Device management: list, rename, delete, current state, state-push subscriptions
+- History: lock open/close history, battery history
+- Access control: NFC card / keypad passcode DB sync
+- Scheduling / company & org: schedules, enterprise features (employees, roles, device groups, key sharing)
+- Hub3 IoT: LED dimming, LTE relay, firmware update, Matter pairing
+- BLE direct control: operate locks over Bluetooth without the cloud. Settings such as autolock only take effect over BLE
+- Language-agnostic backend: `sesame serve` exposes every feature as JSON-RPC over stdio / UDS / HTTP / WS / gRPC
+- Interactive mode and a library API
 
-公式 biz3 管理 Web ([CANDY-HOUSE/biz.candyhouse.co](https://github.com/CANDY-HOUSE/biz.candyhouse.co), MIT) の Node.js port。biz3 との差分は Cognito Client ID を公式 iOS / Android アプリと同じ Consumer Client にした点のみで、これにより refreshToken が事実上失効しない。biz3 の MIT ライセンスは [LICENSE.biz3](./LICENSE.biz3) に同梱する。port 対応表は [docs/architecture.md](./docs/architecture.md) を参照。
+See [command reference](./docs/commands.md), [library usage](./docs/library.md), and [design notes](./docs/architecture.md) for details.
+
+## Lineage
+
+A Node.js port of the official biz3 admin web app ([CANDY-HOUSE/biz.candyhouse.co](https://github.com/CANDY-HOUSE/biz.candyhouse.co), MIT). The only functional difference from biz3 is that the Cognito client ID is set to the same consumer client as the official iOS / Android apps, which keeps the refresh token from effectively expiring. The biz3 MIT license is bundled as [LICENSE.biz3](./LICENSE.biz3). The port mapping is in [docs/architecture.md](./docs/architecture.md).
 
 ---
 
-## インストール
+## Install
 
-要件は Node.js 18 以上 (ESM / `node:` プロトコルを使用)。
+Requires Node.js 18+ (uses ESM and the `node:` protocol).
 
 ```bash
 git clone https://github.com/FukumotoIkuma/sesame-kit.git
 cd sesame-kit
 npm install
-npm link        # グローバルに `sesame` コマンドを公開
-# あるいは: node bin/sesame.js ...
+npm link        # expose the `sesame` command globally
+# or: node bin/sesame.js ...
 ```
 
-ライブラリとして使う場合は `npm link sesame-kit`、または `npm install /path/to/sesame-kit`。
+To use it as a library: `npm link sesame-kit`, or `npm install /path/to/sesame-kit`.
 
 ---
 
-## セットアップ
+## Setup
 
-`login` と `verify` で認証する。`verify` は companyID・ロック・Hub3 IR を自動で取り込む。
+Authenticate with `login` and `verify`. `verify` imports your companyID, locks, and Hub3 IR remotes automatically.
 
 ```bash
-sesame init                 # 設定ディレクトリ初期化 (~/.config/sesame-hub3/)
-sesame login your@email.com # email に確認コードを送る
-sesame verify               # コードを入力。companyID / ロック / Hub3 IR を取り込む
+sesame init                 # initialize the config directory (~/.config/sesame-hub3/)
+sesame login your@email.com # send a verification code to your email
+sesame verify               # enter the code; imports companyID / locks / Hub3 IR
 ```
 
-デバイスを後から追加したら `sesame setup` で取り込みを再実行する。
-IR を使うには Hub3 と Remote の両方の登録が必要。ロック開閉だけなら Lock の登録だけでよい。
+Run `sesame setup` to re-import after adding devices later.
+IR requires both a Hub3 and a Remote to be registered. For lock control alone, only the Lock is needed.
 
 ---
 
-## 基本操作
+## Basic usage
 
-主語はデバイス: `sesame <device> <action>` (device は部分一致)。
+The subject is the device: `sesame <device> <action>` (device matches by substring).
 
 ```bash
-sesame front unlock            # 解錠 (部分一致: sesame 玄関 unlock)
-sesame front lock              # 施錠
-sesame front toggle            # 現在状態で反転
-sesame front status            # 状態 (施錠 / 解錠・位置)
-sesame front autolock 30       # オートロック (BLE 必須。0=無効)
-sesame send 停止 --remote ac   # Hub3 IR 発射
-sesame                         # 全デバイスの対話メニュー (session)
+sesame front unlock            # unlock (substring match: sesame 玄関 unlock)
+sesame front lock              # lock
+sesame front toggle            # toggle from current state
+sesame front status            # state (locked / unlocked, position)
+sesame front autolock 30       # autolock (BLE only. 0 = off)
+sesame send 停止 --remote ac   # Hub3 IR emit
+sesame                         # interactive menu for all devices (session)
 ```
 
-経路 (cloud / BLE) は自動で選ばれる。固定するときは `--ble-only` / `--cloud-only` を付ける。
-IR 学習・デバイス管理・予約・アクセス制御・会社組織・IoT・BLE の全コマンドは [docs/commands.md](./docs/commands.md) を参照。
+The route (cloud / BLE) is chosen automatically. Pin it with `--ble-only` / `--cloud-only`.
+See [docs/commands.md](./docs/commands.md) for the full command set (IR learning, device management, scheduling, access control, org, IoT, BLE).
 
-### 対話モード
+### Interactive mode
 
-TTY 環境 (`--json` 指定なし) では、足りない引数を矢印キー (↑↓) で選択できる。`sesame` だけでトップメニュー。
-`--json` / 非 TTY では prompt を出さず、引数不足はエラーになる (CI 互換)。
+In a TTY (no `--json`), missing arguments can be selected with the arrow keys (↑↓). `sesame` alone opens the top menu.
+With `--json` or in a non-TTY, no prompts are shown and missing arguments are errors (CI-friendly).
 
 ---
 
-## JSON 出力契約 (他言語からの subprocess 呼び出し)
+## JSON output contract (calling from other languages)
 
-`--json` を付けると、subprocess から扱える契約で動く。
+With `--json`, commands behave under a contract that is safe to call from a subprocess.
 
-- 成功: stdout に純 JSON を 1 件だけ出力する (進捗・ログは stderr)。
-- エラー: stderr に `{"error": "...", "code": <n>}` を出し、非 0 で終了する。
-- `--json` / 非対話では prompt を出さず、引数不足は即エラー。
-- 終了コード: `0`=成功 / `1`=実行時エラー / `2`=使い方エラー。
+- Success: exactly one pure JSON object on stdout (progress and logs go to stderr).
+- Error: `{"error": "...", "code": <n>}` on stderr, with a non-zero exit code.
+- With `--json` or non-interactive, no prompts; missing arguments are immediate errors.
+- Exit codes: `0` = success / `1` = runtime error / `2` = usage error.
 
 ```bash
 sesame front status --json        # → stdout: {...}  exit 0
 sesame login --json               # → stderr: {"error":"...","code":1}  exit≠0
 ```
 
-出力 JSON の形は各コマンド固有。互換性の判定には契約バージョンを使う:
-常駐デーモンの `status` が返す `contractVersion`、または `rpc.discover` の `info["x-contractVersion"]`。
-機械契約の SemVer で、破壊的変更でのみ major が上がる。消費者は major を pin して fail-fast できる。
+The JSON shape is command-specific. Use the contract version to check compatibility:
+the daemon's `status` returns `contractVersion`, and `rpc.discover` returns `info["x-contractVersion"]`.
+It is a SemVer for the machine contract; only breaking changes bump the major. Consumers can pin the major and fail fast.
 
 ---
 
-## 言語非依存バックエンド (`sesame serve`)
+## Language-agnostic backend (`sesame serve`)
 
-`sesame serve` は常駐 JSON-RPC 2.0 デーモン。1 回ログインして WS 接続を保持したまま、何度でも op を実行し、
-イベントを push する。全機能を、どの言語からでも同一の API で呼べる。
+`sesame serve` is a long-running JSON-RPC 2.0 daemon. It logs in once, keeps the WS connection alive, runs ops repeatedly, and pushes events. Every feature is callable from any language through the same API.
 
 ```bash
-sesame serve                          # Unix socket のみ (既定。~/.config/sesame-hub3/sesame.sock)
-sesame serve --stdio                  # 埋め込み: 親が子プロセスとして spawn し stdin/stdout で対話
-sesame serve --http 8080 --ws 8081 --grpc 50051   # ネットワーク経由 (token 認証)
+sesame serve                          # Unix socket only (default. ~/.config/sesame-hub3/sesame.sock)
+sesame serve --stdio                  # embedded: a parent spawns it and talks over stdin/stdout
+sesame serve --http 8080 --ws 8081 --grpc 50051   # over the network (token auth)
 ```
 
-5 つの繋ぎ口があり、どれも同じメソッドを公開する:
+There are five framings, all exposing the same methods:
 
-| 繋ぎ口 | 用途 | イベント | 認証 |
+| Framing | Use | Events | Auth |
 |---|---|---|---|
-| stdio | 埋め込み (子プロセス) | `event.*` 通知 | 親の信頼を継承 |
-| Unix socket | ローカル常駐・多クライアント | `event.*` 通知 | ファイル権限 0600 |
-| HTTP | 全言語 / ブラウザ | `GET /events` (SSE) | `Authorization: Bearer <token>` |
-| WebSocket | 全言語 / ブラウザ (全二重) | `event.*` 通知 | token |
-| gRPC | 多言語の型付きスタブ生成 | `Subscribe` ストリーム | token (metadata) |
+| stdio | embedded (child process) | `event.*` notifications | inherits parent trust |
+| Unix socket | local daemon, multiple clients | `event.*` notifications | file permission 0600 |
+| HTTP | any language / browser | `GET /events` (SSE) | `Authorization: Bearer <token>` |
+| WebSocket | any language / browser (full-duplex) | `event.*` notifications | token |
+| gRPC | typed stub generation for many languages | `Subscribe` stream | token (metadata) |
 
-- メソッドは `rpc.discover` で機械可読に全列挙する (OpenRPC)。param 名・必須・型は実コードから抽出済み。
-- ロック: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`。名前空間 op は `<ns>.<op>` で全公開する (`org.*` / `iot.*` / `access.*` …)。
-- イベント: `events.subscribe {topics:["lockState","deviceUpdate"]}` で以後 `event.<topic>` 通知が届く。
-- エラーは `{error:{code, message, data:{kind}}}`。`kind` は `not_authenticated` / `connection_lost` / `timeout` / `bad_params` / `not_implemented` / `internal` の 6 種。
+- `rpc.discover` enumerates every method machine-readably (OpenRPC). Param names, requiredness, and types are extracted from the actual code.
+- Locks: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`. Namespace ops are all exposed as `<ns>.<op>` (`org.*` / `iot.*` / `access.*` …).
+- Events: `events.subscribe {topics:["lockState","deviceUpdate"]}` then `event.<topic>` notifications arrive.
+- Errors are `{error:{code, message, data:{kind}}}`. `kind` is one of six: `not_authenticated` / `connection_lost` / `timeout` / `bad_params` / `not_implemented` / `internal`.
 
-別端末で `sesame serve` を起動しておけば、`sesame rpc` が UDS 越しにそのデーモンを叩く:
+Start `sesame serve` in one terminal, then call it over the socket from another with `sesame rpc`:
 
 ```bash
-sesame rpc                                   # rpc.discover を人間向けの表で表示
+sesame rpc                                   # show rpc.discover as a human-readable table
 sesame rpc lock.unlock --params '{"name":"front"}'
-sesame rpc --subscribe lockState             # イベントを表示し続ける (Ctrl-C で停止)
-sesame rpc --paths                           # 接続情報 (socket / token のパス) を JSON で出力
+sesame rpc --subscribe lockState             # keep printing events (Ctrl-C to stop)
+sesame rpc --paths                           # print connection info (socket / token paths) as JSON
 ```
 
-### 同梱クライアント
+### Bundled clients
 
-`clients/` に依存ゼロの薄いクライアントを同梱する。
+Thin zero-dependency clients live under `clients/`.
 
-- Python: `pip install ./clients/python` で、どこからでも `import sesame_client`。試すだけなら `PYTHONPATH=clients/python`。
-- JS: `clients/js/sesame-client.mjs` を自プロジェクトにコピー、または相対 import。WebSocket をヘッダ認証で使うなら `npm i ws` (無ければ URL `?token=` にフォールバックする)。
+- Python: `pip install ./clients/python`, then `import sesame_client` from anywhere. For a quick try, `PYTHONPATH=clients/python`.
+- JS: copy `clients/js/sesame-client.mjs` into your project, or import it by relative path. For header-authenticated WebSocket, `npm i ws` (otherwise it falls back to URL `?token=`).
 
 ```python
 from sesame_client import SesameClient
-c = SesameClient.unix()              # 既定 UDS パスを自動解決
+c = SesameClient.unix()              # resolves the default UDS path
 print(c.status()); print(c.unlock("front"))
 c.subscribe(["lockState"], lambda topic, payload: print("EVENT", topic, payload))
-# HTTP: SesameClient.http("http://127.0.0.1:8080") / 埋め込み: SesameClient.stdio()
+# HTTP: SesameClient.http("http://127.0.0.1:8080") / embedded: SesameClient.stdio()
 ```
 
 ```js
 import { SesameClient } from "./sesame-client.mjs";
 const c = SesameClient.unix();                       // UDS (POSIX)
 console.log(await c.unlock("front"));
-await c.subscribe(["lockState"], (topic, p) => console.log("EVENT", topic, p)); // 常に await
-const w = await SesameClient.ws("ws://127.0.0.1:8081"); // WebSocket (全二重)
+await c.subscribe(["lockState"], (topic, p) => console.log("EVENT", topic, p)); // always await
+const w = await SesameClient.ws("ws://127.0.0.1:8081"); // WebSocket (full-duplex)
 ```
 
-gRPC は型付き。`src/serve/sesame.proto` が op ごとに型付きメソッドを持つ。
-スタブ生成: `python -m grpc_tools.protoc -I src/serve --python_out=. --grpc_python_out=. src/serve/sesame.proto`。
+gRPC is typed. `src/serve/sesame.proto` has a typed method per op.
+Generate stubs with: `python -m grpc_tools.protoc -I src/serve --python_out=. --grpc_python_out=. src/serve/sesame.proto`.
 
-認証境界: 対話ログインは CLI 専用で、デーモンには載らない。Unix socket は同一ユーザの任意プロセスが操作できる
-(CLI と同じ境界)。HTTP / WS / gRPC は TCP のため、起動時に生成する loopback token を要求する。POSIX 専用
-(Windows の UDS は非対象。stdio / HTTP / WS / gRPC は動く)。
+Auth boundary: interactive login is CLI-only and never runs in the daemon. A Unix socket can be used by any process of the same user (the same boundary as the CLI). HTTP / WS / gRPC are over TCP and require a loopback token generated at startup. POSIX only (Windows UDS is out of scope; stdio / HTTP / WS / gRPC work).
 
 ---
 
-## 設定ディレクトリ
+## Config directory
 
-優先順位: `--config-dir <path>` → `SESAME_HUB3_HOME` → `$XDG_CONFIG_HOME/sesame-hub3` → `~/.config/sesame-hub3`。
+Precedence: `--config-dir <path>` → `SESAME_HUB3_HOME` → `$XDG_CONFIG_HOME/sesame-hub3` → `~/.config/sesame-hub3`.
 
 ```
 ~/.config/sesame-hub3/
 ├── config.json         # devices / remotes / default / apiKeyId
-├── tokens.json         # Cognito state (gitignore 必須)
-├── login_state.json    # sign-in 進行中の一時状態
-└── devices.json        # `devices` コマンドの dump
+├── tokens.json         # Cognito state (must be gitignored)
+├── login_state.json    # transient state during sign-in
+└── devices.json        # dump from the `devices` command
 ```
 
-config スキーマと「単一 `devices{}` に保存する」設計は [docs/architecture.md](./docs/architecture.md) を参照。
+The config schema and the "store all devices in a single `devices{}`" design are in [docs/architecture.md](./docs/architecture.md).
 
 ---
 
-## ドキュメント
+## Documentation
 
-- [docs/commands.md](./docs/commands.md) — 全 CLI コマンドのリファレンス
-- [docs/library.md](./docs/library.md) — Node ライブラリとしての利用
-- [docs/architecture.md](./docs/architecture.md) — 出自・設計判断・ファイル構成
-- [docs/migration.md](./docs/migration.md) — 旧版からの移行
-
----
-
-## 既知の制限
-
-- 常駐用途では auto-reconnect (exponential backoff 1s→10s)、token refresh callback、idle / sleep 検知が動く。
-- 対応リモコンは自己学習 (`learnEmit`) のみ。プリセットリモコン (メーカー DB から選ぶ方式) の command 生成は未移植。`sesame ir learn` で物理リモコンを取り込んで使う。
-- autolock はクラウド経由では設定できない。BLE の `sesame autolock` を使う。
-- 未実装 op は Stripe 課金切替のみ。それ以外の biz3 op (社員 / グループ / 役割 / デバイスグループ / 鍵共有 / アクセス制御 / 予約 / IoT) はコマンド化済み。
-- WS ステージの既定は `/public`。`/production` は使用しない (config に残っていれば load 時に `/public` へ書き換える)。
-- AWS IoT WS は IPv4 必須。IPv6-only 回線では繋がらない。
-- 新規ペアリング (未登録デバイスの登録) は未対応。登録済みデバイスの操作のみ。
+- [docs/commands.md](./docs/commands.md) — full CLI command reference
+- [docs/library.md](./docs/library.md) — using it as a Node library
+- [docs/architecture.md](./docs/architecture.md) — lineage, design decisions, file layout
+- [docs/migration.md](./docs/migration.md) — migrating from older versions
 
 ---
 
-## トラブルシュート
+## Known limitations
 
-- `No tokens stored` / `No config at ...`: `sesame init` → `sesame login`、または `sesame migrate`。
-- `UserNotFoundException`: 自動 SignUp は組み込み済み。それでも出る場合は Cognito 側の特殊ケース。
-- `Cognito refresh returned no IdToken`: refreshToken が無効化された (公式アプリでログアウト等)。再 sign-in する。
-- `triggerLock timeout`: `secretKey` 不一致、Hub3 オフライン、または WS の半開接続 (自動再接続で復帰)。
-- `learn timeout`: Hub3 が REGISTER に入ったが波形を受け取れなかった。距離を縮める、別ボタンを試す。
-- `apiKeyId required`: `webapi` 系は config.json に `apiKeyId` を入れる (biz3 dev console で発行)。
+- For long-running use, auto-reconnect (exponential backoff 1s→10s), a token refresh callback, and idle / sleep detection are in place.
+- Only self-learned remotes (`learnEmit`) are supported. Command generation for preset remotes (picked from a manufacturer DB) is not ported. Use `sesame ir learn` to capture a physical remote.
+- autolock cannot be set over the cloud. Use `sesame autolock` over BLE.
+- The only unimplemented op is Stripe billing changes. Every other biz3 op (employees / groups / roles / device groups / key sharing / access control / scheduling / IoT) is available as a command.
+- The default WS stage is `/public`. `/production` is never used (if it lingers in config it is rewritten to `/public` on load).
+- AWS IoT WS requires IPv4. It will not connect on IPv6-only networks.
+- New pairing (registering an unregistered device) is not supported; only operating already-registered devices.
 
-## 関連
+---
 
-- [CANDY-HOUSE/biz.candyhouse.co](https://github.com/CANDY-HOUSE/biz.candyhouse.co) — port 元の React 管理 Web "biz3"
-- [SesameSDK_iOS_with_DemoApp](https://github.com/CANDY-HOUSE/SesameSDK_iOS_with_DemoApp) / [SesameSDK_Android_with_DemoApp](https://github.com/CANDY-HOUSE/SesameSDK_Android_with_DemoApp) — 参考にした公式 SDK
+## Troubleshooting
+
+- `No tokens stored` / `No config at ...`: `sesame init` → `sesame login`, or `sesame migrate`.
+- `UserNotFoundException`: auto sign-up is built in. If it still appears, it is a Cognito-side edge case.
+- `Cognito refresh returned no IdToken`: the refresh token was invalidated (e.g., logged out in the official app). Sign in again.
+- `triggerLock timeout`: wrong `secretKey`, Hub3 offline, or a half-open WS (recovers on auto-reconnect).
+- `learn timeout`: the Hub3 entered REGISTER mode but did not receive a waveform. Move closer or try a different button.
+- `apiKeyId required`: for `webapi` commands, set `apiKeyId` in config.json (issue one in the biz3 dev console).
+
+## See also
+
+- [CANDY-HOUSE/biz.candyhouse.co](https://github.com/CANDY-HOUSE/biz.candyhouse.co) — the React admin web "biz3" this is ported from
+- [SesameSDK_iOS_with_DemoApp](https://github.com/CANDY-HOUSE/SesameSDK_iOS_with_DemoApp) / [SesameSDK_Android_with_DemoApp](https://github.com/CANDY-HOUSE/SesameSDK_Android_with_DemoApp) — the official SDKs referenced

@@ -1,122 +1,124 @@
-# コマンドリファレンス
+<!-- English | [日本語](./commands.ja.md) -->
 
-> CLI の全コマンド。各サブコマンドは `sesame <cmd> --help` でも引けます。
-> `sesame serve` 経由で他言語から叩く場合は `sesame rpc`（または `rpc.discover`）が機械可読な真実の源です。
+# Command Reference
 
-## デバイス操作（デバイス主語）
+> 日本語: [commands.ja.md](./commands.ja.md)
 
-主語は**デバイス**です。`sesame <device> <action>` は SDK の `device.action()` と同じ並び。
-device は名前（部分一致可）。action 省略でそのデバイスの対話メニュー、device も省略で全デバイスの
-対話メニュー（＝ `session`）。
+> Every CLI command. Each subcommand also accepts `sesame <cmd> --help`.
+> When calling from another language via `sesame serve`, `sesame rpc` (or `rpc.discover`) is the machine-readable source of truth.
+
+## Device operations (device as the subject)
+
+The subject is the **device**. `sesame <device> <action>` mirrors the SDK's `device.action()` ordering.
+`device` is a name (substring match allowed). Omit `action` for that device's interactive menu; omit `device` too for the interactive menu over all devices (= `session`).
 
 ```bash
-sesame front unlock            # front.unlock()  (部分一致可: sesame 玄関 unlock)
-sesame front lock              # 施錠
-sesame front toggle            # 現在状態で反転
-sesame front status            # 状態 (施錠/解錠・位置)
-sesame front autolock 30       # オートロック (BLE 必須。0=無効)
-sesame kitchen click           # SESAME Bot クリック (Bot2/Bot3)
+sesame front unlock            # front.unlock()  (substring match: sesame 玄関 unlock)
+sesame front lock              # lock
+sesame front toggle            # invert from current state
+sesame front status            # status (locked / unlocked, position)
+sesame front autolock 30       # autolock (BLE only. 0 = off)
+sesame kitchen click           # SESAME Bot click (Bot2/Bot3)
 
-sesame front                   # front の対話メニュー
-sesame                         # 全デバイスの対話メニュー (session)
+sesame front                   # interactive menu for front
+sesame                         # interactive menu for all devices (session)
 ```
 
-action: `unlock` / `lock` / `toggle` / `click` / `status` / `autolock <秒>`（**使える操作は型で変わる** — 後述）。
+action: `unlock` / `lock` / `toggle` / `click` / `status` / `autolock <seconds>` (**which operations apply depends on the type** — see below).
 
-### 経路 (transport) は「全部モード」が既定
+### The route (transport) defaults to all-routes mode
 
-- 既定は全部モード。経路は自動で選ばれる。cloud で運べる op は cloud、`autolock` のような BLE 必須の op だけ BLE 接続する (BLE のスキャン/接続コストを毎回は払わない)。
-- `--ble-only` / `--cloud-only` で経路を固定する。`--ble-only` は接続に数秒かかる。`--cloud-only` は一部操作が制限される。
-- BLE 接続を保持して連続操作するモードは `sesame session` (= `sesame <device>` の複数版)。
+- The default is all-routes mode; the route is chosen automatically. Ops that the cloud can carry go over cloud, and only BLE-required ops such as `autolock` open a BLE connection (so you don't pay the BLE scan/connect cost every time).
+- Pin the route with `--ble-only` / `--cloud-only`. `--ble-only` takes a few seconds to connect. `--cloud-only` restricts some operations.
+- To hold a BLE connection open across a run of operations, use `sesame session` (the multi-device form of `sesame <device>`).
 
 ```bash
-sesame front unlock            # 全部モード (ツールが経路を選ぶ)
-sesame front autolock 30       # BLE 必須の op → 自動で BLE 接続
-sesame front lock --ble-only   # BLE に固定 (接続に数秒)
-sesame front lock --cloud-only # クラウドに固定
+sesame front unlock            # all-routes mode (the tool picks the route)
+sesame front autolock 30       # BLE-required op → connects over BLE automatically
+sesame front lock --ble-only   # pinned to BLE (a few seconds to connect)
+sesame front lock --cloud-only # pinned to cloud
 ```
 
-> 設計の詳細（クラウド/BLE の能力モデル統合）は [architecture.md](./architecture.md) を参照。
+> For the design details (the unified cloud/BLE capability model), see [architecture.md](./architecture.md).
 
-ロック定義の管理は `locks` グループ:
+Manage lock definitions with the `locks` group:
 
 ```bash
-sesame locks ls                # 登録ロック一覧
+sesame locks ls                # list registered locks
 sesame locks set-default front
-sesame locks add               # 対話で追加 (deviceUUID + secretKey)
-sesame locks add --name front --uuid <UUID> --secret <32hex> --model sesame_5_pro  # 非対話/フラグ追加
-sesame locks sync-from-devices # devices の結果から自動取り込み
+sesame locks add               # add interactively (deviceUUID + secretKey)
+sesame locks add --name front --uuid <UUID> --secret <32hex> --model sesame_5_pro  # non-interactive / flag-based add
+sesame locks sync-from-devices # auto-import from the result of devices
 sesame locks rm front
 ```
 
-クラウド操作の応答は同期 ack (`biz3TriggerLocker`, `success:true`) を待ってから戻ります (timeout 10s)。
+A cloud operation returns only after the synchronous ack (`biz3TriggerLocker`, `success:true`) arrives (timeout 10s).
 
-> autolock はクラウド経由では設定できません (BLE のみ)。`sesame autolock` を使ってください。背景は [architecture.md](./architecture.md)。
+> autolock cannot be set over the cloud (BLE only). Use `sesame autolock`. Background in [architecture.md](./architecture.md).
 
 ---
 
 ## Hub3 IR
 
-### 既存キーの発射
+### Emit an existing key
 
 ```bash
-sesame send 停止                         # デフォルトリモコンで発射
+sesame send 停止                         # emit on the default remote
 sesame send 停止 --remote ac
-sesame list                              # リモコンに登録されているキー一覧
+sesame list                              # list the keys registered on a remote
 ```
 
-### 高度な操作
+### Advanced operations
 
 ```bash
-# 学習: 物理リモコンを Hub3 に向けてボタンを押す
-sesame ir learn ac 強風                  # remote=ac に "強風" キーを学習登録
-                                         # → Hub3 を REGISTER モード → 波形捕捉 → CONTROL に戻し → addIRCode
+# Learn: aim a physical remote at the Hub3 and press a button
+sesame ir learn ac 強風                  # learn the "強風" key onto remote=ac
+                                         # → Hub3 into REGISTER mode → capture waveform → back to CONTROL → addIRCode
 
-# モード制御
-sesame ir mode get [hub3]                # 現在モード取得 (0=CONTROL / 1=REGISTER)
-sesame ir mode set 1 [hub3]              # 強制 REGISTER 切替 (デバッグ用)
+# Mode control
+sesame ir mode get [hub3]                # get the current mode (0=CONTROL / 1=REGISTER)
+sesame ir mode set 1 [hub3]              # force a switch to REGISTER (for debugging)
 
-# キー CRUD
-sesame ir key rename ac 強風 強運転        # キー名変更 (server + config)
-sesame ir key rm ac 試運転                # キー削除
+# Key CRUD
+sesame ir key rename ac 強風 強運転        # rename a key (server + config)
+sesame ir key rm ac 試運転                # delete a key
 
-# リモコン CRUD (server 側)
-sesame ir remote-list ac              # 登録済みリモコン (irType 指定)
-sesame ir remote-rm ac                   # server から削除
-sesame ir remote-rename "リビング" ac      # server alias 変更
+# Remote CRUD (server side)
+sesame ir remote-list ac              # registered remotes (by irType)
+sesame ir remote-rm ac                   # delete from server
+sesame ir remote-rename "リビング" ac      # change the server alias
 
-# プリセット DB
-sesame ir search ac ダイキン           # メーカー DB 検索 (max 1000)
-sesame ir match ac <hex波形>           # 学習波形 → 既知リモコン照合
+# Preset DB
+sesame ir search ac ダイキン           # manufacturer DB search (max 1000)
+sesame ir match ac <hex波形>           # match a learned waveform against known remotes
 ```
 
-> 自己学習リモコンを指すときは `irType` に実 type `0xFE00`(65024) を使う。メニュー id の `0xFEFF` を渡すと
-> サーバ照合が一致せずリモコンが見つからない。詳細は [architecture.md](./architecture.md)。
+> To refer to a self-learned remote, use the real type `0xFE00` (65024) for `irType`. Passing the menu id `0xFEFF` makes the server match fail and the remote is not found. See [architecture.md](./architecture.md) for details.
 
 ---
 
-## デバイス管理
+## Device management
 
 ```bash
-sesame device user-ls                    # 個人デバイス一覧
-sesame device status <uuid>              # 現在状態
-sesame device rename <uuid> "玄関 SESAME"  # 名前変更
-sesame device rm <uuid>                  # company から削除
+sesame device user-ls                    # list personal devices
+sesame device status <uuid>              # current state
+sesame device rename <uuid> "玄関 SESAME"  # rename
+sesame device rm <uuid>                  # remove from the company
 
-sesame history <uuid>                    # ロック開閉履歴
-sesame history                           # 全デバイス
-sesame battery <uuid>                    # 電池履歴 (light/heavy 電圧 + 割合)
-sesame firmware                          # 配信中ファームウェア一覧
+sesame history <uuid>                    # lock open/close history
+sesame history                           # all devices
+sesame battery <uuid>                    # battery history (light/heavy voltage + percentage)
+sesame firmware                          # list firmware currently being distributed
 ```
 
 ---
 
 ## WebAPI proxy
 
-biz3 dev console で発行する REST API key (apiKeyId) を `config.apiKeyId` に設定すると、任意の REST WebAPI を WebSocket 経由で proxy 呼び出しできる:
+Set the REST API key (apiKeyId) issued in the biz3 dev console as `config.apiKeyId`, and you can proxy any REST WebAPI call over the WebSocket:
 
 ```bash
-# config.json に "apiKeyId": "..." を入れた状態で:
+# with "apiKeyId": "..." in config.json:
 sesame webapi webapi_ssm_shadow_get --query '{"device_id":"..."}'
 sesame webapi webapi_history_get --query '{"device_id":"...","page":0,"lg":"ja","isBiz":true}'
 sesame webapi webapi_cmd_send --body '{"device_id":"...","cmd":83,"sign":"...","history":"..."}'
@@ -124,144 +126,142 @@ sesame webapi webapi_cmd_send --body '{"device_id":"...","cmd":83,"sign":"...","
 
 ---
 
-## 予約スケジュール (biz3Schedule)
+## Scheduling (biz3Schedule)
 
 ```bash
-sesame schedule ls                 # 登録済み予約 (lock/unlock/upgrade_firmware) 一覧
-sesame schedule cancel <id>        # 予約を取消 (id 省略時は一覧から対話選択)
+sesame schedule ls                 # list registered schedules (lock/unlock/upgrade_firmware)
+sesame schedule cancel <id>        # cancel a schedule (omit id to pick interactively from the list)
 ```
 
-> 予約の **新規作成 op は biz3 web に存在しない** ため、CLI も list / cancel のみ。
+> Since **biz3 web has no op to create a schedule**, the CLI offers only list / cancel.
 
 ---
 
-## アクセス制御 (NFC カード / 暗証番号)
+## Access control (NFC cards / passcodes)
 
-SESAME Touch (Pro) の NFC カード・キーパッド暗証番号の **サーバ DB 同期** op 群。
-実機ファームウェアへの書き込みは別系統 (BLE) で、ここは DB 側の同期のみを扱う 2 層構造。
+The **server-DB sync** ops for SESAME Touch (Pro) NFC cards and keypad passcodes.
+Writing to the device firmware itself goes through a separate path (BLE); this layer handles only the DB-side sync — a two-layer structure.
 
 ```bash
-sesame access cards ls --device <uuid> [--device <uuid2> ...]   # カード一覧
-sesame access cards clear --device <uuid>                       # 指定デバイスのカード全削除
-sesame access cards rm --json '[{"deviceID":"...","cardID":"..."}]'   # 個別削除 (応答なし)
-sesame access cards owner <cardID> [ownerSubUUID]               # 所有者割当 ('' で解除)
-sesame access passcodes ls --device <uuid>                      # 暗証番号一覧
+sesame access cards ls --device <uuid> [--device <uuid2> ...]   # list cards
+sesame access cards clear --device <uuid>                       # delete all cards on the given device
+sesame access cards rm --json '[{"deviceID":"...","cardID":"..."}]'   # delete individually (no response)
+sesame access cards owner <cardID> [ownerSubUUID]               # assign an owner ('' to clear)
+sesame access passcodes ls --device <uuid>                      # list passcodes
 ```
 
-> `rm` (delCards/delPasscodes) は biz3 に応答ハンドラが無く **fire-and-forget**。完了応答は返らない。
+> `rm` (delCards/delPasscodes) has no response handler in biz3 and is **fire-and-forget**. No completion response is returned.
 
 ---
 
-## 会社 / 組織管理 (biz3 enterprise)
+## Company / org management (biz3 enterprise)
 
-複数会社・社員・役割・デバイスグループを扱う法人向け機能。`companyID` はログイン情報から自動補完される。
-
-```bash
-# 会社
-sesame company ls                  # 所属会社一覧
-sesame company rename "新社名"      # 優先会社の改名
-sesame company add "新会社"         # 会社を新規登録
-sesame company payment             # 課金設定取得
-
-# 組織 (org)
-sesame org employee ls             # 社員一覧
-sesame org employee search <kw>    # CS 横断のユーザー検索
-sesame org role ls                 # 役割タグ一覧
-sesame org group ls                # 社員グループ一覧
-sesame org device-group ls         # デバイスグループ一覧
-sesame org keys device <deviceUUID>   # デバイス側の鍵保有従業員を列挙
-```
-
-### ゲスト共有 (鍵共有 URL / QR)
-
-SESAME アプリが読む共有 QR と同じ `ssm://UI?t=sk&sk=…&l=…&n=…` URL を生成する。
-`--level 2` (ゲスト) のときだけ使い捨て `guestKeyId` を発行して埋め込む (biz3 と同じ挙動)。
+Enterprise features for handling multiple companies, employees, roles, and device groups. `companyID` is filled in automatically from your login.
 
 ```bash
-sesame org keys share-url --device <uuid> --level 2 --name "来客用"   # ゲスト共有 URL
-sesame org keys share-url --device <uuid> --level 1                  # マネージャ鍵共有
-sesame org keys share-url --device <uuid> --qr                       # 端末に QR 表示 (要 qrcode-terminal)
+# Company
+sesame company ls                  # list the companies you belong to
+sesame company rename "新社名"      # rename the preferred company
+sesame company add "新会社"         # register a new company
+sesame company payment             # get billing settings
+
+# Org
+sesame org employee ls             # list employees
+sesame org employee search <kw>    # cross-CS user search
+sesame org role ls                 # list role tags
+sesame org group ls                # list employee groups
+sesame org device-group ls         # list device groups
+sesame org keys device <deviceUUID>   # enumerate employees holding a key for the device
 ```
 
-> 共有 URL の組み立て・解析は biz3 `generateInviteGuestQRCodeByInfo` / `readQrcode` を 1:1 移植。
-> **画像化ライブラリ非依存**で、出力 URL を任意の QR 生成器に貼っても共有できる。
-> 作成/更新系の多くは構造体を `--json '<…>'` で受ける（各サブコマンドの `--help` に例あり）。
-> `org employee confirm <email>` は biz3 仕様上、成功時に現セッションを signout する点に注意。
+### Guest sharing (key-sharing URL / QR)
+
+Generates the same `ssm://UI?t=sk&sk=…&l=…&n=…` URL that the SESAME app reads as a sharing QR.
+Only with `--level 2` (guest) is a single-use `guestKeyId` issued and embedded (same behavior as biz3).
+
+```bash
+sesame org keys share-url --device <uuid> --level 2 --name "来客用"   # guest sharing URL
+sesame org keys share-url --device <uuid> --level 1                  # manager key sharing
+sesame org keys share-url --device <uuid> --qr                       # show a QR in the terminal (requires qrcode-terminal)
+```
+
+> Building and parsing the sharing URL is a 1:1 port of biz3 `generateInviteGuestQRCodeByInfo` / `readQrcode`.
+> It is **independent of any image library**, so you can paste the output URL into any QR generator to share.
+> Many create/update ops take a struct via `--json '<…>'` (each subcommand's `--help` has examples).
+> Note that `org employee confirm <email>` signs out the current session on success, per the biz3 spec.
 
 ---
 
-## Hub3 IoT 制御 (biz3OperateIoT)
+## Hub3 IoT control (biz3OperateIoT)
 
-Hub3 本体への直接コマンド (LED 調光・LTE リレー・ファーム更新・Matter ペアリング等)。
-`--device <hub3UUID> --secret <hex>` を渡すか、対話時は接続デバイスから選択。
+Direct commands to the Hub3 itself (LED dimming, LTE relay, firmware update, Matter pairing, etc.).
+Pass `--device <hub3UUID> --secret <hex>`, or select from connected devices when interactive.
 
 ```bash
-sesame iot led 80 --device <uuid> --secret <hex>   # LED 調光 (0-100)
-sesame iot led --get --device <uuid> --secret <hex># 現在の調光取得
-sesame iot relay on  --device <uuid> --secret <hex># LTE リレー開閉
+sesame iot led 80 --device <uuid> --secret <hex>   # LED dimming (0-100)
+sesame iot led --get --device <uuid> --secret <hex># get the current dimming level
+sesame iot relay on  --device <uuid> --secret <hex># LTE relay open/close
 sesame iot firmware-update --device <uuid> --secret <hex> --wait 60
-sesame iot matter-code --device <uuid> --secret <hex>   # Matter ペアリングコード
+sesame iot matter-code --device <uuid> --secret <hex>   # Matter pairing code
 ```
 
 ---
 
-## プリセット IR リモコン (HXD command)
+## Preset IR remotes (HXD command)
 
-エアコン等を「学習」ではなく **プリセット DB の命令で** 発射する。Hub3 を `--device` に指定:
+Emit air conditioners and the like **from preset DB commands** rather than by "learning". Specify the Hub3 as `--device`:
 
 ```bash
 sesame preset-ir air --device <hub3uuid> --code <n> --power --temp 26 --mode 1 --fan 2
 sesame preset-ir button --device <hub3uuid> --code <n> --button power --irtype 8192
-sesame preset-ir send --device <hub3uuid> --command <hex> --irtype 49152   # 生 hex 発射
+sesame preset-ir send --device <hub3uuid> --command <hex> --irtype 49152   # emit raw hex
 ```
 
-> プリセットの command 生成 (biz3 の HXDCommandProcessor) は未移植のため、プリセット発射は現状機能しません。
-> 自己学習リモコン (`sesame ir learn`) を使ってください（[既知の制限](../README.md#健全性--既知の制限)）。
+> Preset command generation (biz3's HXDCommandProcessor) is not yet ported, so preset emit does not currently work.
+> Use a self-learned remote (`sesame ir learn`) instead ([known limitations](../README.md#known-limitations)).
 
 ---
 
-## BLE 直接制御 (クラウド非経由)
+## BLE direct control (without the cloud)
 
-PC の Bluetooth から登録済み SESAME を**直接**操作する。クラウド (WS) を介さないので
-オフラインでも動き、**クラウドでは不可だった `autolock` 等の設定系が実機に反映される**。
+Operate registered SESAME devices **directly** over the PC's Bluetooth. Since it does not go through the cloud (WS), it works offline, and **settings such as `autolock` that the cloud could not apply do take effect on the device**.
 
-BLE 操作は専用コマンドではなく、デバイス主語の操作に **`--ble-only` を付ける**だけ
-（`autolock` は BLE 必須なので無指定でも自動で BLE）:
+BLE operation is not a dedicated command — just **add `--ble-only`** to a device-subject operation
+(`autolock` is BLE-required, so it goes over BLE automatically even without the flag):
 
 ```bash
-sesame front status --ble-only   # 現在状態 (施錠/解錠, 位置)
-sesame front unlock --ble-only   # 解錠 (ロック/Bike)
-sesame front lock   --ble-only   # 施錠 (ロック)
-sesame front toggle --ble-only   # 状態を見て反転 (ロック)
-sesame kitchen click --ble-only  # SESAME Bot のクリック (Bot2/Bot3)
-sesame front autolock 30         # オートロック (BLE 必須。本当に効く)
-sesame front autolock 0          # 無効化
+sesame front status --ble-only   # current state (locked / unlocked, position)
+sesame front unlock --ble-only   # unlock (Lock / Bike)
+sesame front lock   --ble-only   # lock (Lock)
+sesame front toggle --ble-only   # invert based on current state (Lock)
+sesame kitchen click --ble-only  # SESAME Bot click (Bot2/Bot3)
+sesame front autolock 30         # autolock (BLE required. Actually takes effect)
+sesame front autolock 0          # disable
 ```
 
-> **BLE エラーは `SesameResultCode` で意味づけ済み** — デバイスが非 0 の結果を返すと、ライブラリは
-> `BleResultError`（`.resultCode` / `.resultName`）を投げる。`resultName` は公式 SesameSDK の
-> `SesameResultCode`（`success`/`invalidFormat`/`notSupported`/`invalidSig`/`notFound`/`unknown`/
-> `busy`/`invalidParam`/`invalidAction`）に一致し、機械的に分岐できる。
-> 注: これは**デバイス層 (SesameOS3) の taxonomy** で、BLE 直接経路でのみ取得できる
-> (クラウド経路はこの code を surface しないため `sesame serve` の `kind` には乗らない)。
+> **BLE errors are given meaning via `SesameResultCode`** — when a device returns a non-zero result, the library throws
+> `BleResultError` (`.resultCode` / `.resultName`). `resultName` matches the official SesameSDK's
+> `SesameResultCode` (`success`/`invalidFormat`/`notSupported`/`invalidSig`/`notFound`/`unknown`/
+> `busy`/`invalidParam`/`invalidAction`), so you can branch on it programmatically.
+> Note: this is the **device-layer (SesameOS3) taxonomy** and is available only over the BLE direct route
+> (the cloud route does not surface this code, so it does not appear in `sesame serve`'s `kind`).
 
-### デバイス型ごとの操作 (公式 SesameSDK 準拠)
+### Operations per device type (per the official SesameSDK)
 
-操作セットはデバイスの種別で異なる。SDK では能力が型ごとに非対称に定義されており、本 CLI もそれを `config` の
-`model` から判定して同じ非対称性を再現する。対応外の操作はコマンドが拒否される（例: Bot に `lock` → 「click を使え」）。
+The operation set differs by device type. The SDK defines capabilities asymmetrically per type, and this CLI reproduces the same asymmetry by determining the type from the `model` in `config`. Unsupported operations are rejected by the command (e.g. `lock` on a Bot → "use click").
 
-| 種別 (model 例) | BLE 操作 | mechStatus |
+| Type (model examples) | BLE operations | mechStatus |
 |---|---|---|
-| ロック `sesame_5`/`_pro`/`sesame_6`/`_pro`/`_us`/`miwa` | `lock` `unlock` `toggle` `autolock` `status` | 施錠/解錠 + 位置 |
-| Bot `bot_2`/`bot_3` | `click` `status` | 施錠/解錠 (位置なし) |
-| Bike `bike_2`/`bike_3` | `unlock` `status` | 施錠/解錠 (位置なし) |
-| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (BLE 施錠操作なし) | — |
-| OS2 `sesame_2`/`_4`, `ssmbot_1`, `bike_1` | BLE 未実装 (鍵導出/暗号が別系統)。クラウド経由で操作 | — |
+| Lock `sesame_5`/`_pro`/`sesame_6`/`_pro`/`_us`/`miwa` | `lock` `unlock` `toggle` `autolock` `status` | locked/unlocked + position |
+| Bot `bot_2`/`bot_3` | `click` `status` | locked/unlocked (no position) |
+| Bike `bike_2`/`bike_3` | `unlock` `status` | locked/unlocked (no position) |
+| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (no BLE lock operations) | — |
+| OS2 `sesame_2`/`_4`, `ssmbot_1`, `bike_1` | BLE not implemented (key derivation/crypto is a separate path). Operate over cloud | — |
 
-> 「施錠/解錠」は OS3 では `isInLockRange` の有無による **2 値**のみ。OS3 に中間状態 (moved) は無い
-> (Sesame2 等 OS2 系のみ moved を持つ)。BLE 実装の設計は [architecture.md](./architecture.md) を参照。
+> "locked/unlocked" is only the **two values** based on the presence of `isInLockRange` in OS3. OS3 has no intermediate (moved) state
+> (only OS2 devices such as Sesame2 have moved). For the BLE implementation design, see [architecture.md](./architecture.md).
 
-ライブラリとしても利用可:
+Usable as a library too:
 
 ```js
 import { SesameBle } from "sesame-kit";   // or: import { ble } from "sesame-kit"
@@ -272,41 +272,37 @@ await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
 });
 ```
 
-> 対象は **SesameOS3** (SESAME 5 / 5 Pro / Touch 等)。新規ペアリング (未登録デバイスの登録) は別フェーズ。
+> The target is **SesameOS3** (SESAME 5 / 5 Pro / Touch, etc.). New pairing (registering an unregistered device) is a separate phase.
 
 ---
 
-## 対話セッション
+## Interactive session
 
-対話セッション（`sesame` / `sesame <device>` / `sesame session`）は**アプリ的な全部モード**です。
-**操作できるデバイスを全部**載せます: ロック/Bot/Bike（BLE+クラウド）と、ログイン済みなら **Hub3**（クラウド: IR 送信 / リレー / LED）。
-BLE を best-effort で張りつつ、**BLE が 0 でも終了しません**: 圏外/権限なしのデバイスはログイン済みなら
-**クラウドで操作**します（BLE が張れたデバイスは BLE を優先＝低遅延＋autolock 可）。
+The interactive session (`sesame` / `sesame <device>` / `sesame session`) is an **app-like all-routes mode**.
+It lists **every device you can operate**: Locks/Bots/Bikes (BLE + cloud) and, if you are logged in, **Hub3** (cloud: IR send / relay / LED).
+It attaches BLE best-effort but **does not exit even when BLE is zero**: devices out of range or without permission are **operated over cloud** when you are logged in (devices with a BLE connection prefer BLE = lower latency + autolock available).
 
 ```text
-$ sesame                      # 全デバイス (alias: sesame session / watch)
+$ sesame                      # all devices (alias: sesame session / watch)
 [ble] バックグラウンドで接続中... (クラウドで操作可能)
 ─── SESAME セッション ── 矢印キーで選択 ───
   front   [sesame_5·BLE]:   state=locked pos=-176
   kitchen [bot_2·cloud]:    (BLE未接続)
   hub3-居間 [hub3·hub3]:    (Hub3: IR / リレー / LED)
 
-? 操作するデバイス          ← ① デバイスを選ぶ
-? front の操作              ← ② 操作を選ぶ (型で変わる)
+? 操作するデバイス          ← ① pick a device
+? front の操作              ← ② pick an operation (varies by type)
   ロック  : 🔓 解錠 / 🔒 施錠 / ↕ トグル / ⏱ オートロック / ℹ 状態
   Bot     : 👆 クリック / ℹ 状態
   Hub3    : 📡 IR 送信 (リモコン→キー選択) / 🔌 リレー ON/OFF / 💡 LED 調光
 ```
 
-各デバイスの末尾タグ `·BLE` / `·cloud` が経路。**`autolock` は BLE 必須**なので、cloud のデバイスでは
-「近づいて再試行」と案内します。接続が 1 個だけならデバイス選択を省略。
+The trailing tag on each device, `·BLE` / `·cloud`, is the route. Because **`autolock` is BLE-required**, cloud devices are prompted to "move closer and retry". If only one connection exists, device selection is skipped.
 
-**ライブ更新**: 画面は **Ink (React for CLI)** 製のライブダッシュボードで、BLE の状態変化や
-バックグラウンド接続の完了を受けて**その場で再描画**します（cloud→BLE への昇格もリアルタイム）。
-起動はクラウドで即メニュー表示し、BLE は裏で接続するので 8 秒のスキャンを待ちません。終了は `q` / Esc。
+**Live updates**: the screen is a live dashboard built with **Ink (React for CLI)** and **re-renders in place** as BLE state changes or background connections complete (cloud→BLE promotion is real-time too). Startup shows the menu immediately over cloud and connects BLE in the background, so you don't wait the 8-second scan. Quit with `q` / Esc.
 
-**前提**:
-- 鍵は既存の `config.locks`（`sesame locks sync-from-devices` で取り込んだ deviceUUID/secretKey）を再利用。新規登録は不要。
-- BLE アダプタ `@abandonware/noble` が必要。`optionalDependency` なので `npm install` で**自動導入**を試み、未対応環境でもインストール自体は壊れない (BLE だけ無効)。手動で入れるなら `npm i @abandonware/noble`。
-- **macOS は Terminal/iTerm に Bluetooth 権限が必要**（システム設定 → プライバシーとセキュリティ → Bluetooth）。
-- ロックの BLE 圏内（近接）にいること。
+**Prerequisites**:
+- Keys reuse the existing `config.locks` (deviceUUID/secretKey imported via `sesame locks sync-from-devices`). No new registration needed.
+- The BLE adapter `@abandonware/noble` is required. As an `optionalDependency`, `npm install` tries to **install it automatically**, and on unsupported environments the install itself still succeeds (only BLE is disabled). To install it manually, `npm i @abandonware/noble`.
+- **macOS requires Bluetooth permission for Terminal/iTerm** (System Settings → Privacy & Security → Bluetooth).
+- Be within BLE range (close proximity) of the lock.

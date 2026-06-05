@@ -1,90 +1,67 @@
-# アーキテクチャ / 設計ノート
+<!-- English | [日本語](./architecture.ja.md) -->
 
-実装の出自、設計判断、ファイル構成をまとめる。README は使い方を、ここは「なぜそうなっているか」を扱う。
+# Architecture / Design Notes
 
-## 出自 (Lineage)
+> 日本語: [architecture.ja.md](./architecture.ja.md)
 
-本実装は **公式 biz3 管理 Web (https://github.com/CANDY-HOUSE/biz.candyhouse.co, MIT)** を Node.js に port したもの。主要部の port 関係:
+This document covers the lineage of the implementation, the design decisions, and the file layout. The README covers usage; this covers why things are the way they are.
 
-| この実装 | biz3 vendor 元 |
+## Lineage
+
+This implementation is a Node.js port of the **official biz3 admin web app (https://github.com/CANDY-HOUSE/biz.candyhouse.co, MIT)**. The port mapping for the main parts:
+
+| This implementation | biz3 vendor source |
 |---|---|
-| `src/transport.js` | `references_web/src/websocket/WebSocketManager.ts` (window 依存除去、Node `ws` 化、reconnect/keepalive/idle/sleep 検知は biz3 と同値、callback registry は FIFO 化) |
-| `src/auth.js` | `references_web/src/api/useAuthState.js` (Amplify → AWS SDK 直叩きに置換) |
-| `src/lock.js` | `references_web/src/api/useIotCtrl.js` の `sendCommandToWM2` |
-| `src/ir.js` | `references_web/src/api/useRemoteCtrl.js` (hook 内 useCallback から JSON 構築部だけ抽出) |
+| `src/transport.js` | `references_web/src/websocket/WebSocketManager.ts` (window dependency removed, switched to Node `ws`; reconnect/keepalive/idle/sleep detection identical to biz3; callback registry made FIFO) |
+| `src/auth.js` | `references_web/src/api/useAuthState.js` (Amplify replaced with direct AWS SDK calls) |
+| `src/lock.js` | `sendCommandToWM2` in `references_web/src/api/useIotCtrl.js` |
+| `src/ir.js` | `references_web/src/api/useRemoteCtrl.js` (only the JSON-building part extracted from the hook's useCallback) |
 | `src/devices.js` | `references_web/src/api/useManageDevice.js` / `useManageGroup.js` / `useDeveloper.js` / `MobileBatteryChart.js` |
-| `src/crypto.js` | `references_web/src/utils/Cmac.js` + `biz3utils.js` + `constants/cmdCode.js` (CMAC は `node-aes-cmac` で実装) |
+| `src/crypto.js` | `references_web/src/utils/Cmac.js` + `biz3utils.js` + `constants/cmdCode.js` (CMAC implemented with `node-aes-cmac`) |
 
-**biz3 との唯一の機能的相違**: Cognito Client ID を biz3 の `21u50hboia4s5q0sbk6pbdfmss` から、公式
-iOS/Android アプリと同じ Consumer Client `6ialca0p8u0lsgvbmvsljfm305` に差し替え。これにより
-refreshToken が事実上失効しなくなる。biz3 の MIT ライセンス本文は [LICENSE.biz3](../LICENSE.biz3) として同梱。
+**The only functional difference from biz3**: the Cognito Client ID is swapped from biz3's `21u50hboia4s5q0sbk6pbdfmss` to the same Consumer Client as the official iOS/Android apps, `6ialca0p8u0lsgvbmvsljfm305`. This keeps the refreshToken from effectively expiring. The biz3 MIT license text is bundled as [LICENSE.biz3](../LICENSE.biz3).
 
-## クラウド / BLE の統合設計（経路は葉）
+## Unified cloud / BLE design (the route is the leaf)
 
-クラウドと BLE は公式 SesameSDK と同様、**命令の正体 (itemCode) とデバイス能力モデルを共有**し、
-最後の送信経路 (transport) だけが葉として差し替わる単一設計。
+Like the official SesameSDK, cloud and BLE **share the underlying command (itemCode) and the device capability model**; only the final send route (transport) is swapped as a leaf. This is a single design.
 
-- itemCode は `src/itemcodes.js` の 1 ソース（クラウドは `crypto.js` の `CMD`、BLE は `protocol.js` の
-  `ITEM` という別名で同じものを参照）。
-- 能力は `devicemodel.js` が **型 × 経路** で持つ（各 kind に `cloud:[...]` と `ble:[...]` の op 集合）。
-  **操作できる op = 両者の和集合**で、session の対象・操作メニュー・`pickTransport` の経路選択はすべて
-  この和集合から導く。
-  - 例: ロックは `ble` に autolock があり `cloud` に無い → autolock は BLE 専用。
-  - OS2 ロックは `ble` 空・`cloud` に lock/unlock/toggle → クラウドのみで操作可。
-  - Hub3 は `cloud` に ir/relay/led。
-- 既定は経路を意識しない**全部モード**で、固定したいときだけ `--ble-only` / `--cloud-only`。
+- itemCode has one source in `src/itemcodes.js` (the cloud refers to it as `CMD` in `crypto.js`, BLE as `ITEM` in `protocol.js` — different aliases for the same thing).
+- Capability is held by `devicemodel.js` as **type × route** (each kind has a `cloud:[...]` and a `ble:[...]` op set).
+  The **operable ops = the union of the two**, and the session's targets, operation menu, and `pickTransport` route selection are all derived from this union.
+  - Example: a lock has autolock under `ble` but not `cloud` → autolock is BLE-only.
+  - An OS2 lock has an empty `ble` set and lock/unlock/toggle under `cloud` → operable via cloud only.
+  - Hub3 has ir/relay/led under `cloud`.
+- The default is a **full mode** that is unaware of the route; pin it with `--ble-only` / `--cloud-only` only when desired.
 
-## irType の非対称トラップ（自己学習リモコン）
+## The irType asymmetry trap (self-learned remote)
 
-リモコンの種別は整数コード (= 実デバイスの `remote.type`)。主な値: `49152`(0xc000)=エアコン /
-`8192`(0x2000)=テレビ / `57344`=照明 / `32768`=扇風機 / **`65024`(0xFE00)=自己学習**。
+A remote's kind is an integer code (= the device's `remote.type`). Main values: `49152` (0xc000) = air conditioner / `8192` (0x2000) = TV / `57344` = light / `32768` = fan / **`65024` (0xFE00) = self-learned**.
 
-⚠️ **学習だけ非対称**: 公式 biz3 のメニューでは各項目に id が振られ、エアコン/テレビ等のプリセットは
-「メニュー id = 実デバイスの type」で一致する。ところが「学習」のメニュー id は `0xFEFF` なのに、学習して
-実際に作られるリモコンの type は **`0xFE00`(65024)**。`0xFEFF` は「学習メニューを押した」という UI 上の印に
-すぎず、デバイスや通信には現れない。**自己学習リモコンを指すときは必ず実 type `0xFE00` を使うこと**
-（`0xFEFF` を渡すとサーバ照合が一致せずリモコンが見つからない）。当ツールは `0xFE00` を採用。
+⚠️ **Only learning is asymmetric**: in the official biz3 menu, each item has an id, and presets such as air conditioner / TV match by "menu id = device type." However, the "learn" menu id is `0xFEFF`, while the type of the remote actually created by learning is **`0xFE00` (65024)**. `0xFEFF` is only a UI-side marker for "the learn menu was pressed"; it never appears on the device or in communication. **Always use the real type `0xFE00` when referring to a self-learned remote** (passing `0xFEFF` fails the server-side match and the remote is not found). This tool uses `0xFE00`.
 
-## autolock はクラウド経由では設定できない
+## autolock cannot be set over the cloud
 
-autolock (= `SesameItemCode` 11) の設定はクラウド経由では実機に反映されない。`biz3TriggerLocker` は cmd=11 に
-`success:true` を返すが、ロック本体の autolock 秒数は変化しない。biz3 web/SDK にも設定系のクラウド送信経路は無く
-（`useIotCtrl.js` の IoT cmd は ADD/REMOVE_SESAME・LED・RELAY 等のみで autolock は "Unsupported"）、公式アプリは
-autolock を BLE 直送する。よって autolock は BLE の `sesame autolock` のみで提供する。ライブラリには汎用レール
-`lock.triggerItemCommand` / `lock.setAutolock` があるが、クラウドでは lock/unlock/toggle/bot 以外は実機に効かない。
+Setting autolock (= `SesameItemCode` 11) over the cloud is not reflected on the physical device. `biz3TriggerLocker` returns `success:true` for cmd=11, but the lock's actual autolock duration does not change. biz3 web/SDK has no cloud send route for settings either (the IoT cmds in `useIotCtrl.js` are only ADD/REMOVE_SESAME, LED, RELAY, etc., and autolock is "Unsupported"), and the official app sends autolock directly over BLE. autolock is therefore provided only via BLE's `sesame autolock`. The library has the generic rails `lock.triggerItemCommand` / `lock.setAutolock`, but over the cloud only lock/unlock/toggle/bot take effect on the device.
 
-`biz3TriggerLocker` は同期 ack (`{code:200, success:true}`) を返す。`unlock`/`lock`/`toggle`/`bot` は
-この ack で完了判定する (push 待ちのみだと「サーバ受理済みなのに timeout」と誤判定するため)。
+`biz3TriggerLocker` returns a synchronous ack (`{code:200, success:true}`). `unlock`/`lock`/`toggle`/`bot` use this ack to determine completion (waiting on the push alone would wrongly report a timeout even though the server already accepted the command).
 
-## BLE 直接制御の設計
+## BLE direct control design
 
-プロトコル層 (`src/ble/protocol.js`: CMAC セッション鍵 / AES-CCM / セグメント / フレーム) と
-セッション層 (`src/ble/session.js`) は **OS 非依存の純 JS**。無線 I/O だけを差し替え可能なアダプタ
-(`src/ble/transport.js`、既定 noble) に閉じ込めてあり、Web Bluetooth 等の別アダプタも注入できる。
-デバイス型モデル (`src/ble/devicemodel.js`) は公式 SesameSDK の `CHProductModel` と能力定義を移植したもので、
-`productType`/`model` → 種別 (lock5/bot2/bike2/…) → 対応操作・mechStatus 解釈を引く。`SesameBle` はこの能力に
-従って操作を許可/拒否する。プロトコルは Android SesameSDK / ESP32 リファレンス実装から移植。
+The protocol layer (`src/ble/protocol.js`: CMAC session key / AES-CCM / segments / frames) and the session layer (`src/ble/session.js`) are **OS-independent pure JS**. Only the radio I/O is confined to a swappable adapter (`src/ble/transport.js`, noble by default); an alternate adapter such as Web Bluetooth can also be injected. The device type model (`src/ble/devicemodel.js`) ports the capability definitions of the official SesameSDK's `CHProductModel`, mapping `productType`/`model` → kind (lock5/bot2/bike2/…) → supported operations and mechStatus interpretation. `SesameBle` allows or rejects operations according to this capability. The protocol is ported from the Android SesameSDK / ESP32 reference implementation.
 
-## config の単一 `devices{}` 設計
+## The single `devices{}` config design
 
-**デバイスは単一の `devices{}` に丸ごと保存する** — ロック / Bot / Bike / Hub3 を型ごとに分けず、
-サーバの device レコードを (巨大な `stateInfo` を除き) そのまま格納する。型は `deviceModel` から導出し、
-どの操作 view (lock / hub3) に出すかは `category` で分類する。`model`/`secretKey` の取りこぼし
-(Hub3 が「解錠」と誤表示される等) を構造的に防ぐための設計。`remotes` は device ではない子エンティティ
-(親 Hub3 + irType + 学習 keys) なので独立コレクションのまま。
+**Devices are stored whole in a single `devices{}`** — locks / Bots / Bikes / Hub3 are not split by type; the server's device record is stored as-is (minus the huge `stateInfo`). The type is derived from `deviceModel`, and which operation view (lock / hub3) it appears in is classified by `category`. This design structurally prevents dropped `model`/`secretKey` (e.g., a Hub3 being mislabeled as "unlocked"). `remotes` is a child entity, not a device (parent Hub3 + irType + learned keys), so it stays an independent collection.
 
-## `sesame serve` 言語非依存バックエンド
+## `sesame serve` language-agnostic backend
 
-1 コア + 5 フレーミングで、単一常駐 `SesameHub3` に全機能を一様公開する。詳細は README の
-[言語非依存バックエンド](../README.md#言語非依存バックエンド-sesame-serve) を参照。
+With 1 core + 5 framings, the full feature set is uniformly exposed on a single resident `SesameHub3`. See the README's [language-agnostic backend](../README.md#language-agnostic-backend-sesame-serve) for details.
 
-- **コア**: `src/serve/jsonrpc.js`（JSON-RPC 2.0、transport 非依存）+ `registry.js`（`NAMESPACE_OPS` から
-  メソッドを自動公開 + OpenRPC）+ `daemon.js`（直列化 / 購読一元 / 背圧 / shutdown）。
-- **フレーミング**: `framing/` 配下に stdio / socket(UDS) / http(+SSE) / ws / grpc + token。
-- **型抽出**: `scripts/gen-rpc-schema.mjs` が `.d.ts` から param 型を抽出 (`rpc-params.generated.json`)、
-  `scripts/gen-grpc-proto.mjs` が型付き `sesame.proto` を生成。両者は drift-guard テストで保護。
+- **Core**: `src/serve/jsonrpc.js` (JSON-RPC 2.0, transport-independent) + `registry.js` (auto-exposes methods from `NAMESPACE_OPS` + OpenRPC) + `daemon.js` (serialization / unified subscription / backpressure / shutdown).
+- **Framing**: stdio / socket(UDS) / http(+SSE) / ws / grpc + token under `framing/`.
+- **Type extraction**: `scripts/gen-rpc-schema.mjs` extracts param types from `.d.ts` (`rpc-params.generated.json`), and `scripts/gen-grpc-proto.mjs` generates a typed `sesame.proto`. Both are protected by drift-guard tests.
 
-## ファイル構成
+## File layout
 
 ```
 sesame-kit/
@@ -94,35 +71,35 @@ sesame-kit/
 ├── LICENSE
 ├── LICENSE.biz3
 ├── bin/
-│   └── sesame.js           # CLI 実行エントリ
-├── clients/                # sesame serve に繋ぐ薄い公式クライアント (依存ゼロ)
-│   ├── python/sesame_client.py   #   UDS/stdio/HTTP + イベント購読
-│   └── js/sesame-client.mjs      #   同等 (Node 18+)
+│   └── sesame.js           # CLI entry point
+├── clients/                # thin official clients that connect to sesame serve (zero dependencies)
+│   ├── python/sesame_client.py   #   UDS/stdio/HTTP + event subscription
+│   └── js/sesame-client.mjs      #   equivalent (Node 18+)
 ├── vendor/
-│   └── biz3/constants/     # biz3 の import-zero 定数を逐語コピー (single source of truth)
+│   └── biz3/constants/     # verbatim copy of biz3's import-zero constants (single source of truth)
 └── src/
-    ├── index.js            # 公開ライブラリエントリ
-    ├── cli.js              # commander 実装 (基本コマンド + makeCtx)
-    ├── cli/                # 機能別コマンド配線 (registerXxxCommands)
-    │   └── serve.js        #   sesame serve … (常駐 JSON-RPC バックエンド配線)
-    ├── serve/              # 言語非依存バックエンド (1 コア + 5 フレーミング)
-    │   ├── jsonrpc.js      #   JSON-RPC 2.0 プロトコルコア (transport 非依存)
-    │   ├── registry.js     #   メソッドカタログ (NAMESPACE_OPS から自動公開) + OpenRPC
-    │   ├── daemon.js       #   単一常駐 hub への多重化 (直列化/購読/背圧/shutdown)
-    │   ├── sesame.proto    #   gRPC 型付き定義 (生成物)
+    ├── index.js            # public library entry
+    ├── cli.js              # commander implementation (basic commands + makeCtx)
+    ├── cli/                # per-feature command wiring (registerXxxCommands)
+    │   └── serve.js        #   sesame serve … (resident JSON-RPC backend wiring)
+    ├── serve/              # language-agnostic backend (1 core + 5 framings)
+    │   ├── jsonrpc.js      #   JSON-RPC 2.0 protocol core (transport-independent)
+    │   ├── registry.js     #   method catalog (auto-exposed from NAMESPACE_OPS) + OpenRPC
+    │   ├── daemon.js       #   multiplexing onto a single resident hub (serialization/subscription/backpressure/shutdown)
+    │   ├── sesame.proto    #   gRPC typed definition (generated)
     │   └── framing/        #   stdio / socket(UDS) / http(+SSE) / ws / grpc + token
-    ├── client.js           # SesameHub3 高レベルクラス (namespace getter で op を自動注入)
+    ├── client.js           # SesameHub3 high-level class (auto-injects ops via namespace getters)
     ├── transport.js        # Hub3WsClient (reconnect/keepalive/queue/sleep)
     ├── auth.js             # Cognito CUSTOM_AUTH + REFRESH_TOKEN_AUTH + jwtSub
-    ├── crypto.js           # AES-CMAC + uuid→base64 + cmd code 定数
-    ├── lock.js / ir.js / presetir.js / sharekey.js   # ドメイン op
-    ├── ble/                # BLE 直接制御 (OS非依存コア + 差し替え可能トランスポート)
-    │   ├── protocol.js     #   純JS: CMAC鍵/AES-CCM/セグメント/フレーム/mechStatus
-    │   ├── session.js      #   状態機械 (initial→login→コマンド応答)
-    │   ├── transport.js    #   noble アダプタ (optionalDependency, 遅延require)
-    │   └── index.js        #   SesameBle ファサード
+    ├── crypto.js           # AES-CMAC + uuid→base64 + cmd code constants
+    ├── lock.js / ir.js / presetir.js / sharekey.js   # domain ops
+    ├── ble/                # BLE direct control (OS-independent core + swappable transport)
+    │   ├── protocol.js     #   pure JS: CMAC key/AES-CCM/segment/frame/mechStatus
+    │   ├── session.js      #   state machine (initial→login→command response)
+    │   ├── transport.js    #   noble adapter (optionalDependency, lazy require)
+    │   └── index.js        #   SesameBle facade
     ├── iot.js / account.js / schedule.js / org.js / company.js / access.js / devices.js
     ├── config.js           # ConfigStore (~/.config/sesame-hub3/config.json)
     ├── tokens.js           # FileTokenStore
-    └── paths.js            # 設定ディレクトリ解決
+    └── paths.js            # config directory resolution
 ```
