@@ -1508,6 +1508,10 @@ export async function run(argv = process.argv) {
     .name("sesame")
     .description("SESAME cloud CLI: lock control + Hub3 IR + device management (port of biz3 React with Consumer Cognito client)")
     .version(getPkgVersion(), "-V, --version")
+    // 引数不足/未知オプション時に usage を出す (commander 既定はエラー1行のみで不親切)。
+    // この前に設定すると後で追加する全サブコマンドへ継承される。--json 時は writeErr 側で抑止。
+    .showHelpAfterError()
+    .showSuggestionAfterError()
     .option("--config-dir <path>", "設定ディレクトリ上書き (default: ~/.config/sesame-hub3)")
     .option("--debug", "詳細ログ")
     .option("--json", "JSON 出力");
