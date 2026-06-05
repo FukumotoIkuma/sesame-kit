@@ -6,6 +6,10 @@ A Node.js CLI and library that drives the SESAME cloud WebSocket API using the s
 
 > 日本語版: [README.ja.md](./README.ja.md)
 
+> **Status** — Pre-1.0 and may contain bugs. It will reach 1.0 once it has proven stable in real use. Pin a version if you depend on it.
+>
+> **Disclaimer** — Unofficial. Not affiliated with or endorsed by CANDY HOUSE. It drives the cloud API the same way the official apps do, which may change or break without notice. Your `secretKey` and tokens grant full control of your lock; keep them private. Use at your own risk.
+
 ## Features
 
 - Lock control: lock / unlock / toggle / SESAME Bot click
