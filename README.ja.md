@@ -2,6 +2,8 @@
 
 # sesame-kit — SESAME クラウド CLI & ライブラリ (非公式)
 
+[![npm](https://img.shields.io/npm/v/sesame-kit)](https://www.npmjs.com/package/sesame-kit) [![license](https://img.shields.io/npm/l/sesame-kit)](./LICENSE) [![node](https://img.shields.io/node/v/sesame-kit)](https://nodejs.org)
+
 > English: [README.md](./README.md)
 
 > **ステータス** — pre-1.0 でありバグが残っている可能性があります。実運用で概ね安定が確認できた時点で 1.0 にします。依存する場合はバージョンを固定してください。
@@ -36,14 +38,17 @@
 要件は Node.js 18 以上 (ESM / `node:` プロトコルを使用)。
 
 ```bash
-git clone https://github.com/FukumotoIkuma/sesame-kit.git
-cd sesame-kit
-npm install
-npm link        # グローバルに `sesame` コマンドを公開
-# あるいは: node bin/sesame.js ...
+npm install -g sesame-kit     # グローバル CLI: `sesame ...`
+npx sesame-kit --help         # インストールせず実行
+npm install sesame-kit        # プロジェクトにライブラリとして追加
 ```
 
-ライブラリとして使う場合は `npm link sesame-kit`、または `npm install /path/to/sesame-kit`。
+ソースから:
+
+```bash
+git clone https://github.com/FukumotoIkuma/sesame-kit.git
+cd sesame-kit && npm install && npm link
+```
 
 ---
 

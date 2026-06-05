@@ -2,6 +2,8 @@
 
 # sesame-kit — SESAME cloud CLI & library (unofficial)
 
+[![npm](https://img.shields.io/npm/v/sesame-kit)](https://www.npmjs.com/package/sesame-kit) [![license](https://img.shields.io/npm/l/sesame-kit)](./LICENSE) [![node](https://img.shields.io/node/v/sesame-kit)](https://nodejs.org)
+
 A Node.js CLI and library that drives the SESAME cloud WebSocket API using the same Cognito consumer client as the official SESAME iOS / Android apps. It covers lock control, Hub3 IR (emit and learn), device management, history, and battery level. With `sesame serve` it exposes every feature as JSON-RPC so you can drive SESAME from any language.
 
 > 日本語版: [README.ja.md](./README.ja.md)
@@ -36,14 +38,17 @@ A Node.js port of the official biz3 admin web app ([CANDY-HOUSE/biz.candyhouse.c
 Requires Node.js 18+ (uses ESM and the `node:` protocol).
 
 ```bash
-git clone https://github.com/FukumotoIkuma/sesame-kit.git
-cd sesame-kit
-npm install
-npm link        # expose the `sesame` command globally
-# or: node bin/sesame.js ...
+npm install -g sesame-kit     # global CLI: `sesame ...`
+npx sesame-kit --help         # or run without installing
+npm install sesame-kit        # or as a library in your project
 ```
 
-To use it as a library: `npm link sesame-kit`, or `npm install /path/to/sesame-kit`.
+From source:
+
+```bash
+git clone https://github.com/FukumotoIkuma/sesame-kit.git
+cd sesame-kit && npm install && npm link
+```
 
 ---
 
