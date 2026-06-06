@@ -43,6 +43,9 @@
     "./devices": {
       "types": "./types/devices.d.ts",
       "default": "./src/devices.js"
+    },
+    "./client": {
+      "default": "./clients/js/sesame-client.mjs"
     }
   },
   "bin": {

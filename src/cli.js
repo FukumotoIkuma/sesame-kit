@@ -198,7 +198,7 @@ async function pickLockName(program, configStore, current) {
   if (current) return current;
   const cfg = configStore.load();
   const names = Object.keys(cfg.locks || {});
-  if (names.length === 0) die("ロックが未登録です。`sesame lock add` か `sesame lock sync-from-devices` を実行してください。", 2);
+  if (names.length === 0) die("ロックが未登録です。`sesame locks add` か `sesame locks sync-from-devices` を実行してください。", 2);
   if (names.length === 1) return names[0];
   if (!canPrompt(program)) return null;
   return selectFromList("どのロック?", names, (n) => {
@@ -459,7 +459,7 @@ async function cmdInit(_opts, program) {
     console.log(``);
     console.log(`次のステップ (所要 約3分):`);
     console.log(`  1. sesame login <email>             # email に確認コードが届く → sesame verify <code>`);
-    console.log(`  2a. ロックを使うなら:  sesame lock sync-from-devices     # 自動取り込み`);
+    console.log(`  2a. ロックを使うなら:  sesame locks sync-from-devices    # 自動取り込み`);
     console.log(`  2b. Hub3 IR を使うなら: sesame remote sync-from-devices   # Hub3+リモコン+キーを一括取得`);
     console.log(``);
     console.log(`概念: Hub3=IR を飛ばす中継器 / remote=リモコン定義 / lock=施錠デバイス。`);
@@ -1010,7 +1010,7 @@ async function resolveLockEntry(program, name) {
 
 /**
  * 単発コマンドの経路を決定する。
- *   - 既定 (全部モード): 能力フル。経路はツールが自動選択する。BLE はスキャン/接続のオーバーヘッドが
+ *   - 既定 (オート): 能力フル。経路はツールが自動選択する。BLE はスキャン/接続のオーバーヘッドが
  *     あるため毎回は張らず、cloud で運べる op は cloud、cloud で運べない op (autolock など BLE 必須)
  *     のみ BLE で一時接続する (cloud が速いという意味ではなく、BLE の接続コストを毎回払わないため)。
  *   - `--ble-only` / `--cloud-only`: 経路を固定したいときの明示指定 (最優先)。
@@ -1029,7 +1029,7 @@ function pickTransport(op, options, model) {
     if (!allowed.includes("cloud")) { die(`${op} はクラウドでは実機に反映されません (BLE 必須)。--ble-only か無指定で。`, 2); }
     return "cloud";
   }
-  // 全部モード: cloud で運べるなら cloud (BLE の接続コストを避けるため)。cloud 不可な op (autolock) のみ BLE。
+  // オート: cloud で運べるなら cloud (BLE の接続コストを避けるため)。cloud 不可な op (autolock) のみ BLE。
   return allowed.includes("cloud") ? "cloud" : "ble";
 }
 
@@ -1300,7 +1300,7 @@ async function cmdSession(names, options, program) {
 
   let blePromise = null;
   if (loggedIn) {
-    // 全部モードのアプリ的挙動: クラウドでメニューを即表示し、BLE は **バックグラウンド** で接続する
+    // オートのアプリ的挙動: クラウドでメニューを即表示し、BLE は **バックグラウンド** で接続する
     // (繋がったデバイスは次の描画で ·BLE に昇格し、以降 BLE 優先)。起動を BLE スキャンで待たせない。
     if (lockTargets.length) console.error("[ble] バックグラウンドで接続中... (クラウドで操作可能)");
     blePromise = connectBle();
@@ -1347,7 +1347,7 @@ const DEVICE_ACTIONS = new Set(["unlock", "lock", "toggle", "click", "status", "
  * デバイス主語の実行: `sesame <device> [action] [args]`。
  *   - action 省略 + TTY → そのデバイス (複数可) の対話セッション。
  *   - action 省略 + 非対話 → status を表示。
- *   - action 指定 → 1 発実行 (cmdAct に委譲。経路は全部モードで自動)。
+ *   - action 指定 → 1 発実行 (cmdAct に委譲。経路はオートで自動)。
  */
 async function cmdDeviceOp(device, action, args, options, program) {
   if (!action) {
@@ -1512,7 +1512,7 @@ export async function run(argv = process.argv) {
     // この前に設定すると後で追加する全サブコマンドへ継承される。--json 時は writeErr 側で抑止。
     .showHelpAfterError()
     .showSuggestionAfterError()
-    .option("--config-dir <path>", "設定ディレクトリ上書き (default: ~/.config/sesame-hub3)")
+    .option("--config-dir <path>", "設定ディレクトリ上書き (default: ~/.config/sesame-kit)")
     .option("--debug", "詳細ログ")
     .option("--json", "JSON 出力");
 
@@ -1615,7 +1615,7 @@ devices だけで完結します (手入力は呼び名のみ):
   // ---------- デバイス主語の実行 (sesame <device> [action]) ----------
   // 主語はデバイス。`sesame front unlock` = front.unlock() 相当 (SDK の device.method() と同じ)。
   // action 省略は対話メニュー (= そのデバイスの session)。引数なし `sesame` は全デバイスの session。
-  // 経路は既定「全部モード」(能力フル・自動。BLE 必須 op のみ BLE)。固定は --ble-only / --cloud-only。
+  // 経路は既定「オート」(能力フル・自動。BLE 必須 op のみ BLE)。固定は --ble-only / --cloud-only。
   // 例: sesame front unlock / sesame kitchen click / sesame front autolock 30 / sesame front --ble-only
   //
   // 実体は隠し op コマンド。先頭トークンが既知コマンドでなければ run() がここへ振り分ける。
@@ -1816,6 +1816,6 @@ function withStaleHint(msg) {
     /not found/i.test(m) ||
     /invalid.*device/i.test(m);
   if (!looksStale) return m;
-  return `${m}\nヒント: ローカル config が古い可能性があります。\n  IR キー: sesame remote sync-keys [name]\n  ロック/Hub3: sesame lock sync-from-devices / sesame hub3 sync-from-devices`;
+  return `${m}\nヒント: ローカル config が古い可能性があります。\n  IR キー: sesame remote sync-keys [name]\n  ロック/Hub3: sesame locks sync-from-devices / sesame hub3 sync-from-devices`;
 }
 
