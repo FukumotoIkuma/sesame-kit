@@ -5,13 +5,11 @@
 #   先に: バージョンを上げてコミット & push しておくこと (npm version <patch|minor|major> --no-git-tag-version)。
 #
 # 使い方:
-#   npm run release -- 123456     # 123456 = npm 2FA のワンタイムコード (省略時は npm が対話で尋ねる)
-#   npm run release               # OTP を対話入力
+#   npm run release               # 2FA はブラウザで確認する (npm publish が自動でブラウザを開く)
 #
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-OTP="${1:-}"
 red() { printf '\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 ok()  { printf '\033[32m✓ %s\033[0m\n' "$1"; }
 
@@ -36,8 +34,8 @@ git rev-parse "$TAG" >/dev/null 2>&1 && red "タグ $TAG が既に存在しま�
 if npm view "sesame-kit@$VERSION" version >/dev/null 2>&1; then red "$VERSION は既に npm に公開済みです。"; fi
 ok "リリース対象: sesame-kit@$VERSION"
 
-# ---- ① npm publish ----
-if [ -n "$OTP" ]; then npm publish --otp="$OTP"; else npm publish; fi
+# ---- ① npm publish (2FA はブラウザで確認) ----
+npm publish
 ok "npm publish 完了"
 
 # ---- ② git タグ ----
