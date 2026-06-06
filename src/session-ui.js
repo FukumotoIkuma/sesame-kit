@@ -55,9 +55,9 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
     return () => bus.off("update", on);
   }, [bus]);
 
-  // mode が変わったらハイライトを一旦クリア (空リスト mode で前メニューの項目が残らないように)。
-  // SelectInput マウント時の onHighlight が直後に先頭項目で埋め直す。
-  React.useEffect(() => { setHi(null); }, [mode]);
+  // hi (→ 決定用ハイライト) は各 SelectInput の onHighlight が先頭項目で更新する。
+  // SelectInput を描画しない可能性のある mode (空の IR リスト) に入る時だけ明示的にクリアし、
+  // 前メニューの項目が残って → が誤爆しないようにする (下の selectAction / selectIrRemote 参照)。
 
   const backToActions = () => { setMode("actions"); };
 
@@ -72,13 +72,13 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
     if (it.value === "__back") { if (single) exit(); else { setMode("devices"); setMsg(""); } return; }
     if (it.value === "autolock") { setNumVal(""); setMode("autolock"); return; }
     if (it.value === "led") { setNumVal(""); setMode("led"); return; }
-    if (it.value === "ir") { setSelRemote(null); setIrKeys(null); setMode("ir-remote"); return; }
+    if (it.value === "ir") { setHi(null); setSelRemote(null); setIrKeys(null); setMode("ir-remote"); return; }
     runExec(it.value, devices.get(selName));
   };
   const selectIrRemote = (it) => {
     if (!it) return;
     if (it.value === "__back") { backToActions(); return; }
-    setSelRemote(it.value); setIrKeys(null); setMode("ir-key");
+    setHi(null); setSelRemote(it.value); setIrKeys(null); setMode("ir-key");
     Promise.resolve(listKeysFor ? listKeysFor(it.value) : []).then(setIrKeys).catch(() => setIrKeys([]));
   };
   const selectIrKey = (it) => {
@@ -98,19 +98,35 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
     else backToActions(); // autolock / led / ir-remote
   };
 
-  // → で決定 (ハイライト中の項目を選択)。リスト系 mode のみ。
+  // 現在 mode のメニュー項目 (render と → 決定で共有。順序が両者で一致する)。
+  const menuItems = () => {
+    if (mode === "devices") return [...names.map((n) => ({ label: n, value: n })), { label: "終了", value: "__quit" }];
+    if (mode === "actions") return [...actionsFor(devices.get(selName)), { label: single ? "終了" : "← 戻る", value: "__back" }];
+    if (mode === "ir-remote") {
+      const r = hub3RemotesFor ? hub3RemotesFor(devices.get(selName)) : [];
+      return r.length ? [...r, { label: "← 戻る", value: "__back" }] : [];
+    }
+    if (mode === "ir-key") return (irKeys && irKeys.length) ? [...irKeys, { label: "← 戻る", value: "__back" }] : [];
+    return [];
+  };
+
+  // → で決定。ink-select-input の onHighlight は初期項目では発火しないため、移動前は hi=null。
+  // その場合は先頭 (= 既定でハイライトされている項目) にフォールバックする。
   const goForward = () => {
-    if (mode === "devices") selectDevice(hi);
-    else if (mode === "actions") selectAction(hi);
-    else if (mode === "ir-remote") selectIrRemote(hi);
-    else if (mode === "ir-key") selectIrKey(hi);
+    const it = hi || menuItems()[0];
+    if (!it) return;
+    if (mode === "devices") selectDevice(it);
+    else if (mode === "actions") selectAction(it);
+    else if (mode === "ir-remote") selectIrRemote(it);
+    else if (mode === "ir-key") selectIrKey(it);
   };
 
   const isList = mode === "devices" || mode === "actions" || mode === "ir-remote" || mode === "ir-key";
 
   useInput((input, key) => {
     if (mode === "busy") return;
-    if (input === "q") { exit(); return; }
+    // q は**メニュー系のみ**で終了。autolock/LED の数値入力中は文字として TextInput へ渡す。
+    if (input === "q" && isList) { exit(); return; }
     if (key.escape) { goBack(true); return; }       // Esc: 戻る (最上位では終了)
     // ← / → は数値入力 (autolock/led) ではテキストカーソル移動に使うので、リスト系のみで奪う。
     if (isList && key.leftArrow) { goBack(false); return; }  // ←: 戻る (最上位では何もしない)
@@ -171,9 +187,8 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
     if (remotes.length === 0) {
       return box(h(Text, null, `${selName}: 登録リモコンがありません ( sesame remote add で登録 )。← / Esc で戻る`));
     }
-    const items = [...remotes, { label: "← 戻る", value: "__back" }];
     return box(h(Text, null, `${selName} の IR: リモコン選択`),
-      h(SelectInput, { items, onHighlight: setHi, onSelect: selectIrRemote }),
+      h(SelectInput, { items: menuItems(), onHighlight: setHi, onSelect: selectIrRemote }),
     );
   }
 
@@ -181,25 +196,19 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
   if (mode === "ir-key") {
     if (irKeys === null) return box(h(Text, null, `${selRemote}: キー取得中...`));
     if (irKeys.length === 0) return box(h(Text, null, `${selRemote}: キーがありません ( sesame remote sync-keys )。← / Esc で戻る`));
-    const items = [...irKeys, { label: "← 戻る", value: "__back" }];
     return box(h(Text, null, `${selRemote} のキー選択 (送信)`),
-      h(SelectInput, { items, onHighlight: setHi, onSelect: selectIrKey }),
+      h(SelectInput, { items: menuItems(), onHighlight: setHi, onSelect: selectIrKey }),
     );
   }
 
   if (mode === "actions") {
-    const d = devices.get(selName);
-    const items = [...actionsFor(d)];
-    items.push({ label: single ? "終了" : "← 戻る", value: "__back" });
     return box(h(Text, null, `${selName} の操作:`),
-      h(SelectInput, { items, onHighlight: setHi, onSelect: selectAction }),
+      h(SelectInput, { items: menuItems(), onHighlight: setHi, onSelect: selectAction }),
     );
   }
 
   // mode === "devices"
-  const items = names.map((n) => ({ label: n, value: n }));
-  items.push({ label: "終了", value: "__quit" });
   return box(h(Text, null, "操作するデバイス:"),
-    h(SelectInput, { items, onHighlight: setHi, onSelect: selectDevice }),
+    h(SelectInput, { items: menuItems(), onHighlight: setHi, onSelect: selectDevice }),
   );
 }

@@ -1755,9 +1755,11 @@ devices だけで完結します (手入力は呼び名のみ):
     // BLE 権限/電源エラーは macOS なら該当設定ペインを自動で開いて誘導する。
     if (maybeHandleBleError(err)) { finishCli(); return; }
     const code = (typeof err.exitCode === "number" && err.exitCode !== 0) ? err.exitCode : 1;
-    // commander の usage エラーは非 JSON 時すでに stderr へ整形済み (usage 付き) なので二重出力を避ける。
-    if (typeof err.code === "string" && err.code.startsWith("commander.") && !CLI_JSON) {
-      process.exitCode = code; finishCli(); return;
+    // commander の usage エラー。非 JSON 時は commander が stderr に整形済み (usage 付き) なので二重出力を避ける。
+    if (typeof err.code === "string" && err.code.startsWith("commander.")) {
+      if (!CLI_JSON) { process.exitCode = code; finishCli(); return; }
+      // --json: commander のメッセージ先頭 "error: " を剥がして封筒に載せる (error が二重にならないように)。
+      die((err.message || "usage error").replace(/^error:\s*/i, ""), code); return;
     }
     die(withStaleHint(err.message || String(err)), code);
   }

@@ -76,4 +76,34 @@ describe("SessionApp (Ink)", () => {
     expect(f).toContain("クリック"); // bot は click
     expect(f).not.toContain("解錠");
   });
+
+  // ---- 操作 (キー入力) ----
+  const ENTER = "\r", RIGHT = "[C", LEFT = "[D";
+  const tick = (ms = 40) => new Promise((r) => setTimeout(r, ms));
+
+  it("アクション実行後はホーム(デバイス一覧)に戻らず操作メニューに留まる", async () => {
+    const props = baseProps();
+    const { lastFrame, stdin } = render(h(SessionApp, props));
+    stdin.write(ENTER);                       // 先頭デバイス front を選択
+    await tick();
+    expect(lastFrame()).toContain("front の操作");
+    stdin.write(ENTER);                       // 先頭アクション (解錠) を実行
+    await tick(100);                          // exec(async) 完了 + 再描画を待つ
+    expect(props.exec).toHaveBeenCalledTimes(1);
+    expect(props.exec.mock.calls[0][0]).toBe("unlock");
+    // 実行後も操作メニューのまま (旧挙動のデバイス一覧へは戻らない)
+    expect(lastFrame()).toContain("front の操作");
+    expect(lastFrame()).not.toContain("操作するデバイス");
+  });
+
+  it("→ で決定・← で戻るができる", async () => {
+    const { lastFrame, stdin } = render(h(SessionApp, baseProps()));
+    expect(lastFrame()).toContain("操作するデバイス");
+    stdin.write(RIGHT);                        // → : ハイライト中のデバイスを決定
+    await tick();
+    expect(lastFrame()).toContain("front の操作");
+    stdin.write(LEFT);                         // ← : 1つ戻る
+    await tick();
+    expect(lastFrame()).toContain("操作するデバイス");
+  });
 });
