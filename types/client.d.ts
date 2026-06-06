@@ -1,6 +1,6 @@
 export class SesameHub3 {
     /**
-     * 既定の設定ディレクトリ (~/.config/sesame-hub3 等) から読み込んで構築。
+     * 既定の設定ディレクトリ (~/.config/sesame-kit 等) から読み込んで構築。
      * CLI 内部はこのファクトリを使う。
      * @param {{ configDir?: string, debug?: boolean }} [opts]
      */

@@ -65,7 +65,7 @@ export function registerServeCommand(program) {
   program.command("serve")
     .description("常駐 JSON-RPC バックエンド (stdio/UDS/HTTP/WS/gRPC で全機能を他言語へ公開)")
     .option("--stdio", "stdin/stdout で NDJSON JSON-RPC (埋め込み: 親が子プロセスとして spawn)")
-    .option("--socket [path]", "Unix domain socket (省略時 ~/.config/sesame-hub3/sesame.sock)")
+    .option("--socket [path]", "Unix domain socket (省略時 ~/.config/sesame-kit/sesame.sock)")
     .option("--no-socket", "UDS を無効化")
     .option("--http [port]", `HTTP(+SSE) を listen (既定 ${DEF.http})`)
     .option("--ws [port]", `WebSocket を listen (既定 ${DEF.ws})`)

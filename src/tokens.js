@@ -17,7 +17,7 @@ function writeJson(path, data) {
   //   - Windows では fs.writeFileSync の mode は read-only flag に degrade される
   //   - mkdirSync の mode は **新規作成時のみ** 適用される (既存ディレクトリの
   //     パーミッションは変わらない)。旧バージョンで 0755 で作られたディレクトリは
-  //     `chmod 700 ~/.config/sesame-hub3` で手動修正が必要。
+  //     `chmod 700 ~/.config/sesame-kit` で手動修正が必要。
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileSync(path, JSON.stringify(data, null, 2) + "\n", { mode: 0o600 });
 }

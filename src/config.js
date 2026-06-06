@@ -135,7 +135,7 @@ export class ConfigStore {
     // mode 0600 で保存する (Review M-5)。
     // 注: POSIX 専用。Windows では mode は read-only flag になる程度。
     // 既存ディレクトリの mode は変更されない (新規作成時のみ反映) ので、
-    // 旧バージョンで作られた場合は手動で `chmod 700 ~/.config/sesame-hub3` が必要。
+    // 旧バージョンで作られた場合は手動で `chmod 700 ~/.config/sesame-kit` が必要。
     mkdirSync(dirname(this.configPath), { recursive: true, mode: 0o700 });
     writeFileSync(this.configPath, JSON.stringify(persist, null, 2) + "\n", { mode: 0o600 });
   }

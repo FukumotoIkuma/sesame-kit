@@ -35,12 +35,12 @@ from typing import Any, Callable, Optional
 
 def _default_socket_path() -> str:
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
-    return os.path.join(base, "sesame-hub3", "sesame.sock")
+    return os.path.join(base, "sesame-kit", "sesame.sock")
 
 
 def _default_token_path() -> str:
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
-    return os.path.join(base, "sesame-hub3", "serve.token")
+    return os.path.join(base, "sesame-kit", "serve.token")
 
 
 class SesameError(RuntimeError):

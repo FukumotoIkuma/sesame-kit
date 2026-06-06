@@ -2,7 +2,7 @@
 // 低レベル WS (Hub3WsClient) とトークン管理 / 設定解決を内部で抱える。
 //
 // 使い方:
-//   const hub = await SesameHub3.fromConfig();   // ~/.config/sesame-hub3 から
+//   const hub = await SesameHub3.fromConfig();   // ~/.config/sesame-kit から
 //   await hub.connect();
 //   await hub.send("ac", "停止");                  // (remote名, キー名 or keyUUID)
 //   await hub.close();
@@ -65,7 +65,7 @@ const UUID_RE = /^[0-9a-fA-F-]{32,}$/;
 
 export class SesameHub3 {
   /**
-   * 既定の設定ディレクトリ (~/.config/sesame-hub3 等) から読み込んで構築。
+   * 既定の設定ディレクトリ (~/.config/sesame-kit 等) から読み込んで構築。
    * CLI 内部はこのファクトリを使う。
    * @param {{ configDir?: string, debug?: boolean }} [opts]
    */

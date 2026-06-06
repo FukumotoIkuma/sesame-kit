@@ -1,16 +1,16 @@
 // 設定ディレクトリ解決。優先順位:
 //   1. 明示渡し (overrideDir, CLI --config-dir)
-//   2. env SESAME_HUB3_HOME (アプリ専用)
-//   3. env XDG_CONFIG_HOME → $XDG_CONFIG_HOME/sesame-hub3
-//   4. ~/.config/sesame-hub3
+//   2. env SESAME_KIT_HOME (アプリ専用)
+//   3. env XDG_CONFIG_HOME → $XDG_CONFIG_HOME/sesame-kit
+//   4. ~/.config/sesame-kit
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
-const APP_DIRNAME = "sesame-hub3";
+const APP_DIRNAME = "sesame-kit";
 
 export function resolveConfigDir(overrideDir) {
   if (overrideDir) return resolve(overrideDir);
-  if (process.env.SESAME_HUB3_HOME) return resolve(process.env.SESAME_HUB3_HOME);
+  if (process.env.SESAME_KIT_HOME) return resolve(process.env.SESAME_KIT_HOME);
   const xdg = process.env.XDG_CONFIG_HOME;
   if (xdg) return resolve(xdg, APP_DIRNAME);
   return resolve(homedir(), ".config", APP_DIRNAME);

@@ -20,11 +20,11 @@ import { readFileSync } from "node:fs";
 
 function defaultSocketPath() {
   const base = process.env.XDG_CONFIG_HOME || join(os.homedir(), ".config");
-  return join(base, "sesame-hub3", "sesame.sock");
+  return join(base, "sesame-kit", "sesame.sock");
 }
 function defaultTokenPath() {
   const base = process.env.XDG_CONFIG_HOME || join(os.homedir(), ".config");
-  return join(base, "sesame-hub3", "serve.token");
+  return join(base, "sesame-kit", "serve.token");
 }
 function defaultToken() {
   try { return readFileSync(defaultTokenPath(), "utf8").trim(); } catch { return null; }

@@ -3,16 +3,16 @@ import { homedir } from "node:os";
 import { resolve, sep, isAbsolute } from "node:path";
 import { configPaths, resolveConfigDir } from "../../src/paths.js";
 
-const APP_DIRNAME = "sesame-hub3";
+const APP_DIRNAME = "sesame-kit";
 
 // 環境変数を完全クリーン状態にしてからテストを実行する。
 // process.env を直接書き換えず、vi.stubEnv / vi.unstubAllEnvs で確実に復元する。
 function clearRelevantEnv() {
-  vi.stubEnv("SESAME_HUB3_HOME", "");
+  vi.stubEnv("SESAME_KIT_HOME", "");
   vi.stubEnv("XDG_CONFIG_HOME", "");
   // stubEnv の空文字は "存在するが空" になるため、delete で完全に消す必要がある。
   // vitest の stubEnv は undefined を渡すと delete してくれる。
-  vi.stubEnv("SESAME_HUB3_HOME", undefined);
+  vi.stubEnv("SESAME_KIT_HOME", undefined);
   vi.stubEnv("XDG_CONFIG_HOME", undefined);
 }
 
@@ -37,8 +37,8 @@ describe("resolveConfigDir", () => {
       expect(result).toBe(resolve("./relative-config"));
     });
 
-    it("overrideDir が指定されていれば SESAME_HUB3_HOME より優先される", () => {
-      vi.stubEnv("SESAME_HUB3_HOME", "/env/sesame-home");
+    it("overrideDir が指定されていれば SESAME_KIT_HOME より優先される", () => {
+      vi.stubEnv("SESAME_KIT_HOME", "/env/sesame-home");
       const override = "/explicit/override";
       expect(resolveConfigDir(override)).toBe(resolve(override));
     });
@@ -56,42 +56,42 @@ describe("resolveConfigDir", () => {
     });
   });
 
-  describe("優先順位 2: SESAME_HUB3_HOME", () => {
-    it("overrideDir 未指定で SESAME_HUB3_HOME が設定されていれば resolve した値を返す", () => {
-      vi.stubEnv("SESAME_HUB3_HOME", "/env/sesame-home");
+  describe("優先順位 2: SESAME_KIT_HOME", () => {
+    it("overrideDir 未指定で SESAME_KIT_HOME が設定されていれば resolve した値を返す", () => {
+      vi.stubEnv("SESAME_KIT_HOME", "/env/sesame-home");
       expect(resolveConfigDir()).toBe(resolve("/env/sesame-home"));
     });
 
-    it("SESAME_HUB3_HOME は XDG_CONFIG_HOME より優先される", () => {
-      vi.stubEnv("SESAME_HUB3_HOME", "/env/sesame-home");
+    it("SESAME_KIT_HOME は XDG_CONFIG_HOME より優先される", () => {
+      vi.stubEnv("SESAME_KIT_HOME", "/env/sesame-home");
       vi.stubEnv("XDG_CONFIG_HOME", "/env/xdg");
       expect(resolveConfigDir()).toBe(resolve("/env/sesame-home"));
     });
 
-    it("SESAME_HUB3_HOME に APP_DIRNAME (sesame-hub3) は付与されない (アプリ専用 dir の前提)", () => {
-      vi.stubEnv("SESAME_HUB3_HOME", "/env/already-app-dir");
+    it("SESAME_KIT_HOME に APP_DIRNAME (sesame-kit) は付与されない (アプリ専用 dir の前提)", () => {
+      vi.stubEnv("SESAME_KIT_HOME", "/env/already-app-dir");
       const result = resolveConfigDir();
       expect(result).toBe(resolve("/env/already-app-dir"));
       expect(result.endsWith(`${sep}${APP_DIRNAME}`)).toBe(false);
     });
 
-    it("SESAME_HUB3_HOME が相対パスでも絶対パスに解決される", () => {
-      vi.stubEnv("SESAME_HUB3_HOME", "relative/sesame");
+    it("SESAME_KIT_HOME が相対パスでも絶対パスに解決される", () => {
+      vi.stubEnv("SESAME_KIT_HOME", "relative/sesame");
       const result = resolveConfigDir();
       expect(isAbsolute(result)).toBe(true);
       expect(result).toBe(resolve("relative/sesame"));
     });
 
-    it("SESAME_HUB3_HOME が空文字なら無視されて次の優先順位に進む", () => {
-      // 空文字は falsy なので process.env.SESAME_HUB3_HOME が真でないという判定
-      vi.stubEnv("SESAME_HUB3_HOME", "");
+    it("SESAME_KIT_HOME が空文字なら無視されて次の優先順位に進む", () => {
+      // 空文字は falsy なので process.env.SESAME_KIT_HOME が真でないという判定
+      vi.stubEnv("SESAME_KIT_HOME", "");
       vi.stubEnv("XDG_CONFIG_HOME", "/env/xdg");
       expect(resolveConfigDir()).toBe(resolve("/env/xdg", APP_DIRNAME));
     });
   });
 
   describe("優先順位 3: XDG_CONFIG_HOME", () => {
-    it("XDG_CONFIG_HOME が設定されていれば $XDG_CONFIG_HOME/sesame-hub3 を返す", () => {
+    it("XDG_CONFIG_HOME が設定されていれば $XDG_CONFIG_HOME/sesame-kit を返す", () => {
       vi.stubEnv("XDG_CONFIG_HOME", "/env/xdg");
       expect(resolveConfigDir()).toBe(resolve("/env/xdg", APP_DIRNAME));
     });
@@ -116,8 +116,8 @@ describe("resolveConfigDir", () => {
     });
   });
 
-  describe("優先順位 4: ~/.config/sesame-hub3 フォールバック", () => {
-    it("全 env 未設定なら homedir()/.config/sesame-hub3 を返す", () => {
+  describe("優先順位 4: ~/.config/sesame-kit フォールバック", () => {
+    it("全 env 未設定なら homedir()/.config/sesame-kit を返す", () => {
       const result = resolveConfigDir();
       expect(result).toBe(resolve(homedir(), ".config", APP_DIRNAME));
     });
@@ -201,8 +201,8 @@ describe("configPaths", () => {
   });
 
   describe("env 経由の解決", () => {
-    it("SESAME_HUB3_HOME 指定時、dir はそのまま使われ、ファイル名は固定", () => {
-      vi.stubEnv("SESAME_HUB3_HOME", "/env/sesame-home");
+    it("SESAME_KIT_HOME 指定時、dir はそのまま使われ、ファイル名は固定", () => {
+      vi.stubEnv("SESAME_KIT_HOME", "/env/sesame-home");
       const result = configPaths();
       expect(result.dir).toBe(resolve("/env/sesame-home"));
       expect(result.config).toBe(resolve("/env/sesame-home", "config.json"));
@@ -220,7 +220,7 @@ describe("configPaths", () => {
       expect(result.devices).toBe(resolve(expectedDir, "devices.json"));
     });
 
-    it("全 env 未指定なら ~/.config/sesame-hub3 配下に全ファイルが derive される", () => {
+    it("全 env 未指定なら ~/.config/sesame-kit 配下に全ファイルが derive される", () => {
       const result = configPaths();
       const expectedDir = resolve(homedir(), ".config", APP_DIRNAME);
       expect(result.dir).toBe(expectedDir);
@@ -253,18 +253,18 @@ describe("configPaths", () => {
   });
 
   describe("優先順位の通し確認", () => {
-    it("overrideDir > SESAME_HUB3_HOME > XDG_CONFIG_HOME > ~/.config の順", () => {
-      vi.stubEnv("SESAME_HUB3_HOME", "/env/sesame-home");
+    it("overrideDir > SESAME_KIT_HOME > XDG_CONFIG_HOME > ~/.config の順", () => {
+      vi.stubEnv("SESAME_KIT_HOME", "/env/sesame-home");
       vi.stubEnv("XDG_CONFIG_HOME", "/env/xdg");
 
       // 1. overrideDir 最優先
       expect(configPaths("/override").dir).toBe(resolve("/override"));
 
-      // 2. overrideDir なし → SESAME_HUB3_HOME
+      // 2. overrideDir なし → SESAME_KIT_HOME
       expect(configPaths().dir).toBe(resolve("/env/sesame-home"));
 
-      // 3. SESAME_HUB3_HOME 解除 → XDG_CONFIG_HOME
-      vi.stubEnv("SESAME_HUB3_HOME", undefined);
+      // 3. SESAME_KIT_HOME 解除 → XDG_CONFIG_HOME
+      vi.stubEnv("SESAME_KIT_HOME", undefined);
       expect(configPaths().dir).toBe(resolve("/env/xdg", APP_DIRNAME));
 
       // 4. 全解除 → ~/.config フォールバック
