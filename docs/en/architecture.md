@@ -1,8 +1,8 @@
-<!-- English | [日本語](./architecture.ja.md) -->
+<!-- English | [日本語](../ja/architecture.md) -->
 
 # Architecture / Design Notes
 
-> 日本語: [architecture.ja.md](./architecture.ja.md)
+> [日本語](../ja/architecture.md) · [Docs index](./index.md)
 
 This document covers the lineage of the implementation, the design decisions, and the file layout. The README covers usage; this covers why things are the way they are.
 
@@ -19,14 +19,14 @@ This implementation is a Node.js port of the **official biz3 admin web app (http
 | `src/devices.js` | `references_web/src/api/useManageDevice.js` / `useManageGroup.js` / `useDeveloper.js` / `MobileBatteryChart.js` |
 | `src/crypto.js` | `references_web/src/utils/Cmac.js` + `biz3utils.js` + `constants/cmdCode.js` (CMAC implemented with `node-aes-cmac`) |
 
-**The only functional difference from biz3**: the Cognito Client ID is swapped from biz3's `21u50hboia4s5q0sbk6pbdfmss` to the same Consumer Client as the official iOS/Android apps, `6ialca0p8u0lsgvbmvsljfm305`. This keeps the refreshToken from effectively expiring. The biz3 MIT license text is bundled as [LICENSE.biz3](../LICENSE.biz3).
+**The only functional difference from biz3**: the Cognito Client ID is swapped from biz3's `21u50hboia4s5q0sbk6pbdfmss` to the same Consumer Client as the official iOS/Android apps, `6ialca0p8u0lsgvbmvsljfm305`. This keeps the refreshToken from effectively expiring. The biz3 MIT license text is bundled as [LICENSE.biz3](../../LICENSE.biz3).
 
 ## Unified cloud / BLE design (the route is the leaf)
 
 Like the official SesameSDK, cloud and BLE **share the underlying command (itemCode) and the device capability model**; only the final send route (transport) is swapped as a leaf. This is a single design.
 
-- itemCode has one source in `src/itemcodes.js` (the cloud refers to it as `CMD` in `crypto.js`, BLE as `ITEM` in `protocol.js` — different aliases for the same thing).
-- Capability is held by `devicemodel.js` as **type × route** (each kind has a `cloud:[...]` and a `ble:[...]` op set).
+- itemCode has one source in `src/itemcodes.js` (the cloud refers to it as `CMD` in `src/crypto.js`, BLE as `ITEM` in `src/ble/protocol.js` — different aliases for the same thing).
+- Capability is held by `src/ble/devicemodel.js` as **type × route** (each kind has a `cloud:[...]` and a `ble:[...]` op set).
   The **operable ops = the union of the two**, and the session's targets, operation menu, and `pickTransport` route selection are all derived from this union.
   - Example: a lock has autolock under `ble` but not `cloud` → autolock is BLE-only.
   - An OS2 lock has an empty `ble` set and lock/unlock/toggle under `cloud` → operable via cloud only.
@@ -55,7 +55,7 @@ The protocol layer (`src/ble/protocol.js`: CMAC session key / AES-CCM / segments
 
 ## `sesame serve` language-agnostic backend
 
-With 1 core + 5 framings, the full feature set is uniformly exposed on a single resident `SesameHub3`. See the README's [language-agnostic backend](../README.md#language-agnostic-backend-sesame-serve) for details.
+With 1 core + 5 framings, the full feature set is uniformly exposed on a single resident `SesameHub3`. See the README's [language-agnostic backend](../../README.md#language-agnostic-backend-sesame-serve) for details.
 
 - **Core**: `src/serve/jsonrpc.js` (JSON-RPC 2.0, transport-independent) + `registry.js` (auto-exposes methods from `NAMESPACE_OPS` + OpenRPC) + `daemon.js` (serialization / unified subscription / backpressure / shutdown).
 - **Framing**: stdio / socket(UDS) / http(+SSE) / ws / grpc + token under `framing/`.
@@ -99,7 +99,7 @@ sesame-kit/
     │   ├── transport.js    #   noble adapter (optionalDependency, lazy require)
     │   └── index.js        #   SesameBle facade
     ├── iot.js / account.js / schedule.js / org.js / company.js / access.js / devices.js
-    ├── config.js           # ConfigStore (~/.config/sesame-hub3/config.json)
+    ├── config.js           # ConfigStore (~/.config/sesame-kit/config.json)
     ├── tokens.js           # FileTokenStore
     └── paths.js            # config directory resolution
 ```

@@ -1,12 +1,12 @@
-<!-- English | [日本語](./library.ja.md) -->
+<!-- English | [日本語](../ja/library.md) -->
 
 # Using sesame-kit as a library
 
-> 日本語: [library.ja.md](./library.ja.md)
+> [日本語](../ja/library.md) · [Docs index](./index.md)
 
-The same features as the `sesame` CLI can be called directly from Node.js. To use it from other languages, use [`sesame serve`](../README.md#language-agnostic-backend-sesame-serve); to use it inside Node, use this.
+The same features as the `sesame` CLI can be called directly from Node.js. To use it from other languages, use [`sesame serve`](../../README.md#language-agnostic-backend-sesame-serve); to use it inside Node, use this.
 
-## The simplest form: the `use()` helper (auto connect/close)
+## `use()` helper (auto connect/close)
 
 ```js
 import { SesameHub3 } from "sesame-kit";
@@ -53,10 +53,11 @@ await SesameHub3.use(async (hub) => {
   await hub.lockDevice({ deviceUUID, secretKey });
   await hub.toggleDevice({ deviceUUID, secretKey });
   await hub.botClickDevice({ deviceUUID, secretKey });
-  await hub.triggerLockDevice({ deviceUUID, secretKey, cmd: 83 });   // arbitrary cmd
+  await hub.triggerLockDevice({ deviceUUID, secretKey, cmd: 83 });   // raw itemCode: 83=unlock, 82=lock, 88=toggle, 89=click
 
   // IR
   await hub.sendIRDirect({
+    // irType selects the remote category: 49152 (0xC000)=air-conditioner, 8192=TV, 32768=fan, 57344=light
     hub3DeviceId, irDeviceUUID, irType: 49152, command: keyUUID, operation: "learnEmit",
   });
   const keys = await hub.getIRCodesDirect({ hub3DeviceId, irDeviceUUID });

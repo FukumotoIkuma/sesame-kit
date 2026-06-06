@@ -1,11 +1,11 @@
-<!-- English | [日本語](./commands.ja.md) -->
+<!-- English | [日本語](../ja/commands.md) -->
 
 # Command Reference
 
-> 日本語: [commands.ja.md](./commands.ja.md)
+> [日本語](../ja/commands.md) · [Docs index](./index.md)
 
-> Every CLI command. Each subcommand also accepts `sesame <cmd> --help`.
-> When calling from another language via `sesame serve`, `sesame rpc` (or `rpc.discover`) is the machine-readable source of truth.
+> The CLI commands, grouped by area. Each subcommand also accepts `sesame <cmd> --help` for its full options.
+> When calling from another language via `sesame serve`, `sesame rpc` (or `rpc.discover`) lists every method and its parameters, machine-readably.
 
 ## Device operations (device as the subject)
 
@@ -26,14 +26,14 @@ sesame                         # interactive menu for all devices (session)
 
 action: `unlock` / `lock` / `toggle` / `click` / `status` / `autolock <seconds>` (**which operations apply depends on the type** — see below).
 
-### The route (transport) defaults to all-routes mode
+### The route (transport) defaults to auto
 
-- The default is all-routes mode; the route is chosen automatically. Ops that the cloud can carry go over cloud, and only BLE-required ops such as `autolock` open a BLE connection (so you don't pay the BLE scan/connect cost every time).
+- The default is auto; the route is chosen automatically. Ops that the cloud can carry go over cloud, and only BLE-required ops such as `autolock` open a BLE connection (so you don't pay the BLE scan/connect cost every time).
 - Pin the route with `--ble-only` / `--cloud-only`. `--ble-only` takes a few seconds to connect. `--cloud-only` restricts some operations.
 - To hold a BLE connection open across a run of operations, use `sesame session` (the multi-device form of `sesame <device>`).
 
 ```bash
-sesame front unlock            # all-routes mode (the tool picks the route)
+sesame front unlock            # auto (the tool picks the route)
 sesame front autolock 30       # BLE-required op → connects over BLE automatically
 sesame front lock --ble-only   # pinned to BLE (a few seconds to connect)
 sesame front lock --cloud-only # pinned to cloud
@@ -54,7 +54,7 @@ sesame locks rm front
 
 A cloud operation returns only after the synchronous ack (`biz3TriggerLocker`, `success:true`) arrives (timeout 10s).
 
-> autolock cannot be set over the cloud (BLE only). Use `sesame autolock`. Background in [architecture.md](./architecture.md).
+> autolock cannot be set over the cloud (BLE only). Use `sesame <device> autolock <seconds>` (e.g. `sesame front autolock 30`, `0` = off). Background in [architecture.md](./architecture.md).
 
 ---
 
@@ -94,6 +94,19 @@ sesame ir match ac <hex波形>           # match a learned waveform against know
 ```
 
 > To refer to a self-learned remote, use the real type `0xFE00` (65024) for `irType`. Passing the menu id `0xFEFF` makes the server match fail and the remote is not found. See [architecture.md](./architecture.md) for details.
+
+### Register remotes and the Hub3
+
+`send` / `ir learn` need a remote (and its Hub3) imported into config first. The fastest path is to sync everything from the server:
+
+```bash
+sesame hub3 sync-from-devices    # import your Hub3(s)
+sesame remote sync-from-devices  # import remotes (Hub3 + irType auto-detected) and their keys
+sesame remote ls                 # list configured remotes
+sesame remote set-default ac     # default remote used by a bare `sesame send <key>`
+```
+
+Or add one at a time: `sesame hub3 add` / `sesame remote add` both pick from a list (no UUID/irType to type). `sesame remote sync-keys [name]` re-imports a remote's key list.
 
 ---
 
@@ -198,12 +211,14 @@ Direct commands to the Hub3 itself (LED dimming, LTE relay, firmware update, Mat
 Pass `--device <hub3UUID> --secret <hex>`, or select from connected devices when interactive.
 
 ```bash
-sesame iot led 80 --device <uuid> --secret <hex>   # LED dimming (0-100)
+sesame iot led 80 --device <uuid> --secret <hex>   # LED dimming (duty 0-255)
 sesame iot led --get --device <uuid> --secret <hex># get the current dimming level
 sesame iot relay on  --device <uuid> --secret <hex># LTE relay open/close
 sesame iot firmware-update --device <uuid> --secret <hex> --wait 60
 sesame iot matter-code --device <uuid> --secret <hex>   # Matter pairing code
 ```
+
+> `relay` is fire-and-forget: the Hub3 sends no acknowledgement, so a successful send is not a confirmed switch. The `off` opcode mapping is unverified against the official source and may behave differently on real hardware.
 
 ---
 
@@ -218,7 +233,7 @@ sesame preset-ir send --device <hub3uuid> --command <hex> --irtype 49152   # emi
 ```
 
 > Preset command generation (biz3's HXDCommandProcessor) is not yet ported, so preset emit does not currently work.
-> Use a self-learned remote (`sesame ir learn`) instead ([known limitations](../README.md#known-limitations)).
+> Use a self-learned remote (`sesame ir learn`) instead ([known limitations](../../README.md#known-limitations)).
 
 ---
 
@@ -278,7 +293,7 @@ await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
 
 ## Interactive session
 
-The interactive session (`sesame` / `sesame <device>` / `sesame session`) is an **app-like all-routes mode**.
+The interactive session (`sesame` / `sesame <device>` / `sesame session`) is an **app-like auto**.
 It lists **every device you can operate**: Locks/Bots/Bikes (BLE + cloud) and, if you are logged in, **Hub3** (cloud: IR send / relay / LED).
 It attaches BLE best-effort but **does not exit even when BLE is zero**: devices out of range or without permission are **operated over cloud** when you are logged in (devices with a BLE connection prefer BLE = lower latency + autolock available).
 

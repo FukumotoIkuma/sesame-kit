@@ -1,12 +1,12 @@
-<!-- [English](./library.md) | 日本語 -->
+<!-- [English](../en/library.md) | 日本語 -->
 
 # ライブラリとして使う
 
-> English: [library.md](./library.md)
+> [English](../en/library.md) · [ドキュメント目次](./index.md)
 
-`sesame` CLI と同じ機能を Node.js から直接呼べる。他言語から使うなら [`sesame serve`](../README.ja.md#言語非依存バックエンド-sesame-serve) を、Node 内で使うならこちら。
+`sesame` CLI と同じ機能を Node.js から直接呼べます。他言語から使うなら [`sesame serve`](../../README.ja.md#言語非依存バックエンド-sesame-serve) を、Node 内で使うならこちら。
 
-## 一番楽な形: `use()` ヘルパ (auto connect/close)
+## `use()` ヘルパ (auto connect/close)
 
 ```js
 import { SesameHub3 } from "sesame-kit";
@@ -53,10 +53,11 @@ await SesameHub3.use(async (hub) => {
   await hub.lockDevice({ deviceUUID, secretKey });
   await hub.toggleDevice({ deviceUUID, secretKey });
   await hub.botClickDevice({ deviceUUID, secretKey });
-  await hub.triggerLockDevice({ deviceUUID, secretKey, cmd: 83 });   // 任意 cmd
+  await hub.triggerLockDevice({ deviceUUID, secretKey, cmd: 83 });   // 生 itemCode: 83=解錠, 82=施錠, 88=トグル, 89=クリック
 
   // IR
   await hub.sendIRDirect({
+    // irType はリモコン種別: 49152 (0xC000)=エアコン, 8192=TV, 32768=扇風機, 57344=照明
     hub3DeviceId, irDeviceUUID, irType: 49152, command: keyUUID, operation: "learnEmit",
   });
   const keys = await hub.getIRCodesDirect({ hub3DeviceId, irDeviceUUID });

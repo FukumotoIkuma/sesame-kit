@@ -1,0 +1,181 @@
+<!-- [English](../en/integration.md) | 日本語 -->
+
+# 他言語からの組み込み (`sesame serve`)
+
+> [English](../en/integration.md) · [ドキュメント目次](./index.md)
+
+`sesame serve` は常駐する JSON-RPC 2.0 デーモンです。一度サインインするとクラウド接続を維持し続け、操作の実行とイベントの配信を繰り返します。すべての機能を任意の言語から呼び出せます。
+
+## 1. サインインしてデーモンを起動
+
+デーモンは保存済みのログイン情報を使い、デーモン自身はサインインしません。CLI で一度サインインしてから、デーモンを起動します。
+
+```bash
+sesame login your@email.com && sesame verify   # if not already signed in
+sesame serve --http 8080                        # serve over HTTP on port 8080
+```
+
+デーモンは起動時にトークンを出力します（`~/.config/sesame-kit/serve.token` にも保存されます）。すべての HTTP リクエストは `Authorization: Bearer <token>` を送る必要があります。
+
+> 同一マシンでの利用なら、フラグなしの `sesame serve` は Unix ソケットで待ち受け、トークンは不要です。ここで HTTP を使うのは、任意の言語・任意のマシンから動作するためです。
+
+## 2. 最初の呼び出し — ライブラリのインストール不要
+
+HTTP 上の素の JSON-RPC です。POST できるものなら何でも動作します。
+
+```bash
+TOKEN=...   # the token printed by `sesame serve`
+
+curl -s -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"lock.unlock","params":{"name":"front"}}' \
+  http://127.0.0.1:8080/rpc
+```
+
+同じものを Python で、標準ライブラリだけで（pip install 不要）：
+
+```python
+import json, urllib.request
+
+TOKEN = "..."   # the token printed by `sesame serve`
+
+def rpc(method, params=None):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}).encode()
+    req = urllib.request.Request("http://127.0.0.1:8080/rpc", data=body,
+        headers={"content-type": "application/json", "authorization": f"Bearer {TOKEN}"})
+    return json.load(urllib.request.urlopen(req))
+
+print(rpc("status"))
+print(rpc("lock.unlock", {"name": "front"}))
+```
+
+レスポンスは成功時に `{"jsonrpc":"2.0","id":1,"result": ...}`、失敗時に `{"jsonrpc":"2.0","id":1,"error":{"code","message","data":{"kind"}}}` です。
+
+## 3. メソッドと渡す値の調べ方
+
+`sesame rpc` は全メソッドとそのパラメータを一覧します（必須はそのまま、任意は `[brackets]` で表示）：
+
+```bash
+sesame rpc
+```
+
+```text
+lock.unlock                  [name] [deviceUUID] [secretKey]
+lock.status                  deviceUUID
+devices.list
+device.history               deviceUUID [pageSize]
+ir.send                      [remote] key
+org.getEmployees             companyID
+…
+79 methods.
+```
+
+この一覧から、使いたいメソッドの行を読みます。各行は `メソッド名  <必須> [任意]` の形です。例えば `device.history  deviceUUID [pageSize]` は、**`deviceUUID` が必須・`pageSize` が任意**という意味です。
+
+あとは各パラメータに**値**を入れるだけです。値の出所は 2 種類あります。
+
+- **ID 系**（`deviceUUID` / `companyID` など）は、別の一覧メソッドが返します。`deviceUUID` なら `devices.list` の結果から取ります：
+
+  ```bash
+  sesame rpc devices.list
+  # → [{"deviceUUID":"AB12CD34...","deviceName":"front", ...}, ...]
+  ```
+
+- **自分で決める値**（`pageSize` / `name` など）は、任意で好きな値を入れます。`pageSize` は取得件数です。
+
+決めた値を `--params` の JSON に入れて呼びます：
+
+```bash
+sesame rpc device.history --params '{"deviceUUID":"AB12CD34...","pageSize":10}'
+```
+
+ここで決めた**メソッド名と params が、そのまま任意のクライアントから送る内容**です（セクション2の `method` / `params` フィールドに対応します）。
+
+> ロック操作は `deviceUUID` の代わりに設定名も受け付けます。`{"name":"front"}` が `lock.unlock` / `lock.lock` / `lock.toggle` / `lock.click` で動きます（`lock.status` は `deviceUUID` を取ります）。
+
+正確なパラメータ型（例えばコード生成用）が必要なら、`sesame rpc --json rpc.discover` が完全な OpenRPC 文書を返します。各メソッドのエントリが param の型を持ちます：
+
+```json
+{
+  "name": "device.history",
+  "params": [
+    { "name": "deviceUUID", "required": true,  "schema": { "type": "string" } },
+    { "name": "pageSize",   "required": false, "schema": { "type": "number" } }
+  ]
+}
+```
+
+## 4. 同梱クライアント（任意）
+
+薄いクライアントが上記をラップし、JSON を手で組み立てる代わりに `c.unlock("front")` と書けます。任意であり、セクション 2 はこれらなしでも動作します。
+
+**Node** — `npm install sesame-kit` の後：
+
+```js
+import { SesameClient } from "sesame-kit/client";
+
+const c = SesameClient.unix();                          // default Unix socket
+console.log(await c.unlock("front"));                   // convenience method
+console.log(await c.call("device.history", { deviceUUID: "AB12CD34...", pageSize: 10 })); // any method
+console.log((await c.discover()).methods.map((m) => m.name));  // list methods from JS
+await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // always await
+
+// const h = SesameClient.http("http://127.0.0.1:8080");   // token auto-read from serve.token
+// const w = await SesameClient.ws("ws://127.0.0.1:8081");  // npm i ws for header auth
+```
+
+**Python** — クライアントはパッケージに同梱される単一ファイルです：
+
+```bash
+pip install ./clients/python                       # from a cloned repo
+pip install "$(npm root -g)/sesame-kit/clients/python"   # from a global `npm install -g sesame-kit`
+```
+```python
+from sesame_client import SesameClient
+
+c = SesameClient.unix()                       # default Unix socket
+print(c.unlock("front"))                      # convenience method
+print(c.call("device.history", deviceUUID="AB12CD34...", pageSize=10))  # any method
+print(c.discover_names())                     # list methods from Python
+c.subscribe(["lockState"], lambda topic, payload: print(topic, payload))
+# HTTP: SesameClient.http("http://127.0.0.1:8080") / embedded: SesameClient.stdio()
+```
+
+## 経路（フレーミング）
+
+同じメソッドが 5 つの経路で利用できます。ネットワークアクセスには HTTP/WS/gRPC を、ローカルマシンには Unix ソケットまたは stdio を使います。
+
+| フレーミング | 用途 | イベント | 認証 |
+|---|---|---|---|
+| stdio | 組み込み（子プロセス） | `event.*` 通知 | 親プロセスの信頼を継承 |
+| Unix ソケット | ローカルデーモン、複数クライアント | `event.*` 通知 | ファイルパーミッション 0600 |
+| HTTP | 任意の言語 / ブラウザ | `GET /events`（SSE） | `Authorization: Bearer <token>` |
+| WebSocket | 任意の言語 / ブラウザ（全二重） | `event.*` 通知 | トークン |
+| gRPC | 多言語向けの型付きスタブ | `Subscribe` ストリーム | トークン（メタデータ） |
+
+gRPC は型付きです。`src/serve/sesame.proto` には op ごとに型付きメソッドがあります。スタブは
+`python -m grpc_tools.protoc -I src/serve --python_out=. --grpc_python_out=. src/serve/sesame.proto`
+で生成します。スカラー/配列パラメータは protobuf 型、動的パラメータは JSON 文字列フィールド、レスポンスは `JsonRpc{json}` です。型付きメソッドを持たない op は汎用の `Invoke` を使います。
+
+## イベント
+
+```jsonc
+// request (over Unix socket / WebSocket / stdio):
+{"jsonrpc":"2.0","id":1,"method":"events.subscribe","params":{"topics":["lockState","deviceUpdate"]}}
+// then notifications arrive (no id):
+{"jsonrpc":"2.0","method":"event.lockState","params":{ /* state */ }}
+```
+
+トピック：`lockState`、`deviceUpdate`。HTTP では `GET /events?topics=…`（SSE）を、gRPC では `Subscribe` ストリームを使います。`POST /rpc` と gRPC の `Invoke` はリクエスト/レスポンス専用で、`events.*` を拒否します。
+
+## エラー
+
+エラーは `{error:{code, message, data:{kind}}}` です。`kind` は次のいずれかです：
+`not_authenticated`（CLI でサインインしてからデーモンを再起動）/ `connection_lost`（クラウド接続が切断）/ `timeout` / `bad_params` / `not_implemented`（不明なメソッド）/ `internal`（それ以外。詳細は `message` に）。
+
+## 互換性
+
+結果の形はメソッド固有です。互換性を確認するには、コントラクトバージョンを読みます。`status` は `contractVersion` を返し、`rpc.discover` は `info["x-contractVersion"]` を返します。これは機械向けコントラクトの SemVer であり、互換性を壊す変更のみがメジャーを上げます。
+
+## セキュリティ境界
+
+対話的ログインは CLI 専用で、デーモン内では決して実行されません。Unix ソケットは同一ユーザーの任意のプロセスから使えます（CLI と同じ境界）。HTTP / WS / gRPC は TCP 上であり、起動時に生成されるループバックトークンを要求します。これらは平文（TLS なし）であり、ループバックでのみ公開するか、SSH / TLS リバースプロキシ経由でトンネルします。POSIX のみ対応です（Windows UDS は対象外。stdio / HTTP / WS / gRPC は動作します）。
