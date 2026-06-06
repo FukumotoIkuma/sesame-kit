@@ -55,9 +55,14 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
     return () => bus.off("update", on);
   }, [bus]);
 
-  // hi (→ 決定用ハイライト) は各 SelectInput の onHighlight が先頭項目で更新する。
-  // SelectInput を描画しない可能性のある mode (空の IR リスト) に入る時だけ明示的にクリアし、
-  // 前メニューの項目が残って → が誤爆しないようにする (下の selectAction / selectIrRemote 参照)。
+  // → 決定用ハイライト hi のリセット:
+  // ink-select-input の onHighlight は **初期項目では発火しない** ため、mode を変えた直後は
+  // 前メニューの hi が残る。そのまま → を押すと前メニューの項目を新メニューのハンドラに渡してしまう
+  // (例: デバイスを → で選ぶと actions に入るが hi=デバイス項目のまま → actions で → を押すと
+  //  selectAction にデバイス項目が渡り runExec(デバイス名) → exec が hub[デバイス名] を呼んで
+  //  "hub[op] is not a function")。mode が変わるたびに hi をクリアし、ユーザーが ↑↓ で動かして
+  // onHighlight が発火するまで goForward は menuItems()[0] にフォールバックさせる。
+  React.useEffect(() => { setHi(null); }, [mode]);
 
   const backToActions = () => { setMode("actions"); };
 
@@ -72,13 +77,13 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
     if (it.value === "__back") { if (single) exit(); else { setMode("devices"); setMsg(""); } return; }
     if (it.value === "autolock") { setNumVal(""); setMode("autolock"); return; }
     if (it.value === "led") { setNumVal(""); setMode("led"); return; }
-    if (it.value === "ir") { setHi(null); setSelRemote(null); setIrKeys(null); setMode("ir-remote"); return; }
+    if (it.value === "ir") { setSelRemote(null); setIrKeys(null); setMode("ir-remote"); return; }
     runExec(it.value, devices.get(selName));
   };
   const selectIrRemote = (it) => {
     if (!it) return;
     if (it.value === "__back") { backToActions(); return; }
-    setHi(null); setSelRemote(it.value); setIrKeys(null); setMode("ir-key");
+    setSelRemote(it.value); setIrKeys(null); setMode("ir-key");
     Promise.resolve(listKeysFor ? listKeysFor(it.value) : []).then(setIrKeys).catch(() => setIrKeys([]));
   };
   const selectIrKey = (it) => {

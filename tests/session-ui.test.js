@@ -106,4 +106,25 @@ describe("SessionApp (Ink)", () => {
     await tick();
     expect(lastFrame()).toContain("操作するデバイス");
   });
+
+  it("↓でデバイスをハイライト→→選択→→実行しても、前メニューの hi が誤爆しない (regression)", async () => {
+    // 回帰: mode 変更時に hi をクリアしないと、↓ で kitchen をハイライト (hi=kitchen) →
+    // → で選択して操作メニューに入った後も hi=kitchen が残り、操作メニューで → を押すと
+    // selectAction にデバイス項目が渡って runExec("kitchen") → exec が hub["kitchen"] を呼んで
+    // "hub[op] is not a function" になっていた。
+    const DOWN = LEFT.slice(0, -1) + "B"; // ESC[D(←) から ESC[B(↓) を作る (ESC バイトを直書きしない)
+    const props = baseProps();
+    const { lastFrame, stdin } = render(h(SessionApp, props));
+    stdin.write(DOWN);                         // ↓ : kitchen をハイライト (onHighlight が hi=kitchen に)
+    await tick();
+    stdin.write(RIGHT);                        // → : kitchen を決定 → 操作メニュー
+    await tick();
+    expect(lastFrame()).toContain("kitchen の操作");
+    stdin.write(RIGHT);                        // → : 先頭アクションを実行
+    await tick(100);
+    expect(props.exec).toHaveBeenCalledTimes(1);
+    // 先頭アクション "click" であるべき。バグ版ではデバイス名 "kitchen" が op に渡る。
+    expect(props.exec.mock.calls[0][0]).toBe("click");
+    expect(props.exec.mock.calls[0][0]).not.toBe("kitchen");
+  });
 });
