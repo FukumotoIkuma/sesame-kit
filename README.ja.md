@@ -10,7 +10,7 @@
 >
 > **免責** — 非公式。CANDY HOUSE とは無関係・非公認であり、非公式クライアントの利用は同社の利用規約の範囲外となる可能性があります。公式アプリと同じ方法でクラウド API を叩くため、予告なく変更・破損する可能性があります。`secretKey` とトークンはロックの全権を握り、`~/.config/sesame-kit` に暗号化されず保存されるので外部に漏らさないでください。自己責任で利用してください。
 
-**SESAME を、自分のコードから——しかも Bluetooth で直接・オフラインに操作できます。** `sesame-kit` は登録済みの SESAME デバイスを **BLE（クラウド不要・低遅延）** とクラウドの両方で操作します — 施錠 / 解錠、Hub3 IR、デバイス管理、開閉履歴。CLI、Node ライブラリ、`sesame serve`（JSON-RPC）で任意の言語から。公式 Web API はクラウド専用なので、**オフラインの BLE 操作（や autolock など実機側でしか効かない設定）は他では得られない**部分です。スクリプト・ホームオートメーション・Raspberry Pi に SESAME を組み込みましょう。
+**SESAME を、自分のコードから——しかも Bluetooth で直接・オフラインに操作できます。** `sesame-kit` は登録済みの SESAME デバイスを **BLE（クラウド不要・低遅延）** とクラウドの両方で操作します — 施錠 / 解錠、Hub3 IR、デバイス管理、開閉履歴。CLI、Node ライブラリ、`sesame serve`（JSON-RPC）で任意の言語から。スクリプト・ホームオートメーション・Raspberry Pi に SESAME を組み込みましょう。
 
 <p align="center"><img src="https://raw.githubusercontent.com/FukumotoIkuma/sesame-kit/main/assets/demo.ja.gif" alt="sesame-kit デモ" width="800"></p>
 
