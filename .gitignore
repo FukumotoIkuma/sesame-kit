@@ -15,6 +15,7 @@ _*.mjs
 
 # 広報素材 (投稿用ドラフト・GIF 録画スクリプト。リポジトリ/npm には含めない)
 promo/
+# README 用の生成 GIF は assets/demo.{en,ja}.gif を追跡する (gen-gifs.sh が出力)。
 
 # 参照用 SesameSDK (一次ソース・コミットしない)
 /_sesame_sdk_ref/
