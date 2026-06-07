@@ -22,8 +22,9 @@ import company from "./i18n/company.js";
 import schedule from "./i18n/schedule.js";
 import domain from "./i18n/domain.js";
 import ble from "./i18n/ble.js";
+import auth from "./i18n/auth.js";
 
-const AREAS = [session, cli, serve, org, access, iot, presetir, company, schedule, domain, ble];
+const AREAS = [session, cli, serve, org, access, iot, presetir, company, schedule, domain, ble, auth];
 
 const CATALOG = { en: {}, ja: {} };
 for (const a of AREAS) {

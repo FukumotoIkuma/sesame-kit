@@ -24,6 +24,9 @@ import {
   RespondToAuthChallengeCommand,
   SignUpCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
+// i18n はエラーメッセージ文言の外出しだけに使用 (auth ロジックは不可侵)。
+// この関数内のローカル変数 `t` (= store.load()) と衝突しないよう `tr` で取り込む。
+import { t as tr } from "./i18n.js";
 
 const COGNITO_REGION = "ap-northeast-1";
 const USER_POOL_ID = "ap-northeast-1_bY2byhlCa";
@@ -87,7 +90,7 @@ export function jwtSub(token) {
 export async function getValidIdToken(store, { marginSec = 60 } = {}) {
   const t = store.load();
   if (!t) {
-    throw new Error("No tokens stored. `sesame login <email>` で sign-in してください。");
+    throw new Error(tr("auth.noTokens"));
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -181,7 +184,7 @@ export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT
 export async function loginVerify(store, code) {
   const s = store.loadPending();
   if (!s) {
-    throw new Error("No pending sign-in. 先に `login <email>` を実行してください。");
+    throw new Error(tr("auth.noPending"));
   }
   const resp = await cognito.send(
     new RespondToAuthChallengeCommand({
@@ -197,7 +200,7 @@ export async function loginVerify(store, code) {
 
   if (!resp.AuthenticationResult) {
     if (resp.ChallengeName) {
-      throw new Error(`Another challenge required: ${resp.ChallengeName}. (再 login が必要)`);
+      throw new Error(tr("auth.anotherChallenge", { name: resp.ChallengeName }));
     }
     throw new Error(`No AuthenticationResult: ${JSON.stringify(resp)}`);
   }

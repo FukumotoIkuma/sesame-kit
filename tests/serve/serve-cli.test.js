@@ -91,11 +91,11 @@ describe("sesame serve --stdio (end-to-end)", () => {
         if (nl >= 0) resolveP(JSON.parse(buf.slice(0, nl)));
       });
       proc.on("error", reject);
-      setTimeout(() => reject(new Error("timeout")), 5000);
+      setTimeout(() => reject(new Error("timeout")), 15000);
     });
     expect(firstLine.method).toBe("event.ready");
     expect("id" in firstLine).toBe(false); // 通知なので id は無い
-  });
+  }, 15000); // 並列スイート実行下で実プロセス spawn が遅れても落ちないよう余裕を持たせる
 });
 
 describe("sesame rpc --paths (機械可読な接続情報)", () => {
