@@ -1,5 +1,5 @@
 node_modules/
-# 旧構成 (プロジェクトルート保存) の残骸; 0.2 以降は ~/.config/sesame-hub3/ に保存
+# 旧構成 (プロジェクトルート保存) の残骸; 0.2 以降は ~/.config/sesame-kit/ に保存
 .env
 .env.local
 .secrets.json
@@ -12,6 +12,9 @@ scratch/
 keys.json
 # 開発中の一時テストスクリプト (_*.mjs パターンで pollute されがち)
 _*.mjs
+
+# 広報素材 (投稿用ドラフト・GIF 録画スクリプト。リポジトリ/npm には含めない)
+promo/
 
 # 参照用 SesameSDK (一次ソース・コミットしない)
 /_sesame_sdk_ref/
