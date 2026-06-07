@@ -29,10 +29,6 @@
 
 See [command reference](./docs/en/commands.md), [library usage](./docs/en/library.md), and [design notes](./docs/en/architecture.md) for details.
 
-## Lineage
-
-A Node.js port of the official biz3 admin web app ([CANDY-HOUSE/biz.candyhouse.co](https://github.com/CANDY-HOUSE/biz.candyhouse.co), MIT). The only functional difference from biz3 is that the Cognito client ID is set to the same consumer client as the official iOS / Android apps, which keeps the refresh token from effectively expiring. The biz3 MIT license is bundled as [LICENSE.biz3](./LICENSE.biz3). The port mapping is in [docs/en/architecture.md](./docs/en/architecture.md).
-
 ---
 
 ## Install
@@ -258,5 +254,4 @@ Full docs: **[docs/en/](./docs/en/index.md)** ([日本語](./docs/ja/index.md)).
 
 ## See also
 
-- [CANDY-HOUSE/biz.candyhouse.co](https://github.com/CANDY-HOUSE/biz.candyhouse.co) — the React admin web "biz3" this is ported from
 - [SesameSDK_iOS_with_DemoApp](https://github.com/CANDY-HOUSE/SesameSDK_iOS_with_DemoApp) / [SesameSDK_Android_with_DemoApp](https://github.com/CANDY-HOUSE/SesameSDK_Android_with_DemoApp) — the official SDKs referenced

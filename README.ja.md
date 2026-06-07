@@ -29,10 +29,6 @@
 
 詳細は [コマンドリファレンス](./docs/ja/commands.md) / [ライブラリ利用](./docs/ja/library.md) / [設計ノート](./docs/ja/architecture.md) を参照してください。
 
-## 出自 (Lineage)
-
-公式 biz3 管理 Web ([CANDY-HOUSE/biz.candyhouse.co](https://github.com/CANDY-HOUSE/biz.candyhouse.co), MIT) の Node.js port。biz3 との差分は Cognito Client ID を公式 iOS / Android アプリと同じ Consumer Client にした点のみで、これにより refreshToken が事実上失効しません。biz3 の MIT ライセンスは [LICENSE.biz3](./LICENSE.biz3) に同梱します。port 対応表は [docs/ja/architecture.md](./docs/ja/architecture.md) を参照してください。
-
 ---
 
 ## インストール
@@ -261,5 +257,4 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 
 ## 関連
 
-- [CANDY-HOUSE/biz.candyhouse.co](https://github.com/CANDY-HOUSE/biz.candyhouse.co) — port 元の React 管理 Web "biz3"
 - [SesameSDK_iOS_with_DemoApp](https://github.com/CANDY-HOUSE/SesameSDK_iOS_with_DemoApp) / [SesameSDK_Android_with_DemoApp](https://github.com/CANDY-HOUSE/SesameSDK_Android_with_DemoApp) — 参考にした公式 SDK

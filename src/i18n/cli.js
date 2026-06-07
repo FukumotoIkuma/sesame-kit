@@ -234,7 +234,7 @@ export default {
     "cli.migrateOldFiles": "\nOld files (.env / .tokens.json / keys.json / .login_state.json) can be deleted if no longer needed.",
 
     // ---- program description / help / options ----
-    "cli.progDescription": "SESAME cloud CLI: lock control + Hub3 IR + device management (port of biz3 React with Consumer Cognito client)",
+    "cli.progDescription": "SESAME cloud CLI: lock control + Hub3 IR + device management",
     "cli.optConfigDir": "override config directory (default: ~/.config/sesame-kit)",
     "cli.optDebug": "verbose logging",
     "cli.optJson": "JSON output",
@@ -562,7 +562,7 @@ export default {
     "cli.migrateOldFiles": "\n旧ファイル (.env / .tokens.json / keys.json / .login_state.json) は不要なら削除して構いません。",
 
     // ---- program description / help / options ----
-    "cli.progDescription": "SESAME cloud CLI: lock control + Hub3 IR + device management (port of biz3 React with Consumer Cognito client)",
+    "cli.progDescription": "SESAME cloud CLI: lock control + Hub3 IR + device management",
     "cli.optConfigDir": "設定ディレクトリ上書き (default: ~/.config/sesame-kit)",
     "cli.optDebug": "詳細ログ",
     "cli.optJson": "JSON 出力",
