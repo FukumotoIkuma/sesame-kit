@@ -1,9 +1,10 @@
 // セッション UI (Ink) の描画・操作テスト。ink-testing-library で実フレームを検証する。
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { render } from "ink-testing-library";
 import { EventEmitter } from "node:events";
 import { SessionApp } from "../src/session-ui.js";
+import { setLocale } from "../src/i18n.js";
 
 const h = React.createElement;
 
@@ -35,12 +36,14 @@ const baseProps = (over = {}) => ({
 });
 
 describe("SessionApp (Ink)", () => {
+  beforeEach(() => setLocale("en")); // 既定 (英語) で検証。ja は専用テストで確認。
+
   it("全デバイスをライブ状態付きで表示し、デバイス選択メニューを出す", () => {
     const { lastFrame } = render(h(SessionApp, baseProps()));
     const f = lastFrame();
     expect(f).toContain("front [sesame_5·BLE]: state=locked pos=-176");
     expect(f).toContain("kitchen [bot_2·cloud]: (BLE未接続)");
-    expect(f).toContain("操作するデバイス");
+    expect(f).toContain("Pick a device:");
   });
 
   it("bus 'update' で再描画され、BLE 昇格 (cloud→BLE) が反映される", async () => {
@@ -72,7 +75,7 @@ describe("SessionApp (Ink)", () => {
     const devices = new Map([["kitchen", { entry: { name: "kitchen", model: "bot_2" }, ble: null }]]);
     const { lastFrame } = render(h(SessionApp, baseProps({ devices })));
     const f = lastFrame();
-    expect(f).toContain("kitchen の操作");
+    expect(f).toContain("kitchen — actions:");
     expect(f).toContain("クリック"); // bot は click
     expect(f).not.toContain("解錠");
   });
@@ -86,25 +89,25 @@ describe("SessionApp (Ink)", () => {
     const { lastFrame, stdin } = render(h(SessionApp, props));
     stdin.write(ENTER);                       // 先頭デバイス front を選択
     await tick();
-    expect(lastFrame()).toContain("front の操作");
+    expect(lastFrame()).toContain("front — actions:");
     stdin.write(ENTER);                       // 先頭アクション (解錠) を実行
     await tick(100);                          // exec(async) 完了 + 再描画を待つ
     expect(props.exec).toHaveBeenCalledTimes(1);
     expect(props.exec.mock.calls[0][0]).toBe("unlock");
     // 実行後も操作メニューのまま (旧挙動のデバイス一覧へは戻らない)
-    expect(lastFrame()).toContain("front の操作");
-    expect(lastFrame()).not.toContain("操作するデバイス");
+    expect(lastFrame()).toContain("front — actions:");
+    expect(lastFrame()).not.toContain("Pick a device:");
   });
 
   it("→ で決定・← で戻るができる", async () => {
     const { lastFrame, stdin } = render(h(SessionApp, baseProps()));
-    expect(lastFrame()).toContain("操作するデバイス");
+    expect(lastFrame()).toContain("Pick a device:");
     stdin.write(RIGHT);                        // → : ハイライト中のデバイスを決定
     await tick();
-    expect(lastFrame()).toContain("front の操作");
+    expect(lastFrame()).toContain("front — actions:");
     stdin.write(LEFT);                         // ← : 1つ戻る
     await tick();
-    expect(lastFrame()).toContain("操作するデバイス");
+    expect(lastFrame()).toContain("Pick a device:");
   });
 
   it("↓でデバイスをハイライト→→選択→→実行しても、前メニューの hi が誤爆しない (regression)", async () => {
@@ -119,12 +122,21 @@ describe("SessionApp (Ink)", () => {
     await tick();
     stdin.write(RIGHT);                        // → : kitchen を決定 → 操作メニュー
     await tick();
-    expect(lastFrame()).toContain("kitchen の操作");
+    expect(lastFrame()).toContain("kitchen — actions:");
     stdin.write(RIGHT);                        // → : 先頭アクションを実行
     await tick(100);
     expect(props.exec).toHaveBeenCalledTimes(1);
     // 先頭アクション "click" であるべき。バグ版ではデバイス名 "kitchen" が op に渡る。
     expect(props.exec.mock.calls[0][0]).toBe("click");
     expect(props.exec.mock.calls[0][0]).not.toBe("kitchen");
+  });
+
+  it("setLocale('ja') で日本語 UI になる (i18n 切替)", () => {
+    setLocale("ja");
+    const { lastFrame } = render(h(SessionApp, baseProps()));
+    const f = lastFrame();
+    expect(f).toContain("操作するデバイス:");        // 英語 "Pick a device:" の ja
+    expect(f).toContain("↑↓ 移動");                  // ヒント行も ja
+    expect(f).not.toContain("Pick a device:");
   });
 });

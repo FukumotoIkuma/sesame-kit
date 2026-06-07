@@ -22,6 +22,7 @@ import { SesameHub3 } from "./client.js";
 import { ConfigStore } from "./config.js";
 import { FileTokenStore } from "./tokens.js";
 import { configPaths } from "./paths.js";
+import { setLocale, resolveLocale } from "./i18n.js";
 import {
   bootstrap,
   CONFIG_META,
@@ -1514,7 +1515,8 @@ export async function run(argv = process.argv) {
     .showSuggestionAfterError()
     .option("--config-dir <path>", "設定ディレクトリ上書き (default: ~/.config/sesame-kit)")
     .option("--debug", "詳細ログ")
-    .option("--json", "JSON 出力");
+    .option("--json", "JSON 出力")
+    .option("--lang <lang>", "UI language: en | ja (default: en; or config.uiLang)");
 
   program.addHelpText("before", `
 デバイス主語で操作します (device.action() と同じ並び):
@@ -1708,6 +1710,18 @@ devices だけで完結します (手入力は呼び名のみ):
   // 各 register は registerXxxCommands(program, ctx) で commander サブコマンドを生やす。
   // 本体ロジックは src/<module>.js、コマンド配線は src/cli/<module>.js に分離している。
   const ctx = makeCtx(program);
+
+  // UI ロケールを確定する (この後 t() を使う session UI 等に効く)。
+  // 優先順位: --lang フラグ > config.uiLang > 既定 "en"。commander parse 前なので argv を直接覗く。
+  {
+    const langFlag =
+      (() => { const i = argv.indexOf("--lang"); return i >= 0 ? argv[i + 1] : null; })() ||
+      (argv.find((a) => a.startsWith("--lang=")) || "").split("=")[1] || null;
+    let cfgUiLang = null;
+    try { const { configStore } = ctx.loadCtx(); if (configStore.exists()) cfgUiLang = configStore.load().uiLang; } catch { /* config 未作成等は無視 */ }
+    setLocale(resolveLocale({ flag: langFlag, configLang: cfgUiLang }));
+  }
+
   registerScheduleCommands(program, ctx);
   registerCompanyCommands(program, ctx);
   registerOrgCommands(program, ctx);

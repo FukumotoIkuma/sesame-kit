@@ -14,6 +14,7 @@ import React from "react";
 import { render, Box, Text, useApp, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
+import { t } from "./i18n.js";
 
 const h = React.createElement;
 
@@ -105,13 +106,13 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
 
   // 現在 mode のメニュー項目 (render と → 決定で共有。順序が両者で一致する)。
   const menuItems = () => {
-    if (mode === "devices") return [...names.map((n) => ({ label: n, value: n })), { label: "終了", value: "__quit" }];
-    if (mode === "actions") return [...actionsFor(devices.get(selName)), { label: single ? "終了" : "← 戻る", value: "__back" }];
+    if (mode === "devices") return [...names.map((n) => ({ label: n, value: n })), { label: t("session.quit"), value: "__quit" }];
+    if (mode === "actions") return [...actionsFor(devices.get(selName)), { label: single ? t("session.quit") : t("session.back"), value: "__back" }];
     if (mode === "ir-remote") {
       const r = hub3RemotesFor ? hub3RemotesFor(devices.get(selName)) : [];
-      return r.length ? [...r, { label: "← 戻る", value: "__back" }] : [];
+      return r.length ? [...r, { label: t("session.back"), value: "__back" }] : [];
     }
-    if (mode === "ir-key") return (irKeys && irKeys.length) ? [...irKeys, { label: "← 戻る", value: "__back" }] : [];
+    if (mode === "ir-key") return (irKeys && irKeys.length) ? [...irKeys, { label: t("session.back"), value: "__back" }] : [];
     return [];
   };
 
@@ -150,7 +151,7 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
   const header = h(
     Box,
     { flexDirection: "column" },
-    h(Text, { dimColor: true }, "─── SESAME セッション ───"),
+    h(Text, { dimColor: true }, t("session.title")),
     ...names.map((n) => {
       const d = devices.get(n);
       const tag = d.kind === "hub3" ? "hub3" : (d.ble ? "BLE" : (hasCloud ? "cloud" : "—"));
@@ -158,18 +159,18 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
       return h(Text, { key: n, color: d.ble ? "green" : undefined },
         `  ${n} [${label}·${tag}]: ${fmtState(d)}`);
     }),
-    h(Text, { dimColor: true }, "  ↑↓ 移動  → 決定  ← 戻る  q 終了"),
+    h(Text, { dimColor: true }, "  " + t("session.hints")),
     msg ? h(Text, { color: "yellow" }, msg) : null,
   );
   const box = (...kids) => h(Box, { flexDirection: "column" }, header, ...kids);
 
-  if (mode === "busy") return box(h(Text, null, "実行中..."));
+  if (mode === "busy") return box(h(Text, null, t("session.busy")));
 
   // 数値入力 (autolock 秒数 / LED duty)。
   if (mode === "autolock" || mode === "led") {
     const d = devices.get(selName);
     const isLed = mode === "led";
-    const prompt = isLed ? `${selName} LED 調光 (0-255): ` : `${selName} オートロック秒数 (0=無効): `;
+    const prompt = isLed ? t("session.ledPrompt", { name: selName }) : t("session.autolockPrompt", { name: selName });
     const max = isLed ? 255 : 65535;
     return box(h(Box, null,
       h(Text, null, prompt),
@@ -178,7 +179,7 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
         onChange: setNumVal,
         onSubmit: (v) => {
           const n = Number(v);
-          if (!Number.isInteger(n) || n < 0 || n > max) { setMsg(`⚠ 0..${max} の整数で指定してください。`); backToActions(); return; }
+          if (!Number.isInteger(n) || n < 0 || n > max) { setMsg(t("session.numRange", { max })); backToActions(); return; }
           runExec(isLed ? "led" : "autolock", d, n);
         },
       }),
@@ -190,30 +191,30 @@ export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState,
     const d = devices.get(selName);
     const remotes = (hub3RemotesFor ? hub3RemotesFor(d) : []);
     if (remotes.length === 0) {
-      return box(h(Text, null, `${selName}: 登録リモコンがありません ( sesame remote add で登録 )。← / Esc で戻る`));
+      return box(h(Text, null, t("session.noRemotes", { name: selName })));
     }
-    return box(h(Text, null, `${selName} の IR: リモコン選択`),
+    return box(h(Text, null, t("session.irPickRemote", { name: selName })),
       h(SelectInput, { items: menuItems(), onHighlight: setHi, onSelect: selectIrRemote }),
     );
   }
 
   // IR: キー選択 (非同期取得中はローディング表示)。
   if (mode === "ir-key") {
-    if (irKeys === null) return box(h(Text, null, `${selRemote}: キー取得中...`));
-    if (irKeys.length === 0) return box(h(Text, null, `${selRemote}: キーがありません ( sesame remote sync-keys )。← / Esc で戻る`));
-    return box(h(Text, null, `${selRemote} のキー選択 (送信)`),
+    if (irKeys === null) return box(h(Text, null, t("session.keysLoading", { remote: selRemote })));
+    if (irKeys.length === 0) return box(h(Text, null, t("session.noKeys", { remote: selRemote })));
+    return box(h(Text, null, t("session.irPickKey", { remote: selRemote })),
       h(SelectInput, { items: menuItems(), onHighlight: setHi, onSelect: selectIrKey }),
     );
   }
 
   if (mode === "actions") {
-    return box(h(Text, null, `${selName} の操作:`),
+    return box(h(Text, null, t("session.actionsTitle", { name: selName })),
       h(SelectInput, { items: menuItems(), onHighlight: setHi, onSelect: selectAction }),
     );
   }
 
   // mode === "devices"
-  return box(h(Text, null, "操作するデバイス:"),
+  return box(h(Text, null, t("session.devicesTitle")),
     h(SelectInput, { items: menuItems(), onHighlight: setHi, onSelect: selectDevice }),
   );
 }
