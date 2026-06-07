@@ -1,6 +1,6 @@
 <!-- [English](./README.md) | 日本語 -->
 
-# sesame-kit — SESAME クラウド CLI & ライブラリ (非公式)
+# sesame-kit — SESAME スマートロック CLI & ライブラリ (BLE + クラウド・非公式)
 
 [![npm](https://img.shields.io/npm/v/sesame-kit)](https://www.npmjs.com/package/sesame-kit) [![license](https://img.shields.io/npm/l/sesame-kit)](./LICENSE) [![node](https://img.shields.io/node/v/sesame-kit)](https://nodejs.org)
 
@@ -10,20 +10,20 @@
 >
 > **免責** — 非公式。CANDY HOUSE とは無関係・非公認であり、非公式クライアントの利用は同社の利用規約の範囲外となる可能性があります。公式アプリと同じ方法でクラウド API を叩くため、予告なく変更・破損する可能性があります。`secretKey` とトークンはロックの全権を握り、`~/.config/sesame-kit` に暗号化されず保存されるので外部に漏らさないでください。自己責任で利用してください。
 
-**公式 SESAME アプリでできる操作を、あなたのコードから。** `sesame-kit` は登録済みの SESAME デバイスを公式 iOS / Android アプリと同じように操作します — 施錠 / 解錠、Hub3 IR（発射・学習）、デバイス管理、開閉履歴、電池残量。CLI、Node ライブラリ、`sesame serve`（JSON-RPC）で任意の言語から呼べます。`npm install` して、スクリプトやホームオートメーション、自作アプリに SESAME を組み込みましょう。
+**SESAME を、自分のコードから——しかも Bluetooth で直接・オフラインに操作できます。** `sesame-kit` は登録済みの SESAME デバイスを **BLE（クラウド不要・低遅延）** とクラウドの両方で操作します — 施錠 / 解錠、Hub3 IR、デバイス管理、開閉履歴。CLI、Node ライブラリ、`sesame serve`（JSON-RPC）で任意の言語から。公式 Web API はクラウド専用なので、**オフラインの BLE 操作（や autolock など実機側でしか効かない設定）は他では得られない**部分です。スクリプト・ホームオートメーション・Raspberry Pi に SESAME を組み込みましょう。
 
 <p align="center"><img src="https://raw.githubusercontent.com/FukumotoIkuma/sesame-kit/main/assets/demo.ja.gif" alt="sesame-kit デモ" width="800"></p>
 
 ## 何ができるか
 
-- ロック制御: 施錠 / 解錠 / トグル / SESAME Bot クリック
+- **BLE 直接制御**: Bluetooth でロックを直接操作（クラウド不要・オフライン・低遅延）。autolock 等の設定系は BLE でのみ実機に反映されます。OS3 プロトコルを純 JS で実装（Raspberry Pi でも動作・アダプタ差し替え可）
+- ロック制御: 施錠 / 解錠 / トグル / SESAME Bot クリック（BLE / クラウドを自動選択）
 - Hub3 IR: 既存リモコンの発射、物理リモコンからの学習、リモコン / キー CRUD、プリセット DB 検索
 - デバイス管理: 一覧、リネーム、削除、現在状態、state push 購読
 - 履歴: ロック開閉履歴、電池残量履歴
 - アクセス制御: NFC カード / キーパッド暗証番号の DB 同期
 - 予約 / 会社・組織: スケジュール、法人機能 (社員・役割・デバイスグループ・鍵共有)
 - Hub3 IoT: LED 調光、LTE リレー、ファーム更新、Matter ペアリング
-- BLE 直接制御: Bluetooth でロックを直接操作します。autolock 等の設定系は BLE でのみ実機に反映されます
 - 言語非依存バックエンド: `sesame serve` が全機能を stdio / UDS / HTTP / WS / gRPC に JSON-RPC として公開します
 - 対話モード、ライブラリ API
 

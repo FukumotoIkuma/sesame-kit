@@ -1,10 +1,10 @@
 <!-- English | [日本語](./README.ja.md) -->
 
-# sesame-kit — SESAME cloud CLI & library (unofficial)
+# sesame-kit — SESAME smart-lock CLI & library (BLE + cloud, unofficial)
 
 [![npm](https://img.shields.io/npm/v/sesame-kit)](https://www.npmjs.com/package/sesame-kit) [![license](https://img.shields.io/npm/l/sesame-kit)](./LICENSE) [![node](https://img.shields.io/node/v/sesame-kit)](https://nodejs.org)
 
-**Do what the official SESAME app does — from your own code.** `sesame-kit` operates your existing SESAME devices the way the official iOS / Android apps do — lock / unlock, Hub3 IR (emit and learn), device management, history, battery — from a CLI, a Node library, or any language via `sesame serve` (JSON-RPC). `npm install` it and build SESAME into your scripts, home automation, or app.
+**Control your SESAME smart lock from your own code — even directly over Bluetooth, offline.** `sesame-kit` drives your existing SESAME devices over **BLE (no cloud, low latency)** and over the cloud — lock/unlock, Hub3 IR, device management, history — from a CLI, a Node library, or any language via `sesame serve` (JSON-RPC). The official Web API is cloud-only; offline BLE control (and on-device-only settings like autolock) is the part you won't find elsewhere. Build SESAME into your scripts, home automation, or a Raspberry Pi.
 
 <p align="center"><img src="https://raw.githubusercontent.com/FukumotoIkuma/sesame-kit/main/assets/demo.en.gif" alt="sesame-kit demo" width="800"></p>
 
@@ -16,14 +16,14 @@
 
 ## Features
 
-- Lock control: lock / unlock / toggle / SESAME Bot click
+- **BLE direct control**: operate locks over Bluetooth with no cloud — offline, low latency. Settings such as autolock only take effect on-device over BLE. Pure-JS SesameOS3 protocol (runs on a Raspberry Pi; swappable BLE adapter)
+- Lock control: lock / unlock / toggle / SESAME Bot click (over BLE or cloud, auto-selected)
 - Hub3 IR: emit existing remotes, learn from a physical remote, remote / key CRUD, preset DB search
 - Device management: list, rename, delete, current state, state-push subscriptions
 - History: lock open/close history, battery history
 - Access control: NFC card / keypad passcode DB sync
 - Scheduling / company & org: schedules, enterprise features (employees, roles, device groups, key sharing)
 - Hub3 IoT: LED dimming, LTE relay, firmware update, Matter pairing
-- BLE direct control: operate locks over Bluetooth without the cloud. Settings such as autolock only take effect over BLE
 - Language-agnostic backend: `sesame serve` exposes every feature as JSON-RPC over stdio / UDS / HTTP / WS / gRPC
 - Interactive mode and a library API
 

@@ -1,7 +1,7 @@
 {
   "name": "sesame-kit",
   "version": "0.6.0",
-  "description": "SESAME cloud CLI & library (lock control + Hub3 IR + device management). Node.js port of biz3 React app with the Cognito consumer client swapped in for long-lived sessions.",
+  "description": "Control your SESAME smart lock from your own code — even directly over Bluetooth, offline. BLE + cloud, CLI, Node library, and a JSON-RPC server for any language. Hub3 IR, device management. Unofficial.",
   "author": "Ikuma Fukumoto",
   "license": "MIT",
   "type": "module",
