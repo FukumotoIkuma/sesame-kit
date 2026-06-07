@@ -5,46 +5,31 @@
 // (システムロケール LANG/LC_ALL での自動切替はあえて採らない = 既定は常に en)。
 //
 // CLI 起動時に呼び出し側が setLocale() してから t() を使う。文字列は {var} で補間。
+//
+// カタログは領域別ファイル (src/i18n/<area>.js, `export default { en, ja }`) に分割し、
+// ここで静的 import してマージする。新しい領域を足すときは下の import と AREAS に 1 行ずつ追加。
 
 /** @typedef {"en"|"ja"} Locale */
 
-const CATALOG = {
-  en: {
-    // --- interactive session UI (src/session-ui.js) ---
-    "session.title": "─── SESAME session ───",
-    "session.hints": "↑↓ move  → confirm  ← back  q quit",
-    "session.busy": "Working...",
-    "session.devicesTitle": "Pick a device:",
-    "session.actionsTitle": "{name} — actions:",
-    "session.quit": "Quit",
-    "session.back": "← Back",
-    "session.autolockPrompt": "{name} autolock seconds (0 = off): ",
-    "session.ledPrompt": "{name} LED brightness (0-255): ",
-    "session.numRange": "⚠ Enter an integer in 0..{max}.",
-    "session.irPickRemote": "{name} IR: pick a remote",
-    "session.noRemotes": "{name}: no remotes registered (add with `sesame remote add`). ← / Esc to go back",
-    "session.irPickKey": "{remote} keys (send):",
-    "session.keysLoading": "{remote}: loading keys...",
-    "session.noKeys": "{remote}: no keys (run `sesame remote sync-keys`). ← / Esc to go back",
-  },
-  ja: {
-    "session.title": "─── SESAME セッション ───",
-    "session.hints": "↑↓ 移動  → 決定  ← 戻る  q 終了",
-    "session.busy": "実行中...",
-    "session.devicesTitle": "操作するデバイス:",
-    "session.actionsTitle": "{name} の操作:",
-    "session.quit": "終了",
-    "session.back": "← 戻る",
-    "session.autolockPrompt": "{name} オートロック秒数 (0=無効): ",
-    "session.ledPrompt": "{name} LED 調光 (0-255): ",
-    "session.numRange": "⚠ 0..{max} の整数で指定してください。",
-    "session.irPickRemote": "{name} の IR: リモコン選択",
-    "session.noRemotes": "{name}: 登録リモコンがありません ( sesame remote add で登録 )。← / Esc で戻る",
-    "session.irPickKey": "{remote} のキー選択 (送信):",
-    "session.keysLoading": "{remote}: キー取得中...",
-    "session.noKeys": "{remote}: キーがありません ( sesame remote sync-keys )。← / Esc で戻る",
-  },
-};
+import session from "./i18n/session.js";
+import cli from "./i18n/cli.js";
+import serve from "./i18n/serve.js";
+import org from "./i18n/org.js";
+import access from "./i18n/access.js";
+import iot from "./i18n/iot.js";
+import presetir from "./i18n/presetir.js";
+import company from "./i18n/company.js";
+import schedule from "./i18n/schedule.js";
+import domain from "./i18n/domain.js";
+import ble from "./i18n/ble.js";
+
+const AREAS = [session, cli, serve, org, access, iot, presetir, company, schedule, domain, ble];
+
+const CATALOG = { en: {}, ja: {} };
+for (const a of AREAS) {
+  if (a?.en) Object.assign(CATALOG.en, a.en);
+  if (a?.ja) Object.assign(CATALOG.ja, a.ja);
+}
 
 let _locale = "en";
 

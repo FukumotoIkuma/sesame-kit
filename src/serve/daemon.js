@@ -15,6 +15,7 @@
 import { handleMessage, makeEvent, RpcError, RPC, KIND } from "./jsonrpc.js";
 import { buildRegistry, buildOpenRpcDoc } from "./registry.js";
 import { TRANSPORT_ERR } from "../transport.js";
+import { t } from "../i18n.js";
 
 const TOPICS = ["lockState", "deviceUpdate"];
 
@@ -36,7 +37,7 @@ export class Daemon {
    *   hub は SesameHub3 (テストでは狭いインターフェースの fake)。
    */
   constructor({ hub, version = "0.0.0", debug = false }) {
-    if (!hub) throw new Error("hub required");
+    if (!hub) throw new Error(t("serve.hubRequired"));
     this.hub = hub;
     this.version = version;
     this._debug = debug;
@@ -80,7 +81,7 @@ export class Daemon {
         //   トークンはある → degraded (ネットワーク不通等。背景で再試行して復帰を拾う)
         this.authState = this._hasStoredTokens() ? "degraded" : "expired";
         // 接続失敗は --debug でなくても見えるように (未ログイン等を初学者が気付けるよう)。
-        console.error(`[serve] cloud connect failed (${this.authState}): ${String(e?.message || e).slice(0, 160)}`);
+        console.error(t("serve.connectFailed", { authState: this.authState, detail: String(e?.message || e).slice(0, 160) }));
         await this._sleep(delay);
         delay = Math.min(delay * 2, 30000);
       }
@@ -128,15 +129,15 @@ export class Daemon {
   async invoke(method, params, conn) {
     if (method === "rpc.discover") return this._openrpc;
     if (method.startsWith("rpc.")) {
-      throw new RpcError(`Method not found: ${method}`, { code: RPC.METHOD_NOT_FOUND, kind: KIND.NOT_IMPLEMENTED });
+      throw new RpcError(t("serve.methodNotFound", { method }), { code: RPC.METHOD_NOT_FOUND, kind: KIND.NOT_IMPLEMENTED });
     }
     const entry = this._registry.get(method);
     if (!entry) {
-      throw new RpcError(`Method not found: ${method}`, { code: RPC.METHOD_NOT_FOUND, kind: KIND.NOT_IMPLEMENTED });
+      throw new RpcError(t("serve.methodNotFound", { method }), { code: RPC.METHOD_NOT_FOUND, kind: KIND.NOT_IMPLEMENTED });
     }
     const p = params == null ? {} : params;
     if (typeof p !== "object" || Array.isArray(p)) {
-      throw new RpcError("params must be an object", { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+      throw new RpcError(t("serve.paramsMustBeObject"), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
     }
     const run = async () => {
       try {
@@ -166,7 +167,7 @@ export class Daemon {
   // ---- 購読 (daemon 一元所有) ----
   subscribe(conn, topics) {
     const set = this._subs.get(conn);
-    if (!set) throw new RpcError("connection not registered", { kind: KIND.INTERNAL });
+    if (!set) throw new RpcError(t("serve.connNotRegistered"), { kind: KIND.INTERNAL });
     for (const t of topics) set.add(t);
     this._ensureStateSub();
     return { subscribed: [...set] };

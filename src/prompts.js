@@ -7,6 +7,7 @@
 //     中身だけ inquirer 化。selectFromList は要素 1 個なら auto-pick、空なら throw を維持。
 
 import { select, input, confirm as inquirerConfirm } from "@inquirer/prompts";
+import { t } from "./i18n.js";
 
 export function isInteractive() {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -26,7 +27,7 @@ export async function promptText(message, { required = true, defaultValue = null
   return input({
     message: plainMessage(message),
     default: defaultValue != null ? String(defaultValue) : undefined,
-    validate: (v) => (required && defaultValue == null && !String(v).trim() ? "必須項目です" : true),
+    validate: (v) => (required && defaultValue == null && !String(v).trim() ? t("cli.promptRequired") : true),
   }).then((v) => String(v).trim());
 }
 
@@ -50,7 +51,7 @@ export async function confirm(message, { defaultYes = true } = {}) {
  */
 export async function selectFromList(message, items, getLabel = String) {
   if (!Array.isArray(items) || items.length === 0) {
-    throw new Error(`${message}: 候補がありません`);
+    throw new Error(t("cli.noCandidates", { message }));
   }
   if (items.length === 1) return items[0];
 

@@ -28,6 +28,7 @@
 //   ctx.die(msg, code) / ctx.canPrompt() / ctx.prompts (selectFromList 等)。
 
 import { isHub3Model } from "../config.js";
+import { t } from "../i18n.js";
 
 /**
  * commander の option coerce 用 parseInt ラッパ。
@@ -39,7 +40,7 @@ function toInt(v) {
   if (v == null) return undefined;
   const n = parseInt(v, 10);
   if (Number.isNaN(n)) {
-    throw new Error(`数値を指定してください (受け取った値: ${JSON.stringify(v)})`);
+    throw new Error(t("presetir.err.notANumber", { value: JSON.stringify(v) }));
   }
   return n;
 }
@@ -56,17 +57,17 @@ function toInt(v) {
 async function resolveDeviceId(hub, ctx, device) {
   if (device) return device;
   if (!ctx.canPrompt()) {
-    ctx.die("--device <hub3uuid> が必要です (非対話モード)", 2);
+    ctx.die(t("presetir.err.deviceRequiredNonInteractive"), 2);
     return undefined;
   }
   const list = await hub.listDevices();
   const hub3s = (Array.isArray(list) ? list : []).filter((d) => isHub3Model(d.deviceModel));
   if (hub3s.length === 0) {
-    ctx.die("利用可能な Hub3 が見つかりません。", 1);
+    ctx.die(t("presetir.err.noHub3Found"), 1);
     return undefined;
   }
   const picked = await ctx.prompts.selectFromList(
-    "発射する Hub3 を選択",
+    t("presetir.prompt.selectHub3"),
     hub3s,
     (d) => `${d.deviceName || "(no-name)"}  ${d.deviceUUID}`,
   );
@@ -80,26 +81,26 @@ async function resolveDeviceId(hub, ctx, device) {
 export function registerPresetIrCommands(program, ctx) {
   const presetir = program
     .command("preset-ir")
-    .description("プリセット IR リモコン発射 (HXD command 生成 + remoteEmit)");
+    .description(t("presetir.cmd.parent.desc"));
 
   // sesame preset-ir air --device <hub3uuid> --code <n> [--power --temp <c> --mode <n> --fan <n> --wind <n> --swing]
   presetir
     .command("air")
-    .description("エアコン状態を発射 (emitAir)。指定したものだけ渡し、残りは本体既定に委ねる")
-    .option("--device <hub3uuid>", "Hub3 deviceUUID (省略時は対話選択 / 非対話は必須)")
-    .option("--code <n>", "プリセット remote.code (数値)", toInt)
-    .option("--power", "電源 ON (省略時 OFF)")
-    .option("--temp <c>", "温度 (UI 値, 例 25)", toInt)
-    .option("--mode <n>", "mode index 0-4 {0:自動,1:制冷,2:除湿,3:送風,4:制熱}", toInt)
-    .option("--fan <n>", "fanSpeed index 0-3 {0:自動,1:低,2:中,3:高}", toInt)
-    .option("--wind <n>", "windDirection index 0-2 {0:上,1:中,2:下}", toInt)
-    .option("--swing", "自動風向 ON (省略時 OFF)")
+    .description(t("presetir.cmd.air.desc"))
+    .option("--device <hub3uuid>", t("presetir.opt.device"))
+    .option("--code <n>", t("presetir.opt.code"), toInt)
+    .option("--power", t("presetir.opt.power"))
+    .option("--temp <c>", t("presetir.opt.temp"), toInt)
+    .option("--mode <n>", t("presetir.opt.mode"), toInt)
+    .option("--fan <n>", t("presetir.opt.fan"), toInt)
+    .option("--wind <n>", t("presetir.opt.wind"), toInt)
+    .option("--swing", t("presetir.opt.swing"))
     .action((opts) =>
       ctx.withHub(async (hub, { opts: gopts }) => {
         const deviceId = await resolveDeviceId(hub, ctx, opts.device);
         if (!deviceId) return;
         if (opts.code == null) {
-          ctx.die("--code <n> が必要です (プリセット remote.code)", 2);
+          ctx.die(t("presetir.err.codeRequired"), 2);
           return;
         }
         // 指定されたものだけ params に載せ、エアコン状態の既定は本体に委ねる。
@@ -113,8 +114,8 @@ export function registerPresetIrCommands(program, ctx) {
 
         const { command, response } = await hub.presetir.emitAir(params);
         ctx.out(gopts.json, () => {
-          console.log(`OK: emitted air command to ${deviceId}`);
-          console.log(`  command: ${command}`);
+          console.log(t("presetir.out.airEmitted", { deviceId }));
+          console.log(t("presetir.out.command", { command }));
         }, { ok: true, deviceId, command, response });
       }),
     );
@@ -122,25 +123,25 @@ export function registerPresetIrCommands(program, ctx) {
   // sesame preset-ir button --device <hub3uuid> --code <n> --button <type> --irtype <n>
   presetir
     .command("button")
-    .description("非エアコン (TV/ライト/扇風機) のボタン押下を発射 (emitButton)")
-    .option("--device <hub3uuid>", "Hub3 deviceUUID (省略時は対話選択 / 非対話は必須)")
-    .option("--code <n>", "プリセット remote.code (数値)", toInt)
-    .option("--button <type>", "ボタン種別 (例 POWER_STATUS_ON, VOLUME_UP, FAN_SPEED)")
-    .option("--irtype <n>", "remote.type 実値 (TV:8192/0x2000, FAN:32768/0x8000, LIGHT:57344/0xE000)", toInt)
+    .description(t("presetir.cmd.button.desc"))
+    .option("--device <hub3uuid>", t("presetir.opt.device"))
+    .option("--code <n>", t("presetir.opt.code"), toInt)
+    .option("--button <type>", t("presetir.opt.button"))
+    .option("--irtype <n>", t("presetir.opt.irtypeButton"), toInt)
     .action((opts) =>
       ctx.withHub(async (hub, { opts: gopts }) => {
         const deviceId = await resolveDeviceId(hub, ctx, opts.device);
         if (!deviceId) return;
         if (opts.code == null) {
-          ctx.die("--code <n> が必要です (プリセット remote.code)", 2);
+          ctx.die(t("presetir.err.codeRequired"), 2);
           return;
         }
         if (opts.irtype == null) {
-          ctx.die("--irtype <n> が必要です (remote.type 実値)", 2);
+          ctx.die(t("presetir.err.irtypeRequired"), 2);
           return;
         }
         if (!opts.button) {
-          ctx.die("--button <type> が必要です (ボタン種別)", 2);
+          ctx.die(t("presetir.err.buttonRequired"), 2);
           return;
         }
         const { command, response } = await hub.presetir.emitButton({
@@ -150,8 +151,8 @@ export function registerPresetIrCommands(program, ctx) {
           buttonType: opts.button,
         });
         ctx.out(gopts.json, () => {
-          console.log(`OK: emitted button command to ${deviceId}`);
-          console.log(`  command: ${command}`);
+          console.log(t("presetir.out.buttonEmitted", { deviceId }));
+          console.log(t("presetir.out.command", { command }));
         }, { ok: true, deviceId, command, response });
       }),
     );
@@ -159,20 +160,20 @@ export function registerPresetIrCommands(program, ctx) {
   // sesame preset-ir send --device <hub3uuid> --command <hex> --irtype <n>
   presetir
     .command("send")
-    .description("生成済み HEX command をそのまま発射 (sendIR)。低レベル用途")
-    .option("--device <hub3uuid>", "Hub3 deviceUUID (省略時は対話選択 / 非対話は必須)")
-    .option("--command <hex>", "発射する HEX command 文字列")
-    .option("--irtype <n>", "remote.type 実値 (AIR:49152/0xC000, TV:8192/0x2000 等)", toInt)
+    .description(t("presetir.cmd.send.desc"))
+    .option("--device <hub3uuid>", t("presetir.opt.device"))
+    .option("--command <hex>", t("presetir.opt.command"))
+    .option("--irtype <n>", t("presetir.opt.irtypeSend"), toInt)
     .action((opts) =>
       ctx.withHub(async (hub, { opts: gopts }) => {
         const deviceId = await resolveDeviceId(hub, ctx, opts.device);
         if (!deviceId) return;
         if (!opts.command) {
-          ctx.die("--command <hex> が必要です (HEX command 文字列)", 2);
+          ctx.die(t("presetir.err.commandOptRequired"), 2);
           return;
         }
         if (opts.irtype == null) {
-          ctx.die("--irtype <n> が必要です (remote.type 実値)", 2);
+          ctx.die(t("presetir.err.irtypeRequired"), 2);
           return;
         }
         const response = await hub.presetir.sendIR({
@@ -181,7 +182,7 @@ export function registerPresetIrCommands(program, ctx) {
           irType: opts.irtype,
         });
         ctx.out(gopts.json, () => {
-          console.log(`OK: sent IR command to ${deviceId}`);
+          console.log(t("presetir.out.sent", { deviceId }));
         }, { ok: true, deviceId, command: opts.command, irType: opts.irtype, response });
       }),
     );

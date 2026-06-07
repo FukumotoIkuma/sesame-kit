@@ -18,6 +18,7 @@ import { startHttpFraming } from "../serve/framing/http.js";
 import { startWsFraming } from "../serve/framing/ws.js";
 import { startGrpcFraming } from "../serve/framing/grpc.js";
 import { generateToken } from "../serve/framing/token.js";
+import { t } from "../i18n.js";
 
 const DEF = { http: 8080, ws: 8081, grpc: 50051 };
 
@@ -34,7 +35,7 @@ function portOf(v, def) {
   if (v === true) return def;
   const n = parseInt(v, 10);
   if (!Number.isFinite(n) || n < 0 || n > 65535) {
-    throw new Error(`invalid port: ${v}`); // 黙って既定にせず明示エラー
+    throw new Error(t("serve.invalidPort", { v })); // 黙って既定にせず明示エラー
   }
   return n;
 }
@@ -63,45 +64,26 @@ async function buildHub(program) {
 
 export function registerServeCommand(program) {
   program.command("serve")
-    .description("常駐 JSON-RPC バックエンド (stdio/UDS/HTTP/WS/gRPC で全機能を他言語へ公開)")
-    .option("--stdio", "stdin/stdout で NDJSON JSON-RPC (埋め込み: 親が子プロセスとして spawn)")
-    .option("--socket [path]", "Unix domain socket (省略時 ~/.config/sesame-kit/sesame.sock)")
-    .option("--no-socket", "UDS を無効化")
-    .option("--http [port]", `HTTP(+SSE) を listen (既定 ${DEF.http})`)
-    .option("--ws [port]", `WebSocket を listen (既定 ${DEF.ws})`)
-    .option("--grpc [port]", `gRPC を listen (既定 ${DEF.grpc})`)
-    .option("--bind <addr>", "TCP バインドアドレス", "127.0.0.1")
-    .option("--token <t>", "HTTP/WS/gRPC 用の loopback token (省略時は生成して表示)")
-    .addHelpText("after", `
-迷ったら: 引数なしで起動 (UDS) し、別端末で \`sesame rpc\` を使うのが最速 (JSON を書かずに済む)。
-  sesame serve                         # UDS (既定。最も移植性が高い)
-  sesame rpc                           #   → 全メソッドと引数を一覧
-  sesame rpc lock.unlock --params '{"name":"front"}'
-  sesame rpc --subscribe lockState     #   → 鍵状態の変化を表示し続ける
-
-フレーミングは 1 つ以上選ぶ。公開メソッドはどれでも同一。
-  sesame serve --stdio                 # 埋め込み (Python/Go が子プロセスとして spawn)
-  sesame serve --http 8080             # ブラウザ/全言語。http://… をブラウザで開くと使い方が出る
-  sesame serve --ws 8081 --grpc 50051  # 全二重 / 型付きスタブ
-
-他言語から繋ぐ接続情報: sesame rpc --paths   (socket / token のパスを JSON で)
-事前に CLI でログインしておくこと: sesame login <email>`)
+    .description(t("serve.cmd.desc"))
+    .option("--stdio", t("serve.opt.stdio"))
+    .option("--socket [path]", t("serve.opt.socket"))
+    .option("--no-socket", t("serve.opt.noSocket"))
+    .option("--http [port]", t("serve.opt.http", { port: DEF.http }))
+    .option("--ws [port]", t("serve.opt.ws", { port: DEF.ws }))
+    .option("--grpc [port]", t("serve.opt.grpc", { port: DEF.grpc }))
+    .option("--bind <addr>", t("serve.opt.bind"), "127.0.0.1")
+    .option("--token <t>", t("serve.opt.token"))
+    .addHelpText("after", t("serve.help.after"))
     .action((opts) => cmdServe(opts, program));
 
   // 起動中デーモンへ JSON-RPC を 1 発送る (nc -U + jq 不要に)。
   program.command("rpc [method]")
-    .description("起動中の `sesame serve` に JSON-RPC を送る (UDS)。method 省略で全メソッド一覧")
-    .option("--params <json>", "params を JSON で渡す (例: '{\"name\":\"front\"}')")
-    .option("--socket <path>", "UDS パス (省略時は既定)")
-    .option("--subscribe <topics>", "イベント購読 (例: lockState,deviceUpdate)。Ctrl-C で停止")
-    .option("--paths", "接続情報 (socket / token のパス) を JSON 出力 (他言語クライアント用)")
-    .addHelpText("after", `
-例:
-  sesame rpc                                  # 全メソッドと引数を一覧
-  sesame rpc status
-  sesame rpc lock.unlock --params '{"name":"front"}'
-  sesame rpc --subscribe lockState            # 鍵状態の変化を表示し続ける
-  sesame rpc --paths                          # 他言語から繋ぐ接続情報を JSON で`)
+    .description(t("serve.rpc.desc"))
+    .option("--params <json>", t("serve.rpc.opt.params"))
+    .option("--socket <path>", t("serve.rpc.opt.socket"))
+    .option("--subscribe <topics>", t("serve.rpc.opt.subscribe"))
+    .option("--paths", t("serve.rpc.opt.paths"))
+    .addHelpText("after", t("serve.rpc.help.after"))
     .action((method, opts) => cmdRpc(method, opts, program));
 }
 
@@ -112,7 +94,7 @@ function rpcSubscribe(socketPath, topics) {
     let buf = "";
     sock.on("connect", () => {
       sock.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "events.subscribe", params: { topics } }) + "\n");
-      console.error(`[subscribed] ${topics.join(",")} — Ctrl-C で停止`);
+      console.error(t("serve.subscribed", { topics: topics.join(",") }));
     });
     sock.on("data", (d) => {
       buf += d.toString();
@@ -128,7 +110,7 @@ function rpcSubscribe(socketPath, topics) {
     });
     sock.on("error", (e) => {
       if (e.code === "ENOENT" || e.code === "ECONNREFUSED") {
-        reject(new Error(`sesame serve が起動していません (socket: ${socketPath})。別ターミナルで \`sesame serve\` を実行してください`));
+        reject(new Error(t("serve.notRunning", { socketPath })));
       } else reject(e);
     });
     process.on("SIGINT", () => { sock.destroy(); resolve(); });
@@ -140,7 +122,7 @@ function rpcCall(socketPath, method, params, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const sock = net.connect(socketPath);
     let buf = "";
-    const to = setTimeout(() => { sock.destroy(); reject(new Error("rpc timeout")); }, timeoutMs);
+    const to = setTimeout(() => { sock.destroy(); reject(new Error(t("serve.rpcTimeout"))); }, timeoutMs);
     sock.on("connect", () => sock.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) + "\n"));
     sock.on("data", (d) => {
       buf += d.toString();
@@ -154,7 +136,7 @@ function rpcCall(socketPath, method, params, timeoutMs = 15000) {
     sock.on("error", (e) => {
       clearTimeout(to);
       if (e.code === "ENOENT" || e.code === "ECONNREFUSED") {
-        reject(new Error(`sesame serve が起動していません (socket: ${socketPath})。別ターミナルで \`sesame serve\` を実行してください`));
+        reject(new Error(t("serve.notRunning", { socketPath })));
       } else reject(e);
     });
   });
@@ -182,12 +164,12 @@ async function cmdRpc(method, opts, program) {
   const m = method || "rpc.discover";
   let params = {};
   if (opts.params) {
-    try { params = JSON.parse(opts.params); } catch (e) { console.error(`Error: --params が不正な JSON: ${e.message}`); process.exit(2); }
+    try { params = JSON.parse(opts.params); } catch (e) { console.error(t("serve.badParamsJson", { message: e.message })); process.exit(2); }
   }
   const result = await rpcCall(socketPath, m, params);
   // 未ログイン/失効を見たら次の一手を案内 (degraded で居座る問題の出口)。
   if (m === "status" && result && result.authState && result.authState !== "ok") {
-    console.error(`Hint: 未ログイン/失効です。\`sesame login <email>\` 後にデーモンを再起動してください`);
+    console.error(t("serve.hint.notLoggedIn"));
   }
   if (program.opts().json) { console.log(JSON.stringify(result, null, 2)); return; }
   if (m === "rpc.discover") {
@@ -196,7 +178,7 @@ async function cmdRpc(method, opts, program) {
       const ps = (meth.params || []).map((p) => (p.required ? p.name : `[${p.name}]`)).join(" ");
       console.log(`${meth.name.padEnd(28)} ${ps}`);
     }
-    console.error(`\n${result.methods.length} methods. 例: sesame rpc lock.unlock --params '{"name":"front"}'`);
+    console.error(t("serve.discoverFooter", { count: result.methods.length }));
     return;
   }
   console.log(JSON.stringify(result, null, 2));
@@ -228,9 +210,9 @@ async function cmdServe(opts, program) {
   const shutdown = async (reason) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    note(`shutting down (${reason})...`);
+    note(t("serve.note.shuttingDown", { reason }));
     // hub.close() 等が万一ハングしても Ctrl-C 不能にならないよう強制終了の保険。
-    const watchdog = setTimeout(() => { note("shutdown watchdog: forcing exit"); process.exit(1); }, 5000);
+    const watchdog = setTimeout(() => { note(t("serve.note.watchdog")); process.exit(1); }, 5000);
     watchdog.unref();
     for (const h of handles) { try { await h.stop?.(); } catch { /* ignore */ } }
     await daemon.shutdown();
@@ -239,19 +221,19 @@ async function cmdServe(opts, program) {
   };
 
   try {
-    if (wantStdio) { handles.push(startStdioFraming(daemon, { onShutdown: () => shutdown("stdin EOF") })); note("stdio framing ready (NDJSON JSON-RPC on stdin/stdout)"); }
+    if (wantStdio) { handles.push(startStdioFraming(daemon, { onShutdown: () => shutdown("stdin EOF") })); note(t("serve.note.stdioReady")); }
     if (wantSocket) {
       const h = await startSocketFraming(daemon, { socketPath }); handles.push(h);
-      note(`unix socket: ${h.path}`);
-      note(`  quick test: printf '{"jsonrpc":"2.0","id":1,"method":"rpc.discover"}\\n' | nc -U ${h.path} | head -c 200`);
+      note(t("serve.note.unixSocket", { path: h.path }));
+      note(t("serve.note.socketTest", { path: h.path }));
     }
-    if (httpPort != null) { const h = await startHttpFraming(daemon, { bind: opts.bind, port: httpPort, token }); handles.push(h); note(`http: ${h.url}  (ブラウザで開くと使い方。POST /rpc, GET /events)`); }
+    if (httpPort != null) { const h = await startHttpFraming(daemon, { bind: opts.bind, port: httpPort, token }); handles.push(h); note(t("serve.note.http", { url: h.url })); }
     if (wsPort != null) {
       const h = await startWsFraming(daemon, { bind: opts.bind, port: wsPort, token }); handles.push(h);
-      note(`ws: ${h.url}  (認証は Authorization: Bearer。ブラウザのみ ?token=<token>)`);
-      note(`  quick test: wscat -c "${h.url}?token=<token>"  (npm i -g wscat)`);
+      note(t("serve.note.ws", { url: h.url }));
+      note(t("serve.note.wsTest", { url: h.url }));
     }
-    if (grpcPort != null) { const h = await startGrpcFraming(daemon, { bind: opts.bind, port: grpcPort, token }); handles.push(h); note(`grpc: ${opts.bind}:${h.port}  (型付き。上級者向け。proto: src/serve/sesame.proto)`); }
+    if (grpcPort != null) { const h = await startGrpcFraming(daemon, { bind: opts.bind, port: grpcPort, token }); handles.push(h); note(t("serve.note.grpc", { bind: opts.bind, port: h.port })); }
   } catch (e) {
     await shutdown("startup error");
     throw e; // run() の catch が JSON/人間向けエラーに整形
@@ -269,21 +251,21 @@ async function cmdServe(opts, program) {
       try { chmodSync(tokenFile, 0o600); } catch { /* ignore */ }
       try { if (existsSync(dir)) chmodSync(dir, 0o700); } catch { /* ignore */ }
       handles.push({ stop: () => { try { unlinkSync(tokenFile); } catch { /* ignore */ } } });
-      note(`token: ${token}`);
-      note(`  use as: Authorization: Bearer ${token}`);
-      note(`  saved to: ${tokenFile}`);
+      note(t("serve.note.token", { token }));
+      note(t("serve.note.tokenUse", { token }));
+      note(t("serve.note.tokenSaved", { tokenFile }));
     } catch {
-      note(`token: ${token}  (Authorization: Bearer <token> 必須)`);
+      note(t("serve.note.tokenNoFile", { token }));
     }
     if (opts.bind && opts.bind !== "127.0.0.1" && opts.bind !== "localhost") {
-      note(`WARNING: --bind ${opts.bind} はロック制御をネットワークに公開します。`);
-      note("  HTTP/WS/gRPC はいずれも TLS なしの平文です。token もロック制御コマンドも");
-      note("  盗聴・リプレイ可能なので、LAN 公開は VPN / SSH トンネル / TLS リバースプロキシ越しに限定し、");
-      note("  ファイアウォールで接続元を絞ること (token があるだけでは平文盗聴に無力)。");
+      note(t("serve.note.bindWarn", { bind: opts.bind }));
+      note(t("serve.note.bindWarn2"));
+      note(t("serve.note.bindWarn3"));
+      note(t("serve.note.bindWarn4"));
     }
   }
   daemon.start(); // クラウド接続を背景で試行 (失敗しても degraded で継続)
-  note("ready. (未ログインなら上の cloud connect 失敗を確認し `sesame login` を実行。Ctrl-C で停止)");
+  note(t("serve.note.ready"));
 
   // シグナル/致命例外で graceful shutdown。プロセスはここで shutdown まで生き続ける。
   const onSig = (s) => shutdown(s);
@@ -291,17 +273,17 @@ async function cmdServe(opts, program) {
   process.once("SIGTERM", () => onSig("SIGTERM"));
   process.once("SIGHUP", () => onSig("SIGHUP"));
   // uncaughtException は本当に異常 → cleanup して exit。
-  process.once("uncaughtException", async (e) => { note("uncaughtException:", e?.message); await shutdown("uncaughtException"); process.exit(1); });
+  process.once("uncaughtException", async (e) => { note(t("serve.note.uncaught"), e?.message); await shutdown("uncaughtException"); process.exit(1); });
   // unhandledRejection はログのみ (良性の reject 1 個でロック制御を落とさない)。
   // ただし**短時間のバースト**は構造的バグなので exit (無限ログ垂れ流しを防ぐ)。
   // 生涯累積で数えると無期限常駐が良性 reject の蓄積でいつか必ず落ちるため、直近 60s の窓で判定する。
   const rejTimes = [];
   process.on("unhandledRejection", (e) => {
-    note("unhandledRejection (ignored):", e?.message || e);
+    note(t("serve.note.unhandled"), e?.message || e);
     const now = Date.now();
     rejTimes.push(now);
     while (rejTimes.length && now - rejTimes[0] > 60_000) rejTimes.shift();
-    if (rejTimes.length > 50) { note("too many unhandled rejections in 60s — exiting"); process.exit(1); }
+    if (rejTimes.length > 50) { note(t("serve.note.tooManyRej")); process.exit(1); }
   });
 
   await runUntilShutdown;

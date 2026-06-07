@@ -4,6 +4,7 @@
 
 import { WebSocketServer } from "ws";
 import { tokenMatches, extractToken } from "./token.js";
+import { t } from "../../i18n.js";
 
 const MAX_BUFFERED = 4 * 1024 * 1024; // 4MB を超えて溜まった遅い購読者は切る (背圧)
 
@@ -22,7 +23,7 @@ export async function startWsFraming(daemon, { bind = "127.0.0.1", port, token }
   wss.on("connection", (ws, req) => {
     // verifyClient で認証済みだが、防御的に再確認 (verifyClient 無効化時の保険)。
     if (!tokenMatches(extractToken(req), token)) {
-      try { ws.close(1008, "unauthorized"); } catch { /* ignore */ }
+      try { ws.close(1008, t("serve.ws.unauthorized")); } catch { /* ignore */ }
       return;
     }
     const conn = {

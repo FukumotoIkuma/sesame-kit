@@ -1,6 +1,8 @@
 // モジュール横断の小さな共有ユーティリティ。
 // WS op の応答 success 判定はほぼ全モジュールで重複していたので 1 箇所に集約する。
 
+import { t } from "./i18n.js";
+
 /**
  * WS op の応答 `resp` を検査し、失敗していれば例外を投げる。成功なら resp を返す。
  *
@@ -20,7 +22,7 @@
 export function assertSuccess(resp, op, { strict = false } = {}) {
   const failed = strict ? !resp?.success : !resp || resp.success === false;
   if (failed) {
-    throw new Error(`${op} failed: ${resp?.message || JSON.stringify(resp)}`);
+    throw new Error(t("domain.util.opFailed", { op, detail: resp?.message || JSON.stringify(resp) }));
   }
   return resp;
 }

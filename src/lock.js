@@ -14,6 +14,7 @@
 import { Buffer } from "node:buffer";
 import { cmacTime, uuidToHistoryBase64, CMD } from "./crypto.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
+import { t } from "./i18n.js";
 
 const TRIGGER_ACTION = ACTION_TYPES.BIZ3_TRIGGER_LOCKER; // "biz3TriggerLocker" (vendor 由来)
 // 同期 ack のキー: サーバは {action:"biz3TriggerLocker", code:200, data:{}, success:true} を
@@ -40,7 +41,7 @@ function dispatchTrigger(client, { cmd, sign, history, deviceId, timeoutMs = DEF
   // sign は時刻 CMAC で 256 秒粒度。未接続で queue に積まれ 256 秒超過すると署名期限切れ。
   // lock は queue させず即 throw (Review H-3)。
   if (client.getStatus && client.getStatus() !== "open") {
-    throw new Error("triggerLock: not connected — call connect() first (queueing not allowed for sign-based ops)");
+    throw new Error(t("domain.lock.notConnected"));
   }
   const target = normalizeUuid(deviceId);
 
@@ -51,14 +52,14 @@ function dispatchTrigger(client, { cmd, sign, history, deviceId, timeoutMs = DEF
     const fail = (err) => { if (done) return; done = true; cleanup(); reject(err); };
 
     const to = setTimeout(
-      () => fail(new Error(`triggerLock timeout (cmd=${cmd}, device=${target})`)),
+      () => fail(new Error(t("domain.lock.timeout", { cmd, device: target }))),
       timeoutMs,
     );
 
     // (主) 同期 ack。success:false は明示的失敗、それ以外 (code:200/success:true) は成功。
     const unsubAck = client.subscribe(ACK_KEY, (msg) => {
       if (msg && msg.success === false) {
-        fail(new Error(`triggerLock failed (cmd=${cmd}): code=${msg.code ?? "?"} ${msg.message || ""}`.trim()));
+        fail(new Error(t("domain.lock.failed", { cmd, code: msg.code ?? "?", message: msg.message || "" }).trim()));
         return;
       }
       succeed(msg);
@@ -89,10 +90,10 @@ function dispatchTrigger(client, { cmd, sign, history, deviceId, timeoutMs = DEF
  * @returns {Promise<any>} biz3TriggerLocker ack メッセージ
  */
 export async function triggerLock(client, params) {
-  if (!params.deviceId) throw new Error("deviceId required");
-  if (!params.secretKey) throw new Error("secretKey required");
-  if (!params.subUUID) throw new Error("subUUID required");
-  if (typeof params.cmd !== "number") throw new Error("cmd required (number)");
+  if (!params.deviceId) throw new Error(t("domain.lock.deviceIdRequired"));
+  if (!params.secretKey) throw new Error(t("domain.lock.secretKeyRequired"));
+  if (!params.subUUID) throw new Error(t("domain.lock.subUUIDRequired"));
+  if (typeof params.cmd !== "number") throw new Error(t("domain.lock.cmdRequired"));
 
   const sign = cmacTime(params.secretKey);
   const history = uuidToHistoryBase64(params.subUUID);
@@ -142,9 +143,9 @@ export function botClick(client, p) { return triggerLock(client, { ...p, cmd: CM
  * @returns {Promise<any>} biz3TriggerLocker ack メッセージ (success:false は reject)
  */
 export async function triggerItemCommand(client, params) {
-  if (!params.deviceId) throw new Error("deviceId required");
-  if (!params.secretKey) throw new Error("secretKey required");
-  if (typeof params.cmd !== "number") throw new Error("cmd required (number)");
+  if (!params.deviceId) throw new Error(t("domain.lock.deviceIdRequired"));
+  if (!params.secretKey) throw new Error(t("domain.lock.secretKeyRequired"));
+  if (typeof params.cmd !== "number") throw new Error(t("domain.lock.cmdRequired"));
 
   const sign = cmacTime(params.secretKey);
   let history;
@@ -153,7 +154,7 @@ export async function triggerItemCommand(client, params) {
   } else if (params.subUUID) {
     history = uuidToHistoryBase64(params.subUUID);
   } else {
-    throw new Error("payload または subUUID のいずれかが必要です");
+    throw new Error(t("domain.lock.payloadOrSubUUID"));
   }
 
   return dispatchTrigger(client, {
@@ -181,7 +182,7 @@ export async function triggerItemCommand(client, params) {
  */
 export async function setAutolock(client, { deviceId, secretKey, seconds, timeoutMs }) {
   if (!Number.isInteger(seconds) || seconds < 0 || seconds > 0xffff) {
-    throw new Error("seconds must be an integer 0..65535 (0 = disable autolock)");
+    throw new Error(t("domain.lock.secondsRange"));
   }
   // 2byte リトルエンディアン (SDK: delay.toShort().toReverseBytes())。
   const payload = Buffer.from([seconds & 0xff, (seconds >> 8) & 0xff]);

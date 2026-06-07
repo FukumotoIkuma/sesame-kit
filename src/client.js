@@ -44,6 +44,7 @@ import * as company from "./company.js";
 import * as access from "./access.js";
 import * as iot from "./iot.js";
 import * as presetir from "./presetir.js";
+import { t } from "./i18n.js";
 
 const DEFAULT_CONFIG = {
   companyID: "ch_CandyhouseMobile",
@@ -98,7 +99,7 @@ export class SesameHub3 {
     if (typeof fnOrOpts === "function") { fn = fnOrOpts; }
     else { opts = fnOrOpts || {}; fn = maybeFn; }
     if (typeof fn !== "function") {
-      throw new Error("usage: SesameHub3.use([opts], async (hub) => {...})");
+      throw new Error(t("domain.client.useUsage"));
     }
 
     const hub = (opts.tokenStore && opts.config)
@@ -124,8 +125,8 @@ export class SesameHub3 {
    * }} args
    */
   constructor({ config, tokenStore, configStore = null, debug = false }) {
-    if (!config) throw new Error("config required");
-    if (!tokenStore) throw new Error("tokenStore required");
+    if (!config) throw new Error(t("domain.client.configRequired"));
+    if (!tokenStore) throw new Error(t("domain.client.tokenStoreRequired"));
     this._config = config;
     this._configStore = configStore;
     this._tokenStore = tokenStore;
@@ -176,11 +177,11 @@ export class SesameHub3 {
     const remotes = cfg.remotes || {};
     const names = Object.keys(remotes);
     const chosen = name || cfg.default?.remote || (names.length === 1 ? names[0] : null);
-    if (!chosen) throw new Error("No remote specified and no default");
+    if (!chosen) throw new Error(t("domain.client.noRemoteNoDefault"));
     const remote = remotes[chosen];
-    if (!remote) throw new Error(`Unknown remote "${chosen}"`);
+    if (!remote) throw new Error(t("domain.client.unknownRemote", { name: chosen }));
     const hub3 = cfg.hub3s?.[remote.hub3];
-    if (!hub3) throw new Error(`Remote "${chosen}" references missing hub3 "${remote.hub3}"`);
+    if (!hub3) throw new Error(t("domain.client.remoteMissingHub3", { name: chosen, hub3: remote.hub3 }));
     return { name: chosen, remote, hub3Name: remote.hub3, hub3 };
   }
 
@@ -224,7 +225,7 @@ export class SesameHub3 {
   }
 
   _ensureConnected() {
-    if (!this._ws) throw new Error("not connected (call connect() first)");
+    if (!this._ws) throw new Error(t("domain.client.notConnected"));
   }
 
   // ---------- ドメイン namespace ----------
@@ -285,13 +286,13 @@ export class SesameHub3 {
    */
   async send(remoteName, keyOrUUID) {
     this._ensureConnected();
-    if (!keyOrUUID) throw new Error("key (name or UUID) required");
+    if (!keyOrUUID) throw new Error(t("domain.client.keyRequired"));
     const { remote, hub3 } = this.resolveRemote(remoteName);
     const isUUID = UUID_RE.test(keyOrUUID);
     const command = isUUID ? keyOrUUID : remote.keys?.[keyOrUUID];
     if (!command) {
       const avail = Object.keys(remote.keys || {}).join(", ") || "(none)";
-      throw new Error(`Unknown key "${keyOrUUID}". 利用可能: ${avail}`);
+      throw new Error(t("domain.client.unknownKey", { key: keyOrUUID, avail }));
     }
     return sendIR(this._ws, {
       deviceId: hub3.deviceId,
@@ -339,7 +340,7 @@ export class SesameHub3 {
   async getLoginUser() {
     this._ensureConnected();
     const email = this._tokenStore.load()?.username;
-    if (!email) throw new Error("email (username) が token store にありません。再 login が必要かもしれません。");
+    if (!email) throw new Error(t("domain.client.emailNotInStore"));
     return account.getLoginUser(this._ws, { email });
   }
 
@@ -388,7 +389,7 @@ export class SesameHub3 {
         companyID: this._config.companyID,
       });
       const timeout = new Promise((_, rej) => {
-        timeoutId = setTimeout(() => rej(new Error("getCompanyDevice timeout")), timeoutMs);
+        timeoutId = setTimeout(() => rej(new Error(t("domain.client.getCompanyDeviceTimeout"))), timeoutMs);
       });
       const msg = await Promise.race([got, timeout]);
       return msg?.data?.data?.list || [];
@@ -404,7 +405,7 @@ export class SesameHub3 {
   // configStore 無しで構築された場合は使えない (throw)。
 
   _requireConfigStore(op) {
-    if (!this._configStore) throw new Error(`${op} requires a ConfigStore (fromConfig で構築してください)`);
+    if (!this._configStore) throw new Error(t("domain.client.requiresConfigStore", { op }));
   }
 
   /**
@@ -514,18 +515,18 @@ export class SesameHub3 {
     const names = Object.keys(locks);
     const chosen = name || cfg.default?.lock || (names.length === 1 ? names[0] : null);
     if (!chosen) {
-      throw new Error(`No lock specified and no default. 設定済み: [${names.join(", ") || "(none)"}]`);
+      throw new Error(t("domain.client.noLockNoDefault", { names: names.join(", ") || "(none)" }));
     }
     const lock = locks[chosen];
-    if (!lock) throw new Error(`Unknown lock "${chosen}". 設定済み: [${names.join(", ") || "(none)"}]`);
+    if (!lock) throw new Error(t("domain.client.unknownLock", { name: chosen, names: names.join(", ") || "(none)" }));
     return { name: chosen, lock };
   }
 
   _lockParams(name) {
-    if (!this._subUUID) throw new Error("subUUID not available (connect() を先に呼んでください)");
+    if (!this._subUUID) throw new Error(t("domain.client.subUUIDNotAvailableConnect"));
     const { lock } = this.resolveLock(name);
-    if (!lock.deviceUUID) throw new Error(`lock "${name || "(default)"}" missing deviceUUID`);
-    if (!lock.secretKey) throw new Error(`lock "${name || "(default)"}" missing secretKey`);
+    if (!lock.deviceUUID) throw new Error(t("domain.client.lockMissingDeviceUUID", { name: name || "(default)" }));
+    if (!lock.secretKey) throw new Error(t("domain.client.lockMissingSecretKey", { name: name || "(default)" }));
     return { deviceId: lock.deviceUUID, secretKey: lock.secretKey, subUUID: this._subUUID };
   }
 
@@ -727,9 +728,9 @@ export class SesameHub3 {
     const hub3s = cfg.hub3s || {};
     const names = Object.keys(hub3s);
     const chosen = name || (names.length === 1 ? names[0] : null);
-    if (!chosen) throw new Error("No hub3 specified and not exactly one configured");
+    if (!chosen) throw new Error(t("domain.client.noHub3Specified"));
     const h = hub3s[chosen];
-    if (!h) throw new Error(`Unknown hub3 "${chosen}"`);
+    if (!h) throw new Error(t("domain.client.unknownHub3", { name: chosen }));
     return h;
   }
 
@@ -748,7 +749,7 @@ export class SesameHub3 {
 
   async renameDevice(deviceUUID, deviceName) {
     this._ensureConnected();
-    if (!this._subUUID) throw new Error("subUUID not available (connect first)");
+    if (!this._subUUID) throw new Error(t("domain.client.subUUIDNotAvailable"));
     return devices.updateDeviceName(this._ws, { subUUID: this._subUUID, deviceUUID, deviceName });
   }
 
@@ -794,7 +795,7 @@ export class SesameHub3 {
   async invokeWebAPI({ func, query, body, apiKeyId }) {
     this._ensureConnected();
     const key = apiKeyId || this._config.apiKeyId;
-    if (!key) throw new Error("apiKeyId required (config.apiKeyId か引数で指定)");
+    if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
     return devices.invokeWebAPI(this._ws, { func, apiKeyId: key, query, body });
   }
 
@@ -811,7 +812,7 @@ export class SesameHub3 {
    */
   async triggerLockDevice({ deviceUUID, secretKey, cmd, timeoutMs }) {
     this._ensureConnected();
-    if (!this._subUUID) throw new Error("subUUID not available (connect first)");
+    if (!this._subUUID) throw new Error(t("domain.client.subUUIDNotAvailable"));
     return triggerLock(this._ws, {
       deviceId: deviceUUID,
       secretKey,

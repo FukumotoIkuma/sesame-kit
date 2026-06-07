@@ -64,13 +64,6 @@ export function makeEvent(topic: any, payload: any): {
     method: string;
     params: any;
 };
-/**
- * 機械向け契約 (RPC メソッド名/params 形/結果形/event 名/error.kind) の SemVer。
- * **破壊的変更でだけ major を上げる** (パッケージ version とは独立。pkg は無害な変更でも上がる)。
- * 消費者はこれを `status.contractVersion` か discover の `info["x-contractVersion"]` で読み、
- * major 不一致なら fail-fast できる。後方互換な追加は minor、説明のみは patch。
- *   1.0.0: 初版 (5 framing / 79 method / event.lockState・deviceUpdate / 6 kind)
- */
 export const CONTRACT_VERSION: "1.0.0";
 /** JSON-RPC 2.0 標準エラーコード + アプリ域 (-32000)。 */
 export const RPC: Readonly<{

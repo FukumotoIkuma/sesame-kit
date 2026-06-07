@@ -25,7 +25,7 @@ export class Daemon {
             title: string;
             version: any;
             "x-contractVersion": string;
-            description: string;
+            description: any;
         };
         methods: {
             name: any;
@@ -41,7 +41,7 @@ export class Daemon {
         }[];
         "x-events": {
             name: string;
-            description: string;
+            description: any;
         }[];
     };
     /** @type {Map<string, Promise<any>>} メソッド名→直列化チェーン末尾 */
@@ -110,7 +110,7 @@ export class Daemon {
             title: string;
             version: any;
             "x-contractVersion": string;
-            description: string;
+            description: any;
         };
         methods: {
             name: any;
@@ -126,7 +126,7 @@ export class Daemon {
         }[];
         "x-events": {
             name: string;
-            description: string;
+            description: any;
         }[];
     };
 }

@@ -13,6 +13,7 @@
 import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import { aesCmac } from "node-aes-cmac";
+import { t } from "../i18n.js";
 import { ITEM_CODES } from "../itemcodes.js";
 
 // ---------- 定数 ----------
@@ -71,8 +72,8 @@ const MAX_CHUNK_DATA = 19; // 20B パケット - ヘッダ1B (ssm.c:112-127)
  */
 export function deriveSessionKey(secretKey, token) {
   const key = Buffer.isBuffer(secretKey) ? secretKey : Buffer.from(secretKey, "hex");
-  if (key.length !== 16) throw new Error(`secretKey must be 16 bytes (got ${key.length})`);
-  if (!Buffer.isBuffer(token) || token.length !== 4) throw new Error("token must be a 4-byte Buffer");
+  if (key.length !== 16) throw new Error(t("ble.secretKeyMustBe16", { len: key.length }));
+  if (!Buffer.isBuffer(token) || token.length !== 4) throw new Error(t("ble.tokenMustBe4Byte"));
   const mac = aesCmac(key, token, { returnAsBuffer: true });
   return Buffer.isBuffer(mac) ? mac : Buffer.from(mac, "hex");
 }
@@ -126,7 +127,7 @@ export function ccmEncrypt(token16, count, token4, plaintext) {
  * @returns {Buffer} 復号平文
  */
 export function ccmDecrypt(token16, count, token4, ctWithTag) {
-  if (ctWithTag.length < CCM_TAG_LEN) throw new Error("ciphertext too short (no tag)");
+  if (ctWithTag.length < CCM_TAG_LEN) throw new Error(t("ble.ciphertextTooShort"));
   const iv = ccmNonce(count, token4);
   const ct = ctWithTag.subarray(0, ctWithTag.length - CCM_TAG_LEN);
   const tag = ctWithTag.subarray(ctWithTag.length - CCM_TAG_LEN);
@@ -206,7 +207,7 @@ export function buildSendFrame(itemCode, data = Buffer.alloc(0)) {
  * @returns {{opCode:number, itemCode:number, body:Buffer}}
  */
 export function parseRecvFrame(buf) {
-  if (buf.length < 2) throw new Error("frame too short");
+  if (buf.length < 2) throw new Error(t("ble.frameTooShort"));
   return { opCode: buf[0], itemCode: buf[1], body: buf.subarray(2) };
 }
 
@@ -227,7 +228,7 @@ export function historyTagBLE(tag) {
   let tagBuf;
   if (tag == null) tagBuf = Buffer.alloc(0);
   else if (Buffer.isBuffer(tag) || tag instanceof Uint8Array) tagBuf = Buffer.from(tag);
-  else throw new Error("historyTagBLE: tag は Buffer/Uint8Array で渡してください (type 0x000E は UUID バイト列を想定)");
+  else throw new Error(t("ble.historyTagBuffer"));
   return Buffer.concat([Buffer.from([0x00, 0x0e]), tagBuf]).subarray(0, 20);
 }
 
@@ -238,7 +239,7 @@ export function historyTagBLE(tag) {
  */
 export function autolockData(seconds) {
   if (!Number.isInteger(seconds) || seconds < 0 || seconds > 0xffff) {
-    throw new Error("seconds must be an integer 0..65535 (0 = disable)");
+    throw new Error(t("ble.secondsRange"));
   }
   const b = Buffer.alloc(2);
   b.writeUInt16LE(seconds);
@@ -274,10 +275,10 @@ export const MECH_STATE = Object.freeze({ LOCKED: "locked", UNLOCKED: "unlocked"
  *            isStop:boolean, isCritical:boolean, isBatteryCritical:boolean, batteryRaw:number, flags:number}}
  */
 export function parseMechStatus(buf) {
-  if (!Buffer.isBuffer(buf)) throw new Error("mechStatus must be a Buffer");
+  if (!Buffer.isBuffer(buf)) throw new Error(t("ble.mechStatusMustBeBuffer"));
   if (buf.length === 3) return parseMechStatusBot(buf);
   if (buf.length >= 7) return parseMechStatusLock(buf);
-  throw new Error(`mechStatus は 3B (bot/bike) か 7B 以上 (lock) を想定 (got ${buf.length}B)`);
+  throw new Error(t("ble.mechStatusLength", { len: buf.length }));
 }
 
 /** 7B: CHSesame5MechStatus 準拠 (Sesame5/6)。 */

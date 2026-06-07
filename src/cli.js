@@ -22,7 +22,7 @@ import { SesameHub3 } from "./client.js";
 import { ConfigStore } from "./config.js";
 import { FileTokenStore } from "./tokens.js";
 import { configPaths } from "./paths.js";
-import { setLocale, resolveLocale } from "./i18n.js";
+import { setLocale, resolveLocale, t } from "./i18n.js";
 import {
   bootstrap,
   CONFIG_META,
@@ -132,7 +132,7 @@ function makeCtx(program) {
       try {
         return JSON.parse(raw);
       } catch (e) {
-        die(`--json の値が不正な JSON です: ${e.message}${hint ? `\n  例: ${hint}` : ""}`, 2);
+        die(t("cli.invalidJsonValue", { message: e.message }) + (hint ? t("cli.invalidJsonExample", { hint }) : ""), 2);
         return undefined;
       }
     },
@@ -142,10 +142,7 @@ function makeCtx(program) {
 async function withHub(program, fn) {
   const { opts, paths, configStore, tokenStore } = loadCtx(program);
   if (!configStore.exists()) {
-    die(
-      `No config at ${paths.config}. \`sesame init\` または \`sesame migrate\` を実行してください。`,
-      2,
-    );
+    die(t("cli.noConfigRun", { path: paths.config }), 2);
   }
   const hub = new SesameHub3({
     config: configStore.load(),
@@ -168,7 +165,7 @@ async function promptLine(question) {
   try {
     const ans = await rl.question(question);
     // 3rd-pass L-1: Ctrl-D (EOF) で空文字 resolve した場合は throw (無限ループ防止)
-    if (closed && !ans) throw new Error("prompt aborted (EOF / Ctrl-D)");
+    if (closed && !ans) throw new Error(t("cli.promptAbortedEof"));
     return ans.trim();
   } finally {
     rl.close();
@@ -185,10 +182,10 @@ async function pickRemoteName(program, configStore, current) {
   if (current) return current;
   const cfg = configStore.load();
   const names = Object.keys(cfg.remotes || {});
-  if (names.length === 0) die("リモコンが未登録です。先に `sesame remote add` を実行してください。", 2);
+  if (names.length === 0) die(t("cli.remotesNotRegistered"), 2);
   if (names.length === 1) return names[0];
   if (!canPrompt(program)) return null;
-  return selectFromList("どのリモコン?", names, (n) => {
+  return selectFromList(t("cli.whichRemote"), names, (n) => {
     const r = cfg.remotes[n];
     const def = n === cfg.default?.remote ? " *" : "";
     return `${n}${def}\thub3=${r.hub3}\tkeys=${Object.keys(r.keys || {}).length}${r.alias ? `\t(${r.alias})` : ""}`;
@@ -199,10 +196,10 @@ async function pickLockName(program, configStore, current) {
   if (current) return current;
   const cfg = configStore.load();
   const names = Object.keys(cfg.locks || {});
-  if (names.length === 0) die("ロックが未登録です。`sesame locks add` か `sesame locks sync-from-devices` を実行してください。", 2);
+  if (names.length === 0) die(t("cli.locksNotRegistered"), 2);
   if (names.length === 1) return names[0];
   if (!canPrompt(program)) return null;
-  return selectFromList("どのロック?", names, (n) => {
+  return selectFromList(t("cli.whichLock"), names, (n) => {
     const l = cfg.locks[n];
     const def = n === cfg.default?.lock ? " *" : "";
     return `${n}${def}\t${l.deviceUUID}\tmodel=${l.model || "?"}${l.alias ? `\t(${l.alias})` : ""}`;
@@ -213,25 +210,25 @@ async function pickHub3Name(program, configStore, current) {
   if (current) return current;
   const cfg = configStore.load();
   const names = Object.keys(cfg.hub3s || {});
-  if (names.length === 0) die("Hub3 が未登録です。`sesame hub3 add` を実行してください。", 2);
+  if (names.length === 0) die(t("cli.hub3NotRegistered"), 2);
   if (names.length === 1) return names[0];
   if (!canPrompt(program)) return null;
-  return selectFromList("どの Hub3?", names, (n) => `${n}\t${cfg.hub3s[n].deviceId}`);
+  return selectFromList(t("cli.whichHub3"), names, (n) => `${n}\t${cfg.hub3s[n].deviceId}`);
 }
 
 async function pickRemoteKeyName(program, configStore, remoteName, current) {
   if (current) return current;
   const cfg = configStore.load();
   const remote = cfg.remotes?.[remoteName];
-  if (!remote) die(`Unknown remote "${remoteName}"`, 2);
+  if (!remote) die(t("cli.unknownRemote", { remote: remoteName }), 2);
   const keys = Object.keys(remote.keys || {});
-  if (keys.length === 0) die(`remote "${remoteName}" にキーがありません。`, 2);
+  if (keys.length === 0) die(t("cli.remoteNoKeys", { remote: remoteName }), 2);
   if (!canPrompt(program)) return null;
-  return selectFromList(`remote "${remoteName}" のどのキー?`, keys, (k) => `${k}\t${remote.keys[k]}`);
+  return selectFromList(t("cli.whichRemoteKey", { remote: remoteName }), keys, (k) => `${k}\t${remote.keys[k]}`);
 }
 
 /** Hub から デバイス一覧を取って UUID を選ばせる (model フィルタ任意)。 */
-async function pickDeviceUUID(program, hub, current, { filter, message = "どのデバイス?" } = {}) {
+async function pickDeviceUUID(program, hub, current, { filter, message = t("cli.whichDevice") } = {}) {
   if (current) return current;
   let list;
   try { list = await hub.listUserDevices(); } catch { list = []; }
@@ -239,14 +236,14 @@ async function pickDeviceUUID(program, hub, current, { filter, message = "どの
     try { list = await hub.listDevices(); } catch { /* ignore */ }
   }
   const filtered = filter ? (list || []).filter(filter) : (list || []);
-  if (!filtered.length) die("デバイスが見つかりません。", 2);
+  if (!filtered.length) die(t("cli.devicesNotFound"), 2);
   // 1 個ならそれを auto-pick (Review L-4)
   if (filtered.length === 1) return filtered[0].deviceUUID;
   if (!canPrompt(program)) {
     // 非対話で複数候補あり → 具体的な救済策をエラーに含める
     // (3rd-pass L-2: 外側の `list` を shadow しないようリネーム)
     const summary = filtered.map((d) => `  ${d.deviceUUID}\t${d.deviceModel || "?"}\t${d.deviceName || ""}`).join("\n");
-    die(`複数のデバイスがあるため UUID 指定が必要です:\n${summary}`, 2);
+    die(t("cli.multipleDevicesNeedUuid", { summary }), 2);
   }
   const chosen = await selectFromList(message, filtered, (d) =>
     `${d.deviceName || "(no name)"}\t${d.deviceModel || "?"}\t${d.deviceUUID}`);
@@ -256,12 +253,12 @@ async function pickDeviceUUID(program, hub, current, { filter, message = "どの
 // ---------- コマンド: 認証 ----------
 
 async function cmdLogin(email, opts, program) {
-  if (!email) die("email required: sesame login <email>", 2);
+  if (!email) die(t("cli.emailRequired"), 2);
   const { tokenStore } = loadCtx(program);
   await loginInitiate(tokenStore, email);
   out(CLI_JSON, () => {
-    console.log(`OK: 確認コードを ${email} に送信しました。`);
-    console.log(`Step 2: sesame verify <code>`);
+    console.log(t("cli.loginSent", { email }));
+    console.log(t("cli.loginStep2"));
   }, { ok: true, email, next: "sesame verify <code>" });
 }
 
@@ -278,56 +275,56 @@ async function bootstrapAfterLogin(program, { quiet = false } = {}) {
       try {
         const ci = await hub.refreshAccount();
         summary.companyID = ci?.companyID || null;
-        log(`  ✓ アカウント (companyID=${summary.companyID || "default"})`);
-      } catch (e) { summary.errors.push(`account: ${e.message}`); log(`  ✗ アカウント取得失敗: ${e.message}`); }
+        log(t("cli.bootAccount", { companyID: summary.companyID || "default" }));
+      } catch (e) { summary.errors.push(`account: ${e.message}`); log(t("cli.bootAccountFail", { message: e.message })); }
 
       try {
         const r = await hub.syncLocksFromDevices({});
         summary.locks = r;
-        log(`  ✓ ロック: +${r.added.length} 更新${r.updated.length}${r.added.length ? ` (${r.added.join(", ")})` : ""}`);
-      } catch (e) { summary.errors.push(`locks: ${e.message}`); log(`  ✗ ロック取り込み失敗: ${e.message}`); }
+        log(t("cli.bootLocks", { added: r.added.length, updated: r.updated.length, names: r.added.length ? ` (${r.added.join(", ")})` : "" }));
+      } catch (e) { summary.errors.push(`locks: ${e.message}`); log(t("cli.bootLocksFail", { message: e.message })); }
 
       try {
         const r = await hub.syncHub3sFromDevices();
         summary.hub3s = r;
-        log(`  ✓ Hub3: +${r.added?.length || 0}${r.added?.length ? ` (${r.added.join(", ")})` : ""}`);
-      } catch (e) { summary.errors.push(`hub3s: ${e.message}`); log(`  ✗ Hub3 取り込み失敗: ${e.message}`); }
+        log(t("cli.bootHub3", { added: r.added?.length || 0, names: r.added?.length ? ` (${r.added.join(", ")})` : "" }));
+      } catch (e) { summary.errors.push(`hub3s: ${e.message}`); log(t("cli.bootHub3Fail", { message: e.message })); }
 
       try {
         const { remotes } = await hub.syncRemotesFromDevices();
         for (const name of [...remotes.added, ...remotes.updated]) { try { await hub.syncRemoteKeys(name); } catch { /* best effort */ } }
         summary.remotes = remotes;
-        log(`  ✓ Hub3 IR リモコン: +${remotes.added.length}${remotes.added.length ? ` (${remotes.added.join(", ")})` : ""}`);
-      } catch (e) { summary.errors.push(`remotes: ${e.message}`); log(`  ✗ リモコン取り込み失敗: ${e.message}`); }
+        log(t("cli.bootRemotes", { added: remotes.added.length, names: remotes.added.length ? ` (${remotes.added.join(", ")})` : "" }));
+      } catch (e) { summary.errors.push(`remotes: ${e.message}`); log(t("cli.bootRemotesFail", { message: e.message })); }
     });
   } catch (e) {
     summary.errors.push(`connect: ${e.message}`);
     const authExpired = /refresh token|unauthor|not authenticated|token/i.test(e.message || "");
     summary.authExpired = authExpired;
-    if (authExpired) log(`  ✗ クラウド認証が切れています (${e.message})\n    → \`sesame login <email>\` → \`sesame verify\` で再ログインしてください`);
-    else log(`  ✗ 接続失敗: ${e.message}\n    → 後で \`sesame setup\` で再実行できます`);
+    if (authExpired) log(t("cli.bootAuthExpired", { message: e.message }));
+    else log(t("cli.bootConnectFail", { message: e.message }));
   }
   return summary;
 }
 
 async function cmdVerify(code, _opts, program) {
   const { opts, tokenStore } = loadCtx(program);
-  if (!code && canPrompt(program)) code = await promptLine("Verification code: ");
-  if (!code) die("code required: sesame verify <code>", 2);
-  const t = await loginVerify(tokenStore, code);
-  if (!opts.json) console.error("OK: signed in — セットアップを自動実行します...");
+  if (!code && canPrompt(program)) code = await promptLine(t("cli.verifyCodePrompt"));
+  if (!code) die(t("cli.codeRequired"), 2);
+  const tok = await loginVerify(tokenStore, code);
+  if (!opts.json) console.error(t("cli.signedInAutoSetup"));
   // 認証後の取り込みを自動化 (companyID / ロック / Hub3 IR)。失敗しても認証成功は維持。
   const bootstrap = await bootstrapAfterLogin(program, { quiet: !!opts.json });
   out(opts.json, () => {
     const lk = bootstrap.locks ? bootstrap.locks.added.length + bootstrap.locks.updated.length : 0;
-    console.log(`\n準備完了: ロック ${lk} 件 取り込み済み。`);
-    console.log("  例: sesame unlock / sesame status / sesame session");
-    if (bootstrap.errors.length) console.log("  (一部自動取り込みに失敗。`sesame setup` で再実行できます)");
+    console.log(t("cli.verifyDone", { count: lk }));
+    console.log(t("cli.verifyExamples"));
+    if (bootstrap.errors.length) console.log(t("cli.verifyPartialFail"));
   }, {
     ok: true,
-    clientId: t.clientId,
-    username: t.username,
-    deviceKey: t.deviceKey ? "set" : null,
+    clientId: tok.clientId,
+    username: tok.username,
+    deviceKey: tok.deviceKey ? "set" : null,
     bootstrap,
   });
 }
@@ -335,17 +332,17 @@ async function cmdVerify(code, _opts, program) {
 /** 認証後セットアップの手動再実行 (デバイス追加後など)。 */
 async function cmdSetup(_opts, program) {
   const { opts, tokenStore } = loadCtx(program);
-  if (!tokenStore.load()) die("未ログインです。先に `sesame login <email>` → `sesame verify` を実行してください。", 2);
-  if (!opts.json) console.error("セットアップ (companyID / ロック / Hub3 / リモコン 取り込み)...");
+  if (!tokenStore.load()) die(t("cli.notLoggedIn"), 2);
+  if (!opts.json) console.error(t("cli.setupRunning"));
   const bootstrap = await bootstrapAfterLogin(program, { quiet: !!opts.json });
   const failed = bootstrap.errors.length > 0;
   out(opts.json, () => {
     if (bootstrap.authExpired) {
-      console.error("✗ クラウド認証が切れています。`sesame login <email>` → `sesame verify` で再ログインしてください。");
+      console.error(t("cli.setupAuthExpired"));
     } else if (failed) {
-      console.error(`一部失敗: ${bootstrap.errors.join("; ")}`);
+      console.error(t("cli.setupPartialFail", { errors: bootstrap.errors.join("; ") }));
     } else {
-      console.log("完了。`sesame locks ls` / `sesame remote ls` で確認できます。");
+      console.log(t("cli.setupDone"));
     }
   }, { ok: !failed, bootstrap });
   if (failed) process.exitCode = 1;
@@ -353,10 +350,10 @@ async function cmdSetup(_opts, program) {
 
 async function cmdRefresh(_opts, program) {
   const { opts, tokenStore } = loadCtx(program);
-  const t = await getValidIdToken(tokenStore, { marginSec: 999999 });
+  const tok = await getValidIdToken(tokenStore, { marginSec: 999999 });
   out(opts.json, () => {
-    console.log(`OK: idToken refreshed (len=${t.length})`);
-  }, { ok: true, idTokenLength: t.length });
+    console.log(t("cli.idTokenRefreshed", { len: tok.length }));
+  }, { ok: true, idTokenLength: tok.length });
 }
 
 async function cmdWhoami(_opts, program) {
@@ -365,12 +362,12 @@ async function cmdWhoami(_opts, program) {
     const customerInfo = await hub.refreshAccount();
     const quotas = (await hub.getLoginUser()).quotas;
     out(opts.json, () => {
-      if (!customerInfo) { console.log("(customerInfo 取得できず)"); return; }
-      console.log(`companyID: ${customerInfo.companyID}`);
-      console.log(`subUUID:   ${customerInfo.subUUID || "(none)"}`);
-      if (customerInfo.name) console.log(`name:      ${customerInfo.name}`);
-      if (customerInfo.subscriptionId) console.log(`subscription: ${customerInfo.subscriptionId}`);
-      console.log(`\ncompanyID を config.json に保存しました (以降の IR/device API で使用)。`);
+      if (!customerInfo) { console.log(t("cli.noCustomerInfo")); return; }
+      console.log(t("cli.companyId", { companyID: customerInfo.companyID }));
+      console.log(t("cli.subUuid", { subUUID: customerInfo.subUUID || "(none)" }));
+      if (customerInfo.name) console.log(t("cli.name", { name: customerInfo.name }));
+      if (customerInfo.subscriptionId) console.log(t("cli.subscription", { subscriptionId: customerInfo.subscriptionId }));
+      console.log(t("cli.companyIdSaved"));
     }, { ok: true, customerInfo, quotas });
   });
 }
@@ -381,19 +378,19 @@ async function cmdSend(key, options, program) {
   const { configStore } = loadCtx(program);
   if (configStore.exists()) {
     const remoteName = await pickRemoteName(program, configStore, options.remote);
-    if (!remoteName && !options.remote) die("--remote が必要です (非対話モード)", 2);
+    if (!remoteName && !options.remote) die(t("cli.remoteRequiredNonInteractive"), 2);
     options.remote = remoteName || options.remote;
     if (!key) {
       key = await pickRemoteKeyName(program, configStore, options.remote, key);
-      if (!key) die("key が必要です (非対話モード)", 2);
+      if (!key) die(t("cli.keyRequiredNonInteractive"), 2);
     }
   } else if (!key) {
-    die("key required: sesame send <key>", 2);
+    die(t("cli.keyRequired"), 2);
   }
   await withHub(program, async (hub, { opts }) => {
     const resp = await hub.send(options.remote, key);
     out(opts.json, () => {
-      console.log(`OK: send ${key}`);
+      console.log(t("cli.okSend", { key }));
       if (resp?.data?.message) console.log(`   ${resp.data.message}`);
     }, { ok: true, key, response: resp });
   });
@@ -408,10 +405,10 @@ async function cmdList(options, program) {
     const codes = await hub.listKeys(options.remote);
     out(opts.json, () => {
       if (!Array.isArray(codes) || codes.length === 0) {
-        console.log("(no keys)");
+        console.log(t("cli.noKeys"));
         return;
       }
-      console.log(`Found ${codes.length} keys:`);
+      console.log(t("cli.foundKeys", { count: codes.length }));
       for (const c of codes) console.log(`  ${c.name}\t${c.keyUUID}`);
     }, { ok: true, count: codes.length, keys: codes });
   });
@@ -420,7 +417,7 @@ async function cmdList(options, program) {
 async function cmdPing(_opts, program) {
   await withHub(program, async (hub, { opts }) => {
     await hub.ping();
-    out(opts.json, () => console.log("OK: connected & keepalive ack received"), { ok: true });
+    out(opts.json, () => console.log(t("cli.okKeepalive")), { ok: true });
   });
 }
 
@@ -430,7 +427,7 @@ async function cmdDevices(_opts, program) {
     mkdirSync(paths.dir, { recursive: true });
     writeFileSync(paths.devices, JSON.stringify({ devices: list }, null, 2) + "\n");
     out(opts.json, () => {
-      console.log(`Found ${list.length} devices:\n`);
+      console.log(t("cli.foundDevices", { count: list.length }));
       for (const d of list) {
         console.log(`  ${d.deviceName}`);
         console.log(`    model:     ${d.deviceModel}`);
@@ -440,7 +437,7 @@ async function cmdDevices(_opts, program) {
         console.log(`    secretKey: ${mask(d.secretKey)}`);
         console.log("");
       }
-      console.log(`Saved: ${paths.devices}`);
+      console.log(t("cli.savedTo", { path: paths.devices }));
     }, { ok: true, count: list.length, devices: list, savedTo: paths.devices });
   });
 }
@@ -452,23 +449,23 @@ async function cmdInit(_opts, program) {
   mkdirSync(paths.dir, { recursive: true });
   const created = configStore.init();
   out(opts.json, () => {
-    if (created) console.log(`OK: created ${paths.config}`);
-    else         console.log(`Already exists: ${paths.config}`);
+    if (created) console.log(t("cli.okCreated", { path: paths.config }));
+    else         console.log(t("cli.alreadyExists", { path: paths.config }));
     console.log(``);
-    console.log(`このツールは Node.js 18+ が必要です (現在: ${process.version})。`);
-    console.log(`companyID はデフォルト (ch_CandyhouseMobile) のままで一般ユーザーは変更不要です。`);
+    console.log(t("cli.initNode", { version: process.version }));
+    console.log(t("cli.initCompanyId"));
     console.log(``);
-    console.log(`次のステップ (所要 約3分):`);
-    console.log(`  1. sesame login <email>             # email に確認コードが届く → sesame verify <code>`);
-    console.log(`  2a. ロックを使うなら:  sesame locks sync-from-devices    # 自動取り込み`);
-    console.log(`  2b. Hub3 IR を使うなら: sesame remote sync-from-devices   # Hub3+リモコン+キーを一括取得`);
+    console.log(t("cli.initNextSteps"));
+    console.log(t("cli.initStep1"));
+    console.log(t("cli.initStep2a"));
+    console.log(t("cli.initStep2b"));
     console.log(``);
-    console.log(`概念: Hub3=IR を飛ばす中継器 / remote=リモコン定義 / lock=施錠デバイス。`);
-    console.log(`     IR を使うには Hub3 と remote の両方を登録する必要があります。`);
-    console.log(`     irType は整数コード (例 49152=エアコン / 8192=テレビ) だが、通常は自動取得され意識不要。`);
+    console.log(t("cli.initConcept"));
+    console.log(t("cli.initConcept2"));
+    console.log(t("cli.initConcept3"));
     console.log(``);
-    console.log(`※ \`sesame\` コマンドが見つからない場合は \`npm link\` を実行してください`);
-    console.log(`  (または \`node bin/sesame.js ...\` で直接起動)。`);
+    console.log(t("cli.initNpmLink"));
+    console.log(t("cli.initNpmLink2"));
   }, { ok: true, created, configPath: paths.config, nodeVersion: process.version });
 }
 
@@ -493,30 +490,30 @@ async function cmdConfigShow(_opts, program) {
       }
     : null;
   out(opts.json, () => {
-    console.log(`config dir: ${paths.dir}`);
-    console.log(`---- config.json ----`);
-    console.log(cfg ? JSON.stringify(cfg, null, 2) : "(not initialized)");
-    console.log(`---- tokens.json (masked) ----`);
-    console.log(tokensMasked ? JSON.stringify(tokensMasked, null, 2) : "(not signed in)");
+    console.log(t("cli.configDir", { dir: paths.dir }));
+    console.log(t("cli.configJsonHeader"));
+    console.log(cfg ? JSON.stringify(cfg, null, 2) : t("cli.notInitialized"));
+    console.log(t("cli.tokensJsonHeader"));
+    console.log(tokensMasked ? JSON.stringify(tokensMasked, null, 2) : t("cli.notSignedIn"));
   }, { configDir: paths.dir, config: cfg, tokens: tokensMasked });
 }
 
 async function cmdRemoteLs(_opts, program) {
   const { opts, configStore } = loadCtx(program);
-  if (!configStore.exists()) die("config not initialized. sesame init", 2);
+  if (!configStore.exists()) die(t("cli.configNotInitialized"), 2);
   const cfg = configStore.load();
   const remotes = cfg.remotes || {};
   const def = cfg.default?.remote;
   out(opts.json, () => {
     const names = Object.keys(remotes);
-    if (!names.length) { console.log("(no remotes)"); return; }
+    if (!names.length) { console.log(t("cli.noRemotes")); return; }
     for (const n of names) {
       const r = remotes[n];
       const mark = n === def ? "*" : " ";
       const keyCount = Object.keys(r.keys || {}).length;
       console.log(`${mark} ${n}\thub3=${r.hub3}\tIR=${r.irDeviceUUID}\tkeys=${keyCount}${r.alias ? `\talias=${r.alias}` : ""}`);
     }
-    console.log("\n(* = default)");
+    console.log(t("cli.defaultMarker"));
   }, { default: def, remotes });
 }
 
@@ -527,12 +524,12 @@ async function cmdRemoteAdd(_opts, program) {
     await hub.syncHub3sFromDevices(); // hub3 名を確保
     const candidates = await hub.listRemotesFromDevices();
     if (!candidates.length) {
-      console.error("登録済みリモコンが見つかりません。biz3 アプリ等で先にリモコンを学習・登録してください。");
+      console.error(t("cli.remotesNotFound"));
       return;
     }
     const chosen = candidates.length === 1
       ? candidates[0]
-      : await selectFromList("どのリモコン?", candidates,
+      : await selectFromList(t("cli.whichRemote"), candidates,
           (r) => `${r.alias || "(no name)"}\thub3=${r.hub3Name}\ttype=${r.type}\t${r.uuid}`);
 
     // chosen.hub3DeviceUUID に対応する config 上の hub3 名を解決
@@ -541,11 +538,11 @@ async function cmdRemoteAdd(_opts, program) {
       ([, h]) => h.deviceId.replace(/-/g, "").toLowerCase() === chosen.hub3DeviceUUID.replace(/-/g, "").toLowerCase(),
     );
     const hub3Name = hub3Entry ? hub3Entry[0] : null;
-    if (!hub3Name) die("リモコンの親 Hub3 が config に見つかりません (hub3 sync-from-devices を試してください)", 2);
+    if (!hub3Name) die(t("cli.remoteParentHub3NotFound"), 2);
 
     const defaultName = (chosen.alias || "remote").replace(/\s+/g, "_").toLowerCase();
     const name = canPrompt(program)
-      ? await promptText("config 上の呼び名", { defaultValue: defaultName })
+      ? await promptText(t("cli.configName"), { defaultValue: defaultName })
       : defaultName;
 
     hub.configStore.addRemote(name, {
@@ -558,7 +555,7 @@ async function cmdRemoteAdd(_opts, program) {
     });
     const { keyCount } = await hub.syncRemoteKeys(name); // 末尾で自動 sync-keys
     out(opts.json, () => {
-      console.log(`OK: remote "${name}" added (hub3=${hub3Name}, irType=${chosen.type}, keys=${keyCount})`);
+      console.log(t("cli.okRemoteAdded", { name, hub3: hub3Name, irType: chosen.type, keyCount }));
     }, { ok: true, name, hub3: hub3Name, irType: chosen.type, keyCount });
   });
 }
@@ -566,25 +563,25 @@ async function cmdRemoteAdd(_opts, program) {
 async function cmdRemoteSetDefault(name, opts, program) {
   const { configStore } = loadCtx(program);
   configStore.setDefaultRemote(name);
-  out(CLI_JSON, () => console.log(`OK: default remote = ${name}`), { ok: true, defaultRemote: name });
+  out(CLI_JSON, () => console.log(t("cli.okDefaultRemote", { name })), { ok: true, defaultRemote: name });
 }
 
 async function cmdRemoteSyncKeys(name, opts, program) {
   await withHub(program, async (hub) => {
     const { name: resolvedName, keyCount } = await hub.syncRemoteKeys(name);
-    out(CLI_JSON, () => console.log(`OK: synced ${keyCount} keys → remote "${resolvedName}"`),
+    out(CLI_JSON, () => console.log(t("cli.okSyncedKeys", { keyCount, name: resolvedName })),
       { ok: true, remote: resolvedName, keyCount });
   });
 }
 
 async function cmdHub3Ls(_opts, program) {
   const { opts, configStore } = loadCtx(program);
-  if (!configStore.exists()) die("config not initialized. sesame init", 2);
+  if (!configStore.exists()) die(t("cli.configNotInitialized"), 2);
   const cfg = configStore.load();
   const hub3s = cfg.hub3s || {};
   out(opts.json, () => {
     const names = Object.keys(hub3s);
-    if (!names.length) { console.log("(no hub3)"); return; }
+    if (!names.length) { console.log(t("cli.noHub3")); return; }
     for (const n of names) {
       const h = hub3s[n];
       console.log(`  ${n}\t${h.deviceId}${h.name && h.name !== n ? `\t(${h.name})` : ""}`);
@@ -598,19 +595,19 @@ async function cmdHub3Add(_opts, program) {
     const list = await hub.listDevices();
     const hub3Devices = list.filter((d) => d.deviceModel === "hub_3" || d.deviceModel === "hub_3_lte");
     if (!hub3Devices.length) {
-      console.error("Hub3 が devices に見つかりません。手動登録するなら configStore.addHub3 を直接利用してください。");
+      console.error(t("cli.hub3NotFoundInDevices"));
       return;
     }
     const chosen = hub3Devices.length === 1
       ? hub3Devices[0]
-      : await selectFromList("どの Hub3?", hub3Devices,
+      : await selectFromList(t("cli.whichHub3"), hub3Devices,
           (d) => `${d.deviceName || "(no name)"}\t${d.deviceUUID}`);
     const defaultName = (chosen.deviceName || chosen.deviceUUID).replace(/\s+/g, "_").toLowerCase();
     const name = canPrompt(program)
-      ? await promptText("config 上の呼び名", { defaultValue: defaultName })
+      ? await promptText(t("cli.configName"), { defaultValue: defaultName })
       : defaultName;
     hub.configStore.addHub3(name, { deviceId: chosen.deviceUUID, name: chosen.deviceName || name });
-    out(opts.json, () => console.log(`OK: hub3 "${name}" added (${chosen.deviceUUID})`),
+    out(opts.json, () => console.log(t("cli.okHub3Added", { name, deviceUUID: chosen.deviceUUID })),
       { ok: true, name, deviceId: chosen.deviceUUID });
   });
 }
@@ -619,56 +616,56 @@ async function cmdHub3Add(_opts, program) {
 
 async function cmdLockLs(_opts, program) {
   const { opts, configStore } = loadCtx(program);
-  if (!configStore.exists()) die("config not initialized. sesame init", 2);
+  if (!configStore.exists()) die(t("cli.configNotInitialized"), 2);
   const cfg = configStore.load();
   const locks = cfg.locks || {};
   const def = cfg.default?.lock;
   out(opts.json, () => {
     const names = Object.keys(locks);
-    if (!names.length) { console.log("(no locks)"); return; }
+    if (!names.length) { console.log(t("cli.noLocks")); return; }
     for (const n of names) {
       const l = locks[n];
       const mark = n === def ? "*" : " ";
       console.log(`${mark} ${n}\t${l.deviceUUID}\tmodel=${l.model || "?"}${l.alias ? `\t(${l.alias})` : ""}`);
     }
-    console.log("\n(* = default)");
+    console.log(t("cli.defaultMarker"));
   }, { default: def, locks });
 }
 
 async function cmdLockAdd(opts, program) {
   const { configStore } = loadCtx(program);
-  if (!configStore.exists()) die("config not initialized. sesame init", 2);
+  if (!configStore.exists()) die(t("cli.configNotInitialized"), 2);
 
   // フラグ指定があれば非対話で登録 (他言語からの呼び出し/--json 用)。
   // 不足分は TTY なら prompt で補い、非対話なら die で明示拒否する (固まらせない)。
   const ask = async (flag, label, required) => {
     if (opts[flag] != null) return opts[flag];
     if (canPrompt(program)) return await promptLine(label);
-    if (required) die(`${flag} required (非対話モードでは --${flag} を指定してください)`, 2);
+    if (required) die(t("cli.flagRequiredNonInteractive", { flag }), 2);
     return null;
   };
-  const name = await ask("name", "lock name (例: front): ", true);
-  if (!name) die("name required", 2);
-  const deviceUUID = await ask("uuid", "deviceUUID: ", true);
-  if (!deviceUUID) die("deviceUUID required", 2);
-  const secretKey = await ask("secret", "secretKey (32hex, devices コマンドで取得): ", true);
-  if (!secretKey) die("secretKey required", 2);
-  const model = await ask("model", "model (例: sesame_5, sesame_5_pro, sesame_6, wm_2): ", false);
-  const alias = await ask("alias", "alias (任意, 例: 玄関): ", false);
+  const name = await ask("name", t("cli.lockNamePrompt"), true);
+  if (!name) die(t("cli.nameRequired"), 2);
+  const deviceUUID = await ask("uuid", t("cli.deviceUuidPrompt"), true);
+  if (!deviceUUID) die(t("cli.deviceUuidRequired"), 2);
+  const secretKey = await ask("secret", t("cli.secretKeyPrompt"), true);
+  if (!secretKey) die(t("cli.secretKeyRequired"), 2);
+  const model = await ask("model", t("cli.modelPrompt"), false);
+  const alias = await ask("alias", t("cli.aliasPrompt"), false);
   configStore.addLock(name, {
     deviceUUID,
     secretKey,
     model: model || null,
     alias: alias || null,
   });
-  out(CLI_JSON, () => console.log(`OK: lock "${name}" added.`),
+  out(CLI_JSON, () => console.log(t("cli.okLockAdded", { name })),
     { ok: true, lock: name, deviceUUID, model: model || null, alias: alias || null });
 }
 
 async function cmdLockSetDefault(name, opts, program) {
   const { configStore } = loadCtx(program);
   configStore.setDefaultLock(name);
-  out(CLI_JSON, () => console.log(`OK: default lock = ${name}`), { ok: true, defaultLock: name });
+  out(CLI_JSON, () => console.log(t("cli.okDefaultLock", { name })), { ok: true, defaultLock: name });
 }
 
 async function cmdLockRm(name, options, program) {
@@ -677,16 +674,16 @@ async function cmdLockRm(name, options, program) {
   // 2nd-pass M-4: 非対話モードでは prompt 不能なので --yes が無いと拒否
   if (canPrompt(program)) {
     if (!(await confirmPrompt(
-      `lock "${name}" の定義を削除しますか? (secretKey も消えるので、復旧には sesame devices で再取得が必要)`,
+      t("cli.confirmLockRm", { name }),
       { defaultYes: false },
     ))) {
-      return console.error("キャンセル");
+      return console.error(t("cli.cancelled"));
     }
   } else if (!options.yes) {
-    die(`非対話モードでは確認 prompt が出せません。意図して削除する場合は --yes を付けてください。`, 2);
+    die(t("cli.nonInteractiveNeedsYes"), 2);
   }
   configStore.removeLock(name);
-  out(CLI_JSON, () => console.log(`OK: lock "${name}" removed.`), { ok: true, removed: name });
+  out(CLI_JSON, () => console.log(t("cli.okLockRemoved", { name })), { ok: true, removed: name });
 }
 
 async function cmdLockSyncFromDevices(options, program) {
@@ -722,7 +719,7 @@ function printSyncResult(json, kind, r) {
     if (r.added?.length)   parts.push(`+${r.added.length} (${r.added.join(", ")})`);
     if (r.updated?.length) parts.push(`~${r.updated.length} (${r.updated.join(", ")})`);
     if (r.removed?.length) parts.push(`-${r.removed.length} (${r.removed.join(", ")})`);
-    console.log(`OK: ${kind} sync — ${parts.join(" / ") || "変更なし"}`);
+    console.log(t("cli.okSync", { kind, parts: parts.join(" / ") || t("cli.syncNoChange") }));
   }, { ok: true, kind, ...r });
 }
 
@@ -734,20 +731,20 @@ async function cmdIRLearn(remoteName, keyName, _opts, program) {
     remoteName = await pickRemoteName(program, configStore, remoteName) || remoteName;
   }
   if (!keyName && canPrompt(program)) {
-    keyName = await promptText("登録するキー名");
+    keyName = await promptText(t("cli.learnKeyName"));
   }
-  if (!keyName) die("keyname required: sesame ir learn <remote> <keyname>", 2);
+  if (!keyName) die(t("cli.keynameRequired"), 2);
   await withHub(program, async (hub, { opts }) => {
-    console.error(`Hub3 を学習モードに切替中... (remote=${remoteName || "default"}, key="${keyName}")`);
+    console.error(t("cli.switchingLearnMode", { remote: remoteName || "default", key: keyName }));
     const result = await hub.learnIR(remoteName, keyName, {
-      onPrompt: () => console.error("→ 物理リモコンを Hub3 に向けて、登録したいボタンを押してください..."),
+      onPrompt: () => console.error(t("cli.pointRemote")),
     });
     out(opts.json, () => {
-      console.log(`OK: learned "${keyName}"`);
-      if (result.saved?.keyUUID) console.log(`   keyUUID: ${result.saved.keyUUID}`);
+      console.log(t("cli.okLearned", { key: keyName }));
+      if (result.saved?.keyUUID) console.log(t("cli.keyUuid", { keyUUID: result.saved.keyUUID }));
       if (result.captured?.irData) {
         const head = result.captured.irData.slice(0, 32);
-        console.log(`   irData: ${head}... (len=${result.captured.irData.length})`);
+        console.log(t("cli.irData", { head, len: result.captured.irData.length }));
       }
     }, { ok: true, key: keyName, ...result });
   });
@@ -756,16 +753,16 @@ async function cmdIRLearn(remoteName, keyName, _opts, program) {
 async function cmdIRModeGet(hub3Name, _opts, program) {
   await withHub(program, async (hub, { opts }) => {
     const mode = await hub.getIRMode(hub3Name);
-    out(opts.json, () => console.log(`mode: ${JSON.stringify(mode)}`), { mode });
+    out(opts.json, () => console.log(t("cli.mode", { mode: JSON.stringify(mode) })), { mode });
   });
 }
 
 async function cmdIRModeSet(hub3Name, mode, _opts, program) {
   const m = Number(mode);
-  if (![0, 1].includes(m)) die("mode must be 0 (CONTROL) or 1 (REGISTER)", 2);
+  if (![0, 1].includes(m)) die(t("cli.modeMustBe"), 2);
   await withHub(program, async (hub, { opts }) => {
     await hub.setIRMode(hub3Name, m);
-    out(opts.json, () => console.log(`OK: mode=${m} (${m === 0 ? "CONTROL" : "REGISTER"})`), { ok: true, mode: m });
+    out(opts.json, () => console.log(t("cli.okMode", { mode: m, label: m === 0 ? "CONTROL" : "REGISTER" })), { ok: true, mode: m });
   });
 }
 
@@ -775,17 +772,17 @@ async function cmdIRKeyRm(remoteName, keyName, options, program) {
     remoteName = await pickRemoteName(program, configStore, remoteName) || remoteName;
     keyName = await pickRemoteKeyName(program, configStore, remoteName, keyName) || keyName;
   }
-  if (!keyName) die("key required", 2);
+  if (!keyName) die(t("cli.keyRequiredShort"), 2);
   if (canPrompt(program)) {
-    if (!(await confirmPrompt(`key "${keyName}" を削除しますか?`, { defaultYes: false }))) {
-      return console.error("キャンセル");
+    if (!(await confirmPrompt(t("cli.confirmKeyRm", { key: keyName }), { defaultYes: false }))) {
+      return console.error(t("cli.cancelled"));
     }
   } else if (!options?.yes) {
-    die(`非対話モードでは確認 prompt が出せません。--yes で強制削除可能。`, 2);
+    die(t("cli.nonInteractiveYesForce"), 2);
   }
   await withHub(program, async (hub, { opts }) => {
     await hub.deleteIRKey(remoteName, keyName);
-    out(opts.json, () => console.log(`OK: deleted key "${keyName}" from remote "${remoteName || "default"}"`),
+    out(opts.json, () => console.log(t("cli.okDeletedKey", { key: keyName, remote: remoteName || "default" })),
       { ok: true });
   });
 }
@@ -796,22 +793,22 @@ async function cmdIRKeyRename(remoteName, keyName, newName, _opts, program) {
     remoteName = await pickRemoteName(program, configStore, remoteName) || remoteName;
     keyName = await pickRemoteKeyName(program, configStore, remoteName, keyName) || keyName;
   }
-  if (!keyName) die("key required", 2);
-  if (!newName && canPrompt(program)) newName = await promptText(`新しい名前 (現: ${keyName})`);
-  if (!newName) die("new name required: sesame ir key rename <remote> <key> <new>", 2);
+  if (!keyName) die(t("cli.keyRequiredShort"), 2);
+  if (!newName && canPrompt(program)) newName = await promptText(t("cli.newNamePromptKey", { key: keyName }));
+  if (!newName) die(t("cli.newNameRequiredKey"), 2);
   await withHub(program, async (hub, { opts }) => {
     await hub.renameIRKey(remoteName, keyName, newName);
-    out(opts.json, () => console.log(`OK: renamed "${keyName}" → "${newName}"`), { ok: true });
+    out(opts.json, () => console.log(t("cli.okRenamedKey", { key: keyName, newName })), { ok: true });
   });
 }
 
 async function cmdIRRemoteListServer(type, _opts, program) {
-  let t;
-  try { t = parseIrType(type); } catch (e) { die(e.message, 2); }
+  let irt;
+  try { irt = parseIrType(type); } catch (e) { die(e.message, 2); }
   await withHub(program, async (hub, { opts }) => {
-    const list = await hub.listIRRemotes(t);
+    const list = await hub.listIRRemotes(irt);
     out(opts.json, () => {
-      console.log(`Found ${list.length} remotes (type=${t}):`);
+      console.log(t("cli.foundRemotes", { count: list.length, type: irt }));
       for (const r of list) {
         console.log(`  ${r.alias || r.name || "(no name)"}\t${r.irDeviceUUID || r.uuid || ""}`);
       }
@@ -820,13 +817,13 @@ async function cmdIRRemoteListServer(type, _opts, program) {
 }
 
 async function cmdIRRemoteSearch(type, term, _opts, program) {
-  let t;
-  try { t = parseIrType(type); } catch (e) { die(e.message, 2); }
-  if (!term) die("search term required", 2);
+  let irt;
+  try { irt = parseIrType(type); } catch (e) { die(e.message, 2); }
+  if (!term) die(t("cli.searchTermRequired"), 2);
   await withHub(program, async (hub, { opts }) => {
-    const list = await hub.searchPresetIRRemotes(t, term);
+    const list = await hub.searchPresetIRRemotes(irt, term);
     out(opts.json, () => {
-      console.log(`Found ${list.length} preset remotes:`);
+      console.log(t("cli.foundPresetRemotes", { count: list.length }));
       for (const r of list) {
         console.log(`  ${r.brandName || r.name || "?"}\t${r.modelName || r.model || ""}\t${r.uuid || ""}`);
       }
@@ -835,13 +832,13 @@ async function cmdIRRemoteSearch(type, term, _opts, program) {
 }
 
 async function cmdIRRemoteMatch(type, irData, _opts, program) {
-  let t;
-  try { t = parseIrType(type); } catch (e) { die(e.message, 2); }
-  if (!irData) die("irData required (hex)", 2);
+  let irt;
+  try { irt = parseIrType(type); } catch (e) { die(e.message, 2); }
+  if (!irData) die(t("cli.irDataRequired"), 2);
   await withHub(program, async (hub, { opts }) => {
-    const matches = await hub.matchIRRemote({ irData, irType: t });
+    const matches = await hub.matchIRRemote({ irData, irType: irt });
     out(opts.json, () => {
-      console.log(`Found ${matches.length} matching remotes`);
+      console.log(t("cli.foundMatchingRemotes", { count: matches.length }));
       for (const m of matches) console.log(`  ${JSON.stringify(m)}`);
     }, { count: matches.length, matches });
   });
@@ -850,16 +847,16 @@ async function cmdIRRemoteMatch(type, irData, _opts, program) {
 async function cmdIRRemoteRmServer(name, _opts, program) {
   await withHub(program, async (hub, { opts }) => {
     await hub.deleteIRRemoteServer(name);
-    out(opts.json, () => console.log(`OK: deleted server-side remote "${name || "default"}"`),
+    out(opts.json, () => console.log(t("cli.okDeletedServerRemote", { name: name || "default" })),
       { ok: true });
   });
 }
 
 async function cmdIRRemoteRenameServer(name, alias, _opts, program) {
-  if (!alias) die("alias required", 2);
+  if (!alias) die(t("cli.aliasRequired"), 2);
   await withHub(program, async (hub, { opts }) => {
     await hub.renameIRRemote(name, alias);
-    out(opts.json, () => console.log(`OK: renamed remote "${name || "default"}" → "${alias}"`),
+    out(opts.json, () => console.log(t("cli.okRenamedRemote", { name: name || "default", alias })),
       { ok: true });
   });
 }
@@ -870,7 +867,7 @@ async function cmdDeviceUserLs(_opts, program) {
   await withHub(program, async (hub, { opts }) => {
     const list = await hub.listUserDevices();
     out(opts.json, () => {
-      console.log(`Found ${list.length} user devices:\n`);
+      console.log(t("cli.foundUserDevices", { count: list.length }));
       for (const d of list) {
         console.log(`  ${d.deviceName || "(no name)"}\t${d.deviceModel || "?"}\t${d.deviceUUID || ""}`);
       }
@@ -880,8 +877,8 @@ async function cmdDeviceUserLs(_opts, program) {
 
 async function cmdDeviceStatus(uuid, _opts, program) {
   await withHub(program, async (hub, { opts }) => {
-    uuid = await pickDeviceUUID(program, hub, uuid, { message: "どのデバイスの状態を見ますか?" }) || uuid;
-    if (!uuid) die("deviceUUID required", 2);
+    uuid = await pickDeviceUUID(program, hub, uuid, { message: t("cli.whichDeviceStatus") }) || uuid;
+    if (!uuid) die(t("cli.deviceUuidRequired"), 2);
     const status = await hub.getDeviceStatus(uuid);
     out(opts.json, () => console.log(JSON.stringify(status, null, 2)), { status });
   });
@@ -889,35 +886,35 @@ async function cmdDeviceStatus(uuid, _opts, program) {
 
 async function cmdDeviceRename(uuid, newName, _opts, program) {
   await withHub(program, async (hub, { opts }) => {
-    uuid = await pickDeviceUUID(program, hub, uuid, { message: "どのデバイスを rename しますか?" }) || uuid;
-    if (!uuid) die("deviceUUID required", 2);
-    if (!newName && canPrompt(program)) newName = await promptText("新しいデバイス名");
-    if (!newName) die("new name required: sesame device rename <uuid> <name>", 2);
+    uuid = await pickDeviceUUID(program, hub, uuid, { message: t("cli.whichDeviceRename") }) || uuid;
+    if (!uuid) die(t("cli.deviceUuidRequired"), 2);
+    if (!newName && canPrompt(program)) newName = await promptText(t("cli.newDeviceName"));
+    if (!newName) die(t("cli.newNameRequiredDevice"), 2);
     await hub.renameDevice(uuid, newName);
-    out(opts.json, () => console.log(`OK: renamed ${uuid} → "${newName}"`), { ok: true });
+    out(opts.json, () => console.log(t("cli.okRenamedDevice", { uuid, newName })), { ok: true });
   });
 }
 
 async function cmdDeviceRm(uuid, options, program) {
   await withHub(program, async (hub, { opts }) => {
-    uuid = await pickDeviceUUID(program, hub, uuid, { message: "どのデバイスを削除しますか?" }) || uuid;
-    if (!uuid) die("deviceUUID required", 2);
+    uuid = await pickDeviceUUID(program, hub, uuid, { message: t("cli.whichDeviceRm") }) || uuid;
+    if (!uuid) die(t("cli.deviceUuidRequired"), 2);
     if (canPrompt(program)) {
-      if (!(await confirmPrompt(`デバイス ${uuid} を削除しますか?`, { defaultYes: false }))) {
-        return console.error("キャンセル");
+      if (!(await confirmPrompt(t("cli.confirmDeviceRm", { uuid }), { defaultYes: false }))) {
+        return console.error(t("cli.cancelled"));
       }
     } else if (!options.yes) {
-      die(`非対話モードでは確認 prompt が出せません。意図して削除する場合は --yes を付けてください。`, 2);
+      die(t("cli.nonInteractiveNeedsYes"), 2);
     }
     await hub.deleteDevice(uuid);
-    out(opts.json, () => console.log(`OK: deleted device ${uuid}`), { ok: true });
+    out(opts.json, () => console.log(t("cli.okDeletedDevice", { uuid })), { ok: true });
   });
 }
 
 async function cmdHistory(deviceUUID, options, program) {
   await withHub(program, async (hub, { opts }) => {
     if (!deviceUUID && canPrompt(program)) {
-      deviceUUID = await pickDeviceUUID(program, hub, null, { message: "どのデバイスの履歴?" });
+      deviceUUID = await pickDeviceUUID(program, hub, null, { message: t("cli.whichDeviceHistory") });
     }
     const pageSize = options.pageSize ? Number(options.pageSize) : null;
     const list = deviceUUID ? [{ deviceUUID }] : [];
@@ -929,20 +926,20 @@ async function cmdHistory(deviceUUID, options, program) {
 async function cmdBattery(deviceUUID, options, program) {
   await withHub(program, async (hub, { opts }) => {
     deviceUUID = await pickDeviceUUID(program, hub, deviceUUID, {
-      message: "どのデバイスの電池履歴?",
+      message: t("cli.whichDeviceBattery"),
       filter: (d) => /^(sesame_|wm_|ssmbot_|bot_|bike_)/.test(d.deviceModel || ""),
     }) || deviceUUID;
-    if (!deviceUUID) die("deviceUUID required", 2);
+    if (!deviceUUID) die(t("cli.deviceUuidRequired"), 2);
     const pageSize = options.pageSize ? Number(options.pageSize) : 100;
     const data = await hub.getDeviceBattery(deviceUUID, { pageSize });
     out(opts.json, () => {
       const recs = data.records || [];
-      console.log(`Battery records: ${recs.length}`);
+      console.log(t("cli.batteryRecords", { count: recs.length }));
       for (const r of recs) {
-        const t = r.ts ? new Date(r.ts * 1000).toISOString() : "?";
-        console.log(`  ${t}\tlight=${r.light}\theavy=${r.heavy}\tlight%=${r.lightPercentage}\theavy%=${r.heavyPercentage}`);
+        const ts = r.ts ? new Date(r.ts * 1000).toISOString() : "?";
+        console.log(`  ${ts}\tlight=${r.light}\theavy=${r.heavy}\tlight%=${r.lightPercentage}\theavy%=${r.heavyPercentage}`);
       }
-      if (data.lastEvaluatedKey) console.log(`\n次ページ key: ${JSON.stringify(data.lastEvaluatedKey)}`);
+      if (data.lastEvaluatedKey) console.log(t("cli.nextPageKey", { key: JSON.stringify(data.lastEvaluatedKey) }));
     }, data);
   });
 }
@@ -955,13 +952,13 @@ async function cmdFirmware(_opts, program) {
 }
 
 async function cmdWebapi(func, options, program) {
-  if (!func) die("func required: sesame webapi <func> [--query json] [--body json] [--api-key ID]", 2);
+  if (!func) die(t("cli.funcRequired"), 2);
   let query = {}, body = {};
   try {
     if (options.query) query = JSON.parse(options.query);
     if (options.body)  body  = JSON.parse(options.body);
   } catch (e) {
-    die(`invalid JSON in --query/--body: ${e.message}`, 2);
+    die(t("cli.invalidJsonQueryBody", { message: e.message }), 2);
   }
   await withHub(program, async (hub, { opts }) => {
     const data = await hub.invokeWebAPI({ func, query, body, apiKeyId: options.apiKey });
@@ -980,11 +977,11 @@ async function cmdWebapi(func, options, program) {
  */
 async function resolveLockEntry(program, name) {
   const { configStore } = loadCtx(program);
-  if (!configStore.exists()) { die("config がありません。`sesame init` → `sesame locks sync-from-devices` を先に。", 2); return null; }
+  if (!configStore.exists()) { die(t("cli.noConfigInitSync"), 2); return null; }
   const cfg = configStore.load();
   const locks = cfg.locks || {};
   const names = Object.keys(locks);
-  if (names.length === 0) { die("ロックが未登録です。`sesame locks sync-from-devices` で取り込んでください。", 2); return null; }
+  if (names.length === 0) { die(t("cli.locksNotRegisteredSync"), 2); return null; }
 
   let chosen = null;
   if (name) {
@@ -993,19 +990,19 @@ async function resolveLockEntry(program, name) {
       // 部分一致 (大文字小文字無視)
       const matches = names.filter((n) => n.toLowerCase().includes(String(name).toLowerCase()));
       if (matches.length === 1) chosen = matches[0];
-      else if (matches.length > 1) { die(`"${name}" が複数に一致: ${matches.join(", ")}`, 2); return null; }
-      else { die(`ロック "${name}" が見つかりません。候補: ${names.join(", ")}`, 2); return null; }
+      else if (matches.length > 1) { die(t("cli.multipleMatch", { name, matches: matches.join(", ") }), 2); return null; }
+      else { die(t("cli.lockNotFound", { name, names: names.join(", ") }), 2); return null; }
     }
   } else {
     chosen = cfg.default?.lock || (names.length === 1 ? names[0] : null);
     if (!chosen) {
-      if (!canPrompt(program)) { die(`複数ロックがあります。名前を指定してください: ${names.join(", ")}`, 2); return null; }
-      chosen = await selectFromList("どのロック?", names, (n) => `${n}\t${locks[n].deviceUUID}`);
-      if (!chosen) { console.error("キャンセルしました。"); return null; }
+      if (!canPrompt(program)) { die(t("cli.multipleLocksSpecify", { names: names.join(", ") }), 2); return null; }
+      chosen = await selectFromList(t("cli.whichLock"), names, (n) => `${n}\t${locks[n].deviceUUID}`);
+      if (!chosen) { console.error(t("cli.cancelledDot")); return null; }
     }
   }
   const lock = locks[chosen];
-  if (!lock?.deviceUUID || !lock?.secretKey) { die(`lock "${chosen}" に deviceUUID/secretKey がありません (sesame locks sync-from-devices で取り込み直し)。`, 2); return null; }
+  if (!lock?.deviceUUID || !lock?.secretKey) { die(t("cli.lockMissingKeys", { name: chosen }), 2); return null; }
   return { name: chosen, deviceUUID: lock.deviceUUID, secretKey: lock.secretKey, model: lock.model || null };
 }
 
@@ -1019,15 +1016,15 @@ async function resolveLockEntry(program, name) {
  * @returns {"cloud"|"ble"}
  */
 function pickTransport(op, options, model) {
-  if (options.cloudOnly && options.bleOnly) { die("--cloud-only と --ble-only は同時指定できません。", 2); }
+  if (options.cloudOnly && options.bleOnly) { die(t("cli.cloudBleExclusive"), 2); }
   const allowed = transportsForOp(model, op);
-  if (allowed.length === 0) { die(`${op} に利用できる経路がありません (この型では非対応)。`, 2); }
+  if (allowed.length === 0) { die(t("cli.noTransportForOp", { op }), 2); }
   if (options.bleOnly) {
-    if (!allowed.includes("ble")) { die(`${op} は BLE では送れません。`, 2); }
+    if (!allowed.includes("ble")) { die(t("cli.opNotOverBle", { op }), 2); }
     return "ble";
   }
   if (options.cloudOnly) {
-    if (!allowed.includes("cloud")) { die(`${op} はクラウドでは実機に反映されません (BLE 必須)。--ble-only か無指定で。`, 2); }
+    if (!allowed.includes("cloud")) { die(t("cli.opNotOverCloud", { op }), 2); }
     return "cloud";
   }
   // オート: cloud で運べるなら cloud (BLE の接続コストを避けるため)。cloud 不可な op (autolock) のみ BLE。
@@ -1043,8 +1040,8 @@ function hasCloudSession(program) {
 
 /** mechStatus を 1 行に整形。 */
 function fmtMech(s) {
-  if (!s) return "(status 未取得)";
-  const warn = [s.isBatteryCritical && "⚠電池残少", s.isStop && "停止", s.isCritical && "異常"].filter(Boolean).join(" ");
+  if (!s) return t("cli.statusNotFetched");
+  const warn = [s.isBatteryCritical && t("cli.batteryLow"), s.isStop && t("cli.stop"), s.isCritical && t("cli.abnormal")].filter(Boolean).join(" ");
   // position はロック (Sesame5/6) のみ。Bot/Bike は概念がないので state だけ表示する。
   const pos = s.position == null ? "" : ` pos=${s.position}`;
   return `state=${s.state}${pos}${warn ? " " + warn : ""}`;
@@ -1053,7 +1050,7 @@ function fmtMech(s) {
 /** config の全ロック entry (deviceUUID/secretKey が揃っているもの) を返す。 */
 function allLockEntries(program) {
   const { configStore } = loadCtx(program);
-  if (!configStore.exists()) { die("config がありません。`sesame init` → `sesame locks sync-from-devices` を先に。", 2); return []; }
+  if (!configStore.exists()) { die(t("cli.noConfigInitSync"), 2); return []; }
   const locks = configStore.load().locks || {};
   return Object.entries(locks)
     .filter(([, l]) => l?.deviceUUID && l?.secretKey)
@@ -1124,7 +1121,7 @@ async function runBleOnLock(op, lock, entry, seconds, gopts) {
   const { result, status } = await bleExec(op, lock, seconds);
   out(gopts.json, () => {
     if (op === "status") { console.log(`${entry.name}: ${fmtMech(status)}`); return; }
-    console.log(`OK: ${op}${op === "autolock" ? ` ${Number(seconds) === 0 ? "無効化" : Number(seconds) + "秒"}` : ""} (${entry.name})`);
+    console.log(t("cli.okOp", { op, extra: op === "autolock" ? ` ${Number(seconds) === 0 ? t("cli.autolockDisabled") : t("cli.autolockSeconds", { seconds: Number(seconds) })}` : "", name: entry.name }));
     if (status) console.log(`   ${fmtMech(status)}`);
   }, { ok: true, op, name: entry.name, via: "ble", result, status });
 }
@@ -1155,10 +1152,14 @@ async function runCloudOp(op, entry, program) {
 }
 
 // セッション UI で使う操作ラベル (ロック系 + Hub3 系)。
-const SESSION_LABEL = {
-  unlock: "🔓 解錠", lock: "🔒 施錠", toggle: "↕ トグル", click: "👆 クリック", status: "ℹ 状態", autolock: "⏱ オートロック",
-  ir: "📡 IR 送信", "relay-on": "🔌 リレー ON", "relay-off": "🔌 リレー OFF", led: "💡 LED 調光",
-};
+// ロケールは run() 内で setLocale() してから確定するため、モジュール評価時に固定せず
+// 呼び出し時に t() を引く (lazy)。
+function sessionLabel() {
+  return {
+    unlock: t("cli.sessLabelUnlock"), lock: t("cli.sessLabelLock"), toggle: t("cli.sessLabelToggle"), click: t("cli.sessLabelClick"), status: t("cli.sessLabelStatus"), autolock: t("cli.sessLabelAutolock"),
+    ir: t("cli.sessLabelIr"), "relay-on": t("cli.sessLabelRelayOn"), "relay-off": t("cli.sessLabelRelayOff"), led: t("cli.sessLabelLed"),
+  };
+}
 
 /* exported for tests */
 /**
@@ -1184,22 +1185,23 @@ function sessionActionsFor(d, hasCloud) {
     ordered = caps.ops; // bot2:[click] / bike2:[unlock] / hub3:[ir,relay,led] / os2lock:[lock,unlock,toggle] 等
   }
 
+  const LABEL = sessionLabel();
   const acts = [];
   for (const o of ordered.filter((o) => avail.has(o))) {
     if (o === "relay") { // Hub3 のリレーは ON/OFF の 2 項目に展開。
-      acts.push({ label: SESSION_LABEL["relay-on"], value: "relay-on" }, { label: SESSION_LABEL["relay-off"], value: "relay-off" });
+      acts.push({ label: LABEL["relay-on"], value: "relay-on" }, { label: LABEL["relay-off"], value: "relay-off" });
     } else {
-      acts.push({ label: SESSION_LABEL[o], value: o });
+      acts.push({ label: LABEL[o], value: o });
     }
   }
-  if (caps.mechKind && d.ble) acts.push({ label: SESSION_LABEL.status, value: "status" }); // mech がある型は BLE 接続中のみ状態取得
+  if (caps.mechKind && d.ble) acts.push({ label: LABEL.status, value: "status" }); // mech がある型は BLE 接続中のみ状態取得
   return acts;
 }
 
 /** ヘッダの状態表示。BLE 接続済みは実 mechStatus、Hub3/未接続は注記 (クラウド状態は形が不定で正規化しない)。 */
 function sessionFmtState(d) {
-  if (d.kind === "hub3") return "(Hub3: IR / リレー / LED)";
-  return d.ble ? fmtMech(d.ble.lastStatus) : "(BLE未接続)";
+  if (d.kind === "hub3") return t("cli.sessHub3State");
+  return d.ble ? fmtMech(d.ble.lastStatus) : t("cli.sessBleNotConnected");
 }
 
 /**
@@ -1211,31 +1213,31 @@ function sessionFmtState(d) {
 function makeSessionExec(hub) {
   return async (op, d, extra) => {
     if (d.kind === "hub3") {
-      if (!hub) return "Hub3 操作にはログインが必要です。";
-      if (op === "ir") { await hub.send(extra.remote, extra.key); return `OK: IR 送信 ${extra.remote}/${extra.key} (${d.entry.name})`; }
+      if (!hub) return t("cli.sessHub3NeedLogin");
+      if (op === "ir") { await hub.send(extra.remote, extra.key); return t("cli.sessIrSent", { remote: extra.remote, key: extra.key, name: d.entry.name }); }
       if (op === "relay-on" || op === "relay-off") {
-        if (!d.entry.secretKey) return "Hub3 の secretKey が取得できていません (`sesame devices` で再取得)。";
+        if (!d.entry.secretKey) return t("cli.sessNoSecretKey");
         await hub.iot.hub3RelaySwitch({ deviceId: d.entry.deviceId, secretKey: d.entry.secretKey, op: op === "relay-on" ? 0x01 : 0x00 });
-        return `OK: リレー ${op === "relay-on" ? "ON" : "OFF"} (${d.entry.name}) [応答なし]`;
+        return t("cli.sessRelayResult", { state: op === "relay-on" ? "ON" : "OFF", name: d.entry.name });
       }
       if (op === "led") {
-        if (!d.entry.secretKey) return "Hub3 の secretKey が取得できていません (`sesame devices` で再取得)。";
+        if (!d.entry.secretKey) return t("cli.sessNoSecretKey");
         const r = await hub.iot.setHub3LedDuty({ deviceId: d.entry.deviceId, secretKey: d.entry.secretKey, op: 0x01, duty: Number(extra) });
-        return `OK: LED duty=${Number(extra)} (${d.entry.name})${r?.ledDuty != null ? ` → ${r.ledDuty}` : ""}`;
+        return t("cli.sessLedResult", { duty: Number(extra), name: d.entry.name, extra: r?.ledDuty != null ? ` → ${r.ledDuty}` : "" });
       }
-      return `未対応の操作: ${op}`;
+      return t("cli.sessUnsupportedOp", { op });
     }
     // ロック系
     if (d.ble) {
       const { status } = await bleExec(op, d.ble, extra);
-      return op === "status" ? `${d.entry.name}: ${fmtMech(status)}` : `OK: ${SESSION_LABEL[op]} (${d.entry.name})`;
+      return op === "status" ? `${d.entry.name}: ${fmtMech(status)}` : `OK: ${sessionLabel()[op]} (${d.entry.name})`;
     }
-    if (op === "autolock") return "autolock は BLE 必須です (デバイスに近づいて再試行してください)。";
-    if (op === "status") return `${d.entry.name}: (クラウド接続中・状態詳細は BLE 接続時のみ)`;
-    if (!hub) return "この操作には BLE 圏内かログインが必要です。";
+    if (op === "autolock") return t("cli.sessAutolockBleOnly");
+    if (op === "status") return t("cli.sessStatusCloud", { name: d.entry.name });
+    if (!hub) return t("cli.sessNeedBleOrLogin");
     if (op === "click") await hub.botClick(d.entry.name);
     else await hub[op](d.entry.name); // lock/unlock/toggle
-    return `OK: ${SESSION_LABEL[op]} (${d.entry.name}) [cloud]`;
+    return t("cli.sessCloudResult", { label: sessionLabel()[op], name: d.entry.name });
   };
 }
 
@@ -1247,8 +1249,8 @@ function makeSessionExec(hub) {
  */
 async function cmdSession(names, options, program) {
   const gopts = program.opts();
-  if (gopts.json) { die("session は対話モード専用です (--json 不可)。", 2); return; }
-  if (!isInteractive()) { die("session は TTY 専用です。単発操作は `sesame unlock <name>` (必要なら --ble-only) を使ってください。", 2); return; }
+  if (gopts.json) { die(t("cli.sessionJsonOnly"), 2); return; }
+  if (!isInteractive()) { die(t("cli.sessionTtyOnly"), 2); return; }
 
   const loggedIn = hasCloudSession(program);
 
@@ -1257,7 +1259,7 @@ async function cmdSession(names, options, program) {
   const locks = allLockEntries(program).map((e) => ({ ...e, kind: "lock" }));
   const hub3s = loggedIn ? allHub3Entries(program).map((e) => ({ ...e, kind: "hub3" })) : [];
   const allDevs = [...locks, ...hub3s];
-  if (allDevs.length === 0) { die("操作できるデバイスがありません。`sesame locks sync-from-devices` / `sesame hub3 sync-from-devices` で取り込んでください。", 2); return; }
+  if (allDevs.length === 0) { die(t("cli.noOperableDevices"), 2); return; }
 
   // 対象を決定: 名前指定があれば部分一致で絞る、無ければ全デバイス。
   let targets;
@@ -1265,7 +1267,7 @@ async function cmdSession(names, options, program) {
     targets = [];
     for (const n of names) {
       const matches = allDevs.filter((e) => e.name.toLowerCase().includes(String(n).toLowerCase()));
-      if (matches.length === 0) { die(`デバイス "${n}" が見つかりません。候補: ${allDevs.map((e) => e.name).join(", ")}`, 2); return; }
+      if (matches.length === 0) { die(t("cli.deviceNotFoundCandidates", { name: n, names: allDevs.map((e) => e.name).join(", ") }), 2); return; }
       for (const m of matches) if (!targets.some((t) => t.name === m.name)) targets.push(m);
     }
   } else {
@@ -1294,7 +1296,7 @@ async function cmdSession(names, options, program) {
       bus.emit("update"); // 接続が増えたら ·BLE に昇格させるため再描画
       return result.connected.size;
     } catch (e) {
-      if (gopts.debug) console.error(`[ble] 接続失敗: ${e?.message || e}`);
+      if (gopts.debug) console.error(t("cli.bleConnectFailedDebug", { message: e?.message || e }));
       return 0;
     }
   };
@@ -1303,13 +1305,13 @@ async function cmdSession(names, options, program) {
   if (loggedIn) {
     // オートのアプリ的挙動: クラウドでメニューを即表示し、BLE は **バックグラウンド** で接続する
     // (繋がったデバイスは次の描画で ·BLE に昇格し、以降 BLE 優先)。起動を BLE スキャンで待たせない。
-    if (lockTargets.length) console.error("[ble] バックグラウンドで接続中... (クラウドで操作可能)");
+    if (lockTargets.length) console.error(t("cli.bleBackgroundConnecting"));
     blePromise = connectBle();
   } else {
     // 未ログイン: クラウドの下支えが無いので BLE を待つしかない。0 なら die。
-    console.error(`[ble] スキャン中... (${lockTargets.map((t) => t.name).join(", ")})`);
+    console.error(t("cli.bleScanning", { names: lockTargets.map((lt) => lt.name).join(", ") }));
     if ((await connectBle()) === 0) {
-      die("BLE 圏内のデバイスが無く、クラウドも未ログインです。デバイスに近づくか `sesame login <email>` → `sesame verify` してください。", 1);
+      die(t("cli.bleNoneAndNotLoggedIn"), 1);
       return;
     }
   }
@@ -1333,7 +1335,7 @@ async function cmdSession(names, options, program) {
     } finally {
       if (blePromise) await blePromise.catch(() => {}); // 背景接続の完了を待ってから閉じる
       for (const d of devices.values()) if (d.ble) await d.ble.close().catch(() => {});
-      console.error("切断しました。");
+      console.error(t("cli.disconnected"));
     }
   };
 
@@ -1356,12 +1358,12 @@ async function cmdDeviceOp(device, action, args, options, program) {
     action = "status"; // 非対話の既定は状態表示
   }
   if (!DEVICE_ACTIONS.has(action)) {
-    die(`不明な操作 "${action}"。使えるのは: ${[...DEVICE_ACTIONS].join(" / ")} (例: sesame ${device || "<device>"} unlock)`, 2);
+    die(t("cli.unknownAction", { action, actions: [...DEVICE_ACTIONS].join(" / "), device: device || "<device>" }), 2);
     return;
   }
   const seconds = action === "autolock" ? (args && args[0]) : null;
   if (action === "autolock" && (seconds == null)) {
-    die("autolock には秒数が必要です (例: sesame front autolock 30、0=無効)。", 2);
+    die(t("cli.autolockNeedsSeconds"), 2);
     return;
   }
   await cmdAct(action, device, seconds, options, program);
@@ -1380,7 +1382,7 @@ async function cmdAct(op, name, seconds, options, program) {
   if (BLE_OPS.has(op) && entry.model) {
     const caps = capabilitiesForModel(entry.model);
     if (!caps.ops.includes(op)) {
-      die(`${caps.label} (${entry.model}) は ${op} に対応していません。可能な操作: ${caps.ops.join("/") || "なし"}`, 2);
+      die(t("cli.modelNotSupportOp", { label: caps.label, model: entry.model, op, ops: caps.ops.join("/") || t("cli.opsNone") }), 2);
       return;
     }
   }
@@ -1388,7 +1390,7 @@ async function cmdAct(op, name, seconds, options, program) {
   // autolock の引数検証は接続前に。
   if (op === "autolock") {
     const sec = Number(seconds);
-    if (!Number.isInteger(sec) || sec < 0 || sec > 65535) { die("seconds は 0..65535 の整数 (0=無効)。", 2); return; }
+    if (!Number.isInteger(sec) || sec < 0 || sec > 65535) { die(t("cli.secondsRange"), 2); return; }
   }
 
   if (transport === "ble") {
@@ -1404,7 +1406,7 @@ async function cmdAct(op, name, seconds, options, program) {
   }
   // transport === "cloud"
   if (!hasCloudSession(program)) {
-    die("クラウド未ログインです。`sesame login <email>` → `sesame verify` でログインするか、BLE で操作する場合は `--ble-only` か `sesame session` を使ってください。", 2);
+    die(t("cli.cloudNotLoggedIn"), 2);
     return;
   }
   if (!gopts.json) console.error(`[cloud] ${op}${extra} → ${entry.name}`);
@@ -1476,11 +1478,11 @@ async function cmdMigrate(srcDir, _opts, program) {
   configStore.save(); // companyID/wsUrl/lang 等の直接設定分を確定 (hub3/remote は上で保存済み)
 
   out(opts.json, () => {
-    console.log(`OK: migrated to ${paths.dir}`);
-    console.log(`Imported: ${summary.imported.join(", ") || "(none)"}`);
-    if (summary.hub3Added)   console.log(`  hub3:   ${summary.hub3Added}`);
-    if (summary.remoteAdded) console.log(`  remote: ${summary.remoteAdded} (default)`);
-    console.log(`\n旧ファイル (.env / .tokens.json / keys.json / .login_state.json) は不要なら削除して構いません。`);
+    console.log(t("cli.okMigrated", { dir: paths.dir }));
+    console.log(t("cli.imported", { list: summary.imported.join(", ") || t("cli.importedNone") }));
+    if (summary.hub3Added)   console.log(t("cli.migrateHub3", { name: summary.hub3Added }));
+    if (summary.remoteAdded) console.log(t("cli.migrateRemote", { name: summary.remoteAdded }));
+    console.log(t("cli.migrateOldFiles"));
   }, summary);
 }
 
@@ -1505,113 +1507,112 @@ function parseDotenv(content) {
 export async function run(argv = process.argv) {
   CLI_JSON = argv.includes("--json"); // die()/エラー経路用にグローバル --json を先に確定
   const program = new Command();
+
+  // UI ロケールを確定する (この後 t() を使うコマンド description / help / session UI 等に効く)。
+  // commander へコマンドを登録する前に行う: description 文字列は登録時に t() で解決されるため、
+  // それより先に setLocale() しないと既定 "en" のまま固定されてしまう。
+  // 優先順位: --lang フラグ > config.uiLang > 既定 "en"。commander parse 前なので argv を直接覗く。
+  {
+    const langFlag =
+      (() => { const i = argv.indexOf("--lang"); return i >= 0 ? argv[i + 1] : null; })() ||
+      (argv.find((a) => a.startsWith("--lang=")) || "").split("=")[1] || null;
+    let cfgUiLang = null;
+    try { const { configStore } = loadCtx(program); if (configStore.exists()) cfgUiLang = configStore.load().uiLang; } catch { /* config 未作成等は無視 */ }
+    setLocale(resolveLocale({ flag: langFlag, configLang: cfgUiLang }));
+  }
+
   program
     .name("sesame")
-    .description("SESAME cloud CLI: lock control + Hub3 IR + device management (port of biz3 React with Consumer Cognito client)")
+    .description(t("cli.progDescription"))
     .version(getPkgVersion(), "-V, --version")
     // 引数不足/未知オプション時に usage を出す (commander 既定はエラー1行のみで不親切)。
     // この前に設定すると後で追加する全サブコマンドへ継承される。--json 時は writeErr 側で抑止。
     .showHelpAfterError()
     .showSuggestionAfterError()
-    .option("--config-dir <path>", "設定ディレクトリ上書き (default: ~/.config/sesame-kit)")
-    .option("--debug", "詳細ログ")
-    .option("--json", "JSON 出力")
-    .option("--lang <lang>", "UI language: en | ja (default: en; or config.uiLang)");
+    .option("--config-dir <path>", t("cli.optConfigDir"))
+    .option("--debug", t("cli.optDebug"))
+    .option("--json", t("cli.optJson"))
+    .option("--lang <lang>", t("cli.optLang"));
 
-  program.addHelpText("before", `
-デバイス主語で操作します (device.action() と同じ並び):
-  sesame <device> <action>   1 発実行   例: sesame front unlock / sesame kitchen click / sesame front autolock 30
-  sesame <device>            そのデバイスの対話メニュー
-  sesame                     全デバイスの対話メニュー (session)
-action: unlock / lock / toggle / click / status / autolock <秒>  (使える操作は型で変わる)
-経路は既定で自動。固定は --ble-only / --cloud-only。
-下記は管理コマンド (login やデバイス管理・IR 等)。
-`);
+  program.addHelpText("before", t("cli.helpBefore"));
 
-  program.command("login <email>").description("sign-in 開始 (email にコード送信)")
+  program.command("login <email>").description(t("cli.descLogin"))
     .action((email, opts) => cmdLogin(email, opts, program));
-  program.command("verify [code]").description("sign-in 完了 (省略時は対話入力)")
+  program.command("verify [code]").description(t("cli.descVerify"))
     .action((code, opts) => cmdVerify(code, opts, program));
-  program.command("refresh").description("強制 token 更新")
+  program.command("refresh").description(t("cli.descRefresh"))
     .action((opts) => cmdRefresh(opts, program));
-  program.command("whoami").description("ログインユーザ情報 (biz3GetLoginUser) を取得し companyID を config に保存")
+  program.command("whoami").description(t("cli.descWhoami"))
     .action((opts) => cmdWhoami(opts, program));
 
-  program.command("send [key]").description("IR 発射 (key は名前 or keyUUID, 省略時は対話選択)")
-    .option("--remote <name>", "リモコン名 (省略時はデフォルト)")
+  program.command("send [key]").description(t("cli.descSend"))
+    .option("--remote <name>", t("cli.optRemoteName"))
     .action((key, opts) => cmdSend(key, opts, program));
-  program.command("list").description("リモコン登録キー一覧 (getIRCodes)")
-    .option("--remote <name>", "リモコン名 (省略時はデフォルト)")
+  program.command("list").description(t("cli.descList"))
+    .option("--remote <name>", t("cli.optRemoteName"))
     .action((opts) => cmdList(opts, program));
-  program.command("ping").description("WS 接続確認")
+  program.command("ping").description(t("cli.descPing"))
     .action((opts) => cmdPing(opts, program));
-  program.command("devices").description("全 SESAME デバイス情報 (secretKey 含む dump)")
+  program.command("devices").description(t("cli.descDevices"))
     .action((opts) => cmdDevices(opts, program));
 
-  program.command("init").description("設定ディレクトリと config.json スケルトンを作成")
+  program.command("init").description(t("cli.descInit"))
     .action((opts) => cmdInit(opts, program));
-  program.command("setup").description("認証後の自動セットアップを再実行 (companyID / ロック / Hub3 IR をデバイスから取り込み)")
+  program.command("setup").description(t("cli.descSetup"))
     .action((opts) => cmdSetup(opts, program));
-  program.command("migrate [srcDir]").description("旧 .env / .tokens.json / keys.json を取り込み")
+  program.command("migrate [srcDir]").description(t("cli.descMigrate"))
     .action((srcDir, opts) => cmdMigrate(srcDir, opts, program));
 
   // サブコマンド省略時は show 相当を出す (引数なしで exit 1 にならないように)
-  const config = program.command("config").description("設定の参照 (省略時は show)")
+  const config = program.command("config").description(t("cli.descConfig"))
     .action((opts) => cmdConfigShow(opts, program));
-  config.command("path").description("設定ディレクトリのパスを出力")
+  config.command("path").description(t("cli.descConfigPath"))
     .action((opts) => cmdConfigPath(opts, program));
-  config.command("show").description("config.json / tokens.json (masked) を出力")
+  config.command("show").description(t("cli.descConfigShow"))
     .action((opts) => cmdConfigShow(opts, program));
 
-  const remote = program.command("remote").description("リモコン定義の編集");
-  remote.command("ls").description("設定済みリモコン一覧")
+  const remote = program.command("remote").description(t("cli.descRemote"));
+  remote.command("ls").description(t("cli.descRemoteLs"))
     .action((opts) => cmdRemoteLs(opts, program));
-  remote.command("add").description("リモコンを一覧から選んで 1 つ追加 (UUID/irType 手打ち不要)")
-    .addHelpText("after", `
-devices だけで完結します (手入力は呼び名のみ):
-  - 各 Hub3 配下の登録済みリモコンを一覧表示し選択 (irType も自動)
-  - 追加後に自動で sync-keys (キー一覧を取り込み)
-全リモコンを一括で取り込むなら \`sesame remote sync-from-devices\` の方が速い。`)
+  remote.command("add").description(t("cli.descRemoteAdd"))
+    .addHelpText("after", t("cli.helpRemoteAdd"))
     .action((opts) => cmdRemoteAdd(opts, program));
-  remote.command("set-default <name>").description("デフォルトリモコン設定")
+  remote.command("set-default <name>").description(t("cli.descRemoteSetDefault"))
     .action((name, opts) => cmdRemoteSetDefault(name, opts, program));
-  remote.command("sync-keys [name]").description("getIRCodes で取得したキーを config.json に書き戻し")
+  remote.command("sync-keys [name]").description(t("cli.descRemoteSyncKeys"))
     .action((name, opts) => cmdRemoteSyncKeys(name, opts, program));
   remote.command("sync-from-devices")
-    .description("devices からリモコンを全件自動取り込み (Hub3 と irType を自動判定、引数不要)")
+    .description(t("cli.descRemoteSyncFromDevices"))
     .action((opts) => cmdRemoteSyncFromDevices(opts, program));
 
-  const hub3 = program.command("hub3").description("Hub3 定義の編集");
-  hub3.command("ls").description("設定済み Hub3 一覧")
+  const hub3 = program.command("hub3").description(t("cli.descHub3"));
+  hub3.command("ls").description(t("cli.descHub3Ls"))
     .action((opts) => cmdHub3Ls(opts, program));
-  hub3.command("add").description("devices から Hub3 を選んで追加 (UUID 手打ち不要)")
+  hub3.command("add").description(t("cli.descHub3Add"))
     .action((opts) => cmdHub3Add(opts, program));
-  hub3.command("sync-from-devices").description("devices から Hub3 を全件自動取り込み")
-    .option("--prune", "server に無い Hub3 を config から除去 (参照中の remote があるものは残す)")
+  hub3.command("sync-from-devices").description(t("cli.descHub3SyncFromDevices"))
+    .option("--prune", t("cli.optPruneHub3"))
     .action((opts) => cmdHub3SyncFromDevices(opts, program));
 
   // ロック定義の管理 (グループ名は locks。操作は下のトップレベル動詞)
-  const locks = program.command("locks").description("ロック定義の管理 (一覧/追加/削除/デフォルト/取込)");
-  locks.command("ls").description("設定済みロック一覧")
+  const locks = program.command("locks").description(t("cli.descLocks"));
+  locks.command("ls").description(t("cli.descLockLs"))
     .action((opts) => cmdLockLs(opts, program));
-  locks.command("add").description("ロック追加 (対話、またはフラグで非対話)")
-    .option("--name <name>", "ロックの呼び名 (例: front)")
-    .option("--uuid <uuid>", "ロックの deviceUUID (devices の出力にある)")
-    .option("--secret <hex>", "32hex 共通鍵 (devices の出力にある)")
-    .option("--model <model>", "例 sesame_5 / sesame_5_pro / sesame_6 / wm_2")
-    .option("--alias <alias>", "表示名 (任意)")
-    .addHelpText("after", `
-フラグ未指定なら対話で聞く。--json/非対話では --name/--uuid/--secret が必須。
-通常は \`sesame locks sync-from-devices\` で自動取り込みが楽。
-例: sesame locks add --name front --uuid <UUID> --secret <32hex> --model sesame_5_pro`)
+  locks.command("add").description(t("cli.descLockAdd"))
+    .option("--name <name>", t("cli.optLockName"))
+    .option("--uuid <uuid>", t("cli.optLockUuid"))
+    .option("--secret <hex>", t("cli.optLockSecret"))
+    .option("--model <model>", t("cli.optLockModel"))
+    .option("--alias <alias>", t("cli.optLockAlias"))
+    .addHelpText("after", t("cli.helpLockAdd"))
     .action((opts) => cmdLockAdd(opts, program));
-  locks.command("rm <name>").description("ロック定義削除 (--yes で非対話強制削除)")
-    .option("--yes", "確認 prompt をスキップ (非対話モード必須)")
+  locks.command("rm <name>").description(t("cli.descLockRm"))
+    .option("--yes", t("cli.optYes"))
     .action((name, opts) => cmdLockRm(name, opts, program));
-  locks.command("set-default <name>").description("デフォルトロック設定")
+  locks.command("set-default <name>").description(t("cli.descLockSetDefault"))
     .action((name, opts) => cmdLockSetDefault(name, opts, program));
-  locks.command("sync-from-devices").description("devices からロックを config に取り込み (追加 + secretKey 更新)")
-    .option("--prune", "server に無いロックを config から除去")
+  locks.command("sync-from-devices").description(t("cli.descLockSyncFromDevices"))
+    .option("--prune", t("cli.optPruneLock"))
     .action((opts) => cmdLockSyncFromDevices(opts, program));
 
   // ---------- デバイス主語の実行 (sesame <device> [action]) ----------
@@ -1622,105 +1623,90 @@ devices だけで完結します (手入力は呼び名のみ):
   //
   // 実体は隠し op コマンド。先頭トークンが既知コマンドでなければ run() がここへ振り分ける。
   program.command("op [device] [action] [args...]", { hidden: true })
-    .option("--ble-only", "BLE 経路に固定 (近接 + Bluetooth 権限。接続に数秒)")
-    .option("--cloud-only", "クラウド経路に固定 (要 login。一部操作は制限)")
+    .option("--ble-only", t("cli.optBleOnly"))
+    .option("--cloud-only", t("cli.optCloudOnly"))
     .action((device, action, args, opts) => cmdDeviceOp(device, action, args, opts, program));
 
   program.command("session [names...]").alias("watch")
-    .description("複数デバイスに BLE 接続を保持して対話操作 (sesame <device> の複数版)")
-    .addHelpText("after", `
-名前を省略すると全デバイスに、指定するとそれらに接続する。
-接続後は矢印キーのメニューでデバイスと操作を選ぶ (操作は型で変わる)。
-例: sesame session            # 全デバイス
-    sesame session front 裏口  # 指定デバイスだけ`)
+    .description(t("cli.descSession"))
+    .addHelpText("after", t("cli.helpSession"))
     .action((names, opts) => cmdSession(names, opts, program));
 
   // ---------- IR advanced (Phase C) ----------
-  const irCmd = program.command("ir").description("Hub3 IR の高度な操作 (学習 / モード / 検索 / プリセット照合)");
+  const irCmd = program.command("ir").description(t("cli.descIr"));
   irCmd.command("learn [remote] [keyname]")
-    .description("物理リモコンの 1 ボタンを学習して remote にキー登録 (引数省略で対話選択)")
+    .description(t("cli.descIrLearn"))
     .action((remote, keyName, opts) => cmdIRLearn(remote, keyName, opts, program));
-  const irMode = irCmd.command("mode").description("Hub3 の IR モード制御 (0=CONTROL / 1=REGISTER)");
-  irMode.command("get [hub3]").description("現在のモード取得")
+  const irMode = irCmd.command("mode").description(t("cli.descIrMode"));
+  irMode.command("get [hub3]").description(t("cli.descIrModeGet"))
     .action((hub3, opts) => cmdIRModeGet(hub3, opts, program));
-  irMode.command("set <mode> [hub3]").description("モード設定 (0 or 1)")
+  irMode.command("set <mode> [hub3]").description(t("cli.descIrModeSet"))
     .action((mode, hub3, opts) => cmdIRModeSet(hub3, mode, opts, program));
-  const irKey = irCmd.command("key").description("キー (ボタン) CRUD");
-  irKey.command("rm [remote] [key]").description("キー削除 (引数省略で対話選択、--yes で非対話強制)")
-    .option("--yes", "確認 prompt をスキップ (非対話モード必須)")
+  const irKey = irCmd.command("key").description(t("cli.descIrKey"));
+  irKey.command("rm [remote] [key]").description(t("cli.descIrKeyRm"))
+    .option("--yes", t("cli.optYes"))
     .action((remote, key, opts) => cmdIRKeyRm(remote, key, opts, program));
-  irKey.command("rename [remote] [key] [new]").description("キー名変更 (引数省略で対話)")
+  irKey.command("rename [remote] [key] [new]").description(t("cli.descIrKeyRename"))
     .action((remote, key, n, opts) => cmdIRKeyRename(remote, key, n, opts, program));
-  irCmd.command("remote-list <irType>").description("server 側の登録リモコン一覧 (irType: 整数コード, 例 49152=エアコン)")
+  irCmd.command("remote-list <irType>").description(t("cli.descIrRemoteList"))
     .action((type, opts) => cmdIRRemoteListServer(type, opts, program));
-  irCmd.command("search <irType> <term>").description("プリセットリモコン (メーカー DB) 検索 (irType: 例 49152=エアコン)")
+  irCmd.command("search <irType> <term>").description(t("cli.descIrSearch"))
     .action((type, term, opts) => cmdIRRemoteSearch(type, term, opts, program));
-  irCmd.command("match <irType> <irData>").description("学習波形 (hex) からプリセット照合 (irType: 整数コード)")
+  irCmd.command("match <irType> <irData>").description(t("cli.descIrMatch"))
     .action((type, irData, opts) => cmdIRRemoteMatch(type, irData, opts, program));
-  irCmd.command("remote-rm [name]").description("server 側からリモコン削除 (config の remote は残る)")
+  irCmd.command("remote-rm [name]").description(t("cli.descIrRemoteRm"))
     .action((name, opts) => cmdIRRemoteRmServer(name, opts, program));
-  irCmd.command("remote-rename <alias> [name]").description("server 側でリモコンの alias 変更")
+  irCmd.command("remote-rename <alias> [name]").description(t("cli.descIrRemoteRename"))
     .action((alias, name, opts) => cmdIRRemoteRenameServer(name, alias, opts, program));
 
   // ---------- device management (Phase D) ----------
-  const devCmd = program.command("device").description("デバイス管理 (個人/会社 + 名前変更/削除)");
-  devCmd.command("user-ls").description("個人ユーザのデバイス一覧 (getUserDevice)")
+  const devCmd = program.command("device").description(t("cli.descDevice"));
+  devCmd.command("user-ls").description(t("cli.descDeviceUserLs"))
     .action((opts) => cmdDeviceUserLs(opts, program));
-  devCmd.command("status [uuid]").description("単機の現在状態 (lock state, battery 等)")
+  devCmd.command("status [uuid]").description(t("cli.descDeviceStatus"))
     .action((uuid, opts) => cmdDeviceStatus(uuid, opts, program));
-  devCmd.command("rename [uuid] [name]").description("デバイス名変更 (引数省略で対話)")
+  devCmd.command("rename [uuid] [name]").description(t("cli.descDeviceRename"))
     .action((uuid, name, opts) => cmdDeviceRename(uuid, name, opts, program));
-  devCmd.command("rm [uuid]").description("company からデバイス削除 (確認 prompt あり、--yes で非対話強制)")
-    .option("--yes", "確認 prompt をスキップ (非対話モード必須)")
+  devCmd.command("rm [uuid]").description(t("cli.descDeviceRm"))
+    .option("--yes", t("cli.optYes"))
     .action((uuid, opts) => cmdDeviceRm(uuid, opts, program));
 
-  program.command("history [deviceUUID]").description("デバイスの開閉履歴 (省略時は全デバイス or 対話)")
-    .option("--page-size <n>", "ページサイズ")
+  program.command("history [deviceUUID]").description(t("cli.descHistory"))
+    .option("--page-size <n>", t("cli.optPageSize"))
     .action((uuid, opts) => cmdHistory(uuid, opts, program));
-  program.command("battery [deviceUUID]").description("デバイスの電池履歴 (省略時は対話選択)")
-    .option("--page-size <n>", "ページサイズ (default 100)")
+  program.command("battery [deviceUUID]").description(t("cli.descBattery"))
+    .option("--page-size <n>", t("cli.optPageSize100"))
     .action((uuid, opts) => cmdBattery(uuid, opts, program));
-  program.command("firmware").description("配信中ファームウェア一覧")
+  program.command("firmware").description(t("cli.descFirmware"))
     .action((opts) => cmdFirmware(opts, program));
-  program.command("webapi <func>").description("biz3 WebAPI proxy 経由で REST API を叩く")
-    .option("--query <json>", "query params (JSON)")
-    .option("--body <json>", "request body (JSON)")
-    .option("--api-key <id>", "apiKeyId (省略時は config.apiKeyId)")
+  program.command("webapi <func>").description(t("cli.descWebapi"))
+    .option("--query <json>", t("cli.optWebapiQuery"))
+    .option("--body <json>", t("cli.optWebapiBody"))
+    .option("--api-key <id>", t("cli.optWebapiApiKey"))
     .action((func, opts) => cmdWebapi(func, opts, program));
 
   // bootstrap (互換コマンド: 既存 token を JSON で流し込み)
-  program.command("bootstrap").description("既存 idToken/refreshToken を JSON stdin から流し込み")
+  program.command("bootstrap").description(t("cli.descBootstrap"))
     .action(async (opts) => {
       // stdin がパイプ/リダイレクトでない (TTY) のに読みに行くと無限に待つので明示拒否する。
-      if (process.stdin.isTTY) die("bootstrap は JSON を stdin から受け取ります: echo '{...}' | sesame bootstrap", 2);
+      if (process.stdin.isTTY) die(t("cli.bootstrapStdin"), 2);
       const { tokenStore } = loadCtx(program);
       const chunks = [];
       for await (const c of process.stdin) chunks.push(c);
       const values = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      const t = bootstrap(tokenStore, values);
-      out(CLI_JSON, () => console.log(`OK: bootstrapped (clientId=${t.clientId})`),
-        { ok: true, clientId: t.clientId });
+      const tok = bootstrap(tokenStore, values);
+      out(CLI_JSON, () => console.log(t("cli.okBootstrapped", { clientId: tok.clientId })),
+        { ok: true, clientId: tok.clientId });
     });
 
   // meta コマンド
-  program.command("meta").description("Cognito 構成 (region/userPoolId/clientId) を表示")
+  program.command("meta").description(t("cli.descMeta"))
     .action(() => out(CLI_JSON, () => console.log(JSON.stringify(CONFIG_META, null, 2)), CONFIG_META));
 
   // ---------- 拡張コマンド群 (Phase F–L) を cli/ サブモジュールから登録 ----------
   // 各 register は registerXxxCommands(program, ctx) で commander サブコマンドを生やす。
   // 本体ロジックは src/<module>.js、コマンド配線は src/cli/<module>.js に分離している。
   const ctx = makeCtx(program);
-
-  // UI ロケールを確定する (この後 t() を使う session UI 等に効く)。
-  // 優先順位: --lang フラグ > config.uiLang > 既定 "en"。commander parse 前なので argv を直接覗く。
-  {
-    const langFlag =
-      (() => { const i = argv.indexOf("--lang"); return i >= 0 ? argv[i + 1] : null; })() ||
-      (argv.find((a) => a.startsWith("--lang=")) || "").split("=")[1] || null;
-    let cfgUiLang = null;
-    try { const { configStore } = ctx.loadCtx(); if (configStore.exists()) cfgUiLang = configStore.load().uiLang; } catch { /* config 未作成等は無視 */ }
-    setLocale(resolveLocale({ flag: langFlag, configLang: cfgUiLang }));
-  }
 
   registerScheduleCommands(program, ctx);
   registerCompanyCommands(program, ctx);
@@ -1773,7 +1759,7 @@ devices だけで完結します (手入力は呼び名のみ):
     if (typeof err.code === "string" && err.code.startsWith("commander.")) {
       if (!CLI_JSON) { process.exitCode = code; finishCli(); return; }
       // --json: commander のメッセージ先頭 "error: " を剥がして封筒に載せる (error が二重にならないように)。
-      die((err.message || "usage error").replace(/^error:\s*/i, ""), code); return;
+      die((err.message || t("cli.usageError")).replace(/^error:\s*/i, ""), code); return;
     }
     die(withStaleHint(err.message || String(err)), code);
   }
@@ -1807,9 +1793,9 @@ function maybeHandleBleError(err) {
       spawn("open", ["x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"], {
         stdio: "ignore", detached: true,
       }).unref();
-      console.error("→ Bluetooth のプライバシー設定を開きました。実行中のターミナル (Terminal/iTerm 等) を ON にして再実行してください。");
+      console.error(t("cli.bleOpenedPrivacy"));
     } catch {
-      console.error("→ システム設定 → プライバシーとセキュリティ → Bluetooth でターミナルを許可してください。");
+      console.error(t("cli.bleEnablePrivacy"));
     }
   }
   process.exitCode = 2;
@@ -1830,6 +1816,6 @@ function withStaleHint(msg) {
     /not found/i.test(m) ||
     /invalid.*device/i.test(m);
   if (!looksStale) return m;
-  return `${m}\nヒント: ローカル config が古い可能性があります。\n  IR キー: sesame remote sync-keys [name]\n  ロック/Hub3: sesame locks sync-from-devices / sesame hub3 sync-from-devices`;
+  return t("cli.staleHint", { msg: m });
 }
 

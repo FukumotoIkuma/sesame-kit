@@ -19,7 +19,7 @@ export function buildOpenRpcDoc(reg: any, version: any): {
         title: string;
         version: any;
         "x-contractVersion": string;
-        description: string;
+        description: any;
     };
     methods: {
         name: any;
@@ -35,7 +35,7 @@ export function buildOpenRpcDoc(reg: any, version: any): {
     }[];
     "x-events": {
         name: string;
-        description: string;
+        description: any;
     }[];
 };
 //# sourceMappingURL=registry.d.ts.map

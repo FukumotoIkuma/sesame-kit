@@ -22,6 +22,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { configPaths } from "./paths.js";
 import { DEFAULT_IR_TYPE } from "./crypto.js";
+import { t } from "./i18n.js";
 
 // WS ステージは `/public` が公式値:
 //   - biz3 現行ソース (env_config.js:2) = `/public`
@@ -74,7 +75,7 @@ export class ConfigStore {
    * @param {string} configPath 絶対パス
    */
   constructor(configPath) {
-    if (!configPath) throw new Error("configPath required");
+    if (!configPath) throw new Error(t("domain.config.configPathRequired"));
     this.configPath = configPath;
     this.data = null;
   }
@@ -126,7 +127,7 @@ export class ConfigStore {
   }
 
   save() {
-    if (!this.data) throw new Error("nothing to save (call load() first)");
+    if (!this.data) throw new Error(t("domain.config.nothingToSave"));
     this._reproject(); // 書き込み前に view を最新化 (読み手が直後に参照しても整合)
     // 永続化は正準キーのみ (派生 view の locks/hub3s は書かない)
     const persist = {};
@@ -161,25 +162,25 @@ export class ConfigStore {
       (names.length === 1 ? names[0] : null);
     if (!chosen) {
       throw new Error(
-        `No remote specified and no default. 設定済み: [${names.join(", ") || "(none)"}]`,
+        t("domain.config.noRemoteNoDefault", { names: names.join(", ") || "(none)" }),
       );
     }
     const remote = remotes[chosen];
     if (!remote) {
-      throw new Error(`Unknown remote "${chosen}". 設定済み: [${names.join(", ") || "(none)"}]`);
+      throw new Error(t("domain.config.unknownRemote", { name: chosen, names: names.join(", ") || "(none)" }));
     }
     const hub3Name = remote.hub3;
     const hub3 = cfg.hub3s?.[hub3Name];
     if (!hub3) {
-      throw new Error(`Remote "${chosen}" は hub3 "${hub3Name}" を参照しますが未登録です。`);
+      throw new Error(t("domain.config.remoteRefMissingHub3", { name: chosen, hub3: hub3Name }));
     }
     return { name: chosen, remote, hub3Name, hub3 };
   }
 
   addHub3(name, hub3) {
     const cfg = this.load();
-    if (!name) throw new Error("hub3 name required");
-    if (!hub3?.deviceId) throw new Error("hub3.deviceId required");
+    if (!name) throw new Error(t("domain.config.hub3NameRequired"));
+    if (!hub3?.deviceId) throw new Error(t("domain.config.hub3DeviceIdRequired"));
     cfg.devices[name] = {
       deviceUUID: hub3.deviceId,
       deviceName: hub3.name || name,
@@ -192,10 +193,10 @@ export class ConfigStore {
 
   addRemote(name, remote) {
     const cfg = this.load();
-    if (!name) throw new Error("remote name required");
-    if (!remote?.hub3) throw new Error("remote.hub3 required");
+    if (!name) throw new Error(t("domain.config.remoteNameRequired"));
+    if (!remote?.hub3) throw new Error(t("domain.config.remoteHub3Required"));
     if (!cfg.hub3s[remote.hub3]) {
-      throw new Error(`hub3 "${remote.hub3}" 未登録。先に hub3 add を実行してください。`);
+      throw new Error(t("domain.config.hub3NotRegisteredAddFirst", { hub3: remote.hub3 }));
     }
     cfg.remotes[name] = {
       hub3: remote.hub3,
@@ -212,7 +213,7 @@ export class ConfigStore {
 
   setDefaultRemote(name) {
     const cfg = this.load();
-    if (!cfg.remotes[name]) throw new Error(`Unknown remote "${name}"`);
+    if (!cfg.remotes[name]) throw new Error(t("domain.config.unknownRemoteName", { name }));
     cfg.default.remote = name;
     this.save();
   }
@@ -220,7 +221,7 @@ export class ConfigStore {
   updateRemoteKeys(name, keys) {
     const cfg = this.load();
     const r = cfg.remotes[name];
-    if (!r) throw new Error(`Unknown remote "${name}"`);
+    if (!r) throw new Error(t("domain.config.unknownRemoteName", { name }));
     r.keys = keys;
     this.save();
   }
@@ -234,18 +235,18 @@ export class ConfigStore {
     const names = Object.keys(locks);
     const chosen = name || cfg.default?.lock || (names.length === 1 ? names[0] : null);
     if (!chosen) {
-      throw new Error(`No lock specified and no default. 設定済み: [${names.join(", ") || "(none)"}]`);
+      throw new Error(t("domain.config.noLockNoDefault", { names: names.join(", ") || "(none)" }));
     }
     const lock = locks[chosen];
-    if (!lock) throw new Error(`Unknown lock "${chosen}". 設定済み: [${names.join(", ") || "(none)"}]`);
+    if (!lock) throw new Error(t("domain.config.unknownLock", { name: chosen, names: names.join(", ") || "(none)" }));
     return { name: chosen, lock };
   }
 
   addLock(name, lock) {
     const cfg = this.load();
-    if (!name) throw new Error("lock name required");
-    if (!lock?.deviceUUID) throw new Error("lock.deviceUUID required");
-    if (!lock?.secretKey) throw new Error("lock.secretKey required");
+    if (!name) throw new Error(t("domain.config.lockNameRequired"));
+    if (!lock?.deviceUUID) throw new Error(t("domain.config.lockDeviceUUIDRequired"));
+    if (!lock?.secretKey) throw new Error(t("domain.config.lockSecretKeyRequired"));
     cfg.devices[name] = {
       deviceUUID: lock.deviceUUID,
       secretKey: lock.secretKey,
@@ -259,14 +260,14 @@ export class ConfigStore {
 
   setDefaultLock(name) {
     const cfg = this.load();
-    if (!cfg.locks[name]) throw new Error(`Unknown lock "${name}"`);
+    if (!cfg.locks[name]) throw new Error(t("domain.config.unknownLockName", { name }));
     cfg.default.lock = name;
     this.save();
   }
 
   removeLock(name) {
     const cfg = this.load();
-    if (!cfg.locks[name]) throw new Error(`Unknown lock "${name}"`);
+    if (!cfg.locks[name]) throw new Error(t("domain.config.unknownLockName", { name }));
     delete cfg.devices[name]; // devices が真実。view (cfg.locks) は save()→_reproject で更新
     if (cfg.default.lock === name) cfg.default.lock = null;
     this.save();
@@ -439,7 +440,7 @@ export class ConfigStore {
   syncRemotesFromServer(remoteList, hub3Name) {
     const cfg = this.load();
     if (!cfg.hub3s[hub3Name]) {
-      throw new Error(`hub3 "${hub3Name}" 未登録。先に hub3 sync-from-devices か hub3 add を実行してください。`);
+      throw new Error(t("domain.config.hub3NotRegisteredSyncFirst", { hub3: hub3Name }));
     }
     const result = { added: [], updated: [] };
 

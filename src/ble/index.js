@@ -15,6 +15,7 @@
 // new SesameBle({ secretKey, transport }) で差し替え可能。
 
 import { Buffer } from "node:buffer";
+import { t } from "../i18n.js";
 import { SesameBleSession } from "./session.js";
 import { createBleTransport } from "./transport.js";
 import {
@@ -51,7 +52,7 @@ export class SesameBle {
    * }} opts
    */
   constructor({ secretKey, deviceUUID, address, model = null, debug = false, scanTimeoutMs, transport } = {}) {
-    if (!secretKey) throw new Error("secretKey required (32hex)");
+    if (!secretKey) throw new Error(t("ble.secretKeyRequired"));
     this._transport = transport || createBleTransport({ deviceUUID, address, debug, scanTimeoutMs });
     this._session = new SesameBleSession({ transport: this._transport, secretKey, debug });
     this._model = model;
@@ -68,8 +69,13 @@ export class SesameBle {
   /** BLE で送れない操作を弾く。SDK では型ごとに能力が非対称 (Bot は click のみ等)。 */
   _assertOp(op) {
     if (!this._caps.ble.includes(op)) {
-      const ok = this._caps.ble.length ? this._caps.ble.join("/") : "(BLE 施錠操作なし)";
-      throw new Error(`${this._caps.label}${this._model ? ` (${this._model})` : ""} は BLE で ${op} をサポートしません。可能な操作: ${ok}`);
+      const ok = this._caps.ble.length ? this._caps.ble.join("/") : t("ble.noBleLockOps");
+      throw new Error(t("ble.opNotSupported", {
+        label: this._caps.label,
+        modelSuffix: this._model ? ` (${this._model})` : "",
+        op,
+        ok,
+      }));
     }
   }
 
@@ -126,7 +132,7 @@ export class SesameBle {
   status({ timeoutMs = STATUS_WAIT_MS } = {}) {
     if (this._session.lastStatus) return Promise.resolve(this._session.lastStatus);
     return new Promise((resolve, reject) => {
-      const to = setTimeout(() => { off(); reject(new Error("mechStatus を受信できませんでした (timeout)")); }, timeoutMs);
+      const to = setTimeout(() => { off(); reject(new Error(t("ble.mechStatusTimeout"))); }, timeoutMs);
       const off = this._session.onStatus((s) => { clearTimeout(to); off(); resolve(s); });
     });
   }

@@ -22,6 +22,8 @@
 //   ctx.prompts         : { selectFromList, promptText, confirm, promptLine }。
 //   ctx.parseJson(raw, hint) : --json 文字列を JSON.parse (失敗時 die(...,2))。
 
+import { t } from "../i18n.js";
+
 /**
  * --device オプション値を deviceUUID 配列に正規化する。
  * commander の variadic / 繰り返し指定で配列になるが、各要素に "uuid1,uuid2" の
@@ -54,39 +56,39 @@ async function resolveDeviceUUIDs(hub, ctx, devices, cmdHint) {
     const list = await hub.listDevices();
     if (!Array.isArray(list) || list.length === 0) {
       // 対象未確定で操作が実行できない異常終了なので非 0 (2) で抜ける。
-      ctx.die("デバイスが見つかりません。", 2);
+      ctx.die(t("access.err.noDevices"), 2);
       return null;
     }
     const picked = await ctx.prompts.selectFromList(
-      "対象デバイスを選択",
+      t("access.prompt.pickDevice"),
       list,
       (d) => `${d.deviceName ?? "(no-name)"}  ${d.deviceUUID}`,
     );
     return picked?.deviceUUID ? [picked.deviceUUID] : null;
   }
-  ctx.die(`--device <uuid...> が必要です: ${cmdHint} (非対話モード)`, 2);
+  ctx.die(t("access.err.deviceRequired", { cmdHint }), 2);
   return null;
 }
-
-/** --device オプション (variadic) のヘルプ文言。複数指定 or カンマ連結を受ける。 */
-const DEVICE_OPT_DESC = "対象 deviceUUID (複数指定 or カンマ連結。省略時は対話選択)";
 
 /**
  * @param {import("commander").Command} program
  * @param {object} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
 export function registerAccessCommands(program, ctx) {
+  // --device オプション (variadic) のヘルプ文言。複数指定 or カンマ連結を受ける。
+  // setLocale 後に register が呼ばれるため、ここ (実行時) で t() を解決する。
+  const DEVICE_OPT_DESC = t("access.opt.device.variadic");
   const access = program
     .command("access")
-    .description("アクセス制御データ (NFC カード/暗証番号の WS DB 同期。実機書き込みは別系統 BLE)");
+    .description(t("access.cmd.access"));
 
   // ===== カード =====
-  const cards = access.command("cards").description("NFC カード (DB 同期)");
+  const cards = access.command("cards").description(t("access.cmd.cards"));
 
   // sesame access cards ls --device <uuid...>
   cards
     .command("ls")
-    .description("対象デバイスのカード一覧 (getCards。pub*LinkedIDs の async push を集約して返す)")
+    .description(t("access.cmd.cards.ls"))
     .option("-d, --device <uuid...>", DEVICE_OPT_DESC)
     .action((subOpts) =>
       ctx.withHub(async (hub, { opts }) => {
@@ -96,10 +98,10 @@ export function registerAccessCommands(program, ctx) {
         const { items, byDevice } = await hub.access.getCards({ deviceUUIDs });
         ctx.out(opts.json, () => {
           if (!Array.isArray(items) || items.length === 0) {
-            console.log("(no cards)");
+            console.log(t("access.noCards"));
             return;
           }
-          console.log(`Found ${items.length} card(s):`);
+          console.log(t("access.foundCards", { count: items.length }));
           for (const c of items) {
             const id = c.cardID ?? "(no-id)";
             const nm = c.name ? ` ${c.name}` : "";
@@ -113,25 +115,25 @@ export function registerAccessCommands(program, ctx) {
   // sesame access cards rm --json <items>
   cards
     .command("rm")
-    .description("カードを DB から削除 (delCards。fire-and-forget・応答 op なし)")
-    .option("--json <items>", 'items 配列の JSON。要素は {deviceID, cardID} (deviceUUID ではない)。')
+    .description(t("access.cmd.cards.rm"))
+    .option("--json <items>", t("access.opt.cards.rm.json"))
     .action((subOpts) =>
       ctx.withHub(async (hub, { opts }) => {
         // delCards は items 配列をトップレベルに置く構造。deviceUUID ではなく deviceID 注意。
         if (!subOpts.json) {
-          ctx.die('--json <items> が必要です: 要素は {deviceID, cardID} の配列。', 2);
+          ctx.die(t("access.err.cards.rm.jsonRequired"), 2);
           return;
         }
         const items = ctx.parseJson(subOpts.json, "items");
         if (items === undefined) return;
         if (!Array.isArray(items)) {
-          ctx.die("items は配列である必要があります。", 2);
+          ctx.die(t("access.err.items.notArray"), 2);
           return;
         }
         // 本体は boolean を返す (送信したら true、空配列なら false)。応答 op は来ない。
         const sent = hub.access.delCards({ items });
         ctx.out(opts.json, () => {
-          console.log(sent ? `OK: sent delCards for ${items.length} item(s)` : "(no items — nothing sent)");
+          console.log(sent ? t("access.cards.rm.sent", { count: items.length }) : t("access.rm.nothingSent"));
         }, { ok: true, sent, count: items.length });
       }),
     );
@@ -139,8 +141,8 @@ export function registerAccessCommands(program, ctx) {
   // sesame access cards clear --device <uuid>
   cards
     .command("clear")
-    .description("指定デバイスのカードを全削除 (clearCards。単一 deviceUUID)")
-    .option("-d, --device <uuid>", "対象 deviceUUID (省略時は対話選択)")
+    .description(t("access.cmd.cards.clear"))
+    .option("-d, --device <uuid>", t("access.opt.device.single"))
     .action((subOpts) =>
       ctx.withHub(async (hub, { opts }) => {
         const devices = normalizeDevices(subOpts.device);
@@ -149,15 +151,15 @@ export function registerAccessCommands(program, ctx) {
         if (!deviceUUIDs) return;
         const deviceUUID = deviceUUIDs[0];
         if (ctx.canPrompt()) {
-          const ok = await ctx.prompts.confirm(`デバイス ${deviceUUID} のカードを全削除しますか?`, { defaultYes: false });
+          const ok = await ctx.prompts.confirm(t("access.prompt.cards.clearConfirm", { deviceUUID }), { defaultYes: false });
           if (!ok) {
-            console.error("中止しました。");
+            console.error(t("access.aborted"));
             return;
           }
         }
         const resp = await hub.access.clearCards({ deviceUUID });
         ctx.out(opts.json, () => {
-          console.log(`OK: cleared cards on ${deviceUUID}`);
+          console.log(t("access.cards.cleared", { deviceUUID }));
         }, { ok: true, deviceUUID, response: resp });
       }),
     );
@@ -165,23 +167,19 @@ export function registerAccessCommands(program, ctx) {
   // sesame access cards name --json <item>
   cards
     .command("name")
-    .description("カード名 / nameUUID を更新 (updateCardName)")
-    .option(
-      "--json <item>",
-      'item の JSON: { cardID, name, cardNameUUID, timestamp?, cardType?, stpDeviceUUID }。' +
-        ' ⚠️ cardNameUUID が UUIDv4 でないと biz3 は BLE 前段を挟む。CLI は v4 を渡すこと。',
-    )
+    .description(t("access.cmd.cards.name"))
+    .option("--json <item>", t("access.opt.cards.name.json"))
     .action((subOpts) =>
       ctx.withHub(async (hub, { opts }) => {
         if (!subOpts.json) {
-          ctx.die('--json <item> が必要です: { cardID, name, cardNameUUID, stpDeviceUUID }。', 2);
+          ctx.die(t("access.err.cards.name.jsonRequired"), 2);
           return;
         }
         const item = ctx.parseJson(subOpts.json, "item");
         if (item === undefined) return;
         const resp = await hub.access.updateCardName({ item });
         ctx.out(opts.json, () => {
-          console.log(`OK: updated card name (cardID=${item.cardID ?? "?"})`);
+          console.log(t("access.cards.nameUpdated", { cardID: item.cardID ?? "?" }));
         }, { ok: true, item, response: resp });
       }),
     );
@@ -189,23 +187,23 @@ export function registerAccessCommands(program, ctx) {
   // sesame access cards owner <cardID> [ownerSubUUID]
   cards
     .command("owner <cardID> [ownerSubUUID]")
-    .description("カードの所有者 (メンバー subUUID) を割当 (updateCardOwner)。省略で対話、空文字 '' で未割当解除")
+    .description(t("access.cmd.cards.owner"))
     .action((cardID, ownerSubUUID) =>
       ctx.withHub(async (hub, { opts }) => {
         // biz3: 'ownerSubUUID' in item の時だけ送る。undefined は送らない。'' は送って解除。
         if (ownerSubUUID === undefined && ctx.canPrompt()) {
           ownerSubUUID = await ctx.prompts.promptText(
-            "割当先 ownerSubUUID (空 Enter で未割当解除)",
+            t("access.prompt.ownerSubUUID"),
             { required: false, defaultValue: "" },
           );
         }
         if (ownerSubUUID === undefined) {
-          ctx.die("ownerSubUUID が必要です (非対話モード。'' で未割当解除): sesame access cards owner <cardID> <ownerSubUUID>", 2);
+          ctx.die(t("access.err.ownerSubUUIDRequired"), 2);
           return;
         }
         const resp = await hub.access.updateCardOwner({ cardID, ownerSubUUID });
         ctx.out(opts.json, () => {
-          console.log(`OK: cardID=${cardID} owner -> ${ownerSubUUID === "" ? "(未割当)" : ownerSubUUID}`);
+          console.log(t("access.cards.ownerUpdated", { cardID, ownerSubUUID: ownerSubUUID === "" ? t("access.ownerUnassigned") : ownerSubUUID }));
         }, { ok: true, cardID, ownerSubUUID, response: resp });
       }),
     );
@@ -213,19 +211,19 @@ export function registerAccessCommands(program, ctx) {
   // sesame access cards post --device <uuid> --json <list>
   cards
     .command("post")
-    .description("カードを DB に登録 (postCards。⚠️ DB 同期のみ。実機書き込みは別系統 BLE)")
-    .option("-d, --device <uuid>", "登録先 deviceUUID (省略時は対話選択)")
-    .option("--json <list>", 'list 配列の JSON。要素は { cardID, nameUUID, name, cardType, memberID? } 等。')
+    .description(t("access.cmd.cards.post"))
+    .option("-d, --device <uuid>", t("access.opt.cards.post.device"))
+    .option("--json <list>", t("access.opt.cards.post.json"))
     .action((subOpts) =>
       ctx.withHub(async (hub, { opts }) => {
         if (!subOpts.json) {
-          ctx.die('--json <list> が必要です: カード要素の配列。', 2);
+          ctx.die(t("access.err.cards.post.jsonRequired"), 2);
           return;
         }
         const list = ctx.parseJson(subOpts.json, "list");
         if (list === undefined) return;
         if (!Array.isArray(list)) {
-          ctx.die("list は配列である必要があります。", 2);
+          ctx.die(t("access.err.list.notArray"), 2);
           return;
         }
         const devices = normalizeDevices(subOpts.device);
@@ -235,18 +233,18 @@ export function registerAccessCommands(program, ctx) {
         // 本体は list.length < 1 なら null を返す。
         const resp = await hub.access.postCards({ deviceUUID, list });
         ctx.out(opts.json, () => {
-          console.log(resp === null ? "(empty list — nothing posted)" : `OK: posted ${list.length} card(s) to ${deviceUUID}`);
+          console.log(resp === null ? t("access.post.emptyList") : t("access.cards.posted", { count: list.length, deviceUUID }));
         }, { ok: true, deviceUUID, count: list.length, response: resp });
       }),
     );
 
   // ===== パスコード =====
-  const passcodes = access.command("passcodes").description("キーパッド暗証番号 (DB 同期)");
+  const passcodes = access.command("passcodes").description(t("access.cmd.passcodes"));
 
   // sesame access passcodes ls --device <uuid...>
   passcodes
     .command("ls")
-    .description("対象デバイスの暗証番号一覧 (getPasscodes。pubPasscodeLinkedIDs を集約して返す)")
+    .description(t("access.cmd.passcodes.ls"))
     .option("-d, --device <uuid...>", DEVICE_OPT_DESC)
     .action((subOpts) =>
       ctx.withHub(async (hub, { opts }) => {
@@ -256,10 +254,10 @@ export function registerAccessCommands(program, ctx) {
         const { items, byDevice } = await hub.access.getPasscodes({ deviceUUIDs });
         ctx.out(opts.json, () => {
           if (!Array.isArray(items) || items.length === 0) {
-            console.log("(no passcodes)");
+            console.log(t("access.noPasscodes"));
             return;
           }
-          console.log(`Found ${items.length} passcode(s):`);
+          console.log(t("access.foundPasscodes", { count: items.length }));
           for (const p of items) {
             const id = p.passwordID ?? "(no-id)";
             const nm = p.name ? ` ${p.name}` : "";
@@ -272,23 +270,23 @@ export function registerAccessCommands(program, ctx) {
   // sesame access passcodes rm --json <items>
   passcodes
     .command("rm")
-    .description("暗証番号を DB から削除 (delPasscodes。fire-and-forget・応答 op なし)")
-    .option("--json <items>", 'items 配列の JSON。要素は {deviceID, passwordID}。')
+    .description(t("access.cmd.passcodes.rm"))
+    .option("--json <items>", t("access.opt.passcodes.rm.json"))
     .action((subOpts) =>
       ctx.withHub(async (hub, { opts }) => {
         if (!subOpts.json) {
-          ctx.die('--json <items> が必要です: 要素は {deviceID, passwordID} の配列。', 2);
+          ctx.die(t("access.err.passcodes.rm.jsonRequired"), 2);
           return;
         }
         const items = ctx.parseJson(subOpts.json, "items");
         if (items === undefined) return;
         if (!Array.isArray(items)) {
-          ctx.die("items は配列である必要があります。", 2);
+          ctx.die(t("access.err.items.notArray"), 2);
           return;
         }
         const sent = hub.access.delPasscodes({ items });
         ctx.out(opts.json, () => {
-          console.log(sent ? `OK: sent delPasscodes for ${items.length} item(s)` : "(no items — nothing sent)");
+          console.log(sent ? t("access.passcodes.rm.sent", { count: items.length }) : t("access.rm.nothingSent"));
         }, { ok: true, sent, count: items.length });
       }),
     );
@@ -296,8 +294,8 @@ export function registerAccessCommands(program, ctx) {
   // sesame access passcodes clear --device <uuid>
   passcodes
     .command("clear")
-    .description("指定デバイスの暗証番号を全削除 (clearPasscodes。単一 deviceUUID)")
-    .option("-d, --device <uuid>", "対象 deviceUUID (省略時は対話選択)")
+    .description(t("access.cmd.passcodes.clear"))
+    .option("-d, --device <uuid>", t("access.opt.device.single"))
     .action((subOpts) =>
       ctx.withHub(async (hub, { opts }) => {
         const devices = normalizeDevices(subOpts.device);
@@ -305,15 +303,15 @@ export function registerAccessCommands(program, ctx) {
         if (!deviceUUIDs) return;
         const deviceUUID = deviceUUIDs[0];
         if (ctx.canPrompt()) {
-          const ok = await ctx.prompts.confirm(`デバイス ${deviceUUID} の暗証番号を全削除しますか?`, { defaultYes: false });
+          const ok = await ctx.prompts.confirm(t("access.prompt.passcodes.clearConfirm", { deviceUUID }), { defaultYes: false });
           if (!ok) {
-            console.error("中止しました。");
+            console.error(t("access.aborted"));
             return;
           }
         }
         const resp = await hub.access.clearPasscodes({ deviceUUID });
         ctx.out(opts.json, () => {
-          console.log(`OK: cleared passcodes on ${deviceUUID}`);
+          console.log(t("access.passcodes.cleared", { deviceUUID }));
         }, { ok: true, deviceUUID, response: resp });
       }),
     );
@@ -321,23 +319,19 @@ export function registerAccessCommands(program, ctx) {
   // sesame access passcodes name --json <item>
   passcodes
     .command("name")
-    .description("暗証番号名 / nameUUID を更新 (updatePasscodeName)")
-    .option(
-      "--json <item>",
-      'item の JSON: { stpDeviceUUID, keyBoardPassCode, keyBoardPassCodeNameUUID, name }。' +
-        ' ⚠️ keyBoardPassCodeNameUUID が UUIDv4 でないと biz3 は BLE 前段を挟む。CLI は v4 を渡すこと。',
-    )
+    .description(t("access.cmd.passcodes.name"))
+    .option("--json <item>", t("access.opt.passcodes.name.json"))
     .action((subOpts) =>
       ctx.withHub(async (hub, { opts }) => {
         if (!subOpts.json) {
-          ctx.die('--json <item> が必要です: { stpDeviceUUID, keyBoardPassCode, keyBoardPassCodeNameUUID, name }。', 2);
+          ctx.die(t("access.err.passcodes.name.jsonRequired"), 2);
           return;
         }
         const item = ctx.parseJson(subOpts.json, "item");
         if (item === undefined) return;
         const resp = await hub.access.updatePasscodeName({ item });
         ctx.out(opts.json, () => {
-          console.log(`OK: updated passcode name (keyBoardPassCode=${item.keyBoardPassCode ?? "?"})`);
+          console.log(t("access.passcodes.nameUpdated", { keyBoardPassCode: item.keyBoardPassCode ?? "?" }));
         }, { ok: true, item, response: resp });
       }),
     );
@@ -345,19 +339,19 @@ export function registerAccessCommands(program, ctx) {
   // sesame access passcodes post --device <uuid> --json <list>
   passcodes
     .command("post")
-    .description("暗証番号を DB に登録 (postPasscodes。⚠️ DB 同期のみ。list 要素は未確認・実機検証要)")
-    .option("-d, --device <uuid>", "登録先 deviceUUID (省略時は対話選択)")
-    .option("--json <list>", 'list 配列の JSON。要素フィールドは biz3 上では未確認 (getPasscodes 応答 item と対応と推測)。')
+    .description(t("access.cmd.passcodes.post"))
+    .option("-d, --device <uuid>", t("access.opt.passcodes.post.device"))
+    .option("--json <list>", t("access.opt.passcodes.post.json"))
     .action((subOpts) =>
       ctx.withHub(async (hub, { opts }) => {
         if (!subOpts.json) {
-          ctx.die('--json <list> が必要です: 暗証番号要素の配列。', 2);
+          ctx.die(t("access.err.passcodes.post.jsonRequired"), 2);
           return;
         }
         const list = ctx.parseJson(subOpts.json, "list");
         if (list === undefined) return;
         if (!Array.isArray(list)) {
-          ctx.die("list は配列である必要があります。", 2);
+          ctx.die(t("access.err.list.notArray"), 2);
           return;
         }
         const devices = normalizeDevices(subOpts.device);
@@ -366,7 +360,7 @@ export function registerAccessCommands(program, ctx) {
         const deviceUUID = deviceUUIDs[0];
         const resp = await hub.access.postPasscodes({ deviceUUID, list });
         ctx.out(opts.json, () => {
-          console.log(resp === null ? "(empty list — nothing posted)" : `OK: posted ${list.length} passcode(s) to ${deviceUUID}`);
+          console.log(resp === null ? t("access.post.emptyList") : t("access.passcodes.posted", { count: list.length, deviceUUID }));
         }, { ok: true, deviceUUID, count: list.length, response: resp });
       }),
     );

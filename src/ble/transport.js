@@ -14,6 +14,7 @@
 
 import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
+import { t } from "../i18n.js";
 import { GATT, COMPANY_ID } from "./protocol.js";
 
 // optionalDependency (@abandonware/noble) を ESM から遅延 require するためのブリッジ。
@@ -68,11 +69,7 @@ function loadNoble() {
   } catch (e) {
     // MODULE_NOT_FOUND の message は require stack を含むので 1 行目だけ拾う。
     const cause = String(e?.message || e).split("\n")[0];
-    const err = new Error(
-      "BLE アダプタ (@abandonware/noble) が未導入です。\n" +
-        "  導入: npm i @abandonware/noble  (repo 内で実行 / npm link 環境ならそのまま使えます)\n" +
-        `  (${cause})`,
-    );
+    const err = new Error(t("ble.noAdapter", { cause }));
     err.code = "BLE_NO_ADAPTER";
     throw err;
   }
@@ -82,25 +79,25 @@ function loadNoble() {
 function waitPoweredOn(noble, log = () => {}) {
   return new Promise((resolve, reject) => {
     if (noble.state === "poweredOn") return resolve();
-    const to = setTimeout(() => { noble.removeListener("stateChange", onState); reject(new Error("Bluetooth 初期化タイムアウト")); }, 10_000);
+    const to = setTimeout(() => { noble.removeListener("stateChange", onState); reject(new Error(t("ble.bluetoothInitTimeout"))); }, 10_000);
     const onState = (state) => {
       log("noble state", state);
       if (state === "poweredOn") { clearTimeout(to); noble.removeListener("stateChange", onState); resolve(); }
       else if (state === "unauthorized") {
         clearTimeout(to); noble.removeListener("stateChange", onState);
-        const e = new Error("Bluetooth 権限がありません。macOS: システム設定→プライバシーとセキュリティ→Bluetooth で実行中のターミナルを許可してください。");
+        const e = new Error(t("ble.bluetoothUnauthorized"));
         e.code = "BLE_UNAUTHORIZED"; // CLI 側で設定ペインを開く判定に使う
         reject(e);
       }
       else if (state === "poweredOff") {
         clearTimeout(to); noble.removeListener("stateChange", onState);
-        const e = new Error("Bluetooth がオフです。オンにして再実行してください。");
+        const e = new Error(t("ble.bluetoothPoweredOff"));
         e.code = "BLE_POWERED_OFF";
         reject(e);
       }
       else if (state === "unsupported") {
         clearTimeout(to); noble.removeListener("stateChange", onState);
-        const e = new Error("この環境では BLE が利用できません (unsupported)。");
+        const e = new Error(t("ble.bluetoothUnsupported"));
         e.code = "BLE_UNSUPPORTED";
         reject(e);
       }
@@ -199,7 +196,7 @@ export class NobleTransport {
     this._writeChar = characteristics.find((c) => idEquals(c.uuid, GATT.WRITE_CHAR));
     this._notifyChar = characteristics.find((c) => idEquals(c.uuid, GATT.NOTIFY_CHAR));
     if (!this._writeChar || !this._notifyChar) {
-      throw new Error("SESAME GATT characteristic が見つかりません (write/notify)");
+      throw new Error(t("ble.gattNotFound"));
     }
 
     // 4) notify 購読 → 各パケットを onPacket へ
@@ -215,7 +212,7 @@ export class NobleTransport {
   write(bytes) {
     const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
     this._writeChain = this._writeChain.then(() => {
-      if (!this._writeChar) throw new Error("not connected");
+      if (!this._writeChar) throw new Error(t("ble.notConnected"));
       return this._writeChar.writeAsync(buf, true); // true = without response
     });
     return this._writeChain;
@@ -238,7 +235,7 @@ export class NobleTransport {
       const to = setTimeout(async () => {
         noble.removeListener("discover", onDiscover);
         await noble.stopScanningAsync().catch(() => {});
-        reject(new Error(`SESAME が見つかりません (scan ${scanTimeoutMs}ms タイムアウト)。対象が近くにあり登録済みか確認してください。`));
+        reject(new Error(t("ble.deviceNotFound", { scanTimeoutMs })));
       }, scanTimeoutMs);
 
       const onDiscover = async (peripheral) => {
@@ -263,7 +260,7 @@ export class NobleTransport {
       noble.startScanningAsync([nobleUuid(GATT.SERVICE)], false).catch((e) => {
         clearTimeout(to);
         noble.removeListener("discover", onDiscover);
-        reject(new Error(`BLE スキャン開始に失敗: ${e?.message || e}`));
+        reject(new Error(t("ble.scanStartFailed", { cause: e?.message || e })));
       });
     });
   }

@@ -6,6 +6,7 @@
 import http from "node:http";
 import { makeError, RPC, KIND } from "../jsonrpc.js";
 import { tokenMatches, extractToken } from "./token.js";
+import { t } from "../../i18n.js";
 
 const MAX_BODY = 1_000_000; // 1MB 上限 (過大 body 拒否)
 
@@ -21,22 +22,7 @@ export async function startHttpFraming(daemon, { bind = "127.0.0.1", port, token
     // GET / は token 不要の人間向け案内 (ブラウザで開いた初学者が迷子にならないように)。
     if (req.method === "GET" && url.pathname === "/") {
       res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-      res.end([
-        "sesame serve is running (JSON-RPC 2.0).",
-        "",
-        "Endpoints (Authorization: Bearer <token> required):",
-        "  POST /rpc     - send one JSON-RPC request, get one response",
-        "  GET  /events  - SSE event stream (?topics=lockState,deviceUpdate)",
-        "",
-        "The token was printed to stderr when the daemon started.",
-        "List all methods:",
-        `  curl -s -H "Authorization: Bearer <token>" \\`,
-        `    -d '{"jsonrpc":"2.0","id":1,"method":"rpc.discover"}' http://${bind}:${port}/rpc`,
-        "",
-        "Watch events (SSE):",
-        `  curl -N -H "Authorization: Bearer <token>" "http://${bind}:${port}/events?topics=lockState"`,
-        "",
-      ].join("\n"));
+      res.end(t("serve.http.usage", { bind, port }));
       return;
     }
 
@@ -45,7 +31,7 @@ export async function startHttpFraming(daemon, { bind = "127.0.0.1", port, token
         "content-type": "application/json",
         "www-authenticate": 'Bearer realm="sesame"', // クライアントに token 必須を明示
       });
-      res.end(JSON.stringify({ error: "unauthorized", hint: "Authorization: Bearer <token> (token は serve 起動時に stderr へ表示)" }));
+      res.end(JSON.stringify({ error: t("serve.http.unauthorized"), hint: t("serve.http.unauthorizedHint") }));
       return;
     }
 
@@ -70,7 +56,7 @@ export async function startHttpFraming(daemon, { bind = "127.0.0.1", port, token
         if (size > MAX_BODY) { // 過大 body は 413 で明示拒否
           aborted = true;
           res.writeHead(413, { "content-type": "application/json", connection: "close" });
-          res.end(JSON.stringify({ error: "payload too large" }));
+          res.end(JSON.stringify({ error: t("serve.http.payloadTooLarge") }));
           return;
         }
         chunks.push(c);
@@ -85,7 +71,7 @@ export async function startHttpFraming(daemon, { bind = "127.0.0.1", port, token
         try {
           out = await daemon.dispatchMessage(conn, body);
         } catch {
-          out = makeError(null, RPC.INTERNAL_ERROR, "internal", KIND.INTERNAL);
+          out = makeError(null, RPC.INTERNAL_ERROR, t("serve.internal"), KIND.INTERNAL);
         }
         daemon.removeConnection(conn);
         if (out === null) { res.writeHead(204); res.end(); return; } // 通知
@@ -101,7 +87,7 @@ export async function startHttpFraming(daemon, { bind = "127.0.0.1", port, token
       const validTopics = reqTopics.filter((t) => daemon.topics.includes(t));
       if (reqTopics.length && validTopics.length === 0) {
         res.writeHead(400, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: `unknown topic(s): ${reqTopics.join(",")}`, valid: daemon.topics }));
+        res.end(JSON.stringify({ error: t("serve.http.unknownTopics", { topics: reqTopics.join(",") }), valid: daemon.topics }));
         return;
       }
       res.writeHead(200, {
@@ -124,7 +110,7 @@ export async function startHttpFraming(daemon, { bind = "127.0.0.1", port, token
     }
 
     res.writeHead(404, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: "not found" }));
+    res.end(JSON.stringify({ error: t("serve.http.notFound") }));
   });
 
   await new Promise((resolve, reject) => {

@@ -11,6 +11,7 @@
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { assertSuccess } from "./util.js";
+import { t } from "./i18n.js";
 
 // action 文字列は vendor (biz3 messageConstants) から引く (手書きしない)。
 const ACT_MANAGE = ACTION_TYPES.BIZ3_MANAGE_DEVICE;       // "biz3ManageDevice"
@@ -33,7 +34,7 @@ export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS } 
       if (done) return;
       done = true;
       unsub();
-      reject(new Error("getUserDevice timeout"));
+      reject(new Error(t("domain.devices.getUserDeviceTimeout")));
     }, timeoutMs);
     const unsub = client.subscribe(`${ACT_MANAGE}:PubedUserDevice`, (msg) => {
       if (done) return;
@@ -166,7 +167,7 @@ export async function makeBatteryRecordInvisible(client, { deviceUUID, timestamp
 export async function listFirmware(client) {
   // この op は op フィールド無し (action のみ)
   return new Promise((resolve, reject) => {
-    const to = setTimeout(() => { unsub(); reject(new Error("listFirmware timeout")); }, DEFAULT_TIMEOUT_MS);
+    const to = setTimeout(() => { unsub(); reject(new Error(t("domain.devices.listFirmwareTimeout"))); }, DEFAULT_TIMEOUT_MS);
     const unsub = client.subscribe(`${ACT_FIRMWARE}:`, (msg) => {
       clearTimeout(to);
       unsub();

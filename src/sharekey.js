@@ -16,6 +16,7 @@
 //     (biz3utils.js:121)。owner(0)/manager(1) は deviceKey.secretKey をそのまま使う。
 
 import { Buffer } from "node:buffer";
+import { t } from "./i18n.js";
 import { productTypeFromModelName } from "./crypto.js";
 import { modelNameByProductType } from "../vendor/biz3/constants/sesameDeviceModel.js";
 
@@ -41,7 +42,7 @@ export function buildShareKeyUrl(deviceKey, { keyLevel, guestKeyId, name } = {})
 
   const productType = productTypeFromModelName(deviceKey.deviceModel);
   if (productType == null) {
-    throw new Error(`未知の deviceModel: ${JSON.stringify(deviceKey.deviceModel)} (productType を解決できません)`);
+    throw new Error(t("org.sharekey.unknownDeviceModel", { model: JSON.stringify(deviceKey.deviceModel) }));
   }
   // biz3: parseInt(model,10).toString(16).padStart(2,'0')
   const deviceModelHex = productType.toString(16).padStart(2, "0");
@@ -57,7 +58,7 @@ export function buildShareKeyUrl(deviceKey, { keyLevel, guestKeyId, name } = {})
     deviceUUID: deviceKey.deviceUUID,
   };
   for (const [k, v] of Object.entries(required)) {
-    if (!v) throw new Error(`deviceKey.${k} required (共有 URL の生成に必要)`);
+    if (!v) throw new Error(t("org.sharekey.fieldRequired", { field: k }));
   }
 
   const keydata =

@@ -1,0 +1,172 @@
+// ドメインコア (client/config/lock/ir/devices/account/transport/util/crypto) の
+// ユーザー向けメッセージ。en = 自然な英語、ja = 元の日本語そのまま (テストは ja で検証)。
+export default {
+  en: {
+    // ---- client.js ----
+    "domain.client.useUsage": "usage: SesameHub3.use([opts], async (hub) => {...})",
+    "domain.client.configRequired": "config required",
+    "domain.client.tokenStoreRequired": "tokenStore required",
+    "domain.client.noRemoteNoDefault": "No remote specified and no default",
+    "domain.client.unknownRemote": "Unknown remote \"{name}\"",
+    "domain.client.remoteMissingHub3": "Remote \"{name}\" references missing hub3 \"{hub3}\"",
+    "domain.client.notConnected": "not connected (call connect() first)",
+    "domain.client.keyRequired": "key (name or UUID) required",
+    "domain.client.unknownKey": "Unknown key \"{key}\". Available: {avail}",
+    "domain.client.emailNotInStore": "email (username) not found in token store. You may need to log in again.",
+    "domain.client.getCompanyDeviceTimeout": "getCompanyDevice timeout",
+    "domain.client.requiresConfigStore": "{op} requires a ConfigStore (build via fromConfig)",
+    "domain.client.noLockNoDefault": "No lock specified and no default. Configured: [{names}]",
+    "domain.client.unknownLock": "Unknown lock \"{name}\". Configured: [{names}]",
+    "domain.client.subUUIDNotAvailableConnect": "subUUID not available (call connect() first)",
+    "domain.client.lockMissingDeviceUUID": "lock \"{name}\" missing deviceUUID",
+    "domain.client.lockMissingSecretKey": "lock \"{name}\" missing secretKey",
+    "domain.client.noHub3Specified": "No hub3 specified and not exactly one configured",
+    "domain.client.unknownHub3": "Unknown hub3 \"{name}\"",
+    "domain.client.subUUIDNotAvailable": "subUUID not available (connect first)",
+    "domain.client.apiKeyIdRequired": "apiKeyId required (set config.apiKeyId or pass as argument)",
+
+    // ---- config.js ----
+    "domain.config.configPathRequired": "configPath required",
+    "domain.config.nothingToSave": "nothing to save (call load() first)",
+    "domain.config.noRemoteNoDefault": "No remote specified and no default. Configured: [{names}]",
+    "domain.config.unknownRemote": "Unknown remote \"{name}\". Configured: [{names}]",
+    "domain.config.remoteRefMissingHub3": "Remote \"{name}\" references hub3 \"{hub3}\" but it is not registered.",
+    "domain.config.hub3NameRequired": "hub3 name required",
+    "domain.config.hub3DeviceIdRequired": "hub3.deviceId required",
+    "domain.config.remoteNameRequired": "remote name required",
+    "domain.config.remoteHub3Required": "remote.hub3 required",
+    "domain.config.hub3NotRegisteredAddFirst": "hub3 \"{hub3}\" is not registered. Run hub3 add first.",
+    "domain.config.unknownRemoteName": "Unknown remote \"{name}\"",
+    "domain.config.noLockNoDefault": "No lock specified and no default. Configured: [{names}]",
+    "domain.config.unknownLock": "Unknown lock \"{name}\". Configured: [{names}]",
+    "domain.config.lockNameRequired": "lock name required",
+    "domain.config.lockDeviceUUIDRequired": "lock.deviceUUID required",
+    "domain.config.lockSecretKeyRequired": "lock.secretKey required",
+    "domain.config.unknownLockName": "Unknown lock \"{name}\"",
+    "domain.config.hub3NotRegisteredSyncFirst": "hub3 \"{hub3}\" is not registered. Run hub3 sync-from-devices or hub3 add first.",
+
+    // ---- lock.js ----
+    "domain.lock.notConnected": "triggerLock: not connected — call connect() first (queueing not allowed for sign-based ops)",
+    "domain.lock.timeout": "triggerLock timeout (cmd={cmd}, device={device})",
+    "domain.lock.failed": "triggerLock failed (cmd={cmd}): code={code} {message}",
+    "domain.lock.deviceIdRequired": "deviceId required",
+    "domain.lock.secretKeyRequired": "secretKey required",
+    "domain.lock.subUUIDRequired": "subUUID required",
+    "domain.lock.cmdRequired": "cmd required (number)",
+    "domain.lock.payloadOrSubUUID": "either payload or subUUID is required",
+    "domain.lock.secondsRange": "seconds must be an integer 0..65535 (0 = disable autolock)",
+
+    // ---- ir.js ----
+    "domain.ir.subscribeIRDataFailed": "subscribeIRData failed: {detail}",
+    "domain.ir.subscribeIRModeFailed": "subscribeIRMode failed: {detail}",
+    "domain.ir.learnTimeout": "learn timeout (no IR captured)",
+
+    // ---- devices.js ----
+    "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",
+    "domain.devices.listFirmwareTimeout": "listFirmware timeout",
+
+    // ---- account.js ----
+    "domain.account.emailRequired": "email required (the email used to log in)",
+
+    // ---- transport.js ----
+    "domain.transport.wsUrlRequired": "wsUrl required",
+    "domain.transport.idTokenRequired": "idToken required (Cognito idToken JWT)",
+    "domain.transport.closedByUser": "websocket closed by user",
+    "domain.transport.closedBeforeInitial": "closed before initial connect resolved",
+    "domain.transport.closed": "websocket closed",
+    "domain.transport.closedBeforeOpen": "websocket closed before open (code={code})",
+    "domain.transport.requestTimeout": "request timeout: {key}",
+    "domain.transport.sendIRFailed": "sendIR failed: {detail}",
+    "domain.transport.getIRCodesFailed": "getIRCodes failed: {detail}",
+
+    // ---- util.js ----
+    "domain.util.opFailed": "{op} failed: {detail}",
+
+    // ---- crypto.js ----
+    "domain.crypto.unknownIrType": "Unknown irType \"{value}\". Specify a number (e.g. 49152) or an alias ({aliases}).",
+  },
+  ja: {
+    // ---- client.js ----
+    "domain.client.useUsage": "usage: SesameHub3.use([opts], async (hub) => {...})",
+    "domain.client.configRequired": "config required",
+    "domain.client.tokenStoreRequired": "tokenStore required",
+    "domain.client.noRemoteNoDefault": "No remote specified and no default",
+    "domain.client.unknownRemote": "Unknown remote \"{name}\"",
+    "domain.client.remoteMissingHub3": "Remote \"{name}\" references missing hub3 \"{hub3}\"",
+    "domain.client.notConnected": "not connected (call connect() first)",
+    "domain.client.keyRequired": "key (name or UUID) required",
+    "domain.client.unknownKey": "Unknown key \"{key}\". 利用可能: {avail}",
+    "domain.client.emailNotInStore": "email (username) が token store にありません。再 login が必要かもしれません。",
+    "domain.client.getCompanyDeviceTimeout": "getCompanyDevice timeout",
+    "domain.client.requiresConfigStore": "{op} requires a ConfigStore (fromConfig で構築してください)",
+    "domain.client.noLockNoDefault": "No lock specified and no default. 設定済み: [{names}]",
+    "domain.client.unknownLock": "Unknown lock \"{name}\". 設定済み: [{names}]",
+    "domain.client.subUUIDNotAvailableConnect": "subUUID not available (connect() を先に呼んでください)",
+    "domain.client.lockMissingDeviceUUID": "lock \"{name}\" missing deviceUUID",
+    "domain.client.lockMissingSecretKey": "lock \"{name}\" missing secretKey",
+    "domain.client.noHub3Specified": "No hub3 specified and not exactly one configured",
+    "domain.client.unknownHub3": "Unknown hub3 \"{name}\"",
+    "domain.client.subUUIDNotAvailable": "subUUID not available (connect first)",
+    "domain.client.apiKeyIdRequired": "apiKeyId required (config.apiKeyId か引数で指定)",
+
+    // ---- config.js ----
+    "domain.config.configPathRequired": "configPath required",
+    "domain.config.nothingToSave": "nothing to save (call load() first)",
+    "domain.config.noRemoteNoDefault": "No remote specified and no default. 設定済み: [{names}]",
+    "domain.config.unknownRemote": "Unknown remote \"{name}\". 設定済み: [{names}]",
+    "domain.config.remoteRefMissingHub3": "Remote \"{name}\" は hub3 \"{hub3}\" を参照しますが未登録です。",
+    "domain.config.hub3NameRequired": "hub3 name required",
+    "domain.config.hub3DeviceIdRequired": "hub3.deviceId required",
+    "domain.config.remoteNameRequired": "remote name required",
+    "domain.config.remoteHub3Required": "remote.hub3 required",
+    "domain.config.hub3NotRegisteredAddFirst": "hub3 \"{hub3}\" 未登録。先に hub3 add を実行してください。",
+    "domain.config.unknownRemoteName": "Unknown remote \"{name}\"",
+    "domain.config.noLockNoDefault": "No lock specified and no default. 設定済み: [{names}]",
+    "domain.config.unknownLock": "Unknown lock \"{name}\". 設定済み: [{names}]",
+    "domain.config.lockNameRequired": "lock name required",
+    "domain.config.lockDeviceUUIDRequired": "lock.deviceUUID required",
+    "domain.config.lockSecretKeyRequired": "lock.secretKey required",
+    "domain.config.unknownLockName": "Unknown lock \"{name}\"",
+    "domain.config.hub3NotRegisteredSyncFirst": "hub3 \"{hub3}\" 未登録。先に hub3 sync-from-devices か hub3 add を実行してください。",
+
+    // ---- lock.js ----
+    "domain.lock.notConnected": "triggerLock: not connected — call connect() first (queueing not allowed for sign-based ops)",
+    "domain.lock.timeout": "triggerLock timeout (cmd={cmd}, device={device})",
+    "domain.lock.failed": "triggerLock failed (cmd={cmd}): code={code} {message}",
+    "domain.lock.deviceIdRequired": "deviceId required",
+    "domain.lock.secretKeyRequired": "secretKey required",
+    "domain.lock.subUUIDRequired": "subUUID required",
+    "domain.lock.cmdRequired": "cmd required (number)",
+    "domain.lock.payloadOrSubUUID": "payload または subUUID のいずれかが必要です",
+    "domain.lock.secondsRange": "seconds must be an integer 0..65535 (0 = disable autolock)",
+
+    // ---- ir.js ----
+    "domain.ir.subscribeIRDataFailed": "subscribeIRData failed: {detail}",
+    "domain.ir.subscribeIRModeFailed": "subscribeIRMode failed: {detail}",
+    "domain.ir.learnTimeout": "learn timeout (no IR captured)",
+
+    // ---- devices.js ----
+    "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",
+    "domain.devices.listFirmwareTimeout": "listFirmware timeout",
+
+    // ---- account.js ----
+    "domain.account.emailRequired": "email required (login に使った email)",
+
+    // ---- transport.js ----
+    "domain.transport.wsUrlRequired": "wsUrl required",
+    "domain.transport.idTokenRequired": "idToken required (Cognito idToken JWT)",
+    "domain.transport.closedByUser": "websocket closed by user",
+    "domain.transport.closedBeforeInitial": "closed before initial connect resolved",
+    "domain.transport.closed": "websocket closed",
+    "domain.transport.closedBeforeOpen": "websocket closed before open (code={code})",
+    "domain.transport.requestTimeout": "request timeout: {key}",
+    "domain.transport.sendIRFailed": "sendIR failed: {detail}",
+    "domain.transport.getIRCodesFailed": "getIRCodes failed: {detail}",
+
+    // ---- util.js ----
+    "domain.util.opFailed": "{op} failed: {detail}",
+
+    // ---- crypto.js ----
+    "domain.crypto.unknownIrType": "Unknown irType \"{value}\". 数値 (例 49152) かエイリアス ({aliases}) を指定してください。",
+  },
+};

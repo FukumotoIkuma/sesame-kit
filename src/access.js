@@ -20,6 +20,7 @@
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { assertSuccess } from "./util.js";
+import { t } from "./i18n.js";
 
 // action 文字列は vendor (biz3 messageConstants:9) から引く (手書きしない)。
 const ACTION = ACTION_TYPES.BIZ3_MANAGE_AC_AUTHDATA; // "biz3ManageAccessCtlAuthData"
@@ -81,7 +82,7 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs 
       done = true;
       unsubPub();
       unsubDone();
-      reject(new Error(`${op} timeout`));
+      reject(new Error(t("access.err.opTimeout", { op })));
     }, timeoutMs);
 
     // (2) データ本体 push の集約 (useManageAuthData.js:116-131)。

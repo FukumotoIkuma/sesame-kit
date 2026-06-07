@@ -34,6 +34,7 @@
 //   実データは message.data (あれば)。device 特定は message.UUID || message.touch_id。
 //   送信は fire-and-forget (sendCmd は応答を待たない) なので、応答が要るものは client.subscribe で受ける。
 
+import { t } from "./i18n.js";
 import { cmacTime } from "./crypto.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { cmdCode } from "../vendor/biz3/constants/cmdCode.js";
@@ -52,7 +53,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  */
 function hexStringToUint8Array(hexString) {
   if (hexString === undefined || hexString === null) return new Uint8Array(0);
-  if (hexString.length % 2 !== 0) throw new Error("Invalid hexString");
+  if (hexString.length % 2 !== 0) throw new Error(t("iot.err.invalidHexString"));
   const out = new Uint8Array(hexString.length / 2);
   for (let i = 0; i < hexString.length; i += 2) {
     out[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
@@ -127,7 +128,7 @@ function concatBytes(...arrays) {
  * @returns {string} `wm2{末尾セグメント}cmd`
  */
 export function buildIotTopic(hub3Id) {
-  if (!hub3Id) throw new Error("hub3Id required (topic 構築に必要)");
+  if (!hub3Id) throw new Error(t("iot.err.hub3IdRequiredTopic"));
   const lastSegment = hub3Id.split("-").pop();
   return `wm2${lastSegment}cmd`;
 }
@@ -145,9 +146,9 @@ export function buildIotTopic(hub3Id) {
  * @returns {string} base64 payload
  */
 export function buildIotPayload({ cmd, deviceId, secretKey, extra }) {
-  if (typeof cmd !== "number") throw new Error("cmd required (number)");
-  if (!deviceId) throw new Error("deviceId required");
-  if (!secretKey) throw new Error("secretKey required (CMAC 署名用 32hex)");
+  if (typeof cmd !== "number") throw new Error(t("iot.err.cmdRequired"));
+  if (!deviceId) throw new Error(t("iot.err.deviceIdRequired"));
+  if (!secretKey) throw new Error(t("iot.err.secretKeyRequiredCmac"));
 
   const sign = cmacTime(secretKey);                 // 8 hex (4B)
   const signArray = hexStringToUint8Array(sign);    // 4 bytes
@@ -173,8 +174,8 @@ export function buildIotPayload({ cmd, deviceId, secretKey, extra }) {
  * @returns {void}
  */
 export function sendIotCmd(client, { topic, payload, op = "cmd" }) {
-  if (!topic) throw new Error("topic required");
-  if (!payload) throw new Error("payload required (base64)");
+  if (!topic) throw new Error(t("iot.err.topicRequired"));
+  if (!payload) throw new Error(t("iot.err.payloadRequiredBase64"));
   client.send({ action: ACTION, topic, payload, op });
 }
 
@@ -217,7 +218,7 @@ export function sendIotCmdAwait(client, { topic, payload, cmd, deviceId, timeout
   return new Promise((resolve, reject) => {
     const to = setTimeout(() => {
       unsub();
-      reject(new Error(`iot cmd timeout (cmd=${cmd}, topic=${topic})`));
+      reject(new Error(t("iot.err.cmdTimeout", { cmd, topic })));
     }, timeoutMs);
     const unsub = subscribeIotResponse(client, cmd, (msg) => {
       // device 照合 (useOperateIoT.js:9-18: UUID || touch_id)
@@ -254,9 +255,9 @@ export function sendIotCmdAwait(client, { topic, payload, cmd, deviceId, timeout
  */
 export async function setHub3LedDuty(client, p) {
   const { deviceId, secretKey, hub3Id, op, duty, timeoutMs } = p;
-  if (op === undefined || duty === undefined) throw new Error("op and duty required (LED_DUTY)");
+  if (op === undefined || duty === undefined) throw new Error(t("iot.err.opDutyRequired"));
   if (op < 0 || op > 255 || duty < 0 || duty > 255) {
-    throw new Error("op/duty out of range (0..255)");
+    throw new Error(t("iot.err.opDutyRange"));
   }
   const cmd = cmdCode.HUB3_ITEM_CODE_LED_DUTY; // 92
   const topic = buildIotTopic(hub3Id || deviceId);
@@ -285,7 +286,7 @@ export async function setHub3LedDuty(client, p) {
  */
 export function hub3RelaySwitch(client, p) {
   const { deviceId, secretKey, hub3Id, op = 0x01 } = p;
-  if (op < 0 || op > 255) throw new Error("op out of range (0..255)");
+  if (op < 0 || op > 255) throw new Error(t("iot.err.opRange"));
   const cmd = cmdCode.HUB3_ITEM_CODE_RELAY_SWITCH; // 208
   const topic = buildIotTopic(hub3Id || deviceId);
   const extra = new Uint8Array([op]);
@@ -313,7 +314,7 @@ function buildSesameItemExtra(iotPayload) {
   const nickName = iotPayload.nickName || "";
   const nickNameArray = stringToUint8Array(nickName);
   if (nickNameArray.length > 255) {
-    throw new Error("Nickname too long to fit in one-byte length field");
+    throw new Error(t("iot.err.nicknameTooLong"));
   }
   const nickNameLenArray = new Uint8Array([nickNameArray.length]);
 
@@ -322,9 +323,7 @@ function buildSesameItemExtra(iotPayload) {
   // 実機へ送る前にここで弾く (安全側)。
   const productType = getProductTypeFromModelName(iotPayload.deviceModel);
   if (productType === null) {
-    throw new Error(
-      `未知の deviceModel: ${JSON.stringify(iotPayload.deviceModel)} (productType を解決できません。sesame_5 / sesame_5_pro / sesame_6 等を指定してください)`,
-    );
+    throw new Error(t("iot.err.unknownModel", { model: JSON.stringify(iotPayload.deviceModel) }));
   }
   const productTypeArray = new Uint8Array([productType]);
   // matterProductType は productType が既知でも map 外 (例 productType 29) なら undefined。
@@ -378,10 +377,10 @@ export async function removeSesameFromHub3(client, p) {
 /** ADD/REMOVE 共通処理。device_id = hub3Id (親 Hub3 の UUID)。 */
 async function sesameItemOp(client, p) {
   const { hub3Id, secretKey, sesameId, ssmSecKa, nickName, deviceModel, cmd, timeoutMs } = p;
-  if (!hub3Id) throw new Error("hub3Id required (親 Hub3 UUID)");
-  if (!sesameId) throw new Error("sesameId required");
-  if (!ssmSecKa) throw new Error("ssmSecKa required (32hex)");
-  if (!deviceModel) throw new Error("deviceModel required (productType 導出に必要)");
+  if (!hub3Id) throw new Error(t("iot.err.hub3IdRequired"));
+  if (!sesameId) throw new Error(t("iot.err.sesameIdRequired"));
+  if (!ssmSecKa) throw new Error(t("iot.err.ssmSecKaRequired"));
+  if (!deviceModel) throw new Error(t("iot.err.deviceModelRequired"));
 
   const topic = buildIotTopic(hub3Id);
   const extra = buildSesameItemExtra({ sesameId, ssmSecKa, nickName, deviceModel });

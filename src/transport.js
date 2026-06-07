@@ -20,6 +20,7 @@
 
 import WebSocket from "ws";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
+import { t } from "./i18n.js";
 
 const STATUS = Object.freeze({
   DISCONNECTED: "disconnected",
@@ -65,8 +66,8 @@ export class Hub3WsClient {
    * }} cfg
    */
   constructor(cfg) {
-    if (!cfg.wsUrl) throw new Error("wsUrl required");
-    if (!cfg.idToken) throw new Error("idToken required (Cognito idToken JWT)");
+    if (!cfg.wsUrl) throw new Error(t("domain.transport.wsUrlRequired"));
+    if (!cfg.idToken) throw new Error(t("domain.transport.idTokenRequired"));
     this.cfg = { lang: "ja", debug: false, autoReconnect: true, ...cfg };
     this.idToken = cfg.idToken;
     this.onTokenRefreshNeeded = cfg.onTokenRefreshNeeded || null;
@@ -153,14 +154,14 @@ export class Hub3WsClient {
     }
     this.ws = null;
     this.status = STATUS.DISCONNECTED;
-    this._rejectAllPending(closedErr("websocket closed by user"));
+    this._rejectAllPending(closedErr(t("domain.transport.closedByUser")));
     this.messageQueue = [];
     // 初回 connect() 中だった場合は明示的に reject (Review C-2: leak 防止)
     if (this._initialConnectReject) {
       const rej = this._initialConnectReject;
       this._initialConnectResolve = null;
       this._initialConnectReject = null;
-      try { rej(closedErr("closed before initial connect resolved")); } catch { /* ignore */ }
+      try { rej(closedErr(t("domain.transport.closedBeforeInitial"))); } catch { /* ignore */ }
     }
     // _connectPromise も null 化 (2nd-pass C-2: rejected promise が次回 connect() で
     // 再利用される race を防ぐ)。
@@ -182,7 +183,7 @@ export class Hub3WsClient {
       };
       const to = setTimeout(() => {
         this._unregisterPending(key, resolver);
-        reject(timeoutErr(`request timeout: ${key}`));
+        reject(timeoutErr(t("domain.transport.requestTimeout", { key })));
       }, timeoutMs);
       this._registerPending(key, resolver);
       this._sendOrQueue(payload);
@@ -303,7 +304,7 @@ export class Hub3WsClient {
     this.ws = null;
 
     // 接続中の pending を全部 reject (応答先 ws が消えたため)
-    this._rejectAllPending(closedErr("websocket closed"));
+    this._rejectAllPending(closedErr(t("domain.transport.closed")));
 
     if (this.closedByUser) return;
 
@@ -315,7 +316,7 @@ export class Hub3WsClient {
       this._initialConnectReject = null;
       this.closedByUser = true;
       this.messageQueue = [];
-      rej(closedErr(`websocket closed before open (code=${code})`));
+      rej(closedErr(t("domain.transport.closedBeforeOpen", { code })));
       return;
     }
 
@@ -604,7 +605,7 @@ export async function sendIR(client, params) {
   };
   const resp = await client.request(frame, 10_000);
   if (!resp.success) {
-    throw new Error(`sendIR failed: ${resp.message || JSON.stringify(resp)}`);
+    throw new Error(t("domain.transport.sendIRFailed", { detail: resp.message || JSON.stringify(resp) }));
   }
   return resp;
 }
@@ -628,7 +629,7 @@ export async function getIRCodes(client, params) {
   };
   const resp = await client.request(frame, 10_000);
   if (!resp.success) {
-    throw new Error(`getIRCodes failed: ${resp.message || JSON.stringify(resp)}`);
+    throw new Error(t("domain.transport.getIRCodesFailed", { detail: resp.message || JSON.stringify(resp) }));
   }
   return resp.data || [];
 }

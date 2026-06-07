@@ -24,32 +24,33 @@
 // 本体側で吸収済みなので、ここでは本体の引数名にそのまま合わせる。
 
 import { buildShareKeyUrl } from "../sharekey.js";
+import { t } from "../i18n.js";
 
 /**
  * @param {import("commander").Command} program
  * @param {object} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
 export function registerOrgCommands(program, ctx) {
-  const org = program.command("org").description("組織管理 (biz3: 社員 / 社員グループ / 役割タグ / デバイスグループ / 鍵共有)");
+  const org = program.command("org").description(t("org.cmd.org"));
 
   // ════════════════════════════════════════════════════════════════════════
   //  org employee … (biz3ManageEmployee)
   // ════════════════════════════════════════════════════════════════════════
-  const employee = org.command("employee").description("社員管理 (一覧/追加/更新/削除/並替/検索/自己情報)");
+  const employee = org.command("employee").description(t("org.cmd.employee"));
 
   // sesame org employee ls
   employee.command("ls")
-    .description("社員一覧 (getEmployees。pubEmployees push を全 page 集約)")
+    .description(t("org.employee.ls.desc"))
     .action(() =>
       ctx.withAccount(async (hub, { opts }) => {
         // 戻りは { count, list } (count=totalCount)。
         const { count, list } = await hub.org.getEmployees();
         ctx.out(opts.json, () => {
           if (!Array.isArray(list) || list.length === 0) {
-            console.log("(no employees)");
+            console.log(t("org.employee.ls.none"));
             return;
           }
-          console.log(`Found ${list.length} employee(s) (totalCount=${count}):`);
+          console.log(t("org.employee.ls.found", { n: list.length, count }));
           for (const e of list) {
             const id = e.subUUID ?? "(no-uuid)";
             const name = e.employeeName ?? e.nickname ?? "(no-name)";
@@ -62,7 +63,7 @@ export function registerOrgCommands(program, ctx) {
 
   // sesame org employee me
   employee.command("me")
-    .description("ログイン中の自分自身の社員情報 (getCurrentUserInfo。data 構造は biz3 未確認)")
+    .description(t("org.employee.me.desc"))
     .action(() =>
       ctx.withAccount(async (hub, { opts }) => {
         const info = await hub.org.getCurrentUserInfo();
@@ -74,99 +75,99 @@ export function registerOrgCommands(program, ctx) {
 
   // sesame org employee add --json <items>
   employee.command("add")
-    .description("社員を追加 (addEmployees。items は配列で各要素に companyID を含める)")
-    .option("--json <items>", 'JSON 配列。例 \'[{"employeeEmail":"a@b.c","employeeName":"山田","tag":[]}]\'')
+    .description(t("org.employee.add.desc"))
+    .option("--json <items>", t("org.employee.add.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('items が必要です: sesame org employee add --json \'[{"employeeEmail":"…","employeeName":"…"}]\'', 2);
+          ctx.die(t("org.employee.add.need"), 2);
           return;
         }
-        const items = ctx.parseJson(cmdOpts.json, '[{"employeeEmail":"a@b.c","employeeName":"山田"}]');
+        const items = ctx.parseJson(cmdOpts.json, t("org.employee.add.hint"));
         if (items === undefined) return;
-        if (!Array.isArray(items)) { ctx.die("--json は配列である必要があります。", 2); return; }
+        if (!Array.isArray(items)) { ctx.die(t("org.err.jsonArray"), 2); return; }
         // 各要素に companyID を補完 (本体 addEmployees は item 内 companyID を期待。biz3 同様)。
         // companyID を後置し、item 内に空文字/null が紛れても必ず有効値が勝つようにする
         // (明示の有効な companyID があればそれを尊重)。
         const withCid = items.map((it) => ({ ...it, companyID: it.companyID || hub.config.companyID }));
         const resp = await hub.org.addEmployees({ items: withCid });
         ctx.out(opts.json, () => {
-          console.log(`OK: requested add of ${withCid.length} employee(s)`);
+          console.log(t("org.employee.add.ok", { n: withCid.length }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org employee update --json <data>
   employee.command("update")
-    .description("社員情報を更新 (updateEmployee。companyID は自動注入、更新フィールドは --json で渡す)")
-    .option("--json <data>", 'JSON オブジェクト。例 \'{"Name":"nickname","Value":"新名"}\'')
+    .description(t("org.employee.update.desc"))
+    .option("--json <data>", t("org.employee.update.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('更新フィールドが必要です: sesame org employee update --json \'{"Name":"…","Value":"…"}\'', 2);
+          ctx.die(t("org.employee.update.need"), 2);
           return;
         }
-        const data = ctx.parseJson(cmdOpts.json, '{"Name":"nickname","Value":"新名"}');
+        const data = ctx.parseJson(cmdOpts.json, t("org.employee.update.hint"));
         if (data === undefined) return;
         const resp = await hub.org.updateEmployee({ data });
         ctx.out(opts.json, () => {
-          console.log("OK: employee updated");
+          console.log(t("org.employee.update.ok"));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org employee rm --json <items>
   employee.command("rm")
-    .description("社員を削除 (removeEmployees。items は社員オブジェクト/[{subUUID,companyID}] 配列)")
-    .option("--json <items>", 'JSON 配列。例 \'[{"subUUID":"…","companyID":"…"}]\'')
+    .description(t("org.employee.rm.desc"))
+    .option("--json <items>", t("org.employee.rm.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('items が必要です: sesame org employee rm --json \'[{"subUUID":"…"}]\'', 2);
+          ctx.die(t("org.employee.rm.need"), 2);
           return;
         }
         const items = ctx.parseJson(cmdOpts.json, '[{"subUUID":"…","companyID":"…"}]');
         if (items === undefined) return;
-        if (!Array.isArray(items)) { ctx.die("--json は配列である必要があります。", 2); return; }
+        if (!Array.isArray(items)) { ctx.die(t("org.err.jsonArray"), 2); return; }
         const resp = await hub.org.removeEmployees({ items });
         ctx.out(opts.json, () => {
-          console.log(`OK: requested removal of ${items.length} employee(s)`);
+          console.log(t("org.employee.rm.ok", { n: items.length }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org employee reorder --json <items>
   employee.command("reorder")
-    .description("社員の並び順を更新 (reorderEmployees。各要素 {friendUUID, rank})")
-    .option("--json <items>", 'JSON 配列。例 \'[{"friendUUID":"…","rank":0},{"friendUUID":"…","rank":-1}]\'')
+    .description(t("org.employee.reorder.desc"))
+    .option("--json <items>", t("org.employee.reorder.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('items が必要です: sesame org employee reorder --json \'[{"friendUUID":"…","rank":0}]\'', 2);
+          ctx.die(t("org.employee.reorder.need"), 2);
           return;
         }
         const items = ctx.parseJson(cmdOpts.json, '[{"friendUUID":"…","rank":0}]');
         if (items === undefined) return;
-        if (!Array.isArray(items)) { ctx.die("--json は配列である必要があります。", 2); return; }
+        if (!Array.isArray(items)) { ctx.die(t("org.err.jsonArray"), 2); return; }
         const resp = await hub.org.reorderEmployees({ items });
         ctx.out(opts.json, () => {
-          console.log(`OK: reorder requested (${items.length} item(s))`);
+          console.log(t("org.employee.reorder.ok", { n: items.length }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org employee search <keyword>
   employee.command("search <keyword>")
-    .description("CS 横断でユーザーを検索 (queryByCS。pubQueryByCS push を全 page 集約)")
+    .description(t("org.employee.search.desc"))
     .action((keyword) =>
       ctx.withAccount(async (hub, { opts }) => {
         const list = await hub.org.queryByCS({ keyword });
         ctx.out(opts.json, () => {
           if (!Array.isArray(list) || list.length === 0) {
-            console.log("(no matches)");
+            console.log(t("org.employee.search.none"));
             return;
           }
-          console.log(`Found ${list.length} match(es):`);
+          console.log(t("org.employee.search.found", { n: list.length }));
           for (const u of list) {
             const id = u.subUUID ?? "(no-uuid)";
             const name = u.employeeName ?? u.nickname ?? "";
@@ -179,22 +180,22 @@ export function registerOrgCommands(program, ctx) {
 
   // sesame org employee confirm <email>
   employee.command("confirm <email>")
-    .description("queryByCS で見つけたユーザーを確定 (confirmQueryByCS)。注: biz3 では成功時に現セッションを signout する設計")
+    .description(t("org.employee.confirm.desc"))
     .action((email) =>
       ctx.withAccount(async (hub, { opts }) => {
         // 副作用が重い (biz3 UI は成功時 signout)。対話可能なら確認を取る。
         if (ctx.canPrompt()) {
           const ok = await ctx.prompts.confirm(
-            `confirmQueryByCS は biz3 では成功時に現セッションを signout します。続行しますか? (${email})`,
+            t("org.employee.confirm.prompt", { email }),
             { defaultYes: false },
           );
           // 正常な中断: die (Error: プレフィックス + process.exit で finally skip) ではなく
           // plain log + return にして withHub の close() を生かす。
-          if (!ok) { console.error("中止しました。"); return; }
+          if (!ok) { console.error(t("org.employee.confirm.aborted")); return; }
         }
         const resp = await hub.org.confirmQueryByCS({ email });
         ctx.out(opts.json, () => {
-          console.log(`OK: confirmed ${email}`);
+          console.log(t("org.employee.confirm.ok", { email }));
         }, { ok: true, response: resp });
       }),
     );
@@ -202,20 +203,20 @@ export function registerOrgCommands(program, ctx) {
   // ════════════════════════════════════════════════════════════════════════
   //  org group … (社員グループ, biz3ManageEmployeeGroup)
   // ════════════════════════════════════════════════════════════════════════
-  const group = org.command("group").description("社員グループ管理 (一覧/追加/更新/削除/メンバー紐付/デバイスグループ連携)");
+  const group = org.command("group").description(t("org.cmd.group"));
 
   // sesame org group ls
   group.command("ls")
-    .description("社員グループ一覧 (getEmployeeGroups)")
+    .description(t("org.group.ls.desc"))
     .action(() =>
       ctx.withAccount(async (hub, { opts }) => {
         const list = await hub.org.getEmployeeGroups();
         ctx.out(opts.json, () => {
           if (!Array.isArray(list) || list.length === 0) {
-            console.log("(no employee groups)");
+            console.log(t("org.group.ls.none"));
             return;
           }
-          console.log(`Found ${list.length} employee group(s):`);
+          console.log(t("org.group.ls.found", { n: list.length }));
           for (const g of list) {
             const id = g.gid ?? g.groupId ?? "(no-id)";
             const name = g.name ?? g.groupName ?? "(no-name)";
@@ -227,65 +228,65 @@ export function registerOrgCommands(program, ctx) {
 
   // sesame org group add --json <item>
   group.command("add")
-    .description("社員グループを追加 (addEmployeeGroup。companyID は自動注入、item は --json)")
-    .option("--json <item>", 'JSON オブジェクト (グループ名等は biz3 UI 依存で未確認)。例 \'{"name":"営業部"}\'')
+    .description(t("org.group.add.desc"))
+    .option("--json <item>", t("org.group.add.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('item が必要です: sesame org group add --json \'{"name":"営業部"}\'', 2);
+          ctx.die(t("org.group.add.need"), 2);
           return;
         }
-        const item = ctx.parseJson(cmdOpts.json, '{"name":"営業部"}');
+        const item = ctx.parseJson(cmdOpts.json, t("org.group.add.hint"));
         if (item === undefined) return;
         const created = await hub.org.addEmployeeGroup({ item });
         ctx.out(opts.json, () => {
-          console.log(`OK: added employee group${created?.gid ? ` (${created.gid})` : ""}`);
+          console.log(created?.gid ? t("org.group.add.okId", { gid: created.gid }) : t("org.group.add.ok"));
         }, { ok: true, group: created });
       }),
     );
 
   // sesame org group update --json <item>
   group.command("update")
-    .description("社員グループを更新 (updateEmployeeGroup。item に gid 等を含める)")
-    .option("--json <item>", 'JSON オブジェクト。例 \'{"gid":"…","name":"新名"}\'')
+    .description(t("org.group.update.desc"))
+    .option("--json <item>", t("org.group.update.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('item が必要です: sesame org group update --json \'{"gid":"…","name":"…"}\'', 2);
+          ctx.die(t("org.group.update.need"), 2);
           return;
         }
-        const item = ctx.parseJson(cmdOpts.json, '{"gid":"…","name":"新名"}');
+        const item = ctx.parseJson(cmdOpts.json, t("org.group.update.hint"));
         if (item === undefined) return;
         const resp = await hub.org.updateEmployeeGroup({ item });
         ctx.out(opts.json, () => {
-          console.log("OK: employee group updated");
+          console.log(t("org.group.update.ok"));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org group rm --json <gids>
   group.command("rm")
-    .description("社員グループを削除 (removeEmployeeGroups。gids は配列、要素型は biz3 UI 依存で未確認)")
-    .option("--json <gids>", 'JSON 配列。例 \'["gid1","gid2"]\'')
+    .description(t("org.group.rm.desc"))
+    .option("--json <gids>", t("org.group.rm.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('gids が必要です: sesame org group rm --json \'["gid1"]\'', 2);
+          ctx.die(t("org.group.rm.need"), 2);
           return;
         }
         const gids = ctx.parseJson(cmdOpts.json, '["gid1","gid2"]');
         if (gids === undefined) return;
-        if (!Array.isArray(gids)) { ctx.die("--json は配列である必要があります。", 2); return; }
+        if (!Array.isArray(gids)) { ctx.die(t("org.err.jsonArray"), 2); return; }
         const resp = await hub.org.removeEmployeeGroups({ gids });
         ctx.out(opts.json, () => {
-          console.log(`OK: requested removal of ${gids.length} group(s)`);
+          console.log(t("org.group.rm.ok", { n: gids.length }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org group device-groups <gid>
   group.command("device-groups <gid>")
-    .description("社員グループに紐づくデバイスグループを取得 (getEmployeeGroupBindDeviceGroup。cid は送らない)")
+    .description(t("org.group.deviceGroups.desc"))
     .action((gid) =>
       ctx.withAccount(async (hub, { opts }) => {
         const data = await hub.org.getEmployeeGroupBindDeviceGroup({ gid });
@@ -298,62 +299,62 @@ export function registerOrgCommands(program, ctx) {
 
   // sesame org group add-users <gid> --json <body>
   group.command("add-users <gid>")
-    .description("社員グループにユーザーを紐付け (addEmployeeInGroup。uuids/items 両方を --json で渡す)")
-    .option("--json <body>", 'JSON {uuids,items}。例 \'{"uuids":["sub1"],"items":[{"subUUID":"sub1"}]}\'')
+    .description(t("org.group.addUsers.desc"))
+    .option("--json <body>", t("org.group.addUsers.opt"))
     .action((gid, cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('uuids/items が必要です: sesame org group add-users <gid> --json \'{"uuids":[],"items":[]}\'', 2);
+          ctx.die(t("org.group.addUsers.need"), 2);
           return;
         }
         const body = ctx.parseJson(cmdOpts.json, '{"uuids":["sub1"],"items":[{"subUUID":"sub1"}]}');
         if (body === undefined) return;
         // rm-users と対称に uuids/items の配列性を検証 (undefined のまま送ると曖昧な失敗になる)。
         if (!Array.isArray(body.uuids) || !Array.isArray(body.items)) {
-          ctx.die('--json の uuids / items は配列である必要があります。', 2); return;
+          ctx.die(t("org.err.uuidsItemsArray"), 2); return;
         }
         const resp = await hub.org.addEmployeeInGroup({ gid, uuids: body.uuids, items: body.items });
         ctx.out(opts.json, () => {
-          console.log(`OK: bound users to group ${gid}`);
+          console.log(t("org.group.addUsers.ok", { gid }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org group rm-users <gid> --json <body>
   group.command("rm-users <gid>")
-    .description("社員グループからユーザーを解除 (removeEmployeeInGroup。items は {subUUID} に絞り込まれる)")
-    .option("--json <body>", 'JSON {uuids,items}。例 \'{"uuids":["sub1"],"items":[{"subUUID":"sub1"}]}\'')
+    .description(t("org.group.rmUsers.desc"))
+    .option("--json <body>", t("org.group.rmUsers.opt"))
     .action((gid, cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('uuids/items が必要です: sesame org group rm-users <gid> --json \'{"uuids":[],"items":[]}\'', 2);
+          ctx.die(t("org.group.rmUsers.need"), 2);
           return;
         }
         const body = ctx.parseJson(cmdOpts.json, '{"uuids":["sub1"],"items":[{"subUUID":"sub1"}]}');
         if (body === undefined) return;
-        if (!Array.isArray(body.items)) { ctx.die('--json の items は配列である必要があります。', 2); return; }
+        if (!Array.isArray(body.items)) { ctx.die(t("org.err.itemsArray"), 2); return; }
         const resp = await hub.org.removeEmployeeInGroup({ gid, uuids: body.uuids, items: body.items });
         ctx.out(opts.json, () => {
-          console.log(`OK: unbound users from group ${gid}`);
+          console.log(t("org.group.rmUsers.ok", { gid }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org group rm-device-group --json <data>
   group.command("rm-device-group")
-    .description("社員グループからデバイスグループを解除 (removeEmployeeGroupBindDeviceGroup。data 内容は biz3 未確認)")
-    .option("--json <data>", 'JSON オブジェクト (gid 等。biz3 UI 依存で未確認)。')
+    .description(t("org.group.rmDeviceGroup.desc"))
+    .option("--json <data>", t("org.group.rmDeviceGroup.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('data が必要です: sesame org group rm-device-group --json \'{"gid":"…"}\'', 2);
+          ctx.die(t("org.group.rmDeviceGroup.need"), 2);
           return;
         }
         const data = ctx.parseJson(cmdOpts.json, '{"gid":"…"}');
         if (data === undefined) return;
         const resp = await hub.org.removeEmployeeGroupBindDeviceGroup({ data });
         ctx.out(opts.json, () => {
-          console.log("OK: unbound device group from employee group");
+          console.log(t("org.group.rmDeviceGroup.ok"));
         }, { ok: true, response: resp });
       }),
     );
@@ -361,20 +362,20 @@ export function registerOrgCommands(program, ctx) {
   // ════════════════════════════════════════════════════════════════════════
   //  org role … (役割タグ, biz3ManageRole)
   // ════════════════════════════════════════════════════════════════════════
-  const role = org.command("role").description("役割タグ管理 (一覧/追加更新/削除)");
+  const role = org.command("role").description(t("org.cmd.role"));
 
   // sesame org role ls
   role.command("ls")
-    .description("役割タグ一覧 (getTags)")
+    .description(t("org.role.ls.desc"))
     .action(() =>
       ctx.withAccount(async (hub, { opts }) => {
         const list = await hub.org.getTags();
         ctx.out(opts.json, () => {
           if (!Array.isArray(list) || list.length === 0) {
-            console.log("(no role tags)");
+            console.log(t("org.role.ls.none"));
             return;
           }
-          console.log(`Found ${list.length} role tag(s):`);
+          console.log(t("org.role.ls.found", { n: list.length }));
           for (const t of list) {
             const id = t.id ?? t.tagId ?? "(no-id)";
             const name = t.name ?? t.tagName ?? "(no-name)";
@@ -386,38 +387,38 @@ export function registerOrgCommands(program, ctx) {
 
   // sesame org role post --json <data>
   role.command("post")
-    .description("役割タグを追加/更新 (postTag。companyID は自動注入、data は --json)")
-    .option("--json <data>", 'JSON オブジェクト (タグ名等。biz3 UI 依存)。例 \'{"name":"管理者"}\'')
+    .description(t("org.role.post.desc"))
+    .option("--json <data>", t("org.role.post.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('data が必要です: sesame org role post --json \'{"name":"管理者"}\'', 2);
+          ctx.die(t("org.role.post.need"), 2);
           return;
         }
-        const data = ctx.parseJson(cmdOpts.json, '{"name":"管理者"}');
+        const data = ctx.parseJson(cmdOpts.json, t("org.role.post.hint"));
         if (data === undefined) return;
         const resp = await hub.org.postTag({ data });
         ctx.out(opts.json, () => {
-          console.log("OK: role tag posted");
+          console.log(t("org.role.post.ok"));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org role rm --json <data>
   role.command("rm")
-    .description("役割タグを削除 (removeTag。data 内容は biz3 UI 依存)")
-    .option("--json <data>", 'JSON オブジェクト。例 \'{"id":"…"}\'')
+    .description(t("org.role.rm.desc"))
+    .option("--json <data>", t("org.role.rm.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('data が必要です: sesame org role rm --json \'{"id":"…"}\'', 2);
+          ctx.die(t("org.role.rm.need"), 2);
           return;
         }
         const data = ctx.parseJson(cmdOpts.json, '{"id":"…"}');
         if (data === undefined) return;
         const resp = await hub.org.removeTag({ data });
         ctx.out(opts.json, () => {
-          console.log("OK: role tag removed");
+          console.log(t("org.role.rm.ok"));
         }, { ok: true, response: resp });
       }),
     );
@@ -425,20 +426,20 @@ export function registerOrgCommands(program, ctx) {
   // ════════════════════════════════════════════════════════════════════════
   //  org device-group … (デバイスグループ, biz3ManageDeviceGroup)
   // ════════════════════════════════════════════════════════════════════════
-  const deviceGroup = org.command("device-group").description("デバイスグループ管理 (一覧/作成/更新/削除/デバイス紐付/社員グループ連携)");
+  const deviceGroup = org.command("device-group").description(t("org.cmd.deviceGroup"));
 
   // sesame org device-group ls
   deviceGroup.command("ls")
-    .description("デバイスグループ一覧 (getDeviceGroups)")
+    .description(t("org.deviceGroup.ls.desc"))
     .action(() =>
       ctx.withAccount(async (hub, { opts }) => {
         const list = await hub.org.getDeviceGroups();
         ctx.out(opts.json, () => {
           if (!Array.isArray(list) || list.length === 0) {
-            console.log("(no device groups)");
+            console.log(t("org.deviceGroup.ls.none"));
             return;
           }
-          console.log(`Found ${list.length} device group(s):`);
+          console.log(t("org.deviceGroup.ls.found", { n: list.length }));
           for (const g of list) {
             const id = g.gid ?? g.groupId ?? "(no-id)";
             const name = g.name ?? g.groupName ?? "(no-name)";
@@ -450,105 +451,105 @@ export function registerOrgCommands(program, ctx) {
 
   // sesame org device-group add <name> [--uuids <json>]
   deviceGroup.command("add <name>")
-    .description("デバイスグループを作成 (addDeviceGroup。companyID は自動注入)")
-    .option("--uuids <json>", 'JSON 配列の deviceUUID。例 \'["uuid1","uuid2"]\'', "[]")
+    .description(t("org.deviceGroup.add.desc"))
+    .option("--uuids <json>", t("org.deviceGroup.add.opt"), "[]")
     .action((name, cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         const uuids = ctx.parseJson(cmdOpts.uuids, '["uuid1","uuid2"]');
         if (uuids === undefined) return;
-        if (!Array.isArray(uuids)) { ctx.die("--uuids は配列である必要があります。", 2); return; }
+        if (!Array.isArray(uuids)) { ctx.die(t("org.err.uuidsArray"), 2); return; }
         const resp = await hub.org.addDeviceGroup({ name, uuids });
         ctx.out(opts.json, () => {
-          console.log(`OK: created device group "${name}" (${uuids.length} device(s))`);
+          console.log(t("org.deviceGroup.add.ok", { name, n: uuids.length }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org device-group update --json <item>
   deviceGroup.command("update")
-    .description("デバイスグループを更新 (updateDeviceGroup。item に gid 等を含める)")
-    .option("--json <item>", 'JSON オブジェクト。例 \'{"gid":"…","name":"新名"}\'')
+    .description(t("org.deviceGroup.update.desc"))
+    .option("--json <item>", t("org.deviceGroup.update.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('item が必要です: sesame org device-group update --json \'{"gid":"…","name":"…"}\'', 2);
+          ctx.die(t("org.deviceGroup.update.need"), 2);
           return;
         }
-        const item = ctx.parseJson(cmdOpts.json, '{"gid":"…","name":"新名"}');
+        const item = ctx.parseJson(cmdOpts.json, t("org.deviceGroup.update.hint"));
         if (item === undefined) return;
         const resp = await hub.org.updateDeviceGroup({ item });
         ctx.out(opts.json, () => {
-          console.log("OK: device group updated");
+          console.log(t("org.deviceGroup.update.ok"));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org device-group rm --json <groupIds>
   deviceGroup.command("rm")
-    .description("デバイスグループを削除 (removeDeviceGroups。各要素に cid が自動マージされる)")
-    .option("--json <groupIds>", 'JSON オブジェクト配列。例 \'[{"gid":"…"}]\'')
+    .description(t("org.deviceGroup.rm.desc"))
+    .option("--json <groupIds>", t("org.deviceGroup.rm.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('groupIds が必要です: sesame org device-group rm --json \'[{"gid":"…"}]\'', 2);
+          ctx.die(t("org.deviceGroup.rm.need"), 2);
           return;
         }
         const groupIds = ctx.parseJson(cmdOpts.json, '[{"gid":"…"}]');
         if (groupIds === undefined) return;
-        if (!Array.isArray(groupIds)) { ctx.die("--json は配列である必要があります。", 2); return; }
+        if (!Array.isArray(groupIds)) { ctx.die(t("org.err.jsonArray"), 2); return; }
         const resp = await hub.org.removeDeviceGroups({ groupIds });
         ctx.out(opts.json, () => {
-          console.log(`OK: requested removal of ${groupIds.length} device group(s)`);
+          console.log(t("org.deviceGroup.rm.ok", { n: groupIds.length }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org device-group add-devices <gid> --json <body>
   deviceGroup.command("add-devices <gid>")
-    .description("デバイスグループにデバイスを紐付け (addDeviceInGroup。uuids/items を --json で渡す)")
-    .option("--json <body>", 'JSON {uuids,items}。例 \'{"uuids":["dev1"],"items":[{"deviceUUID":"dev1"}]}\'')
+    .description(t("org.deviceGroup.addDevices.desc"))
+    .option("--json <body>", t("org.deviceGroup.addDevices.opt"))
     .action((gid, cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('uuids/items が必要です: sesame org device-group add-devices <gid> --json \'{"uuids":[],"items":[]}\'', 2);
+          ctx.die(t("org.deviceGroup.addDevices.need"), 2);
           return;
         }
         const body = ctx.parseJson(cmdOpts.json, '{"uuids":["dev1"],"items":[{"deviceUUID":"dev1"}]}');
         if (body === undefined) return;
         // rm-devices と対称に uuids/items の配列性を検証。
         if (!Array.isArray(body.uuids) || !Array.isArray(body.items)) {
-          ctx.die('--json の uuids / items は配列である必要があります。', 2); return;
+          ctx.die(t("org.err.uuidsItemsArray"), 2); return;
         }
         const resp = await hub.org.addDeviceInGroup({ gid, uuids: body.uuids, items: body.items });
         ctx.out(opts.json, () => {
-          console.log(`OK: bound devices to group ${gid}`);
+          console.log(t("org.deviceGroup.addDevices.ok", { gid }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org device-group rm-devices <gid> --json <body>
   deviceGroup.command("rm-devices <gid>")
-    .description("デバイスグループからデバイスを解除 (removeDeviceInGroup。items は {deviceUUID,secretKey} に絞り込まれる)")
-    .option("--json <body>", 'JSON {uuids,items}。例 \'{"uuids":["dev1"],"items":[{"deviceUUID":"dev1","secretKey":"…"}]}\'')
+    .description(t("org.deviceGroup.rmDevices.desc"))
+    .option("--json <body>", t("org.deviceGroup.rmDevices.opt"))
     .action((gid, cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('uuids/items が必要です: sesame org device-group rm-devices <gid> --json \'{"uuids":[],"items":[]}\'', 2);
+          ctx.die(t("org.deviceGroup.rmDevices.need"), 2);
           return;
         }
         const body = ctx.parseJson(cmdOpts.json, '{"uuids":["dev1"],"items":[{"deviceUUID":"dev1","secretKey":"…"}]}');
         if (body === undefined) return;
-        if (!Array.isArray(body.items)) { ctx.die('--json の items は配列である必要があります。', 2); return; }
+        if (!Array.isArray(body.items)) { ctx.die(t("org.err.itemsArray"), 2); return; }
         const resp = await hub.org.removeDeviceInGroup({ gid, uuids: body.uuids, items: body.items });
         ctx.out(opts.json, () => {
-          console.log(`OK: unbound devices from group ${gid}`);
+          console.log(t("org.deviceGroup.rmDevices.ok", { gid }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org device-group user-groups <gid>
   deviceGroup.command("user-groups <gid>")
-    .description("デバイスグループにバインド済みの社員グループを取得 (getDeviceGroupBindUserGroup。cid は送らない)")
+    .description(t("org.deviceGroup.userGroups.desc"))
     .action((gid) =>
       ctx.withAccount(async (hub, { opts }) => {
         const data = await hub.org.getDeviceGroupBindUserGroup({ gid });
@@ -561,19 +562,19 @@ export function registerOrgCommands(program, ctx) {
 
   // sesame org device-group rm-user-group --json <data>
   deviceGroup.command("rm-user-group")
-    .description("デバイスグループから社員グループを解除 (removeDeviceGroupBindUserGroup。data 内容は biz3 未確認)")
-    .option("--json <data>", 'JSON オブジェクト (gid/uuids 等。biz3 UI 依存で未確認)。')
+    .description(t("org.deviceGroup.rmUserGroup.desc"))
+    .option("--json <data>", t("org.deviceGroup.rmUserGroup.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('data が必要です: sesame org device-group rm-user-group --json \'{"gid":"…"}\'', 2);
+          ctx.die(t("org.deviceGroup.rmUserGroup.need"), 2);
           return;
         }
         const data = ctx.parseJson(cmdOpts.json, '{"gid":"…"}');
         if (data === undefined) return;
         const resp = await hub.org.removeDeviceGroupBindUserGroup({ data });
         ctx.out(opts.json, () => {
-          console.log("OK: unbound user group from device group");
+          console.log(t("org.deviceGroup.rmUserGroup.ok"));
         }, { ok: true, response: resp });
       }),
     );
@@ -581,21 +582,21 @@ export function registerOrgCommands(program, ctx) {
   // ════════════════════════════════════════════════════════════════════════
   //  org keys … (デバイス鍵の共有/列挙/取消, biz3ManageEmployeeDevice + getDeviceEmployeeKeys)
   // ════════════════════════════════════════════════════════════════════════
-  const keys = org.command("keys").description("デバイス鍵の共有/列挙/取消 (employeeDevice + getDeviceEmployeeKeys)");
+  const keys = org.command("keys").description(t("org.cmd.keys"));
 
   // sesame org keys device <deviceUUID> [--limit <n>]
   keys.command("device <deviceUUID>")
-    .description("デバイス側から鍵保有従業員を列挙 (getDeviceEmployeeKeys。companyID 必須・自動注入)")
-    .option("--limit <n>", "0=全件 / 5=非管理モード", (v) => Number(v), 0)
+    .description(t("org.keys.device.desc"))
+    .option("--limit <n>", t("org.keys.device.opt"), (v) => Number(v), 0)
     .action((deviceUUID, cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         const list = await hub.org.getDeviceEmployeeKeys({ deviceUUID, limit: cmdOpts.limit });
         ctx.out(opts.json, () => {
           if (!Array.isArray(list) || list.length === 0) {
-            console.log("(no key holders)");
+            console.log(t("org.keys.device.none"));
             return;
           }
-          console.log(`Found ${list.length} key holder(s) for ${deviceUUID}:`);
+          console.log(t("org.keys.device.found", { n: list.length, deviceUUID }));
           for (const k of list) {
             const lv = k.keyLevel; // 0=owner,1=manager,2=guest
             const who = k.employeeName ?? k.subUUID ?? "(unknown)";
@@ -608,7 +609,7 @@ export function registerOrgCommands(program, ctx) {
 
   // sesame org keys employee <subUUID>
   keys.command("employee <subUUID>")
-    .description("指定従業員が持つデバイス鍵一覧 (getEmployeeDeviceKeys。companyID 不要、data 構造は未確認)")
+    .description(t("org.keys.employee.desc"))
     .action((subUUID) =>
       ctx.withAccount(async (hub, { opts }) => {
         const data = await hub.org.getEmployeeDeviceKeys({ subUUID });
@@ -620,96 +621,96 @@ export function registerOrgCommands(program, ctx) {
 
   // sesame org keys share --json <items>
   keys.command("share")
-    .description("従業員にデバイス鍵を共有 (shareDeviceKeysToEmployees。items は呼出側で device+user 情報を合成)")
-    .option("--json <items>", 'JSON 配列。各要素 {...device,...user,keyLevel,startTime,endTime}。keyLevel 0=owner/1=manager/2=guest')
+    .description(t("org.keys.share.desc"))
+    .option("--json <items>", t("org.keys.share.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('items が必要です: sesame org keys share --json \'[{"deviceUUID":"…","subUUID":"…","keyLevel":1,"startTime":"","endTime":""}]\'', 2);
+          ctx.die(t("org.keys.share.need"), 2);
           return;
         }
         const items = ctx.parseJson(cmdOpts.json, '[{"deviceUUID":"…","subUUID":"…","keyLevel":1,"startTime":"","endTime":""}]');
         if (items === undefined) return;
-        if (!Array.isArray(items)) { ctx.die("--json は配列である必要があります。", 2); return; }
+        if (!Array.isArray(items)) { ctx.die(t("org.err.jsonArray"), 2); return; }
         const resp = await hub.org.shareDeviceKeysToEmployees({ items });
         ctx.out(opts.json, () => {
-          console.log(`OK: shared keys (${items.length} item(s))`);
+          console.log(t("org.keys.share.ok", { n: items.length }));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org keys share-group --json <item>
   keys.command("share-group")
-    .description("社員グループにデバイスグループ鍵を共有 (shareDeviceGroupKeysToEmployeeGroup。companyID 自動注入)")
-    .option("--json <item>", 'JSON {keyLevel,members,devices,mid,dids,startTime,endTime}。keyLevel は文字列 "0"/"1"/"2"')
+    .description(t("org.keys.shareGroup.desc"))
+    .option("--json <item>", t("org.keys.shareGroup.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('item が必要です: sesame org keys share-group --json \'{"keyLevel":"1","members":[],"devices":[],"mid":"…","dids":[]}\'', 2);
+          ctx.die(t("org.keys.shareGroup.need"), 2);
           return;
         }
         const item = ctx.parseJson(cmdOpts.json, '{"keyLevel":"1","members":[],"devices":[],"mid":"…","dids":[]}');
         if (item === undefined) return;
         const resp = await hub.org.shareDeviceGroupKeysToEmployeeGroup({ item });
         ctx.out(opts.json, () => {
-          console.log("OK: shared device group keys to employee group");
+          console.log(t("org.keys.shareGroup.ok"));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org keys rm --json <data>
   keys.command("rm")
-    .description("従業員/ゲストのデバイス鍵を削除 (removeEmployeeDeviceKey)。ゲスト鍵は randomTag が必要 (本体 JSDoc 参照)")
-    .option("--json <data>", 'JSON。従業員 \'{"subUUID":"…","deviceUUID":"…"}\' / ゲスト \'{"guestKeyId":"…","randomTag":"…","deviceUUID":"…"}\'')
+    .description(t("org.keys.rm.desc"))
+    .option("--json <data>", t("org.keys.rm.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('data が必要です: sesame org keys rm --json \'{"subUUID":"…","deviceUUID":"…"}\'', 2);
+          ctx.die(t("org.keys.rm.need"), 2);
           return;
         }
         const data = ctx.parseJson(cmdOpts.json, '{"subUUID":"…","deviceUUID":"…"}');
         if (data === undefined) return;
         const resp = await hub.org.removeEmployeeDeviceKey({ data });
         ctx.out(opts.json, () => {
-          console.log("OK: device key removed");
+          console.log(t("org.keys.rm.ok"));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org keys update-guest-tag --json <data>
   keys.command("update-guest-tag")
-    .description("ゲスト鍵の名称タグを更新 (updateGuestKeyTag)")
-    .option("--json <data>", 'JSON {deviceUUID,guestKeyId,keyName}。keyName が新タグ名')
+    .description(t("org.keys.updateGuestTag.desc"))
+    .option("--json <data>", t("org.keys.updateGuestTag.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('data が必要です: sesame org keys update-guest-tag --json \'{"deviceUUID":"…","guestKeyId":"…","keyName":"新名"}\'', 2);
+          ctx.die(t("org.keys.updateGuestTag.need"), 2);
           return;
         }
-        const data = ctx.parseJson(cmdOpts.json, '{"deviceUUID":"…","guestKeyId":"…","keyName":"新名"}');
+        const data = ctx.parseJson(cmdOpts.json, t("org.keys.updateGuestTag.hint"));
         if (data === undefined) return;
         const resp = await hub.org.updateGuestKeyTag({ data });
         ctx.out(opts.json, () => {
-          console.log("OK: guest key tag updated");
+          console.log(t("org.keys.updateGuestTag.ok"));
         }, { ok: true, response: resp });
       }),
     );
 
   // sesame org keys generate-guest-qr --json <data>
   keys.command("generate-guest-qr")
-    .description("ゲスト用 guestKeyId を発行 (generateGuestQR)。data はデバイス鍵オブジェクト全体。QR 画像化は本 op 対象外")
-    .option("--json <data>", 'JSON のデバイス鍵オブジェクト全体。例 \'{"deviceUUID":"…","secretKey":"…","sesame2PublicKey":"…","keyIndex":0,"deviceModel":"…","keyLevel":0}\'')
+    .description(t("org.keys.generateGuestQr.desc"))
+    .option("--json <data>", t("org.keys.generateGuestQr.opt"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         if (!cmdOpts.json) {
-          ctx.die('data が必要です: sesame org keys generate-guest-qr --json \'{"deviceUUID":"…","secretKey":"…"}\'', 2);
+          ctx.die(t("org.keys.generateGuestQr.need"), 2);
           return;
         }
         const data = ctx.parseJson(cmdOpts.json, '{"deviceUUID":"…","secretKey":"…"}');
         if (data === undefined) return;
         const guestKeyId = await hub.org.generateGuestQR({ data });
         ctx.out(opts.json, () => {
-          console.log(`OK: guestKeyId = ${guestKeyId}`);
+          console.log(t("org.keys.generateGuestQr.ok", { guestKeyId }));
         }, { ok: true, guestKeyId });
       }),
     );
@@ -718,21 +719,18 @@ export function registerOrgCommands(program, ctx) {
   // biz3 のゲスト共有 QR と同じ ssm://UI?... 共有 URL を組み立てる (sharekey.buildShareKeyUrl)。
   // level=2 (guest) のときだけ先に generateGuestQR で guestKeyId を発行し secretKey 位置へ差し込む。
   keys.command("share-url")
-    .description("デバイス鍵の共有 URL (ssm://UI?...) を生成。SESAME アプリが読む QR の中身そのもの")
-    .option("-d, --device <uuid>", "対象 deviceUUID (省略時は対話選択)")
-    .option("-l, --level <0|1|2>", "鍵レベル 0=owner / 1=manager / 2=guest (既定 2)", "2")
-    .option("--name <name>", "共有時の表示名 (省略時はデバイス名)")
-    .option("--json <deviceKey>", "デバイス鍵を JSON で直接指定 (省略時は devices から解決)")
-    .option("--qr", "端末に QR を表示 (要 qrcode-terminal: npm i qrcode-terminal)")
-    .addHelpText("after", `
-level 2 (guest) のみ generateGuestQR で使い捨て guestKeyId を発行して埋め込みます。
-0/1 (owner/manager) はデバイス自身の secretKey を共有するため取り扱い注意。
-QR 画像化を省く場合でも、出力された ssm://UI URL を任意の QR 生成器に貼れば共有できます。`)
+    .description(t("org.keys.shareUrl.desc"))
+    .option("-d, --device <uuid>", t("org.keys.shareUrl.optDevice"))
+    .option("-l, --level <0|1|2>", t("org.keys.shareUrl.optLevel"), "2")
+    .option("--name <name>", t("org.keys.shareUrl.optName"))
+    .option("--json <deviceKey>", t("org.keys.shareUrl.optJson"))
+    .option("--qr", t("org.keys.shareUrl.optQr"))
+    .addHelpText("after", t("org.keys.shareUrl.help"))
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
         const level = parseInt(cmdOpts.level, 10);
         if (![0, 1, 2].includes(level)) {
-          ctx.die("--level は 0 / 1 / 2 のいずれか。", 2);
+          ctx.die(t("org.keys.shareUrl.badLevel"), 2);
           return;
         }
         // deviceKey の解決: --json 優先 → --device で devices から検索 → 対話選択。
@@ -745,17 +743,17 @@ QR 画像化を省く場合でも、出力された ssm://UI URL を任意の QR
           const devs = Array.isArray(list) ? list : [];
           if (cmdOpts.device) {
             deviceKey = devs.find((d) => d.deviceUUID === cmdOpts.device);
-            if (!deviceKey) { ctx.die(`deviceUUID ${cmdOpts.device} が devices に見つかりません。`, 2); return; }
+            if (!deviceKey) { ctx.die(t("org.keys.shareUrl.deviceNotFound", { device: cmdOpts.device }), 2); return; }
           } else if (ctx.canPrompt()) {
-            if (devs.length === 0) { ctx.die("共有できるデバイスがありません。", 2); return; }
+            if (devs.length === 0) { ctx.die(t("org.keys.shareUrl.noDevices"), 2); return; }
             deviceKey = await ctx.prompts.selectFromList(
-              "共有するデバイスを選択",
+              t("org.keys.shareUrl.selectPrompt"),
               devs,
               (d) => `${d.deviceName || "(no-name)"}  ${d.deviceModel || "?"}  ${d.deviceUUID}`,
             );
-            if (!deviceKey) { console.error("キャンセルしました。"); return; }
+            if (!deviceKey) { console.error(t("org.keys.shareUrl.cancelled")); return; }
           } else {
-            ctx.die("--device <uuid> または --json <deviceKey> が必要です (非対話モード)。", 2);
+            ctx.die(t("org.keys.shareUrl.needDeviceOrJson"), 2);
             return;
           }
         }
@@ -775,7 +773,7 @@ QR 画像化を省く場合でも、出力された ssm://UI URL を任意の QR
             const { default: qrcodeTerminal } = await import("qrcode-terminal");
             qrcodeTerminal.generate(url, { small: true }, (out) => { qrText = out; });
           } catch {
-            qrText = "(qrcode-terminal 未インストール: `npm i qrcode-terminal` で端末 QR 表示)";
+            qrText = t("org.keys.shareUrl.qrNotInstalled");
           }
         }
 

@@ -19,30 +19,32 @@
 //     get だけは companyID 不要だが、一覧の各要素に companyID が含まれる一次データなので
 //     ここでも withAccount で揃える (実害なし)。
 
+import { t } from "../i18n.js";
+
 /**
  * @param {import("commander").Command} program
  * @param {object} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
 export function registerCompanyCommands(program, ctx) {
-  const company = program.command("company").description("会社管理 (biz3ManageCompany: 一覧 / 改名 / 追加 / 課金設定)");
+  const company = program.command("company").description(t("company.cmd.desc"));
 
   // sesame company ls
   company.command("ls")
-    .description("ログインユーザに紐づく会社一覧 (getCompanies)")
+    .description(t("company.ls.desc"))
     .action(() =>
       ctx.withAccount(async (hub, { opts }) => {
         const items = await hub.company.getCompanies();
         ctx.out(opts.json, () => {
           if (!Array.isArray(items) || items.length === 0) {
-            console.log("(no companies)");
+            console.log(t("company.ls.none"));
             return;
           }
-          console.log(`Found ${items.length} compan${items.length === 1 ? "y" : "ies"}:`);
+          console.log(items.length === 1 ? t("company.ls.found.one", { count: items.length }) : t("company.ls.found.many", { count: items.length }));
           for (const c of items) {
             const id = c.companyID ?? "(no-id)";
             const name = c.name ?? "(no-name)";
             // tag[0]==='オーナー' で owner 判定 (useStripeInfo.js)。
-            const owner = Array.isArray(c.tag) && c.tag[0] === "オーナー" ? " [オーナー]" : "";
+            const owner = Array.isArray(c.tag) && c.tag[0] === "オーナー" ? t("company.ls.ownerTag") : "";
             console.log(`  ${id}\t${name}${owner}`);
           }
         }, { ok: true, count: Array.isArray(items) ? items.length : 0, companies: items });
@@ -51,20 +53,20 @@ export function registerCompanyCommands(program, ctx) {
 
   // sesame company rename <name>
   company.command("rename <name>")
-    .description("優先会社の会社名を変更 (updateCompanyName。companyID は自動注入)")
+    .description(t("company.rename.desc"))
     .action((name) =>
       ctx.withAccount(async (hub, { opts }) => {
         // companyID は refreshAccount() 済みなので namespace が自動注入する。
         const resp = await hub.company.updateCompanyName({ name });
         ctx.out(opts.json, () => {
-          console.log(`OK: renamed company ${resp?.companyID ?? ""} → "${resp?.name ?? name}"`);
+          console.log(t("company.rename.ok", { companyID: resp?.companyID ?? "", name: resp?.name ?? name }));
         }, { ok: true, company: resp });
       }),
     );
 
   // sesame company add <name>
   company.command("add <name>")
-    .description("会社を新規登録 (addCompany。employeeEmail/subUUID はログインユーザの customerInfo 由来)")
+    .description(t("company.add.desc"))
     .action((name) =>
       ctx.withAccount(async (hub, { opts, customerInfo }) => {
         // biz3 addCompany は name に加え employeeEmail / subUUID を必須で要求する
@@ -73,27 +75,27 @@ export function registerCompanyCommands(program, ctx) {
         const employeeEmail = customerInfo?.employeeEmail;
         const subUUID = customerInfo?.subUUID;
         if (!employeeEmail || !subUUID) {
-          ctx.die("ログインユーザの customerInfo に employeeEmail/subUUID がありません (再 login が必要かもしれません)。", 1);
+          ctx.die(t("company.add.missingCustomerInfo"), 1);
           return;
         }
         const resp = await hub.company.addCompany({ name, employeeEmail, subUUID });
         ctx.out(opts.json, () => {
           // add 応答 data の個別フィールドは biz3 で読み出されておらず詳細は未確認。
-          console.log(`OK: added company "${name}"${resp?.companyID ? ` (${resp.companyID})` : ""}`);
+          console.log(t("company.add.ok", { name, idSuffix: resp?.companyID ? ` (${resp.companyID})` : "" }));
         }, { ok: true, company: resp });
       }),
     );
 
   // sesame company payment
   company.command("payment")
-    .description("優先会社の課金レベル設定を取得 (getPaymentConfig。応答 data の構造は未確認)")
+    .description(t("company.payment.desc"))
     .action(() =>
       ctx.withAccount(async (hub, { opts }) => {
         // companyID は refreshAccount() 済みのものを namespace が自動注入する。
         const config = await hub.company.getPaymentConfig();
         ctx.out(opts.json, () => {
           if (config == null) {
-            console.log("(no payment config / 応答 data 無し)");
+            console.log(t("company.payment.none"));
             return;
           }
           // 未確認: 応答 data のフィールド集合 (実機検証要)。そのまま整形出力する。

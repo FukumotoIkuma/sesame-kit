@@ -18,6 +18,8 @@
  * major 不一致なら fail-fast できる。後方互換な追加は minor、説明のみは patch。
  *   1.0.0: 初版 (5 framing / 79 method / event.lockState・deviceUpdate / 6 kind)
  */
+import { t } from "../i18n.js";
+
 export const CONTRACT_VERSION = "1.0.0";
 
 /** JSON-RPC 2.0 標準エラーコード + アプリ域 (-32000)。 */
@@ -86,7 +88,7 @@ export function errorFromThrow(id, err) {
     return makeError(id, err.code, err.message, err.kind, err.data);
   }
   // 想定外の内部エラー: メッセージは出すが stack/params は出さない。
-  const message = (err && err.message) ? String(err.message) : "internal error";
+  const message = (err && err.message) ? String(err.message) : t("serve.internalError");
   return makeError(id, RPC.INTERNAL_ERROR, message, KIND.INTERNAL);
 }
 
@@ -137,11 +139,11 @@ export async function handleMessage(raw, invoke) {
   switch (c.type) {
     case "parse-error":
       // NDJSON は 1 行 1 JSON。pretty-print (改行入り) すると行ごとに parse 失敗するので明示する。
-      return makeError(null, RPC.PARSE_ERROR, "Parse error (1 行 1 JSON で送ること。pretty-print 不可)", KIND.BAD_PARAMS);
+      return makeError(null, RPC.PARSE_ERROR, t("serve.parseError"), KIND.BAD_PARAMS);
     case "batch":
-      return makeError(null, RPC.INVALID_REQUEST, "Batch requests are not supported", KIND.BAD_PARAMS);
+      return makeError(null, RPC.INVALID_REQUEST, t("serve.batchUnsupported"), KIND.BAD_PARAMS);
     case "invalid":
-      return makeError(c.id, RPC.INVALID_REQUEST, "Invalid Request", KIND.BAD_PARAMS);
+      return makeError(c.id, RPC.INVALID_REQUEST, t("serve.invalidRequest"), KIND.BAD_PARAMS);
     case "notification":
       // 通知: 実行はするが応答は一切返さない (エラーでも沈黙)。
       try { await invoke(c.method, c.params); } catch { /* 通知はサイレント */ }
@@ -154,7 +156,7 @@ export async function handleMessage(raw, invoke) {
         return errorFromThrow(c.id, err);
       }
     default:
-      return makeError(null, RPC.INTERNAL_ERROR, "internal", KIND.INTERNAL);
+      return makeError(null, RPC.INTERNAL_ERROR, t("serve.internal"), KIND.INTERNAL);
   }
 }
 

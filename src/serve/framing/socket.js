@@ -9,6 +9,7 @@
 import net from "node:net";
 import { existsSync, unlinkSync } from "node:fs";
 import { makeLineConnection } from "./ndjson.js";
+import { t } from "../../i18n.js";
 
 /** 既存ソケットが生きてれば throw、stale なら unlink して継続。 */
 export function ensureFreeSocket(socketPath) {
@@ -17,7 +18,7 @@ export function ensureFreeSocket(socketPath) {
     const probe = net.connect(socketPath);
     probe.once("connect", () => {
       probe.destroy();
-      reject(new Error(`already running (live socket at ${socketPath})`));
+      reject(new Error(t("serve.socket.alreadyRunning", { socketPath })));
     });
     probe.once("error", () => {
       probe.destroy();

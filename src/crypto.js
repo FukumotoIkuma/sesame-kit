@@ -11,6 +11,7 @@
 
 import { aesCmac } from "node-aes-cmac";
 import { randomUUID } from "node:crypto";
+import { t } from "./i18n.js";
 // 公式 biz3 の純定数を直接 import (手書き複製を排除 = 推測ズレ原理的になし)。
 // vendor/biz3/constants/ は biz3 原文のコピー (vendor/biz3/README.md 参照)。
 import { modelNameByProductType } from "../vendor/biz3/constants/sesameDeviceModel.js";
@@ -143,7 +144,7 @@ export function parseIrType(v) {
   const n = Number(key);
   if (Number.isFinite(n)) return n;
   const aliases = Object.keys(IR_TYPE).join(", ");
-  throw new Error(`Unknown irType "${v}". 数値 (例 49152) かエイリアス (${aliases}) を指定してください。`);
+  throw new Error(t("domain.crypto.unknownIrType", { value: v, aliases }));
 }
 
 // ---------- productType (model name → byte value) ----------

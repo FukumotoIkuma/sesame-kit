@@ -13,6 +13,7 @@
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { assertSuccess } from "./util.js";
+import { t } from "./i18n.js";
 
 const ACT_LOGIN = ACTION_TYPES.BIZ3_GET_LOGIN_INFO; // "biz3GetLoginUser"
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -24,7 +25,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * @returns {Promise<{customerInfo: object|null, quotas: object|null}>}
  */
 export async function getLoginUser(client, { email }) {
-  if (!email) throw new Error("email required (login に使った email)");
+  if (!email) throw new Error(t("domain.account.emailRequired"));
   // biz3 は op を付けない (useStripeInfo.js:192-194)。応答も action のみで判定される
   // ため、request の key は "biz3GetLoginUser:" (op 空) で一致する。
   const resp = await client.request({ action: ACT_LOGIN, email }, DEFAULT_TIMEOUT_MS);

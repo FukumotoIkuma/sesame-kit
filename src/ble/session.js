@@ -13,6 +13,7 @@
 //   publish(8)+mechStatus(81) は onStatus リスナへ。
 
 import { Buffer } from "node:buffer";
+import { t } from "../i18n.js";
 import {
   deriveSessionKey, loginPayload, ccmEncrypt, ccmDecrypt,
   splitSegments, SegmentAssembler, buildSendFrame, parseRecvFrame,
@@ -31,8 +32,14 @@ export class BleResultError extends Error {
   constructor(phase, resultCode, itemCode = null) {
     const name = resultName(resultCode);
     // 紛らわしいコードに一言ヒント (エラーそのものに載るので別 docs を読む必要がない)。
-    const hint = { invalidSig: " (secretKey 不一致?)", notFound: " (op 非対応 or 内部リソース無し)", busy: " (デバイスが他操作中)" }[name] || "";
-    super(`BLE ${phase} failed: ${name}${hint} (resultCode=${resultCode}${itemCode != null ? `, item=${itemCode}` : ""})`);
+    const hint = { invalidSig: t("ble.hintInvalidSig"), notFound: t("ble.hintNotFound"), busy: t("ble.hintBusy") }[name] || "";
+    super(t("ble.bleResultFailed", {
+      phase,
+      name,
+      hint,
+      resultCode,
+      itemSuffix: itemCode != null ? `, item=${itemCode}` : "",
+    }));
     this.name = "BleResultError";
     this.resultCode = resultCode;
     this.resultName = name;
@@ -53,8 +60,8 @@ export class SesameBleSession {
    *          defaultTimeoutMs?:number}} opts
    */
   constructor({ transport, secretKey, debug = false, defaultTimeoutMs = DEFAULT_TIMEOUT_MS }) {
-    if (!transport) throw new Error("transport required");
-    if (!secretKey) throw new Error("secretKey required");
+    if (!transport) throw new Error(t("ble.transportRequired"));
+    if (!secretKey) throw new Error(t("ble.secretKeyRequiredSession"));
     this._transport = transport;
     this._secretKey = Buffer.isBuffer(secretKey) ? secretKey : Buffer.from(secretKey, "hex");
     this._debug = debug;
@@ -94,7 +101,7 @@ export class SesameBleSession {
     const loginPromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this._loginWaiter = null;
-        reject(new Error("BLE login timeout (initial/login 応答なし)"));
+        reject(new Error(t("ble.loginTimeout")));
       }, LOGIN_TIMEOUT_MS);
       this._loginWaiter = { resolve, reject, timer };
     });
@@ -105,7 +112,7 @@ export class SesameBleSession {
   async disconnect() {
     // pending を全て reject してリーク防止
     for (const [, queue] of this._pending) {
-      for (const p of queue) { clearTimeout(p.timer); p.reject(new Error("BLE disconnected")); }
+      for (const p of queue) { clearTimeout(p.timer); p.reject(new Error(t("ble.disconnected"))); }
     }
     this._pending.clear();
     if (this._loginWaiter) { clearTimeout(this._loginWaiter.timer); this._loginWaiter = null; }
@@ -121,12 +128,12 @@ export class SesameBleSession {
    * @returns {Promise<{resultCode:number, payload:Buffer}>}
    */
   request(itemCode, data = Buffer.alloc(0), { timeoutMs } = {}) {
-    if (!this._loggedIn) return Promise.reject(new Error("not logged in (connect() を先に)"));
+    if (!this._loggedIn) return Promise.reject(new Error(t("ble.notLoggedIn")));
     const to = timeoutMs ?? this._defaultTimeoutMs;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this._dequeue(itemCode, entry);
-        reject(new Error(`BLE request timeout (item=${itemCode})`));
+        reject(new Error(t("ble.requestTimeout", { item: itemCode })));
       }, to);
       const entry = { resolve, reject, timer };
       if (!this._pending.has(itemCode)) this._pending.set(itemCode, []);

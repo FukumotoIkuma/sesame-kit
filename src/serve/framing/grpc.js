@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { tokenMatches } from "./token.js";
 import { RpcError } from "../jsonrpc.js";
+import { t } from "../../i18n.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROTO_PATH = resolve(HERE, "..", "sesame.proto");
@@ -58,11 +59,11 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
   // 型付き unary メソッドを一括登録 (handler は generic に daemon.invoke へ委譲)。
   for (const [pascal, { method, jsonFields }] of Object.entries(methodMap)) {
     impl[pascal] = async (call, callback) => {
-      if (!tokenMatches(metaToken(call), token)) return callback({ code: grpc.status.UNAUTHENTICATED, message: "unauthorized" });
+      if (!tokenMatches(metaToken(call), token)) return callback({ code: grpc.status.UNAUTHENTICATED, message: t("serve.grpc.unauthorized") });
       const params = { ...call.request };
       for (const f of jsonFields) {
         if (params[f] === undefined || params[f] === "") { delete params[f]; continue; } // 空=未指定
-        try { params[f] = JSON.parse(params[f]); } catch { return callback({ code: grpc.status.INVALID_ARGUMENT, message: `field "${f}" must be JSON` }); }
+        try { params[f] = JSON.parse(params[f]); } catch { return callback({ code: grpc.status.INVALID_ARGUMENT, message: t("serve.grpc.fieldMustBeJson", { f }) }); }
       }
       const conn = { id: "grpc", ephemeral: true, send() {}, close() {} };
       daemon.addConnection(conn);
@@ -81,7 +82,7 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
 
   // 後方互換: 任意の JSON-RPC を文字列で運ぶ。
   impl.Invoke = async (call, callback) => {
-    if (!tokenMatches(metaToken(call), token)) return callback({ code: grpc.status.UNAUTHENTICATED, message: "unauthorized" });
+    if (!tokenMatches(metaToken(call), token)) return callback({ code: grpc.status.UNAUTHENTICATED, message: t("serve.grpc.unauthorized") });
     const conn = { id: "grpc", ephemeral: true, send() {}, close() {} };
     daemon.addConnection(conn);
     let out;
@@ -93,7 +94,7 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
   // イベント購読ストリーム。
   impl.Subscribe = (call) => {
     const provided = call.request.token || metaToken(call);
-    if (!tokenMatches(provided, token)) { endStreamWithError(call, grpc.status.UNAUTHENTICATED, "unauthorized"); return; }
+    if (!tokenMatches(provided, token)) { endStreamWithError(call, grpc.status.UNAUTHENTICATED, t("serve.grpc.unauthorized")); return; }
     let buffered = 0;
     const MAX_BUFFERED = 4 * 1024 * 1024;
     call.on("drain", () => { buffered = 0; });
@@ -115,7 +116,7 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
     const bad = topics.filter((t) => !daemon.topics.includes(t));
     if (bad.length) {
       daemon.removeConnection(conn);
-      endStreamWithError(call, grpc.status.INVALID_ARGUMENT, `unknown topic(s): ${bad.join(",")}`);
+      endStreamWithError(call, grpc.status.INVALID_ARGUMENT, t("serve.grpc.unknownTopics", { topics: bad.join(",") }));
       return;
     }
     if (topics.length) daemon.subscribe(conn, topics);
