@@ -12,6 +12,8 @@
 
 **公式 SESAME アプリでできる操作を、あなたのコードから。** `sesame-kit` は登録済みの SESAME デバイスを公式 iOS / Android アプリと同じように操作します — 施錠 / 解錠、Hub3 IR（発射・学習）、デバイス管理、開閉履歴、電池残量。CLI、Node ライブラリ、`sesame serve`（JSON-RPC）で任意の言語から呼べます。`npm install` して、スクリプトやホームオートメーション、自作アプリに SESAME を組み込みましょう。
 
+<p align="center"><img src="https://raw.githubusercontent.com/FukumotoIkuma/sesame-kit/main/assets/demo.ja.gif" alt="sesame-kit デモ" width="800"></p>
+
 ## 何ができるか
 
 - ロック制御: 施錠 / 解錠 / トグル / SESAME Bot クリック

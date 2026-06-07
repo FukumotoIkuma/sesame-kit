@@ -6,6 +6,8 @@
 
 **Do what the official SESAME app does — from your own code.** `sesame-kit` operates your existing SESAME devices the way the official iOS / Android apps do — lock / unlock, Hub3 IR (emit and learn), device management, history, battery — from a CLI, a Node library, or any language via `sesame serve` (JSON-RPC). `npm install` it and build SESAME into your scripts, home automation, or app.
 
+<p align="center"><img src="https://raw.githubusercontent.com/FukumotoIkuma/sesame-kit/main/assets/demo.en.gif" alt="sesame-kit demo" width="800"></p>
+
 > 日本語版: [README.ja.md](./README.ja.md)
 
 > **Status** — Pre-1.0 and may contain bugs. It will reach 1.0 once it has proven stable in real use. Pin a version if you depend on it.
