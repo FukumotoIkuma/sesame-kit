@@ -82,7 +82,9 @@
   },
   "scripts": {
     "cli": "node bin/sesame.js",
-    "test": "vitest run",
+    "test": "vitest run --project unit && vitest run --project e2e",
+    "test:unit": "vitest run --project unit",
+    "test:e2e": "vitest run --project e2e",
     "test:watch": "vitest",
     "build:types": "tsc -p tsconfig.json",
     "build:rpc-schema": "node scripts/gen-rpc-schema.mjs",
