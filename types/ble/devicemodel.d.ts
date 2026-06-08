@@ -13,8 +13,13 @@ export function kindForModel(model: string | null | undefined): string;
  *   - cloud / ble : 各経路で操作可能な op
  *   - ops         : 和集合 (UI で見せる操作・提示順)
  *   - bleSupported: BLE 制御を実装しているか (= ble.length>0)
+ *   - biometric   : 生体・アクセス制御の BLE 登録 API を持つか (BIOMETRIC kind のみ true)
+ *   - wifiProvisioning: WM2 の BLE プロビジョニング API を持つか (WIFI kind のみ true)
+ *   - script      : Bot2/Bot3 のスクリプト API を持つか (BOT2 kind のみ true)
+ *   - fingerprint : Bike3 の指紋登録 API を持つか (BIKE3 kind のみ true)
+ *   - hubProvisioning: Hub3 の BLE プロビジョニング API を持つか (HUB3 kind のみ true)
  * @param {string|null|undefined} model
- * @returns {{kind:string, os:number, cloud:string[], ble:string[], ops:string[], mechKind:string|null, bleSupported:boolean, label:string}}
+ * @returns {{kind:string, os:number, cloud:string[], ble:string[], ops:string[], mechKind:string|null, bleSupported:boolean, biometric:boolean, wifiProvisioning:boolean, hubProvisioning:boolean, script:boolean, fingerprint:boolean, label:string}}
  */
 export function capabilitiesForModel(model: string | null | undefined): {
     kind: string;
@@ -24,6 +29,11 @@ export function capabilitiesForModel(model: string | null | undefined): {
     ops: string[];
     mechKind: string | null;
     bleSupported: boolean;
+    biometric: boolean;
+    wifiProvisioning: boolean;
+    hubProvisioning: boolean;
+    script: boolean;
+    fingerprint: boolean;
     label: string;
 };
 /** その model が op を (いずれかの経路で) 操作できるか。 */
@@ -42,10 +52,14 @@ export function transportsForOp(model: string | null | undefined, op: string): s
  * BLE 上の「デバイス種別 (kind)」。productType→実装クラスの多対一を、能力の単位でまとめたもの。
  * - lock5     : Sesame5/5Pro/6/6Pro/US/miwa, BLE Connector (OS3 ロック)
  * - bot2      : SESAME Bot2/Bot3 (OS3) — click のみ
- * - bike2     : SESAME Bike2/Bike3 (OS3) — unlock のみ
- * - sesame2   : Sesame2/3/4 (OS2 ロック) — BLE は別プロトコル (未実装)
- * - botOs2    : SESAME Bot1 (OS2) — BLE 未実装
- * - bikeOs2   : Bike1 (OS2) — BLE 未実装
+ * - bike2     : SESAME Bike2 (OS3) — unlock のみ
+ * - bike3     : SESAME Bike3 (OS3) — unlock + 指紋登録 (CHFingerPrintCapable mixin)。
+ *               Bike3 は CHSesameBike3Device : CHSesameBike2Device(), CHFingerPrintCapable
+ *               (CHSesameBike3Device.kt:20-24) で、Bike2 の解錠能力に指紋 capability のみを
+ *               足した固有型。Bot/Bike2 と違い fingerPrint ゲッタを露出するため別 kind にする。
+ * - sesame2   : Sesame2/3/4 (OS2 ロック) — BLE は別プロトコル (SesameOS2Ble facade)
+ * - botOs2    : SESAME Bot1 (OS2) — BLE click (SesameOS2Ble facade)
+ * - bikeOs2   : Bike1 (OS2) — BLE unlock (SesameOS2Ble facade)
  * - biometric : Touch/Face/OpenSensor/Remote (鍵束デバイス。施錠操作なし)
  * - hub3      : Hub3/Hub3 LTE (IoT 中継。BLE 施錠操作なし)
  * - wifi      : WifiModule2
@@ -54,6 +68,7 @@ export const KIND: Readonly<{
     LOCK5: "lock5";
     BOT2: "bot2";
     BIKE2: "bike2";
+    BIKE3: "bike3";
     SESAME2: "sesame2";
     BOT_OS2: "botOs2";
     BIKE_OS2: "bikeOs2";
@@ -198,7 +213,7 @@ export const PRODUCT_TYPES: Readonly<{
     };
     33: {
         model: string;
-        kind: "bike2";
+        kind: "bike3";
     };
     35: {
         model: string;

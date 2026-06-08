@@ -59,7 +59,7 @@ describe("CLI --json 出力契約", () => {
     expect(ls.code).toBe(0);
     expect(() => JSON.parse(ls.stdout)).not.toThrow();
     expect(ls.stdout).toContain("front");
-  });
+  }, 15000); // 並列スイート実行下で node を 3 回同期 spawn するため余裕を持たせる
 
   it("locks add は非対話で必須フラグ欠落なら固まらず JSON エラーで落ちる", () => {
     runCli(["init"]);

@@ -75,14 +75,14 @@ describe("sesame serve --stdio (end-to-end)", () => {
     expect(byId[3].error.code).toBe(-32601);
     // 看板 op lock.unlock が stdio 経路でも hub に届く (5 番目の framing)
     expect(byId[4].result).toMatchObject({ ok: true, name: "front" });
-  }, E2E_TIMEOUT);
+  }, E2E_TIMEOUT); // 並列スイート実行下で実プロセス spawn が遅れても落ちないよう余裕を持たせる
 
   it("stdout は純 JSON-RPC のみ (人間向け案内は stderr)", async () => {
     const res = await runStdioSession([{ jsonrpc: "2.0", id: 1, method: "status" }]);
     // 全行が JSON としてパースできている (runStdioSession が JSON.parse 済み)
     expect(res).toHaveLength(1);
     expect(res[0].jsonrpc).toBe("2.0");
-  }, E2E_TIMEOUT);
+  }, E2E_TIMEOUT); // 並列スイート実行下で実プロセス spawn が遅れても落ちないよう余裕を持たせる
 
   it("起動直後に event.ready を stdout へ通知する (stderr 儀式の代替)", async () => {
     const firstLine = await new Promise((resolveP, reject) => {
@@ -117,5 +117,5 @@ describe("sesame rpc --paths (機械可読な接続情報)", () => {
     expect(info.socket).toContain("sesame.sock");
     expect(info.tokenFile).toContain("serve.token");
     expect(info.token).toBeNull(); // HTTP 未起動なので token ファイルは無い
-  }, E2E_TIMEOUT);
+  }, E2E_TIMEOUT); // 並列スイート実行下で実プロセス spawn が遅れても落ちないよう余裕を持たせる
 });

@@ -10,7 +10,8 @@
 // 公式 BLE 実装と同じ AES-CMAC で、用途のみ異なる (biz3 は時刻署名 / BLE は session key 派生)。
 
 import { aesCmac } from "node-aes-cmac";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes, createECDH } from "node:crypto";
+import { Buffer } from "node:buffer";
 import { t } from "./i18n.js";
 // 公式 biz3 の純定数を直接 import (手書き複製を排除 = 推測ズレ原理的になし)。
 // vendor/biz3/constants/ は biz3 原文のコピー (vendor/biz3/README.md 参照)。
@@ -43,8 +44,9 @@ export function generateUUID() {
  *
  * `node-aes-cmac` は RFC 4493 標準実装。RFC 4493 §4 の Test Vector 2
  * (key=2b7e1516..., msg=6bc1bee2..., expected=070a16b4...) で動作検証済み
- * (リポルートで `node _crypto_test.mjs` 実行時 PASS。biz3 Cmac.js も同じ
- * RFC 4493 標準を Web Crypto 上で自前実装しているため出力は一致する)。
+ * (tests/crypto/cmacTime.test.js:217 "RFC 4493 Test Vector 2 を aesCmac 単体で検証"
+ * が当該ベクタを assert。biz3 Cmac.js も同じ RFC 4493 標準を Web Crypto 上で自前
+ * 実装しているため出力は一致する)。
  *
  * @param {string} hexKey 16B (32hex) の secretKey
  * @returns {string} 4B hex (8 文字)
@@ -64,8 +66,9 @@ export function cmacTime(hexKey) {
   const buf = Buffer.alloc(4);
   buf.writeUInt32LE(ts, 0);
   const msg = buf.subarray(1, 4); // 上位 3B
-  const mac = aesCmac(key, msg);  // node-aes-cmac は Buffer を返す
-  const macBuf = Buffer.isBuffer(mac) ? mac : Buffer.from(mac, "hex");
+  // 戻り値の Buffer 正規化は cmacBuf() に一本化 (node-aes-cmac は環境により hex / Buffer)。
+  // cmacBuf は function 宣言なので巻き上げにより定義順より前のここから呼べる。
+  const macBuf = cmacBuf(key, msg);
   return macBuf.toString("hex").slice(0, 8);
 }
 
@@ -160,4 +163,486 @@ export const PRODUCT_TYPE = Object.freeze(
 
 export function productTypeFromModelName(modelName) {
   return PRODUCT_TYPE[modelName];
+}
+
+// ---------- ECDH 共有鍵導出 (BLE デバイス登録 / 初期ペアリング) ----------
+//
+// ★配線状況 (2026-06 時点): この ECDH ブロックの ecdhSecretPre16() は登録フローに
+//   **配線済み**である。session.register() (src/ble/session.js) がデバイスの返す
+//   公開鍵から共有秘密を導き、secretKey/session 鍵を確立する形で本番フローに乗り、
+//   SesameBle.register()/registerOnce() ファサード経由で到達可能。mock vector で
+//   単体/end-to-end テスト済み (tests/crypto/ecdh.test.js, tests/ble/session-register.test.js,
+//   tests/ble/facade-register.test.js)。ただし **実機 OS3 デバイスに対する token16
+//   バイト列一致は未検証** (protocol.js:282-299 の registration 側記述と整合)。
+//   現状の自動検証範囲は NIST P-256 既知ベクタ + mock end-to-end まで。
+//   注: 同ファイル後段の server-auth ブロック (getRegisterKey / deriveRegisterPriKey /
+//   SERVER_AUTH_PUBKEY) は **OS2 register の任意経路に配線済み** (makeLocalRegisterServer 経由で
+//   SesameOS2BleSession.register({ registerServer }) に注入する。OS3 register は純 ECDH で
+//   getRegisterKey を使わない)。配線詳細と未検証性は後段 server-auth ブロックの注記を参照。
+//
+// SESAME 公式 SDK は P-256 (secp256r1 / prime256v1) ECDH で共有秘密を作り、
+// その先頭 16B を初期ペアリングの secret に使う。Node では呼び出し側が用意した
+// `createECDH("prime256v1")` インスタンス (秘密鍵をセット済み) と remote の生公開鍵
+// から再現する。
+//
+// 原典 (CANDY-HOUSE SesameSDK):
+//   co/candyhouse/sesame/utils/EccKey.kt:27-33 — ecdh():
+//     val fixheader = "3059301306072a8648ce3d020106082a8648ce3d030107034200" + remote(hex)
+//     KeyFactory("EC").generatePublic(X509EncodedKeySpec(fixheader.hexToBytes()))
+//     KeyAgreement("ECDH").apply { init(priv); doPhase(pub, true) }.generateSecret()
+//   → fixheader は SubjectPublicKeyInfo の固定 DER 前置。末尾 "...034200" の
+//     "04" が EC point の **uncompressed prefix**。remote はそこに続く 64B (X‖Y) の
+//     生バイト列 (prefix 無し)。よって Node では「04 + 64B」を computeSecret に渡すのと等価。
+//   co/candyhouse/sesame/ble/os3/CHHub3Device.kt:197 — ecdh().sliceArray(0..15)
+//     → 共有秘密 (32B X 座標) の **先頭 16B** をペアリング secret として使用。
+//
+// Node の createECDH("prime256v1").computeSecret(uncompressedPoint) は ECDH の生出力
+// (= 共有点の X 座標 32B) をそのまま返す。これは JCA の KeyAgreement("ECDH").generateSecret()
+// と同一 (どちらも KDF を挟まない raw ECDH)。NIST P-256 既知ベクタで一致を確認済み
+// (tests/crypto/ecdh.test.js)。
+
+const ECDH_UNCOMPRESSED_PREFIX = 0x04; // EC point uncompressed 形式の先頭バイト
+const ECDH_RAW_PUBKEY_LEN = 64;        // P-256 生公開鍵 = X(32B) ‖ Y(32B)
+
+/**
+ * keyPair (呼び出し側が用意する createECDH("prime256v1") インスタンス、または
+ * .computeSecret を持つラッパ) から computeSecret 可能な ECDH オブジェクトを取り出す。
+ * @param {import("node:crypto").ECDH|{ecdh?:import("node:crypto").ECDH, computeSecret?:Function}} keyPair
+ * @returns {{computeSecret:(other:Buffer)=>Buffer}}
+ */
+function resolveEcdh(keyPair) {
+  if (!keyPair) throw new Error("keyPair required (createECDH instance)");
+  // 直接 ECDH インスタンス、またはそれを内包するラッパのどちらでも受ける。
+  const candidate =
+    typeof keyPair.computeSecret === "function" ? keyPair
+      : (keyPair.ecdh && typeof keyPair.ecdh.computeSecret === "function") ? keyPair.ecdh
+        : null;
+  if (!candidate) {
+    throw new Error("keyPair must expose computeSecret() (a createECDH('prime256v1') instance)");
+  }
+  return candidate;
+}
+
+/**
+ * remote の生公開鍵 (64B, prefix 無し) を uncompressed point 形式に正規化する。
+ * EccKey.kt の fixheader 末尾 "04" が示す通り、SDK の remote は 0x04 prefix を含まない
+ * X‖Y の 64B (これが SDK 契約)。Node の computeSecret は 0x04 prefix 付き (65B) を
+ * 要求するので前置する。
+ *
+ * ★65B (0x04 prefix 付き) 受理は SDK 仕様ではなく **本ラッパ独自の利便機能**:
+ *   Node の getPublicKey() が既定で返す uncompressed 65B をそのまま渡せるようにする
+ *   ためのもの。SDK 契約に忠実なのは 64B raw のみ。65B を渡しても computeSecret は
+ *   同一結果になるが、契約外の形態である点に注意 (将来 64B 厳格化に倒す余地あり)。
+ * @param {Buffer|string} remotePubKey64 64B raw (Buffer) or 128hex string
+ *   (利便機能として 0x04 prefix 付き 65B / 130hex も受理)
+ * @returns {Buffer} 65B uncompressed point (0x04 ‖ X ‖ Y)
+ */
+function toUncompressedPoint(remotePubKey64) {
+  let raw;
+  if (Buffer.isBuffer(remotePubKey64)) {
+    raw = remotePubKey64;
+  } else if (typeof remotePubKey64 === "string") {
+    if (!/^[0-9a-fA-F]+$/.test(remotePubKey64) || remotePubKey64.length % 2 !== 0) {
+      throw new Error("remotePubKey64 hex string must be even-length hex");
+    }
+    raw = Buffer.from(remotePubKey64, "hex");
+  } else {
+    throw new Error(`remotePubKey64 must be a Buffer or hex string (got ${typeof remotePubKey64})`);
+  }
+  // 寛容受理 (本ラッパ独自の利便機能, SDK 契約外): 既に 0x04 prefix 付き (65B) で
+  // 渡された場合はそのまま使う。SDK 契約の正規形は 64B raw。
+  if (raw.length === ECDH_RAW_PUBKEY_LEN + 1 && raw[0] === ECDH_UNCOMPRESSED_PREFIX) {
+    return raw;
+  }
+  if (raw.length !== ECDH_RAW_PUBKEY_LEN) {
+    throw new Error(
+      `remotePubKey64 must be ${ECDH_RAW_PUBKEY_LEN}B raw public key (X‖Y, no prefix); got ${raw.length}B`,
+    );
+  }
+  return Buffer.concat([Buffer.from([ECDH_UNCOMPRESSED_PREFIX]), raw]);
+}
+
+/**
+ * ECDH 共有秘密 (生 X 座標 32B) を導出する。
+ * EccKey.ecdh():27-33 — remote 公開鍵 (64B raw) に uncompressed prefix を付与し、
+ * KeyAgreement("ECDH").generateSecret() 相当の raw ECDH 出力を返す。
+ *
+ * @param {import("node:crypto").ECDH|{ecdh?:import("node:crypto").ECDH}} keyPair
+ *        呼び出し側が用意する createECDH("prime256v1") インスタンス (秘密鍵セット済み)。
+ * @param {Buffer|string} remotePubKey64 remote の生公開鍵 (64B, X‖Y, prefix 無し)。
+ * @returns {Buffer} 32B 共有秘密 (P-256 共有点の X 座標)。
+ */
+export function ecdhSharedSecret(keyPair, remotePubKey64) {
+  const ecdh = resolveEcdh(keyPair);
+  const point = toUncompressedPoint(remotePubKey64);
+  return ecdh.computeSecret(point);
+}
+
+/**
+ * ECDH 共有秘密の先頭 16B を返す (初期ペアリング secret)。
+ * CHHub3Device.kt:197 — ecdh().sliceArray(0..15)。
+ *
+ * 原典 Kotlin の sliceArray(0..15) は **copy** を作る。これに合わせ、ここでも
+ * subarray (view) ではなく Buffer.from(...) で独立した 16B バッファを返す。
+ * subarray だと戻り値が 32B 共有秘密の backing ArrayBuffer を共有する view となり、
+ * 捨てたはずの後半 16B が pre.buffer 経由 (backing 全体を読む API) に露出しうる。
+ * コピーすることで、捨てた後半 16B をこの 16B 戻り値バッファには残さない。
+ *
+ * 注意 (機微値隔離の限界): Node の Buffer.from(<=4KB) は 8KB 共有 pool から確保するため、
+ * この戻り値は他割当と同一の ArrayBuffer(byteLength 8192) を共有する (byteOffset で区別)。
+ * すなわち「pool 全体を隔離する」わけではなく、あくまで「ECDH 32B 出力の後半 16B を
+ * この戻り値バッファ自身には載せない」ことが目的。真に pool 外へ隔離したい場合は
+ * Buffer.allocUnsafeSlow(16) + copy が必要だが、用途上ここまでは要求しない。
+ *
+ * @param {import("node:crypto").ECDH|{ecdh?:import("node:crypto").ECDH}} keyPair
+ * @param {Buffer|string} remotePubKey64 remote の生公開鍵 (64B, X‖Y, prefix 無し)。
+ * @returns {Buffer} 16B 共有秘密先頭 (独立コピー、後半 16B をこのバッファに残さない)。
+ */
+export function ecdhSecretPre16(keyPair, remotePubKey64) {
+  return Buffer.from(ecdhSharedSecret(keyPair, remotePubKey64).subarray(0, 16));
+}
+
+// ---------- サーバ認証 (初期ペアリングの sig1 生成 / reg-server-ecdh-auth) ----------
+//
+// ★★ 移植忠実性: 未確定 (UNVERIFIED PORT) ★★
+//   このブロック (deriveRegisterPriKey / getRegisterKey / SERVER_AUTH_PUBKEY) の
+//   アルゴリズムは原典 CHServerAuth.kt (本リポジトリの _sesame_sdk_ref に存在) の **getRegisterKey
+//   定義** が根拠だが、その定義は SDK 内に呼び出し元が無く (server 側で実行される想定)、
+//   - serverauth.test.js の「生プリミティブ独立再計算」(refRegisterKey) は同一の定義
+//     アルゴリズムを再実装したものなので、確認しているのは **内部整合性のみ** であって
+//     SDK/サーバが実際に送るバイト列 (sig1/pubkey) との一致ではない。
+//   よって以下の核心要素はいずれも実機キャプチャと未照合:
+//     - CMAC 鍵文字列 "Sesame2_key_pair"
+//     - priKey = oneKey ‖ twoKey の連結順
+//     - sessionToken = serverToken ‖ b64(n) / msg = b64(ak) ‖ sessionToken の連結順
+//     - priKeyToPubKey の drop(27) → 65B pubkey
+//     - SERVER_AUTH_PUBKEY (serverKey) の定数値
+//
+//   ★配線状況 (2026-06 更新): getRegisterKey は **OS2 register の任意 server-auth 経路に配線済み**。
+//     呼び出し元 CHSesame2Device.register (CHSesame2Device.kt:406-482) が getRegisterKey 相当の
+//     {sig1, st, pubkey} を server から受けて REGISTRATION を組む。kit ではこれを registerServer
+//     コールバック注入 (SesameOS2BleSession.register({registerServer}), src/ble/os2/session.js) で
+//     再現し、makeLocalRegisterServer (下記) が getRegisterKey をそのコールバックに適合させて
+//     「クラウド非依存のオフライン server-auth register」を可能にする (login 側の signLogin /
+//     _loginViaServer と同じ流儀)。mock end-to-end で app↔device 鍵一致を検証
+//     (tests/ble/os2-register.test.js)。既定の BLE-only register は不変 (registerServer/
+//     localServerAuth 未指定なら従来どおり明示エラー)。
+//
+//   ★世代の明確化 (旧注記の訂正): getRegisterKey は **OS2 (SESAME2/3/4) 固有**の登録認証であり、
+//     呼び出し元も OS2 (CHSesame2Device) のみ。OS3 register (CHHub3Device.kt:176-211) は純 ECDH で
+//     getRegisterKey を使わない (一次資料で確認)。旧注記は「OS2 由来を OS3 register に流用する前提が
+//     未検証」と懸念していたが、実際には OS3 が本アルゴリズムを使わないため流用は発生しない。
+//     したがって配線は OS2 のみとし、検証も **OS2 実機 (SESAME2/3/4) register キャプチャ**で行う。
+//
+//   TODO(未確定解除の条件): 以下の **いずれか** で独立な出所と突き合わせるまで「未確定」を解除しない:
+//     (a) **OS2 (SESAME2/3/4) 実機**の register フローのキャプチャで sig1/pubkey 一致を E2E 確認。
+//     (b) 別実装/SDK 一次資料からのゴールデンベクタ (serverKey 値, priKey 鍵文字列, 連結順,
+//         drop(27)) と照合する。
+//   それまでは本注記と README の Known limitations の記載を維持する。
+//
+// 原典 (CANDY-HOUSE SesameSDK, ※上記のとおり未照合):
+//   co/candyhouse/sesame/ble/os2/CHServerAuth.kt:27-65 — getRegisterKey()。
+//   端末登録の初期ペアリングで、デバイスから受け取った {ak,n,e} を元に
+//     1. e から「登録用の P-256 秘密鍵」を CMAC で決定的に導出
+//     2. その秘密鍵と CHServerAuth.serverKey (固定 65B 公開鍵) で ECDH → 共有秘密先頭 16B = secret
+//     3. 4B 乱数 serverToken を作り sessionToken = serverToken ‖ b64decode(n)
+//     4. msg = b64decode(ak) ‖ sessionToken を secret で CMAC した先頭 4B = sig1
+//   を計算して {sig1, st(=serverToken), pubkey(=登録用公開鍵)} を返す。
+//
+// ★priKey 導出 (CHServerAuth.kt:43-50):
+//     oneKey = CMAC("Sesame2_key_pair", e)
+//     twoKey = CMAC(oneKey,            e)
+//     priKey = oneKey ‖ twoKey        (16B + 16B = 32B P-256 秘密鍵スカラ)
+//   ここで CMAC の **鍵** が ("Sesame2_key_pair" → oneKey) と変わり、**メッセージ**は
+//   両方とも e そのもの (時刻 CMAC のように上位 3B を取る等の加工はしない)。
+//
+// ★priKey → pubKey (CHServerAuth.kt:113-148 priKeyToPubKey):
+//   SDK は priKey をスカラとして G を点倍算し、X509 SubjectPublicKeyInfo に詰めた
+//   publicKey.encoded から先頭 27B (= SPKI ヘッダ 26B + unused-bits 1B) を drop する。
+//   残りは uncompressed EC point = 0x04 ‖ X(32B) ‖ Y(32B) の **65B**。
+//   Node では createECDH("prime256v1").setPrivateKey(priKey).getPublicKey() が
+//   まさにこの 65B (0x04 prefix 付き uncompressed point) を返すので等価。
+//   → pubString は 64B ではなく **65B (04 prefix 込み)**。SDK の drop(27) と一致する。
+//
+// ★serverKey (CHServerAuth.kt:28-29): サーバが保持する固定 P-256 公開鍵 (65B, 04 prefix 込み)。
+//   ecdhShareKey は EccKey.ecdh() と同じく X509 fixheader を前置して KeyAgreement。
+//   serverKey は既に 04 prefix 付き 65B のため、ecdhSharedSecret() の 65B 受理経路で
+//   そのまま computeSecret に渡せる (生 X 座標 32B → 先頭 16B が secret)。
+
+/**
+ * CHServerAuth.serverKey — サーバが保持する固定 P-256 公開鍵 (uncompressed, 65B, 04 prefix 込み)。
+ * CHServerAuth.kt:28-29 の定数をそのまま移植 (推測なし)。
+ * @type {string} 130hex (= 65B)
+ */
+export const SERVER_AUTH_PUBKEY =
+  "04a040fcc7386b2a08304a3a2f0834df575c936794209729f0d42bd84218b35803932bea522200b2ebcbf17ab57c4509b4a3f1e268b2489eb3b75f7a765adbe181";
+
+// AES-CMAC の戻りを Buffer に正規化 (node-aes-cmac は環境により hex 文字列 / Buffer)。
+// crypto.js 内の唯一の正規化ポイント。cmacTime() もこの helper 経由で揃える
+// (l.69 参照)。別モジュールの src/ble/protocol.js:78 は独立した正規化を持つが、
+// モジュール境界をまたぐため統一は任意。
+function cmacBuf(key, msg) {
+  const mac = aesCmac(key, msg);
+  return Buffer.isBuffer(mac) ? mac : Buffer.from(mac, "hex");
+}
+
+// ★長さ検証: SDK が想定する e / ak / n の長さ。
+//   getRegisterKey の CMAC メッセージ (e そのもの / ak / n) は長さ非依存なので、長さ違いでも
+//   黙って (誤った) priKey/sig1 を生んでしまう。assertValidP256Scalar と同じ「明示エラー」方針で
+//   ここでも下限/上限を assert し、取り違えを早期に弾く。
+//
+//   ★訂正 (2026-06, 一次資料照合で確定): 旧実装は ak/n/e をいずれも 16B 固定と想定していたが、
+//     これは **SDK 一次資料未照合の推測** だった。getRegisterKey の実呼び出し元
+//     CHSesame2Device.register (CHSesame2Device.kt:424-447) と EccKey (EccKey.kt:19-25) を照合した結果、
+//     OS2 register フローでの実際の長さは固定 16B ではないことが判明した:
+//       - ak = EccKey.getRegisterAK() = base64(app の登録用 ECDH 公開鍵 **64B**)  (EccKey.kt:19-21)
+//       - n  = mSesameToken.base64Encode() = **4B** (initial publish の token)     (CHSesame2Device.kt:428)
+//       - e  = ER = IRER 応答 payload.drop(16) の hex (**可変長**)                  (CHSesame2Device.kt:418)
+//     旧 16B 固定 assert は real OS2 wire 値 (ak=64B / n=4B) を誤って弾いてしまうため、ここを
+//     一次資料準拠の境界 (ak=64B, n>=1B, e>=1B 偶数 hex) に訂正する。getRegisterKey 単体の
+//     ゴールデンベクタ (serverauth.test.js) は 16B 入力で組まれているが、CMAC は長さ非依存なので
+//     16B でも 64B/4B でも同一手順で計算でき、ベクタは不変 (下記の min/max 範囲に 16B も収まる)。
+//
+//   ★★ 移植忠実性は依然 UNVERIFIED ★★: 上記は「getRegisterKey の **呼び出し元**が渡す値の長さ」を
+//     SDK で確認したに過ぎず、getRegisterKey 内部アルゴリズム (CMAC 鍵文字列・連結順・serverKey・
+//     OS2→OS3 世代差) の出力一致は未確認のまま (ブロック冒頭 TODO 参照)。
+// 固定長 assert はしない (SDK getRegisterKey/priKeyToPubKey は長さ検証を持たず、CMAC は長さ非依存)。
+// 取り違え (空入力等) だけを弾くため下限のみ課す。ak=64B/n=4B/e=可変 という実 wire 長も、
+// 16B 揃いの内部ゴールデンベクタも、どちらもこの下限を満たすので両立する。
+export const MIN_AK_BYTES = 1;
+export const MIN_N_BYTES = 1;
+export const MIN_E_BYTES = 1;
+
+// P-256 (secp256r1/prime256v1) の位数 n。priKey スカラの有効範囲 [1, n-1] 判定に使う。
+export const P256_ORDER = BigInt(
+  "0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+);
+
+/**
+ * deriveRegisterPriKey が返す 32B を P-256 秘密鍵スカラとして見たとき、
+ * setPrivateKey が受理する有効範囲 [1, n-1] に入っているか検証する。
+ *
+ * ★原典 SDK との整合 (実測で確定):
+ *   CHServerAuth.priKeyToPubKey (CHServerAuth.kt:113-148) は priKey を PKCS8 経由で
+ *   KeyFactory("EC").generatePrivate に渡し、s = ECPrivateKey.s を取り出して multiply(G,s) する。
+ *   この JCA 経路 (Android: AndroidOpenSSL/Conscrypt, デスクトップ: SunEC) を実機 JDK で再現すると:
+ *     s==0        → IllegalArgumentException (w is POINT_INFINITY)
+ *     s==n        → ArithmeticException (BigInteger not invertible)
+ *     s>=n+1, s>n → InvalidKeyException "private key must be within the range [1, n-1]"
+ *     1<=s<=n-1   → 正常生成
+ *   いずれも mod n 還元は **しない**。Node(OpenSSL) の setPrivateKey も同じく [1, n-1] のみ受理し
+ *   0 / n / n+1 / 0xFF..FF を throw する (実測)。つまり両者は同一境界で「明示エラー」に倒れ、
+ *   SDK 側が範囲外スカラから pubkey/secret を **黙って生成することはない**。
+ *   したがって還元 (mod n) を入れると逆に SDK と異なる鍵を生む退行になるため行わない。
+ *
+ *   SDK の getRegisterKey は priKeyToPubKey が例外を握りつぶし Pair(null,null) を返した後
+ *   pair.second!! / pair.first!! で NPE に至る (= 範囲外 e では SDK も実質クラッシュ)。
+ *   本実装は OpenSSL の不透明なメッセージに依存せず、ここで境界を明示エラー化する。
+ *   発生確率は e に対し ~2^-32 (scalar==0/>=n)。実機 e でのみ再現しうる潜在境界。
+ *
+ * @param {Buffer} priKey 32B priKey スカラ。
+ * @throws {Error} スカラが 0 もしくは n 以上のとき (SDK でも生成不可な値)。
+ */
+export function assertValidP256Scalar(priKey) {
+  const s = BigInt("0x" + priKey.toString("hex"));
+  if (s === 0n || s >= P256_ORDER) {
+    throw new Error(
+      "derived register priKey scalar is out of P-256 range [1, n-1] " +
+        "(0 or >= curve order); SDK cannot generate a key for this e either. " +
+        "Request a fresh e from the device and retry.",
+    );
+  }
+}
+
+/**
+ * 初期ペアリング用の登録鍵 (P-256 priKey) を e から決定的に導出する。
+ * CHServerAuth.kt:43-50。oneKey = CMAC("Sesame2_key_pair", e); twoKey = CMAC(oneKey, e);
+ * priKey = oneKey ‖ twoKey (32B)。
+ *
+ * @param {string|Buffer} e デバイスが返す e (hex 文字列 or Buffer)。
+ * @returns {Buffer} 32B priKey (P-256 秘密鍵スカラ)。
+ */
+export function deriveRegisterPriKey(e) {
+  let eBytes;
+  if (Buffer.isBuffer(e)) {
+    eBytes = e;
+  } else if (typeof e === "string") {
+    if (!/^[0-9a-fA-F]+$/.test(e) || e.length % 2 !== 0) {
+      throw new Error("e must be an even-length hex string");
+    }
+    eBytes = Buffer.from(e, "hex");
+  } else {
+    throw new Error(`e must be a hex string or Buffer (got ${typeof e})`);
+  }
+  // e の下限のみ検証 (空入力の取り違えを弾く)。固定長 assert はしない:
+  // ER = IRER 応答 payload.drop(16) は可変長で (CHSesame2Device.kt:418)、CMAC は長さ非依存。
+  if (eBytes.length < MIN_E_BYTES) {
+    throw new Error(`e must be >= ${MIN_E_BYTES} byte(s) (got ${eBytes.length})`);
+  }
+  const keyBytes = Buffer.from("Sesame2_key_pair"); // CHServerAuth.kt:43
+  const oneKey = cmacBuf(keyBytes, eBytes);
+  const twoKey = cmacBuf(oneKey, eBytes);
+  return Buffer.concat([oneKey, twoKey]); // 16B ‖ 16B = 32B
+}
+
+/**
+ * 初期ペアリングのサーバ認証応答 sig1 を計算する。
+ * CHServerAuth.getRegisterKey() (CHServerAuth.kt:41-65) の 1:1 移植 (の主張)。
+ *
+ * ★移植忠実性 未確定 (UNVERIFIED): 出力は実機 (OS2 SESAME2/3/4) のバイト列 (sig1/pubkey) と未照合。
+ *   現状の検証は内部整合 (serverauth.test.js) + mock end-to-end (os2/session) のみ。実機キャプチャ
+ *   or ゴールデンベクタで照合するまで「未確定」を維持すること (ブロック冒頭の TODO 参照)。
+ *   配線先: makeLocalRegisterServer 経由で OS2 register の任意 server-auth 経路 (詳細は同関数 JSDoc)。
+ *
+ * 手順:
+ *   priKey       = deriveRegisterPriKey(e)                       (32B)
+ *   pubKey       = priKey から P-256 公開鍵 (04 ‖ X ‖ Y, 65B)    (SDK drop(27) と一致)
+ *   secret       = ECDH(priKey, serverKey)[0..15]                (16B)
+ *   serverToken  = 4B 乱数 (テスト用に注入可)
+ *   sessionToken = serverToken ‖ b64decode(n)
+ *   msg          = b64decode(ak) ‖ sessionToken
+ *   sig1         = CMAC(secret, msg)[0..3]                       (4B)
+ *
+ * @param {{ak:string, n:string, e:string|Buffer}} data
+ *   ak/n はデバイスから受け取る base64 文字列、e は hex 文字列 (or Buffer)。
+ *   e/ak/n の長さは SDK 想定長 (EXPECTED_E/AK/N_BYTES, 既定 16B) で検証され、
+ *   不一致は明示エラー。期待長自体は UNVERIFIED (定数コメント参照)。
+ * @param {{serverToken?:Buffer}} [opts] serverToken を注入してゴールデンベクタを再現可能にする。
+ *   省略時は 4B 乱数。
+ * @returns {{sig1:string, st:string, pubkey:string}} すべて base64 文字列。
+ *   sig1 = 4B sig, st = 4B serverToken, pubkey = 65B 登録用公開鍵 (04 prefix 込み)。
+ */
+export function getRegisterKey(data, opts = {}) {
+  if (!data || typeof data !== "object") {
+    throw new Error("data required ({ak, n, e})");
+  }
+  const { ak, n, e } = data;
+  if (typeof ak !== "string") throw new Error("ak must be a base64 string");
+  if (typeof n !== "string") throw new Error("n must be a base64 string");
+  if (e == null) throw new Error("e required (hex string or Buffer)");
+
+  // ak/n を一度だけ復号し、下限のみ検証する (空入力の取り違え防止)。固定長 assert はしない:
+  // 実 wire 値は ak=64B(app 公開鍵) / n=4B(mSesameToken) で固定長ではなく (定数コメント参照)、
+  // CMAC は長さ非依存なので 16B 揃いの内部ベクタとも両立する。
+  // Buffer.from(base64) は不正入力でも黙って短いバッファを返すため、空 (0B) だけは明示エラーに倒す。
+  const akBytes = Buffer.from(ak, "base64");
+  const nBytes = Buffer.from(n, "base64");
+  if (akBytes.length < MIN_AK_BYTES) {
+    throw new Error(`ak must decode to >= ${MIN_AK_BYTES} byte(s) (got ${akBytes.length})`);
+  }
+  if (nBytes.length < MIN_N_BYTES) {
+    throw new Error(`n must decode to >= ${MIN_N_BYTES} byte(s) (got ${nBytes.length})`);
+  }
+
+  // 1. e → priKey (32B) → P-256 鍵ペア。
+  //    priKey は CMAC 由来の実質ランダム 32B なので ~2^-32 の確率でスカラが 0 / n 以上になりうる。
+  //    その場合 setPrivateKey は不透明な例外を throw する。SDK も同じく範囲外では生成不可
+  //    (JCA が [1, n-1] を強制) なので、ここで SDK 整合の明示エラーに倒す (assertValidP256Scalar 参照)。
+  const priKey = deriveRegisterPriKey(e);
+  assertValidP256Scalar(priKey);
+  const ecdh = createECDH("prime256v1");
+  ecdh.setPrivateKey(priKey);
+  const pubKey = ecdh.getPublicKey(); // 65B uncompressed (04 ‖ X ‖ Y) = SDK drop(27) と一致
+
+  // 2. serverKey との ECDH → 共有秘密先頭 16B = secret。
+  //    ecdhSecretPre16 は serverKey の 65B (04 prefix 込み) 形態をそのまま受理する。
+  const secret = ecdhSecretPre16(ecdh, SERVER_AUTH_PUBKEY);
+
+  // 3. serverToken (4B 乱数, テストでは注入)。
+  const serverToken = opts.serverToken != null ? opts.serverToken : randomBytes(4);
+  if (!Buffer.isBuffer(serverToken) || serverToken.length !== 4) {
+    throw new Error("serverToken must be a 4-byte Buffer");
+  }
+
+  // 4. sessionToken = serverToken ‖ b64decode(n); msg = b64decode(ak) ‖ sessionToken。
+  //    akBytes/nBytes は上で復号・長さ検証済みのものを再利用する。
+  const sessionToken = Buffer.concat([serverToken, nBytes]);
+  const msg = Buffer.concat([akBytes, sessionToken]);
+
+  // 5. sig1 = CMAC(secret, msg)[0..3]。
+  const sig1 = cmacBuf(secret, msg).subarray(0, 4);
+
+  const result = {
+    sig1: Buffer.from(sig1).toString("base64"),
+    st: serverToken.toString("base64"),
+    pubkey: pubKey.toString("base64"),
+  };
+
+  // 6. 機微中間値の明示 zero-fill (ecdhSecretPre16 の機微値配慮方針と整合)。
+  //    priKey(32B P-256 秘密鍵スカラ) と secret(ECDH 共有 16B) は登録認証の機微値。
+  //    戻り値の base64 化を終えた後に零クリアし、GC 任せにしない。
+  //    注意: ecdhSecretPre16 のコメントが認めるとおり Node の Buffer pool 隔離には限界があり
+  //    完全な隔離は非目標。これは「保持している Buffer 自体を残さない」ための最小限の配慮。
+  //    ecdh 内部の private key (setPrivateKey でコピー済み) は Node が管理し露出 API が無いため対象外。
+  priKey.fill(0);
+  secret.fill(0);
+
+  return result;
+}
+
+/**
+ * getRegisterKey を OS2 register() の `registerServer` コールバックに合わせるローカルアダプタ。
+ *
+ * ★位置づけ (BLE-first / オフライン): SesameOS2BleSession.register() (src/ble/os2/session.js) の
+ *   server-auth 経路は `registerServer({deviceUUID, ak, mSesameToken, ER, productType, appPubK64, ...})`
+ *   → `{sig1, serverToken(st), sesamePublicKey(pubkey)}` を返すコールバック注入で動く
+ *   (login 側の signLogin / _loginViaServer と同じ流儀)。本来は公式サーバ API
+ *   (myDevicesRegisterSesame2Post) を叩く想定だが、SESAME の登録サーバ認証は
+ *   CHServerAuth.getRegisterKey の決定的計算であり、その入力 {ak,n,e} は登録ハンドシェイク中に
+ *   ローカルで揃う。よって getRegisterKey をそのまま registerServer に充てれば、クラウドを介さず
+ *   **自分のコードからオフラインで** server-auth register を実行できる (= 本 kit の BLE-first 方針)。
+ *
+ * 入力マッピング (CHSesame2Device.kt:424-443 / CHServerAuth.kt:41-65):
+ *   - ak = EccKey.getRegisterAK() = base64(app の登録用 ECDH 公開鍵 64B)。
+ *         session が生成した app 鍵ペアの公開鍵 (appPubK64) を base64 化して渡す。
+ *         CHSesame2Device.kt は ak に getRegisterAK() を使うので、registerServer に
+ *         caller 由来の ak を渡すのではなく **session が握る appPubK64** を採用する
+ *         (これが getRegisterKey の msg = decode(ak) ++ sessionToken と整合する)。
+ *   - n  = mSesameToken.base64Encode()  (CHSesame2Device.kt:428 と同じ)。
+ *   - e  = ER = IRER 応答の payload.drop(16) の hex  (CHSesame2Device.kt:418)。
+ *
+ * ★★ 移植忠実性 未確定 (UNVERIFIED) ★★: 本アダプタは getRegisterKey に依存するため、その
+ *   UNVERIFIED 前提 (CMAC 鍵文字列・連結順・serverKey・長さ・OS2→OS3 世代差) をすべて引き継ぐ。
+ *   getRegisterKey の冒頭注記どおり、実機 (OS2 SESAME2/3/4) register キャプチャ or 独立
+ *   ゴールデンベクタで {sig1/st/pubkey} 一致を確認するまで「未確定」を解除しないこと。
+ *   現状の自動検証は内部整合 (serverauth.test.js) と mock end-to-end (os2/session) に留まる。
+ *
+ * @param {{serverToken?:Buffer}} [opts] getRegisterKey へ素通しする serverToken (テスト用注入)。
+ *   省略時は getRegisterKey 内で 4B 乱数。
+ * @returns {(req:{ak?:(string|Buffer), mSesameToken:Buffer, ER:string,
+ *           appPubK64?:Buffer, appPubK64Base64?:string})=>{sig1:string, serverToken:string, sesamePublicKey:string}}
+ *   registerServer 契約に合う同期コールバック。session 側の toBuf が base64 文字列を受けるため
+ *   getRegisterKey の base64 出力 (sig1/st/pubkey) をそのまま {sig1, serverToken, sesamePublicKey} に写す。
+ */
+export function makeLocalRegisterServer(opts = {}) {
+  return function localRegisterServer(req) {
+    if (!req || typeof req !== "object") throw new Error("registerServer req required");
+    // ak は app の登録用公開鍵 (getRegisterAK 相当)。session が渡す appPubK64(Base64) を最優先で使う
+    // (CHSesame2Device.kt は ak=getRegisterAK() を使うため、caller 由来 ak より session の app 鍵が正)。
+    let akB64;
+    if (typeof req.appPubK64Base64 === "string") {
+      akB64 = req.appPubK64Base64;
+    } else if (Buffer.isBuffer(req.appPubK64)) {
+      akB64 = req.appPubK64.toString("base64");
+    } else if (Buffer.isBuffer(req.ak)) {
+      akB64 = req.ak.toString("base64");
+    } else if (typeof req.ak === "string") {
+      akB64 = req.ak; // 既に base64 とみなす (getRegisterKey と同じ前提)
+    } else {
+      throw new Error(
+        "makeLocalRegisterServer: app public key required " +
+          "(expose appPubK64/appPubK64Base64 from session, or pass ak as base64/Buffer)",
+      );
+    }
+    if (!Buffer.isBuffer(req.mSesameToken)) {
+      throw new Error("makeLocalRegisterServer: mSesameToken (Buffer) required for n");
+    }
+    if (typeof req.ER !== "string") {
+      throw new Error("makeLocalRegisterServer: ER (hex string) required for e");
+    }
+    const nB64 = req.mSesameToken.toString("base64"); // CHSesame2Device.kt:428
+    const { sig1, st, pubkey } = getRegisterKey({ ak: akB64, n: nB64, e: req.ER }, opts);
+    // registerServer 契約のキー名へ写す (session 側 toBuf が base64 文字列を Buffer 化する)。
+    return { sig1, serverToken: st, sesamePublicKey: pubkey };
+  };
 }

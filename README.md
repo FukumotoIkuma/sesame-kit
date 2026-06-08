@@ -16,8 +16,20 @@
 
 ## Features
 
-- **BLE direct control**: operate locks over Bluetooth with no cloud — offline, low latency. Settings such as autolock only take effect on-device over BLE. Pure-JS SesameOS3 protocol (runs on a Raspberry Pi; swappable BLE adapter)
-- Lock control: lock / unlock / toggle / SESAME Bot click (over BLE or cloud, auto-selected)
+- **BLE direct control**: operate locks over Bluetooth with no cloud — offline, low latency. Settings such as autolock only take effect on-device over BLE. Pure-JS SesameOS3 **and OS2** protocols (run on a Raspberry Pi; swappable BLE adapter)
+- Lock control: lock / unlock / toggle / SESAME Bot click (over BLE or cloud, auto-selected). OS2 devices (SESAME 2/3/4, Bot1, Bike1) are driven over BLE from the library via `SesameOS2Ble`
+- **BLE-only on-device settings**: angle calibration (`configureLockPosition`, the lock/unlock target angles), `magnet`, autolock, Open Sensor auto-lock (`opSensorControl`), BLE TX power (`setBleTxPower`), advertised productType (`sendAdvProductType`), factory `reset` — written straight to the device, with no cloud equivalent
+- **BLE-only reads**: firmware `versionTag`, on-device history read & per-record delete, last-seen `mechSetting` / `opsSetting`; clock sync on login (the device time is corrected automatically when it drifts >3 s)
+- BLE advertisement parsing for every model (`parseAdvertisement`): productType, registered flag, connectable state, deviceUUID
+- **BLE device discovery without keys** (`listNearbyDevices()` / `SesameBle.listNearby()`): one scan returns nearby SESAMEs as `{ deviceUUID, productType, model, kind, isRegistered, advTagB1, isConnectable, rssi, localName, address, peripheral }` — no `secretKey` needed. Pass an entry's `peripheral` to `SesameBle.fromDiscovery()` to connect without re-scanning (e.g. find a factory-reset device by `isRegistered: false` and hand it to `registerOnce`)
+- **Resilient BLE link**: the default `NobleTransport` subscribes to the peripheral disconnect event and propagates it to the session, so a dropped/out-of-range link **fails pending requests fast** instead of hanging until timeout; writes are retried a few times with exponential backoff before the link is treated as lost (ports the retry-then-disconnect behaviour of `CHSesameOS3.kt` `transmit`). MTU is auto-negotiated by CoreBluetooth (noble has no active `requestMtu`, matching the SDK's iOS path)
+- **BLE pairing**: register a factory-reset device over BLE (ECDH handshake + server auth) and get back its `secretKey` — OS3 (`SesameBle.registerOnce()`) and OS2 (`SesameOS2Ble.registerOnce()`)
+- **Biometric / access-control enrollment over BLE**: card / fingerprint / passcode / face / palm enroll on Touch / Touch Pro / Face / Palm (`SesameBle#biometric`); `registerDelegate` also surfaces the device's non-enroll publishes — Touch Pro `mechStatus`, battery voltage, child-key slots (`PUB_KEY_SESAME`), the unsupported-slot flag, and BLE TX power
+- **SESAME Bike3 fingerprint over BLE**: list / delete / rename fingerprints and get/set enroll mode on Bike3 (`SesameBle#fingerPrint`) — Bike3 is Bike2 (unlock) plus a fingerprint capability, so only the fingerprint subset is exposed
+- **SESAME Bot2 / Bot3 scripts over BLE**: run a script by index, select the active script, read the current script, list script names, and write a script (`SesameBle#script`)
+- **WifiModule2 over BLE**: Wi-Fi provisioning and child-key registration (`SesameBle#wifi`)
+- **Hub3 over BLE**: Wi-Fi provisioning (SSID scan / SSID / password), child-key removal, and network type (Wi-Fi / LTE) reads (`SesameBle#hub3`)
+- **Firmware update over BLE** (DFU / OTA): Hub3 / OS3 lock / WM2 (`SesameBle#updateFirmware`)
 - Hub3 IR: emit existing remotes, learn from a physical remote, remote / key CRUD, preset DB search
 - Device management: list, rename, delete, current state, state-push subscriptions
 - History: lock open/close history, battery history
@@ -204,6 +216,49 @@ See the [Node library guide](./docs/en/library.md) for the direct API (by `devic
 
 ---
 
+## BLE pairing / registration (advanced)
+
+A factory-reset (unregistered) device can be paired directly over BLE — the facade runs the ECDH register handshake and hands you the `secretKey` to save. `SesameBle.registerOnce()` does scan → connect → register → close for you:
+
+```js
+import { SesameBle } from "sesame-kit";
+
+const key = await SesameBle.registerOnce(
+  { deviceUUID: "<uuid from advertise>", model: "sesame_5" },
+  async ({ deviceUUID, secretKey, productType, serverSecret }) => {
+    // SAVE THESE. The secretKey is the only credential that can drive the lock later.
+    // Persist e.g. into ~/.config/sesame-kit/config.json under devices{} (deviceUUID → { secretKey }).
+    console.log({ deviceUUID, secretKey });
+  },
+);
+// `key` is the same { deviceUUID, secretKey, productType, serverSecret } object.
+```
+
+Then operate the freshly-paired device with the returned `secretKey` exactly like any registered device:
+
+```js
+await SesameBle.use({ deviceUUID: key.deviceUUID, secretKey: key.secretKey }, (lock) => lock.unlock());
+```
+
+What the four returned fields are, and how to store them:
+
+| Field | What it is | Where it goes |
+|-------|------------|---------------|
+| `secretKey` | 32-hex device key derived from the ECDH shared secret. **The credential** to log in / operate the lock. | Save under `devices{}` in `config.json` (or your own store). Treat as a secret. |
+| `deviceUUID` | The device identifier you registered. | The key under `devices{}`. |
+| `productType` | The model you passed (e.g. `sesame_5`) — echoed back. | Optional; useful for the per-model capability table. |
+| `serverSecret` | The device's `initial` token as hex (`mSesameToken`). Server-side register payload. | Pass to the server register call if/when you wire one up. |
+
+Lower-level building blocks are also available:
+
+- `new SesameBle({ registerMode: true, deviceUUID, transport }).register()` — register against an already-scanned/injected transport. `register()` requires a factory-reset device, so it is only valid on a facade built with `registerMode: true` (no `secretKey`); calling it on a `secretKey`-bearing facade throws.
+- Registered devices that need **server authentication** (guest keys, time-limited keys) can log in via the server-signed token instead of a locally-derived one: construct with `{ secretKey, deviceUUID, needAuthFromServer: true, registerTransport }` and `connect()` will call `signGuestKey` and `login` with the returned token (ports `CHHub3Device.kt:163-174` / `CHSesameOS3.kt:473-487`). `registerTransport` is a `makeRegisterTransport(...)` result.
+- **OS2 server-auth register** (factory pairing of SESAME 2/3/4 that requires the server's `getRegisterKey` step) is wired via a callback injection that mirrors the server-auth login path. `SesameOS2BleSession.register({ registerServer })` reads `IRER`, then asks `registerServer({ ak, n, e, appPubK64, ... })` for `{ sig1, st, pubkey }` and finishes the ECDH/register-key handshake (ports `CHSesame2Device.kt:406-482`). The server's role is `CHServerAuth.getRegisterKey` (`CHServerAuth.kt:41-65`); to run it **offline from your own code** (no cloud), pass `makeLocalRegisterServer()` (in `src/crypto.js`, re-exported from `sesame-kit/ble/os2`) as `registerServer`, or set `localServerAuth: true` on the `SesameOS2Ble` facade to have it auto-wired. The default BLE-only register paths are unchanged: with neither `registerServer` nor `localServerAuth`, `register()` still throws as before. `getRegisterKey` remains an **unverified port** (see [Known limitations](#known-limitations)) — its byte-level agreement with a real SESAME 2/3/4 capture is unconfirmed.
+
+> The register handshake and server-auth login are ported 1:1 from the SDK and covered by mock end-to-end tests, but the surrounding server-auth primitives and REST host remain **unverified against a real OS3 device** (see [Known limitations](#known-limitations)). Use against real hardware at your own risk.
+
+---
+
 ## Config directory
 
 Precedence: `--config-dir <path>` → `SESAME_KIT_HOME` → `$XDG_CONFIG_HOME/sesame-kit` → `~/.config/sesame-kit`.
@@ -240,7 +295,9 @@ Full docs: **[docs/en/](./docs/en/index.md)** ([日本語](./docs/ja/index.md)).
 - The only unimplemented op is Stripe billing changes. Every other biz3 op (employees / groups / roles / device groups / key sharing / access control / scheduling / IoT) is available as a command.
 - The default WS stage is `/public`. `/production` is never used (if it lingers in config it is rewritten to `/public` on load).
 - AWS IoT WS requires IPv4. It will not connect on IPv6-only networks.
-- New pairing (registering an unregistered device) is not supported; only operating already-registered devices.
+- New pairing (registering an unregistered device) is exposed from the Node library (`SesameBle.register()` / `SesameBle.registerOnce()`, see [BLE pairing / registration](#ble-pairing--registration-advanced)) but is **not** confirmed against a real OS3 device, and is not exposed as a CLI command. The BLE **session-layer** register handshake is implemented and unit-tested with mock vectors (`SesameBleSession.register()` in `src/ble/session.js`: a factory-reset device — constructed without `secretKey` — transitions to `ReadyToRegister` on the `initial(14)` publish instead of logging in, then sends `REGISTRATION(1)` in plaintext, derives the shared `secretKey`/session key from the device's returned public key via ECDH, and establishes the cipher; ports `CHHub3Device.kt:176-211` / `CHSesameOS3.kt:468-492`). The `REGISTRATION` response shape is branched by length: **64 B** (Hub3 etc. — the whole payload is the device public key, `CHHub3Device.kt:197`) or **77 B** (real SESAME 5 — `mechStatus(7B)` + `mechSetting(6B)` + `devicePubKey(64B)`, parsed and cached per `CHSesame5Device.kt:200-202`; the trailing 64 B feed ECDH). The 77 B SS5 path is ported from the Kotlin but **not yet confirmed against a real SESAME 5 capture**. The facade adds `register()`, a `registerMode` constructor flag, `registerOnce()` (scan→connect→register→close), and a `needAuthFromServer` login path (`signGuestKey`→`login`, `CHSesameOS3.kt:473-487`), all covered by mock end-to-end tests. However, the surrounding server-auth primitives and REST client it would rely on remain unverified (below), and the whole flow has **not** been confirmed against a real OS3 device. The server-auth primitive (`getRegisterKey` in `src/crypto.js`) is an **unverified port** — its byte-level agreement with the official SDK has not yet been confirmed against a real-device capture or an independent golden vector. It is now **wired into the OS2 register flow** as an *optional* server-auth path: `SesameOS2BleSession.register({ registerServer })` consumes a `{ sig1, st, pubkey }` callback (mirroring the server-auth `signLogin` injection), and `makeLocalRegisterServer()` adapts `getRegisterKey` into that callback so the flow can run offline (also reachable via `SesameOS2Ble({ localServerAuth: true })`). This is covered by mock end-to-end tests (`tests/ble/os2-register.test.js`), which confirm app↔device key agreement within the kit but **not** agreement with a real device. The default BLE-only register paths (OS3 `SesameBleSession.register()` and OS2 `register()` without `registerServer`/`localServerAuth`) are unchanged. Note the OS3 register flow (`CHHub3Device.kt:176-211`) is pure ECDH and does **not** use `getRegisterKey`; this wiring is OS2-only (the only flow that consumes it in the SDK, `CHSesame2Device.kt:406-482`). `getRegisterKey` additionally carries a **cross-generation note**: the cited source (`CHServerAuth.kt`, key string `"Sesame2_key_pair"`, `serverKey`) is OS2; the earlier worry about reusing it for OS3 is moot now that the wiring is OS2-only, but its internal algorithm (CMAC key string, concatenation order, `serverKey`) is still unconfirmed against any capture. The earlier "16 B each" length assumption for `e`/`ak`/`n` was an **unverified guess that the primary source contradicts**: per `CHSesame2Device.kt:424-447` + `EccKey.kt:19-25`, the real wire values are `ak` = base64 of the app's 64 B ECDH public key, `n` = the 4 B `mSesameToken`, and `e` = the variable-length `ER`; the hardcoded 16 B asserts were therefore relaxed to lower-bound (non-empty) checks (CMAC is length-agnostic).
+- The register REST-API client for it (`signGuestKey` / `registerSesame5` / `makeRegisterTransport` in `src/devices.js`) ports the SDK's request shaping 1:1 (paths `/device/v1/sesame2/sign` and `/device/v1/sesame5/{device_id}`; `CHRemoveSignKeyRequest` `{deviceId(uppercased), token(hex), secretKey}`; `CHOS3RegisterReq` JSON `{t: productType, pk: serverSecret}` — see `CHAPIClient.kt:84-96`, `CHSesameOS3.kt:474-484`, `CHHub3Device.kt:183-186`), but it too is **unverified** and not wired into any flow. The REST host (`BuildConfig.ch_server`) is not present in any checked-in reference, so `baseUrl` must be injected; and the official SDK authenticates the API Gateway via an AWS credentials provider (Cognito identity pool), whereas this client reuses the kit's existing Cognito **idToken** (`getValidIdToken`) as `Authorization: Bearer`. Whether the real API Gateway accepts that is unconfirmed pending an OS3 register capture. Tests verify request shaping only (via an injected fake transport).
+- The **OS2 BLE** facade (`SesameOS2Ble`: SESAME 2/3/4, Bot1, Bike1 — control, autolock, history, ECDH login, register, `mechSetting` writes [`configureLockPosition` for 2/3/4, `updateSetting` for Bot1], and `updateFirmware` [DFU start command only]), **biometric / access-control enrollment** (`SesameBle#biometric`: card / fingerprint / passcode / face / palm), **SESAME Bike3 fingerprint** (`SesameBle#fingerPrint`: list / delete / rename / mode), **SESAME Bot2 / Bot3 scripts** (`SesameBle#script`: run-by-index / select / get / list / write), **WifiModule2 provisioning** (`SesameBle#wifi`), **Hub3 provisioning** (`SesameBle#hub3`: SSID scan / set SSID / set password / remove child key / network type — ported from `CHHub3Device.kt`, Hub3-specific `SesameItemCode` 131‑136 / 209; Hub3 connects on the default SESAME GATT and has no BLE lock-control ops, but `connect`/`login`/`register`/`reset`/`updateFirmware` run on the shared OS3 path, which also makes the `updateFirmware` Hub3 branch [`MOVE_TO(84)`, `CHHub3Device.kt:213-226`] reachable), and **BLE firmware update / OTA** (`SesameBle#updateFirmware`) are all ported 1:1 from the official SesameSDK and covered by unit / mock end-to-end tests, but are **library-only** (no CLI command) and **not yet confirmed against real hardware**. The most-exercised real path is OS3 lock/Bot/Bike control and reads. See [docs/en/ble.md](./docs/en/ble.md) for usage.
 
 ---
 

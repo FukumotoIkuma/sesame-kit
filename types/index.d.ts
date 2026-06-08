@@ -15,9 +15,9 @@ export * as presetir from "./presetir.js";
 export * as sharekey from "./sharekey.js";
 export * as lock from "./lock.js";
 export * as ble from "./ble/index.js";
-export { SesameBle } from "./ble/index.js";
 export { assertSuccess } from "./util.js";
 export { Hub3WsClient, sendIR, getIRCodes } from "./transport.js";
 export { configPaths, resolveConfigDir } from "./paths.js";
+export { SesameBle, SesameOS2Ble } from "./ble/index.js";
 export { triggerLock, lockLock, lockUnlock, lockToggle, botClick, triggerItemCommand, setAutolock } from "./lock.js";
 //# sourceMappingURL=index.d.ts.map

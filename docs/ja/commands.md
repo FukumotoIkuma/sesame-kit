@@ -274,11 +274,11 @@ sesame front autolock 0          # 無効化
 | ロック `sesame_5`/`_pro`/`sesame_6`/`_pro`/`_us`/`miwa` | `lock` `unlock` `toggle` `autolock` `status` | 施錠/解錠 + 位置 |
 | Bot `bot_2`/`bot_3` | `click` `status` | 施錠/解錠 (位置なし) |
 | Bike `bike_2`/`bike_3` | `unlock` `status` | 施錠/解錠 (位置なし) |
-| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (BLE 施錠操作なし) | — |
-| OS2 `sesame_2`/`_4`, `ssmbot_1`, `bike_1` | BLE 未実装 (鍵導出/暗号が別系統)。クラウド経由で操作 | — |
+| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (CLI では BLE 施錠操作なし) — 生体登録 / Wi-Fi プロビジョニングは**ライブラリ専用**（`SesameBle#biometric` / `#wifi`、[ble.md](./ble.md) 参照） | — |
+| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | **ライブラリ**で BLE 対応（`SesameOS2Ble`・別プロトコル）。CLI 経路は OS2 ではクラウドのみ | 施錠/解錠/moved + 位置 |
 
 > 「施錠/解錠」は OS3 では `isInLockRange` の有無による **2 値**のみ。OS3 に中間状態 (moved) はありません
-> (Sesame2 等 OS2 系のみ moved を持ちます)。BLE 実装の設計は [architecture.md](./architecture.md) を参照してください。
+> (Sesame2/3/4 等 OS2 系のみ moved を持ちます)。BLE 実装の設計は [architecture.md](./architecture.md) を参照してください。
 
 ライブラリとしても利用可:
 
@@ -291,7 +291,7 @@ await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
 });
 ```
 
-> 対象は **SesameOS3** (SESAME 5 / 5 Pro / Touch 等)。新規ペアリング (未登録デバイスの登録) は別フェーズ。
+> **CLI** は OS3 のロック / Bot / Bike 制御を扱います。**ライブラリ**ではさらに OS2 デバイス（`SesameOS2Ble`）・新規ペアリング / 登録（`SesameBle.registerOnce()` / `SesameOS2Ble.registerOnce()`）・生体 / アクセス制御の登録・WifiModule2 プロビジョニング・BLE OTA も扱えます（いずれも SesameSDK から移植。一部は実機未検証）。[ble.md](./ble.md) と README の [既知の制限](../../README.ja.md#既知の制限) を参照してください。
 
 ---
 

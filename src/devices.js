@@ -12,6 +12,8 @@
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { assertSuccess } from "./util.js";
 import { t } from "./i18n.js";
+import { productTypeFromModelName } from "./crypto.js";
+import { getValidIdToken } from "./auth.js";
 
 // action 文字列は vendor (biz3 messageConstants) から引く (手書きしない)。
 const ACT_MANAGE = ACTION_TYPES.BIZ3_MANAGE_DEVICE;       // "biz3ManageDevice"
@@ -226,4 +228,191 @@ export function webapiSendCmd(client, { apiKeyId, deviceId, cmd, sign, history }
     apiKeyId,
     body: { device_id: deviceId, cmd, sign, history },
   });
+}
+
+// ---------- BLE デバイス登録 / 初期ペアリング REST API クライアント (reg-guestkey-sign-client) ----------
+//
+// ★★ 移植忠実性: 未確定 (UNVERIFIED PORT) ★★
+//   このブロック (signGuestKey / registerSesame5) は OS3 デバイス登録 (SESAME5 系) の
+//   REST API クライアントである。リクエスト整形 (パス / フィールド名 / 大文字化 / hex) は
+//   原典 SDK の該当 Kotlin を 1:1 で移植したが、以下は **未照合**:
+//     - REST ホスト (BuildConfig.ch_server)。SDK では gradle ext (candyhouse.sesame.api.*)
+//       由来でリポジトリに焼き込まれておらず、biz3 web (aws-exports.js) も WS gateway しか
+//       持たない。よって本番ホストは config 注入を必須とし、ここでは決め打ちしない。
+//     - API Gateway の認証方式 (IAM SigV4 + Cognito identity pool か idToken Bearer か)。
+//       SDK は ApiClientConfigBuilder で AWSCredentialsProvider (identity pool) を使うが、
+//       本 kit の既存クラウド認証は Cognito idToken (getValidIdToken) のみ。ここでは既存
+//       認証を再利用し Authorization: Bearer <idToken> を付すが、実機 API Gateway が
+//       これを受理するかは E2E 未検証。
+//   現時点で本ブロックは本番フローからは呼ばれていない (src/ble/* に初期ペアリング/登録
+//   フロー本体が未実装)。配線時に実機 OS3 register キャプチャで突き合わせること。
+//
+// 原典 (CANDY-HOUSE SesameSDK):
+//   co/candyhouse/sesame/server/CHAPIClient.kt:84-96 — エンドポイント定義:
+//     POST /device/v1/sesame5/{device_id}  myDevicesRegisterSesame5Post(model, body)
+//     POST /device/v1/sesame2/sign         guestKeysSignPost(body) : String
+//   co/candyhouse/sesame/server/CHAPIClientBiz.kt:143-144,193-195 — 呼び出し:
+//     signGuestKey(key) = guestKeysSignPost(key)
+//     myDevicesRegisterSesame5Post(deviceId, body)
+//   co/candyhouse/sesame/ble/os3/base/CHSesameOS3.kt:474-484 — signGuestKey 呼び出し:
+//     CHRemoveSignKeyRequest(deviceId.uppercase(), mSesameToken.toHexString(), secretKey)
+//     成功時 login(it.data) — つまり戻り値 String が session token (hex)。
+//   co/candyhouse/sesame/ble/os3/CHHub3Device.kt:183-186 — register 呼び出し:
+//     CHOS3RegisterReq(productModel.productType().toString(), serverSecret)
+//   co/candyhouse/sesame/server/dto/CHHistoryUploadRequest.kt:8 — リクエスト DTO:
+//     CHRemoveSignKeyRequest(deviceId, token, secretKey)  ← フィールド名そのまま
+//   co/candyhouse/sesame/server/dto/CHSS2RegisterReq.kt:5 — リクエスト DTO:
+//     CHOS3RegisterReq(t, pk)  ← Gson 直列化なので JSON キーは {t, pk}。
+//                                 t = productType 文字列, pk = serverSecret。
+
+/** REST 登録 API のパス基底 (CHAPIClient.kt の @Operation path)。 */
+const REG_PATH_SIGN = "/device/v1/sesame2/sign";       // guestKeysSignPost
+const REG_PATH_SESAME5 = "/device/v1/sesame5";          // myDevicesRegisterSesame5Post (+ /{device_id})
+
+/**
+ * REST 応答の HTTP ステータスを検査し、非 2xx なら明示エラーで投げる。
+ *
+ * WS op 側は assertSuccess (util.js) で success===false を明示的に拒否する規約があるが、
+ * REST 側にはこの防御が無く、サーバが 4xx/5xx をエラー JSON ボディ
+ * (例 {"message":"forbidden"}) で返すと signGuestKey がそのエラー文字列を session token
+ * として誤採用する silent failure があった。transport (real / fake) に依らず**各関数の
+ * 応答解釈の前に**ステータスを検査することでこれを防ぐ。
+ *
+ * @param {{status?:number, text?:string, json?:any}} res transport の戻り値
+ * @param {string} op 失敗時メッセージに使う op ラベル
+ * @throws {Error} 非 2xx 時 (`<op> failed: HTTP <status> <body>`)
+ */
+function assertHttpOk(res, op) {
+  const status = res?.status;
+  if (typeof status !== "number" || status < 200 || status >= 300) {
+    const detail = res?.json?.message
+      || (typeof res?.text === "string" && res.text)
+      || (res?.json != null ? JSON.stringify(res.json) : "");
+    throw new Error(t("domain.devices.registerHttpError", { op, status: status ?? "?", detail }));
+  }
+}
+
+/**
+ * デフォルト REST transport を作る。原典は API Gateway (AWSCredentialsProvider) だが、
+ * 本 kit は既存の Cognito idToken (getValidIdToken) を再利用し Authorization に乗せる。
+ *
+ * ★ホストは UNVERIFIED (上記ブロック注記参照)。`baseUrl` を必ず注入すること。
+ *
+ * @param {{baseUrl:string, tokenStore:{load:Function,save:Function}, fetchImpl?:Function}} opts
+ * @returns {(req:{method:string, path:string, body?:object}) => Promise<{status:number, text:string, json:any}>}
+ */
+export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalThis.fetch } = {}) {
+  if (!baseUrl) throw new Error(t("domain.devices.registerBaseUrlRequired"));
+  if (!tokenStore) throw new Error(t("domain.devices.registerTokenStoreRequired"));
+  if (typeof fetchImpl !== "function") throw new Error(t("domain.devices.registerFetchRequired"));
+  const base = baseUrl.replace(/\/+$/, ""); // 末尾スラッシュ除去 (パスと二重化させない)
+  return async ({ method, path, body }) => {
+    // path 未指定で base + undefined = '...undefined' という無効 URL を作らない (低優先の防御)。
+    if (typeof path !== "string" || !path) throw new Error(t("domain.devices.registerPathRequired"));
+    const idToken = await getValidIdToken(tokenStore);
+    const res = await fetchImpl(base + path, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${idToken}`,
+      },
+      body: body != null ? JSON.stringify(body) : undefined,
+    });
+    const text = await res.text();
+    let json;
+    try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+    return { status: res.status, text, json };
+  };
+}
+
+/**
+ * guestKeysSign — 既存登録済みデバイスの再ログイン時に session token を取得する
+ * (CHSesameOS3.kt:474-484, CHAPIClientBiz.kt:143-144)。
+ *
+ * リクエスト整形 (CHRemoveSignKeyRequest, CHHistoryUploadRequest.kt:8):
+ *   { deviceId: <deviceUUID 大文字>, token: <tokenHex>, secretKey: <secretKey> }
+ *   ・deviceId は **大文字化** (CHSesameOS3.kt:476 deviceId.uppercase())
+ *   ・token は mSesameToken の **hex** 文字列 (CHSesameOS3.kt:477 toHexString())
+ *   ・secretKey は sesame2KeyData.secretKey をそのまま
+ *
+ * 戻り値: guestKeysSignPost は String を返し、SDK は login(it.data) に渡す。
+ *   = session token (hex)。JSON ラップ ({data:...} 等) されている可能性があるため
+ *     text / json.data / json をこの順で session token として解決する。
+ *
+ * @param {(req)=>Promise<{status,text,json}>} transport makeRegisterTransport の戻り値、または fake。
+ * @param {{deviceUUID:string, tokenHex:string, secretKey:string}} p
+ * @returns {Promise<string>} session token (hex)。
+ */
+export async function signGuestKey(transport, { deviceUUID, tokenHex, secretKey }) {
+  if (typeof transport !== "function") throw new Error(t("domain.devices.registerTransportRequired"));
+  if (!deviceUUID) throw new Error(t("domain.devices.deviceUUIDRequired"));
+  if (!tokenHex) throw new Error(t("domain.devices.tokenHexRequired"));
+  if (!secretKey) throw new Error(t("domain.devices.secretKeyRequired"));
+  const body = {
+    deviceId: deviceUUID.toUpperCase(), // CHSesameOS3.kt:476 deviceId.uppercase()
+    token: tokenHex,                    // CHSesameOS3.kt:477 mSesameToken.toHexString()
+    secretKey,                          // CHSesameOS3.kt:478 sesame2KeyData.secretKey
+  };
+  const res = await transport({ method: "POST", path: REG_PATH_SIGN, body });
+  // 非 2xx (4xx/5xx) はここで拒否。エラー JSON ボディを session token として誤採用しない。
+  assertHttpOk(res, "signGuestKey");
+  // guestKeysSignPost の戻りは String (= session token hex)。素の text を最優先で採る。
+  const token = (typeof res.json === "string" && res.json)
+    || (res.json && typeof res.json === "object" && typeof res.json.data === "string" && res.json.data)
+    || res.text;
+  if (!token) throw new Error(t("domain.devices.signGuestKeyNoToken"));
+  return token;
+}
+
+/**
+ * registerSesame5 — OS3 (SESAME5 系) デバイスをサーバに登録する
+ * (CHHub3Device.kt:183-186, CHAPIClientBiz.kt:193-195)。
+ *
+ * パス: POST /device/v1/sesame5/{device_id}  (CHAPIClient.kt:84)
+ *   ・device_id は CHHub3Device.kt:184 deviceId.toString() (大文字化なし。SDK 厳守)。
+ * リクエスト整形 (CHOS3RegisterReq, CHSS2RegisterReq.kt:5 → Gson キー {t, pk}):
+ *   { t: <productType 文字列>, pk: <serverSecret> }
+ *   ・t = productModel.productType().toString() (CHHub3Device.kt:185)
+ *     → 本 kit は model 名を crypto.js productTypeFromModelName で productType に解決し
+ *       .toString() する (完了条件 4)。数値 productType を直接渡すことも許容。
+ *   ・pk = serverSecret。SDK では serverSecret は register 時に新規生成される別値ではなく、
+ *     その時点の BLE セッショントークン mSesameToken を hex 化した値そのもの
+ *     (CHHub3Device.kt:182 `val serverSecret = mSesameToken.toHexString()`)。
+ *     よって本関数が受け取る serverSecret は、signGuestKey が token として送る
+ *     mSesameToken hex (L353) と同一カテゴリの値である (両者が値衝突して見えるのは正常)。
+ *     本 kit はこの値を呼び出し側から受け取り、整形せずそのまま pk に乗せるだけ。
+ *
+ * @param {(req)=>Promise<{status,text,json}>} transport makeRegisterTransport の戻り値、または fake。
+ * @param {{deviceUUID:string, productType:(string|number), serverSecret:string}} p
+ *   productType は model 名 (例 "sesame_5") または数値 productType。
+ * @returns {Promise<any>} サーバ応答 (json があれば json、無ければ text)。
+ */
+export async function registerSesame5(transport, { deviceUUID, productType, serverSecret }) {
+  if (typeof transport !== "function") throw new Error(t("domain.devices.registerTransportRequired"));
+  if (!deviceUUID) throw new Error(t("domain.devices.deviceUUIDRequired"));
+  if (productType == null) throw new Error(t("domain.devices.productTypeRequired"));
+  if (!serverSecret) throw new Error(t("domain.devices.serverSecretRequired"));
+
+  // productType を数値に解決: 数値 (または数値文字列) はそのまま、それ以外は model 名として
+  // crypto.js productTypeFromModelName で逆引きする (手書き複製を排除)。
+  let pt;
+  if (typeof productType === "number") {
+    pt = productType;
+  } else if (typeof productType === "string" && /^\d+$/.test(productType)) {
+    pt = Number(productType);
+  } else {
+    pt = productTypeFromModelName(productType);
+    if (pt == null) throw new Error(t("domain.devices.unknownProductModel", { model: String(productType) }));
+  }
+
+  const body = {
+    t: String(pt),     // CHHub3Device.kt:185 productType().toString()
+    pk: serverSecret,  // CHHub3Device.kt:182 serverSecret = mSesameToken.toHexString()
+  };
+  // device_id は大文字化しない (CHHub3Device.kt:184 deviceId.toString())。
+  const path = `${REG_PATH_SESAME5}/${deviceUUID}`;
+  const res = await transport({ method: "POST", path, body });
+  // 非 2xx (4xx/5xx) はここで拒否。エラーボディを成功応答として誤採用しない。
+  assertHttpOk(res, "registerSesame5");
+  return res.json != null ? res.json : res.text;
 }

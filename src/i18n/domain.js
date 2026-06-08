@@ -64,6 +64,19 @@ export default {
     // ---- devices.js ----
     "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",
     "domain.devices.listFirmwareTimeout": "listFirmware timeout",
+    "domain.devices.registerBaseUrlRequired": "baseUrl required (register REST API host)",
+    "domain.devices.registerTokenStoreRequired": "tokenStore required (Cognito idToken store)",
+    "domain.devices.registerFetchRequired": "fetchImpl must be a function (no global fetch available)",
+    "domain.devices.registerTransportRequired": "transport required (a function from makeRegisterTransport)",
+    "domain.devices.registerPathRequired": "path required (a non-empty REST path string)",
+    "domain.devices.registerHttpError": "{op} failed: HTTP {status} {detail}",
+    "domain.devices.deviceUUIDRequired": "deviceUUID required",
+    "domain.devices.tokenHexRequired": "tokenHex required (mSesameToken hex)",
+    "domain.devices.secretKeyRequired": "secretKey required",
+    "domain.devices.signGuestKeyNoToken": "signGuestKey returned no session token",
+    "domain.devices.productTypeRequired": "productType required (model name or numeric productType)",
+    "domain.devices.serverSecretRequired": "serverSecret required",
+    "domain.devices.unknownProductModel": "Unknown product model \"{model}\" (not found in sesameDeviceModel)",
 
     // ---- account.js ----
     "domain.account.emailRequired": "email required (the email used to log in)",
@@ -148,6 +161,19 @@ export default {
     // ---- devices.js ----
     "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",
     "domain.devices.listFirmwareTimeout": "listFirmware timeout",
+    "domain.devices.registerBaseUrlRequired": "baseUrl required (登録 REST API のホスト)",
+    "domain.devices.registerTokenStoreRequired": "tokenStore required (Cognito idToken store)",
+    "domain.devices.registerFetchRequired": "fetchImpl must be a function (global fetch が無い環境)",
+    "domain.devices.registerTransportRequired": "transport required (makeRegisterTransport の戻り値の関数)",
+    "domain.devices.registerPathRequired": "path required (空でない REST パス文字列)",
+    "domain.devices.registerHttpError": "{op} failed: HTTP {status} {detail}",
+    "domain.devices.deviceUUIDRequired": "deviceUUID required",
+    "domain.devices.tokenHexRequired": "tokenHex required (mSesameToken の hex)",
+    "domain.devices.secretKeyRequired": "secretKey required",
+    "domain.devices.signGuestKeyNoToken": "signGuestKey returned no session token",
+    "domain.devices.productTypeRequired": "productType required (model 名 または数値 productType)",
+    "domain.devices.serverSecretRequired": "serverSecret required",
+    "domain.devices.unknownProductModel": "Unknown product model \"{model}\" (sesameDeviceModel に存在しません)",
 
     // ---- account.js ----
     "domain.account.emailRequired": "email required (login に使った email)",

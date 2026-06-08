@@ -69,6 +69,125 @@ describe("SesameBle facade", () => {
     expect(dev.disconnected).toBe(true);
   });
 
+  it("magnet は MAGNET(17) を空ペイロードで送る (lock5)", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, transport: dev });
+    await ble.connect();
+    const r = await ble.magnet();
+    expect(r.resultCode).toBe(0);
+    expect(dev.lastCommand.item).toBe(ITEM.MAGNET);
+    expect(dev.lastCommand.data.length).toBe(0);
+    await ble.close();
+  });
+
+  it("magnet は LOCK5 系以外 (bot_2/bike_2) では型エラー", async () => {
+    const bot = new SesameBle({ secretKey: SECRET, model: "bot_2", transport: new MockSesame() });
+    await bot.connect();
+    expect(() => bot.magnet()).toThrow();
+    await bot.close();
+    const bike = new SesameBle({ secretKey: SECRET, model: "bike_2", transport: new MockSesame() });
+    await bike.connect();
+    expect(() => bike.magnet()).toThrow();
+    await bike.close();
+  });
+
+  it("opSensorControl は OPS_CONTROL(92) を 2B LE で送る (lock5)", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, transport: dev });
+    await ble.connect();
+    const r = await ble.opSensorControl(300);
+    expect(r.resultCode).toBe(0);
+    expect(dev.lastCommand.item).toBe(ITEM.OPS_CONTROL); // 92
+    expect(dev.lastCommand.data.toString("hex")).toBe("2c01");
+    await ble.close();
+  });
+
+  it("sendAdvProductType は SET_ADV_PRODUCT_TYPE(205) に生バイト列を載せる (lock5)", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, transport: dev });
+    await ble.connect();
+    const r = await ble.sendAdvProductType(Buffer.from("dead", "hex"));
+    expect(r.resultCode).toBe(0);
+    expect(dev.lastCommand.item).toBe(ITEM.SS3_ITEM_CODE_SET_ADV_PRODUCT_TYPE); // 205
+    expect(dev.lastCommand.data.toString("hex")).toBe("dead");
+    await ble.close();
+  });
+
+  it("opSensorControl/sendAdvProductType は LOCK5 系以外 (bot_2) では型エラー", async () => {
+    const bot = new SesameBle({ secretKey: SECRET, model: "bot_2", transport: new MockSesame() });
+    await bot.connect();
+    expect(() => bot.opSensorControl(30)).toThrow();
+    expect(() => bot.sendAdvProductType(Buffer.alloc(1))).toThrow();
+    await bot.close();
+  });
+
+  // CHSesame5 固有コマンド (magnet/opSensorControl/sendAdvProductType/configureLockPosition) は
+  // SDK では CHSesame5 にのみ宣言される (OS2 ロックは持たない)。OS2 SESAME2/4 も autolock 能力を
+  // 持つため、かつて _assertOp("autolock") でゲートしていた頃は誤って通っていた (over-exposure)。
+  // os===3 && kind===LOCK5 ゲートで OS2 ロックが弾かれることを確認する。
+  it.each(["sesame_2", "sesame_4"])("CHSesame5 固有コマンドは OS2 ロック (%s) では型エラー", async (model) => {
+    const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+    await ble.connect();
+    expect(() => ble.magnet()).toThrow();
+    expect(() => ble.opSensorControl(30)).toThrow();
+    expect(() => ble.sendAdvProductType(Buffer.alloc(1))).toThrow();
+    expect(() => ble.configureLockPosition(0, 0)).toThrow();
+    await ble.close();
+  });
+
+  it("setBleTxPower は BLE_TX_POWER_SETTING(206) を符号付き 1B で送る (lock5)", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, model: "sesame_5", transport: dev });
+    await ble.connect();
+    const r = await ble.setBleTxPower(-4);
+    expect(r.resultCode).toBe(0);
+    expect(dev.lastCommand.item).toBe(ITEM.SSM3_ITEM_CODE_BLE_TX_POWER_SETTING); // 206
+    expect(dev.lastCommand.data.toString("hex")).toBe("fc"); // -4 → 0xFC
+    await ble.close();
+  });
+
+  it("setBleTxPower は biometric 機種でも送れる (CHSesameBiometricDeviceImpl も実装)", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, model: "ssm_touch", transport: dev });
+    await ble.connect();
+    const r = await ble.setBleTxPower(0);
+    expect(r.resultCode).toBe(0);
+    expect(dev.lastCommand.item).toBe(ITEM.SSM3_ITEM_CODE_BLE_TX_POWER_SETTING);
+    await ble.close();
+  });
+
+  it("setBleTxPower は Hub3/WM2/OS2 では型エラー (OS3 lock + biometric のみ)", async () => {
+    for (const model of ["hub_3", "wm_2", "sesame_2", "bot_2", "bike_2"]) {
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+      await ble.connect();
+      expect(() => ble.setBleTxPower(0), model).toThrow();
+      await ble.close();
+    }
+  });
+
+  it("reset は RESET(104) を空ペイロードで送り全 OS3 機種で使える", async () => {
+    for (const model of ["sesame_5", "bot_2", "bike_2", "bike_3", "ssm_touch", "hub_3", "wm_2"]) {
+      const dev = new MockSesame();
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: dev });
+      await ble.connect();
+      const r = await ble.reset();
+      expect(r.resultCode, model).toBe(0);
+      expect(dev.lastCommand.item, model).toBe(ITEM.RESET); // 104
+      expect(dev.lastCommand.data.length, model).toBe(0);
+      // 成功時に session 破棄 = transport.disconnect 呼び出し
+      expect(dev.disconnected, model).toBe(true);
+    }
+  });
+
+  it("reset は OS2 機種では型エラー (別系統の reset)", async () => {
+    for (const model of ["sesame_2", "sesame_4", "ssmbot_1", "bike_1"]) {
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+      await ble.connect();
+      expect(() => ble.reset(), model).toThrow();
+      await ble.close();
+    }
+  });
+
   it("toggle は lastStatus が locked なら unlock", async () => {
     const dev = new MockSesame({ initialState: LOCKED });
     const ble = new SesameBle({ secretKey: SECRET, transport: dev });
@@ -145,6 +264,102 @@ describe("SesameBle facade", () => {
     await ble.connect();
     expect(ble.capabilities.kind).toBe("lock5");
     expect(() => ble.click()).toThrow();
+    await ble.close();
+  });
+
+  it("script ゲッタ: bot_2/bot_3 でのみ露出し、click(index)/select/sendClickScript を送る", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, model: "bot_3", transport: dev });
+    await ble.connect();
+    expect(ble.capabilities.script).toBe(true);
+    // index 指定 click → RUN_SCRIPT_0(170)+index
+    await ble.script.click(2);
+    expect(dev.lastCommand.item).toBe(172);
+    // selectScript → SCRIPT_SELECT(94) + [index]
+    await ble.script.selectScript(5);
+    expect(dev.lastCommand.item).toBe(94);
+    expect(dev.lastCommand.data.equals(Buffer.from([5]))).toBe(true);
+    // sendClickScript → EDIT_SCRIPT(181)
+    await ble.script.sendClickScript(0, { name: "x", actions: [] });
+    expect(dev.lastCommand.item).toBe(181);
+    // 同じ getter は同一インスタンスを返す (遅延キャッシュ)
+    expect(ble.script).toBe(ble.script);
+    await ble.close();
+  });
+
+  it("script ゲッタ: bot 以外 (sesame_5/bike_2/hub_3) では非対応エラー", async () => {
+    for (const model of ["sesame_5", "bike_2", "hub_3"]) {
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+      expect(() => ble.script).toThrow();
+    }
+  });
+
+  it("fingerPrint ゲッタ: bike_3 でのみ露出し、指紋系 itemCode (115-122) を送る", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, model: "bike_3", transport: dev });
+    await ble.connect();
+    expect(ble.capabilities.fingerprint).toBe(true);
+    // fingerPrintModeSet(mode) → SSM_OS3_FINGERPRINT_MODE_SET(122) + [mode]
+    await ble.fingerPrint.fingerPrintModeSet(1);
+    expect(dev.lastCommand.item).toBe(122);
+    expect(dev.lastCommand.data.equals(Buffer.from([1]))).toBe(true);
+    // fingerPrints() → SSM_OS3_FINGERPRINT_GET(117) + 空
+    await ble.fingerPrint.fingerPrints();
+    expect(dev.lastCommand.item).toBe(117);
+    expect(dev.lastCommand.data.length).toBe(0);
+    // fingerPrintDelete(id) → SSM_OS3_FINGERPRINT_DELETE(116) + id(hex→bytes)
+    await ble.fingerPrint.fingerPrintDelete("0a0b");
+    expect(dev.lastCommand.item).toBe(116);
+    expect(dev.lastCommand.data.equals(Buffer.from([0x0a, 0x0b]))).toBe(true);
+    // 指紋サブセットのみ露出 (card/passcode/face/palm は無い)
+    expect(ble.fingerPrint.cardModeSet).toBeUndefined();
+    expect(ble.fingerPrint.passcodeModeSet).toBeUndefined();
+    // 同じ getter は同一インスタンスを返す (遅延キャッシュ)
+    expect(ble.fingerPrint).toBe(ble.fingerPrint);
+    await ble.close();
+  });
+
+  it("fingerPrint ゲッタ: bike_3 以外 (bike_2/sesame_5/bot_2/ssm_touch) では非対応エラー", async () => {
+    for (const model of ["bike_2", "sesame_5", "bot_2", "ssm_touch"]) {
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+      expect(() => ble.fingerPrint).toThrow();
+    }
+  });
+
+  it("hub3 ゲッタ: connect → Hub3 Wi-Fi コマンドが SesameItemCode 直で送れる (hub_3)", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, model: "hub_3", transport: dev });
+    await ble.connect();
+    expect(ble.isConnected).toBe(true); // Hub3 は ble[] 空でも connect/login できる
+    // scanWifiSSID → HUB3_ITEM_CODE_WIFI_SSID(131) + 空
+    await ble.hub3().scanWifiSSID();
+    expect(dev.lastCommand.item).toBe(ITEM.HUB3_ITEM_CODE_WIFI_SSID);
+    expect(dev.lastCommand.data.length).toBe(0);
+    // setWifiSSID → HUB3_UPDATE_WIFI_SSID(136) + UTF-8
+    await ble.hub3().setWifiSSID("net");
+    expect(dev.lastCommand.item).toBe(ITEM.HUB3_UPDATE_WIFI_SSID);
+    expect(dev.lastCommand.data.equals(Buffer.from("net", "utf8"))).toBe(true);
+    // 同じ getter は同一インスタンスを返す (遅延キャッシュ)
+    expect(ble.hub3()).toBe(ble.hub3());
+    await ble.close();
+  });
+
+  it("hub3 ゲッタ: Hub3 以外 (sesame_5/wm_2/bot_2) では非対応エラー", () => {
+    for (const model of ["sesame_5", "wm_2", "bot_2", "ssm_touch"]) {
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+      expect(() => ble.hub3()).toThrow();
+    }
+  });
+
+  it("updateFirmware(hub_3) は MOVE_TO(84) を送る (CHHub3Device.kt:213-226 のデッドコード解消)", async () => {
+    // Hub3 が connect/login できる経路が無く到達不能だった HUB3 分岐が、connect 配線で到達可能に。
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, model: "hub_3", transport: dev });
+    await ble.connect();
+    const r = await ble.updateFirmware();
+    expect(dev.lastCommand.item).toBe(ITEM.MOVE_TO); // 84 (updateFirmwareBleOnly)
+    expect(dev.lastCommand.data.length).toBe(0);
+    expect(r.resultCode).toBe(0);
     await ble.close();
   });
 });

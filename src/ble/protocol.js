@@ -79,6 +79,37 @@ export function deriveSessionKey(secretKey, token) {
 }
 
 /**
+ * 登録 (registration) 直後の sessionAuth 用セッション鍵を ECDH 共有秘密から導出する。
+ *   sessionKey16 = AES-128-CMAC(ecdhSecretPre16, token4)   (CHHub3Device.kt:202-203)
+ *
+ * 通常 login (deriveSessionKey 上記) との分岐:
+ *   - 通常 login : 鍵 = 既存の pre-shared secretKey (CMAC(secretKey, token), CHHub3Device.kt:168)。
+ *   - register 直後: 鍵 = ECDH 共有秘密の先頭 16B (= crypto.js:ecdhSecretPre16, CHHub3Device.kt:163-174,197)。
+ *   どちらも CMAC の **メッセージは token4 (4B)** で共通、戻りは 16B。違いは CMAC の鍵だけ。
+ *
+ * sault も両者共通: sault = 0x00 ++ token4 (CHHub3Device.kt:170,203 / SesameOS3BleCipher.kt:8-19)。
+ * sault は CCM nonce の組み立て側 (ccmNonce: count(8B LE) ++ 0x00 ++ token4) で消費するため、
+ * この鍵導出関数自体は sault を引数に取らない (session 確立後の暗号化は ccmEncrypt/ccmDecrypt が担う)。
+ *
+ * 実装方針: アルゴリズム (16B 鍵 + 4B token → AES-128-CMAC(鍵, token4) で 16B) は login 経路の
+ *   deriveSessionKey と完全に同一で、違いは「鍵の出所」だけ。よって CMAC コードパスを二重に
+ *   持たず deriveSessionKey へ委譲する (将来 CMAC 仕様が変わっても 1 箇所だけ直せばよい)。
+ *   ここでは ecdhSecretPre16 という意味的別名のための薄いラッパに徹し、register 文脈で分かりやすい
+ *    ecdhSecretPre16 専用エラーメッセージだけを先に検証してから本体へ渡す。
+ *
+ * @param {Buffer} ecdhSecretPre16 ECDH 共有秘密の先頭 16B (crypto.js:ecdhSecretPre16 の戻り)。
+ * @param {Buffer} token4 initial publish のランダム値 4B。
+ * @returns {Buffer} 16B セッション鍵 (= sessionAuth)。
+ */
+export function deriveSessionKeyFromEcdh(ecdhSecretPre16, token4) {
+  if (!Buffer.isBuffer(ecdhSecretPre16) || ecdhSecretPre16.length !== 16) {
+    throw new Error(t("ble.ecdhSecretMustBe16", { len: Buffer.isBuffer(ecdhSecretPre16) ? ecdhSecretPre16.length : "non-buffer" }));
+  }
+  // CMAC 本体は deriveSessionKey に集約 (token4 の長さ検証もそちらが担う)。
+  return deriveSessionKey(ecdhSecretPre16, token4);
+}
+
+/**
  * login コマンドの平文ペイロード = [LOGIN(2)] ++ token16[0:4] (ssm_cmd.c:44-45 / CHSesameOS3LockBase.kt:118-120)。
  * PLAINTEXT セグメントで送る。
  * @param {Buffer} token16 deriveSessionKey の戻り
@@ -244,6 +275,310 @@ export function autolockData(seconds) {
   const b = Buffer.alloc(2);
   b.writeUInt16LE(seconds);
   return b;
+}
+
+/**
+ * Short.toReverseBytes() (DataExtention.kt:108-112) の移植。
+ * SDK は ByteBuffer.putShort で **big-endian** に詰めた後 [1],[0] の順に並べ替える =
+ * 結果は符号付き 16bit を **little-endian 2B** にしたものと等価。
+ * configureLockPosition の lockTarget/unlockTarget はこの関数で LE 2B 化される
+ * (CHSesame5Device.kt:69-73)。負値 (-32768..-1) も含むため writeInt16LE で詰める。
+ * @param {number} value -32768..32767
+ * @returns {Buffer} 2B LE
+ */
+function shortToReverseBytes(value) {
+  if (!Number.isInteger(value) || value < -32768 || value > 32767) {
+    throw new Error(t("ble.shortRange", { value: String(value) }));
+  }
+  const b = Buffer.alloc(2);
+  b.writeInt16LE(value);
+  return b;
+}
+
+// ---------- mechSetting (角度キャリブレーション、item 80) ----------
+
+/**
+ * configureLockPosition(lockTarget, unlockTarget) コマンドの data を組み立てる。
+ *   data = lockTarget.toReverseBytes() ++ unlockTarget.toReverseBytes() = 4B
+ *   (CHSesame5Device.kt:69-73)。
+ *
+ * lockTarget / unlockTarget は施錠位置・解錠位置の **角度 (エンコーダ生値、符号付き 16bit)**。
+ * 各々を toReverseBytes (= LE 2B) で詰め、`[lockLE(2)] ++ [unlockLE(2)]` の 4B にする。
+ * これを buildSendFrame(ITEM.MECH_SETTING, data) → CIPHERTEXT で送る (sendCommand cipher)。
+ *
+ * @param {number} lockTarget   施錠目標角 (-32768..32767)
+ * @param {number} unlockTarget 解錠目標角 (-32768..32767)
+ * @returns {Buffer} 4B
+ */
+export function configureLockPositionData(lockTarget, unlockTarget) {
+  return Buffer.concat([shortToReverseBytes(lockTarget), shortToReverseBytes(unlockTarget)]);
+}
+
+/**
+ * mechSetting (item 80) の publish/response payload を解析する。
+ * CHSesame5MechSettings(data) (CHSesame5.kt:34-38) を 1:1 で移植:
+ *   data[0..1]: lockPosition   (bytesToShort = i16 LE)
+ *   data[2..3]: unlockPosition (i16 LE)
+ *   data[4..5]: autoLockSecond (i16 LE)
+ *
+ * 登録応答 (handleRegisterResponse, CHSesame5Device.kt:201) では payload[7..12] の 6B が
+ * この mechSetting に相当する。publish (handleDevicePublish, CHSesame5Device.kt:220-222) では
+ * payload 全体が 6B の mechSetting。どちらも先頭 6B を読むので length>=6 を要求する。
+ *
+ * 注: bytesToShort(b1,b2) = (b2<<8)|b1 = **符号付き** little-endian (DataExtention.kt:99-102)。
+ * SDK は autoLockSecond も Short (符号付き) で持つため、ここも readInt16LE で揃える。
+ *
+ * @param {Buffer} buf 6B 以上
+ * @returns {{lockPosition:number, unlockPosition:number, autoLockSecond:number}}
+ */
+export function parseMechSetting(buf) {
+  if (!Buffer.isBuffer(buf)) throw new Error(t("ble.mechSettingMustBeBuffer"));
+  if (buf.length < 6) throw new Error(t("ble.mechSettingLength", { len: buf.length }));
+  return {
+    lockPosition: buf.readInt16LE(0),
+    unlockPosition: buf.readInt16LE(2),
+    autoLockSecond: buf.readInt16LE(4),
+  };
+}
+
+/**
+ * opsSetting (item OPS_CONTROL) の payload を解析する。
+ * CHSesame5OpsSettings(data) (CHSesame5.kt:40-42) を移植:
+ *   data[0..1]: opsLockSecond (bytesToUShort = u16 LE)
+ * SDK は UShort (符号なし) で持つため readUInt16LE。
+ * @param {Buffer} buf 2B 以上
+ * @returns {{opsLockSecond:number}}
+ */
+export function parseOpsSetting(buf) {
+  if (!Buffer.isBuffer(buf)) throw new Error(t("ble.opsSettingMustBeBuffer"));
+  if (buf.length < 2) throw new Error(t("ble.opsSettingLength", { len: buf.length }));
+  return { opsLockSecond: buf.readUInt16LE(0) };
+}
+
+/**
+ * opSensorControl(isEnable) コマンドの data を組み立てる。
+ *   data = isEnable.toShort().toReverseBytes() = 2B LE (CHSesame5Device.kt:107-116)。
+ *
+ * SDK の引数名は isEnable だが、実体は opsLockSecond (Open Sensor の自動施錠秒数) を
+ * 載せる 16bit 値で、成功時に opsSetting?.opsLockSecond = isEnable.toUShort() でキャッシュ更新する。
+ * autolock(11) と同じ 2B LE 形式。0=無効。範囲は UShort (0..65535)。
+ * @param {number} seconds 0..65535 (0 = 無効)
+ * @returns {Buffer} 2B LE
+ */
+export function opSensorControlData(seconds) {
+  if (!Number.isInteger(seconds) || seconds < 0 || seconds > 0xffff) {
+    throw new Error(t("ble.secondsRange"));
+  }
+  const b = Buffer.alloc(2);
+  b.writeUInt16LE(seconds);
+  return b;
+}
+
+/**
+ * setBleTxPower(txPower) コマンドの data を組み立てる。
+ *   data = byteArrayOf(txPower) = 1B (CHSesameOS3LockBase.kt:62-71 /
+ *   CHSesameBiometricDeviceImpl.kt:332-341)。
+ *
+ * txPower は Kotlin の Byte = **符号付き 8bit** (-128..127)。publish 受信
+ * (CHSesameOS3LockBase.kt:229-231) でも payload[0] を Byte として bleTxPower に格納する。
+ * 1B なので符号付き/符号なしどちらで書いても同一バイトだが、SDK の意味論 (Byte) に揃えて
+ * -128..127 を受け、writeInt8 で詰める。
+ * @param {number} txPower -128..127
+ * @returns {Buffer} 1B
+ */
+export function bleTxPowerData(txPower) {
+  if (!Number.isInteger(txPower) || txPower < -128 || txPower > 127) {
+    throw new Error(t("ble.txPowerRange", { value: String(txPower) }));
+  }
+  const b = Buffer.alloc(1);
+  b.writeInt8(txPower);
+  return b;
+}
+
+// ---------- time 同期 (item 8) ----------
+
+/**
+ * time(8) コマンドの data を組み立てる。
+ *   data = System.currentTimeMillis().toUInt32ByteArray() = 4B (CHSesameOS3LockBase.kt:131-137)。
+ *
+ * toUInt32ByteArray (DataExtention.kt:138-147) は ms→秒 (floor) の下位 32bit を little-endian 4B
+ * にするもので、registrationTimestampBytes と **完全に同一アルゴリズム** (登録時刻も同じ関数を使う、
+ * CHSesameOS3LockBase.kt:93)。よって唯一の実装である registrationTimestampBytes に委譲し、
+ * time 文脈で分かりやすい別名を提供する (アルゴリズムを二重に持たない)。
+ *
+ * 送出経路 (CHSesameOS3LockBase.kt:126-138 handleLoginResponse):
+ *   login 応答の payload[0..3] (デバイス時刻 toBigLong, 秒) と端末の現在秒を比較し、
+ *   差の絶対値が 3 秒を超えたときだけ time(8) を CIPHERTEXT 送出する。
+ *   差判定は session 側 (parseTimeSyncPayload) で行う。
+ *
+ * @param {number} [nowMs=Date.now()] エポックミリ秒
+ * @returns {Buffer} 4B (秒値の下位 32bit を LE)
+ */
+export function timeSyncData(nowMs = Date.now()) {
+  return registrationTimestampBytes(nowMs);
+}
+
+/**
+ * login 応答 payload からデバイス側の現在時刻 (秒) を取り出す。
+ * SDK: loginPayload.payload.sliceArray(0..3).toBigLong() (CHSesameOS3LockBase.kt:127)。
+ * toBigLong (DataExtention.kt:69-71) = reversedArray().toHexString() を 16進 Long parse
+ *   = 4B を **big-endian 並べ替え後の値** = 元バイト列を little-endian u32 として読むのと等価。
+ * payload が 4B 未満なら null (時刻同期判定をスキップさせる)。
+ * @param {Buffer} payload login response の payload (resultCode を除いた本体)
+ * @returns {number|null} デバイス時刻 (秒) or null
+ */
+export function parseDeviceTimeSeconds(payload) {
+  if (!Buffer.isBuffer(payload) || payload.length < 4) return null;
+  return payload.readUInt32LE(0);
+}
+
+/**
+ * デバイス時刻 (秒) と端末時刻の差が同期しきい値 (>3 秒) を超えるか。
+ * SDK: abs(currentTimestamp - systemTime) > 3 (CHSesameOS3LockBase.kt:128-130)。
+ * @param {number} deviceSeconds parseDeviceTimeSeconds の戻り
+ * @param {number} [nowMs=Date.now()] 端末のエポックミリ秒
+ * @returns {boolean} true なら time(8) を送るべき
+ */
+export function needsTimeSync(deviceSeconds, nowMs = Date.now()) {
+  if (typeof deviceSeconds !== "number") return false;
+  const currentSeconds = Math.floor(nowMs / 1000);
+  return Math.abs(currentSeconds - deviceSeconds) > 3;
+}
+
+// ---------- history 読み出し / 削除 (item 4 / 18) ----------
+
+/**
+ * history(4) 読み出しコマンドの data = byteArrayOf(0x01) (CHSesameOS3LockBase.kt:187-188)。
+ * 1 件分の履歴を要求する固定 1B フラグ。
+ * @returns {Buffer} 1B
+ */
+export function historyReadData() {
+  return Buffer.from([0x01]);
+}
+
+/**
+ * historyDelete(18, SSM2_ITEM_CODE_HISTORY_DELETE) コマンドの data を組み立てる。
+ *   data = recordId = historyPayload.sliceArray(0..3) = 履歴 payload 先頭 4B
+ *   (CHSesameOS3LockBase.kt:201-207)。
+ * サーバへ履歴を post できた後、その 1 件をデバイスから消すために送る。
+ * 渡す historyPayload は history(4) 応答の payload (先頭 4B が recordId)。
+ * @param {Buffer} historyPayload history(4) 応答 payload (4B 以上)
+ * @returns {Buffer} 4B recordId
+ */
+export function historyDeleteData(historyPayload) {
+  if (!Buffer.isBuffer(historyPayload) || historyPayload.length < 4) {
+    throw new Error(t("ble.historyPayloadTooShort", { len: Buffer.isBuffer(historyPayload) ? historyPayload.length : "non-buffer" }));
+  }
+  return Buffer.from(historyPayload.subarray(0, 4));
+}
+
+// ---------- 登録タイムスタンプ 4B (BLE デバイス登録 / 初期ペアリング) ----------
+
+/**
+ * 登録 (registration) コマンドの末尾に付ける現在時刻を 4B にエンコードする。
+ * SDK の `Long.toUInt32ByteArray()` (DataExtention.kt:138-147) を 1:1 で移植する。
+ *
+ * ★配線状況 (2026-06 時点): この関数は登録フローに**配線済み**である。
+ *   registrationData() がこのバイト列を pubKey64 の後ろに連結し (下記の (a))、
+ *   session.register() (src/ble/session.js:226) が
+ *   `_sendPlain(buildSendFrame(ITEM.REGISTRATION, registrationData(pubK64, nowMs)))` で
+ *   REGISTRATION(1) を PLAINTEXT セグメント送出する形で本番フローに乗っている。
+ *   登録フローの配線済み要素:
+ *     (a) registrationData() = pubKey64(64B) ++ registrationTimestampBytes(4B) の組み立て
+ *         (CHHub3Device.kt:193)。この関数の直下に実装済み。
+ *     (b) ITEM.REGISTRATION(=1) を PLAINTEXT で送る session 経路 (session.js:226)。配線済み。
+ *     (c) crypto.js の ECDH ブロック (ecdhSecretPre16) は session.register() (session.js:234)
+ *         で device の返す公開鍵から共有秘密を導く形で接続済み。
+ *   ファサード層も SesameBle.register() / registerOnce() として公開済み (index.js)。
+ *   注: バイト列・ハンドシェイクは mock vector で単体/end-to-end テスト済みだが、**実機 OS3
+ *   デバイスに対する検証は未了** (README の Known limitations 参照)。配線は完了している。
+ *
+ * 用途 (CHHub3Device.kt:193):
+ *   registration payload = EccKey.getPubK()(64B) ++ currentTimeMillis().toUInt32ByteArray()(4B)
+ * を plain セグメントで送る。
+ *
+ * SDK 原典 (DataExtention.kt:138-147):
+ *   val tmp = this / 1000                       // ms → 秒 (Long 除算 = floor)
+ *   bytes[3] = (tmp and 0xFFFF).toByte()         // 0xFFFF でマスク後 .toByte() で下位8bitに切り詰め → bits 0..7
+ *   bytes[2] = (tmp ushr 8  and 0xFFFF).toByte() // 同上 → bits 8..15
+ *   bytes[1] = (tmp ushr 16 and 0xFFFF).toByte() // 同上 → bits 16..23
+ *   bytes[0] = (tmp ushr 24 and 0xFFFF).toByte() // 同上 → bits 24..31
+ *   return bytes.reversedArray()                 // [b24,b16,b8,b0] (BE) → reverse → [b0,b8,b16,b24] (LE)
+ *
+ * 注: 原典のマスク定数は 0xFF ではなく 0xFFFF だが、最後の `.toByte()` が下位 8bit へ切り詰めるため
+ *   0xFFFF マスクの上位 8bit (bits 8..15) は捨てられ、出力は本実装の `& 0xFFn` と完全に等価。
+ *
+ * 結果は「秒値の下位 32bit を little-endian 4B」で詰めたものと等価。
+ * `ushr` (符号なし右シフト) と各バイトの `.toByte()` 切り詰めにより、秒値が 32bit を超える
+ * 遠未来でも自動的に下位 32bit だけが採られる (bits >=32 は b0 にも乗らない)。
+ *
+ * ★仕様上限: 秒値が 2^32 を超える遠未来 (>2106年, 約 0xFFFFFFFF 秒) では下位 32bit へ
+ *   無言ラップする。これは SDK の toUInt32ByteArray() (Kotlin Long の ushr + 下位 8bit
+ *   マスク) と一致する移植であり正しさの欠陥ではない。ただし登録時刻はデバイス側で時計
+ *   照合される可能性があり、ラップ後の値で invalidParam 系を誘発し得る (デバイス側時刻
+ *   検証がある場合の挙動は未検証)。配線時に留意。
+ *
+ * 固定 ms=1605929466482 → tmp=1605929466(=0x5FB889FA) → 戻り `fa89b85f`
+ * (DataExtention.kt:139 のコメント "fa89b85f" と一致)。
+ *
+ * @param {number} [nowMs=Date.now()] エポックミリ秒 (非負整数)。
+ * @returns {Buffer} 4B (秒値の下位 32bit を LE)
+ */
+export function registrationTimestampBytes(nowMs = Date.now()) {
+  if (typeof nowMs !== "number" || !Number.isFinite(nowMs) || nowMs < 0) {
+    throw new Error(t("ble.timestampNonNeg", { ms: String(nowMs) }));
+  }
+  // Long 除算 (floor) を BigInt で再現。秒値は 53bit を超え得るため BigInt で扱う。
+  const tmp = BigInt(Math.floor(nowMs)) / 1000n;
+  const bytes = Buffer.alloc(4);
+  // SDK と同じ添字割当 (.toByte() による下位 8bit マスクを 0xFFn で再現)。
+  bytes[3] = Number(tmp & 0xffn);          // bits 0..7
+  bytes[2] = Number((tmp >> 8n) & 0xffn);  // bits 8..15
+  bytes[1] = Number((tmp >> 16n) & 0xffn); // bits 16..23
+  bytes[0] = Number((tmp >> 24n) & 0xffn); // bits 24..31
+  // reversedArray(): [b24,b16,b8,b0] → [b0,b8,b16,b24]
+  return Buffer.from([bytes[3], bytes[2], bytes[1], bytes[0]]);
+}
+
+/**
+ * REGISTRATION(1) コマンドの平文 data を組み立てる。
+ *   data = EccKey.getPubK()(64B) ++ currentTimeMillis().toUInt32ByteArray()(4B) = 68B
+ *   (CHHub3Device.kt:191-194)。
+ *
+ * これを buildSendFrame(ITEM.REGISTRATION, data) に通すと [01] ++ data = 69B フレームになり、
+ * **PLAINTEXT セグメント** (SEG.PLAINTEXT) で送る (CHSesameOS3.kt:495-499: 送信フレームは
+ * [item_code] ++ data で op_code は付与しない。registration は session 確立前なので暗号化せず平文)。
+ *
+ * pubK は ECDH 鍵ペア (crypto.js の createECDH("prime256v1")) の **生 P-256 公開鍵 X‖Y(64B)**。
+ * SDK の EccKey.getPubK() は uncompressed prefix 0x04 を含まない 64B raw を返す (EccKey.kt の
+ * fixheader 規約 / crypto.js:220-228 と同契約)。よってここは 64B/128hex のみを受け、Node の
+ * getPublicKey() が既定で返す 0x04 付き 65B はそのまま渡せない (呼び出し側で剥がすこと)。
+ *
+ * ★配線状況 (2026-06 時点): registrationTimestampBytes と同様、この関数は登録フローに
+ *   **配線済み**。session.register() (session.js:226) が
+ *   `_sendPlain(buildSendFrame(ITEM.REGISTRATION, registrationData(pubK64, nowMs)))` で
+ *   REGISTRATION(1) を PLAINTEXT 送出し、ファサード SesameBle.register()/registerOnce()
+ *   から到達できる。mock vector でテスト済みだが**実機 OS3 検証は未了** (README 参照)。
+ *
+ * @param {Buffer|string} pubK ECDH 生公開鍵 64B (X‖Y, prefix 無し) または 128hex 文字列。
+ * @param {number} [nowMs=Date.now()] エポックミリ秒 (registrationTimestampBytes へ委譲)。
+ * @returns {Buffer} 68B (pubK 64B ++ timestamp 4B)。
+ */
+export function registrationData(pubK, nowMs = Date.now()) {
+  let pub;
+  if (Buffer.isBuffer(pubK)) {
+    pub = pubK;
+  } else if (typeof pubK === "string") {
+    if (!/^[0-9a-fA-F]+$/.test(pubK) || pubK.length % 2 !== 0) {
+      throw new Error(t("ble.pubKMustBe64", { len: `${pubK.length}hex` }));
+    }
+    pub = Buffer.from(pubK, "hex");
+  } else {
+    throw new Error(t("ble.pubKMustBe64", { len: typeof pubK }));
+  }
+  if (pub.length !== 64) throw new Error(t("ble.pubKMustBe64", { len: `${pub.length}B` }));
+  // timestamp 4B は registrationTimestampBytes に委譲 (toUInt32ByteArray の唯一の実装箇所)。
+  return Buffer.concat([pub, registrationTimestampBytes(nowMs)]);
 }
 
 // ---------- mechStatus 解析 (ssm.h:29-40, ssm.c:33-39) ----------

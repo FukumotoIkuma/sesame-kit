@@ -12,16 +12,20 @@
  * BLE 上の「デバイス種別 (kind)」。productType→実装クラスの多対一を、能力の単位でまとめたもの。
  * - lock5     : Sesame5/5Pro/6/6Pro/US/miwa, BLE Connector (OS3 ロック)
  * - bot2      : SESAME Bot2/Bot3 (OS3) — click のみ
- * - bike2     : SESAME Bike2/Bike3 (OS3) — unlock のみ
- * - sesame2   : Sesame2/3/4 (OS2 ロック) — BLE は別プロトコル (未実装)
- * - botOs2    : SESAME Bot1 (OS2) — BLE 未実装
- * - bikeOs2   : Bike1 (OS2) — BLE 未実装
+ * - bike2     : SESAME Bike2 (OS3) — unlock のみ
+ * - bike3     : SESAME Bike3 (OS3) — unlock + 指紋登録 (CHFingerPrintCapable mixin)。
+ *               Bike3 は CHSesameBike3Device : CHSesameBike2Device(), CHFingerPrintCapable
+ *               (CHSesameBike3Device.kt:20-24) で、Bike2 の解錠能力に指紋 capability のみを
+ *               足した固有型。Bot/Bike2 と違い fingerPrint ゲッタを露出するため別 kind にする。
+ * - sesame2   : Sesame2/3/4 (OS2 ロック) — BLE は別プロトコル (SesameOS2Ble facade)
+ * - botOs2    : SESAME Bot1 (OS2) — BLE click (SesameOS2Ble facade)
+ * - bikeOs2   : Bike1 (OS2) — BLE unlock (SesameOS2Ble facade)
  * - biometric : Touch/Face/OpenSensor/Remote (鍵束デバイス。施錠操作なし)
  * - hub3      : Hub3/Hub3 LTE (IoT 中継。BLE 施錠操作なし)
  * - wifi      : WifiModule2
  */
 export const KIND = Object.freeze({
-  LOCK5: "lock5", BOT2: "bot2", BIKE2: "bike2",
+  LOCK5: "lock5", BOT2: "bot2", BIKE2: "bike2", BIKE3: "bike3",
   SESAME2: "sesame2", BOT_OS2: "botOs2", BIKE_OS2: "bikeOs2",
   BIOMETRIC: "biometric", HUB3: "hub3", WIFI: "wifi",
   UNKNOWN: "unknown", // テーブルに無い model。操作を捏造せず「操作なし」にする (lock5 に化けさせない)
@@ -33,24 +37,43 @@ export const KIND = Object.freeze({
  *  - os       : 世代 (2 | 3)
  *  - cloud    : この CLI が **クラウド経由**で送れる制御 op (biz3TriggerLocker: lock/unlock/toggle/click、
  *               Hub3 は biz3OperateIoT/IR: ir/relay/led)。autolock はクラウド中継で実機未反映なので含めない。
- *  - ble      : この CLI が **BLE 直接**で送れる制御 op。OS2 系は BLE プロトコル未実装なので空。
- *  - mechKind : mechStatus の解釈方法 ("os3lock" 7B / "os3bot" 3B / null)
+ *  - ble      : この CLI が **BLE 直接**で送れる制御 op。OS2 系は SesameOS2Ble (別プロトコル) で送る。
+ *  - biometric: 生体・アクセス制御 (card/finger/passcode/face/palm) の BLE 登録 API を持つか。
+ *               Touch/Touch Pro/Face/Palm/OpenSensor/Remote 系 (= BIOMETRIC kind) のみ true。
+ *  - wifiProvisioning: WifiModule2 の BLE プロビジョニング API (Wi-Fi 設定・鍵登録) を持つか。
+ *               WM2 (= WIFI kind) のみ true。ロック制御 op (lock/unlock 等) ではなく WM2 専用の
+ *               action code (wm2.js WM2_ACTION) を使う別 API 面なので ble[] とは独立 (biometric と同型)。
+ *  - hubProvisioning: SESAME Hub3 の BLE プロビジョニング API (Wi-Fi 設定・SSID スキャン・子鍵削除・
+ *               接続種別) を持つか。Hub3 (= HUB3 kind) のみ true。Hub3 は CHSesameOS3 を継承するので
+ *               connect/login/register/reset/OTA(MOVE_TO) は OS3 共通経路で動くが、ロック制御 op
+ *               (lock/unlock 等) は持たない (ble[] は空)。WM2 の wifiProvisioning と同型で、Hub3 固有
+ *               の itemCode (itemcodes.js HUB3_*) を使う別 API 面 (hub3.js Hub3Commands)。
+ *  - script   : SESAME Bot2/Bot3 のスクリプト API (click(index)/selectScript/getCurrentScript/
+ *               getScriptNameList/sendClickScript) を持つか。BOT2 kind のみ true。click(89) は ble[]
+ *               に残しつつ、index 指定 click と script 管理は bot2.js の別 API 面 (biometric と同型)。
+ *  - fingerprint : SESAME Bike3 の指紋登録 API (fingerPrints/Delete/Change/ModeGet/ModeSet) を
+ *               持つか。BIKE3 kind のみ true。Bike3 は CHFingerPrintCapable のみ mixin する
+ *               (CHSesameBike3Device.kt:20-24) ため、biometric (card/passcode/face/palm 全部) では
+ *               なく指紋専用サブセットだけを露出する。実体は biometric.js BiometricCommands の
+ *               fingerPrint 系メソッド (itemCode 115-122) を index.js の fingerPrint ゲッタで限定公開。
+ *  - mechKind : mechStatus の解釈方法 ("os3lock" 7B / "os3bot" 3B / "os2lock" 8B / "os2bot" 7B / null)
  *  - label    : 表示用の種別名
  *
  * 出典: 型×経路の可否は調査で確定 (lock.js triggerLock=機種非依存に lock/unlock/toggle/click を中継、
  *       autolock はクラウド未反映=lock.js:127-131、Hub3 の ir/relay/led=iot.js/transport.js、
- *       OS2 BLE 未実装=ble/* 、biometric は制御 op なし=管理のみ)。
+ *       OS2 BLE=ble/os2/* (SesameOS2Ble facade)、biometric は制御 op なし=管理のみ)。
  */
 const CAPS = Object.freeze({
   [KIND.LOCK5]:    { os: 3, cloud: ["lock", "unlock", "toggle"], ble: ["lock", "unlock", "toggle", "autolock"], mechKind: "os3lock", label: "SESAME (lock)" },
-  [KIND.BOT2]:     { os: 3, cloud: ["click"],                    ble: ["click"],                                 mechKind: "os3bot",  label: "SESAME Bot" },
+  [KIND.BOT2]:     { os: 3, cloud: ["click"],                    ble: ["click"],                   script: true, mechKind: "os3bot",  label: "SESAME Bot" },
   [KIND.BIKE2]:    { os: 3, cloud: ["unlock"],                   ble: ["unlock"],                                mechKind: "os3bot",  label: "SESAME Bike" },
-  [KIND.SESAME2]:  { os: 2, cloud: ["lock", "unlock", "toggle"], ble: [],                                        mechKind: null,      label: "SESAME (OS2 lock)" },
-  [KIND.BOT_OS2]:  { os: 2, cloud: ["click"],                    ble: [],                                        mechKind: null,      label: "SESAME Bot (OS2)" },
-  [KIND.BIKE_OS2]: { os: 2, cloud: ["unlock"],                   ble: [],                                        mechKind: null,      label: "SESAME Bike (OS2)" },
-  [KIND.BIOMETRIC]:{ os: 3, cloud: [],                           ble: [],                                        mechKind: null,      label: "SESAME Touch/Face/Sensor/Remote" },
-  [KIND.HUB3]:     { os: 3, cloud: ["ir", "relay", "led"],       ble: [],                                        mechKind: null,      label: "SESAME Hub3" },
-  [KIND.WIFI]:     { os: 3, cloud: ["ir", "relay", "led"],       ble: [],                                        mechKind: null,      label: "WiFi Module 2" },
+  [KIND.BIKE3]:    { os: 3, cloud: ["unlock"],                   ble: ["unlock"],                  fingerprint: true, mechKind: "os3bot",  label: "SESAME Bike 3" },
+  [KIND.SESAME2]:  { os: 2, cloud: ["lock", "unlock", "toggle"], ble: ["lock", "unlock", "toggle", "autolock"], mechKind: "os2lock", label: "SESAME (OS2 lock)" },
+  [KIND.BOT_OS2]:  { os: 2, cloud: ["click"],                    ble: ["click"],                                 mechKind: "os2bot",  label: "SESAME Bot (OS2)" },
+  [KIND.BIKE_OS2]: { os: 2, cloud: ["unlock"],                   ble: ["unlock"],                                mechKind: "os2bot",  label: "SESAME Bike (OS2)" },
+  [KIND.BIOMETRIC]:{ os: 3, cloud: [],                           ble: [],                          biometric: true, mechKind: null,      label: "SESAME Touch/Face/Sensor/Remote" },
+  [KIND.HUB3]:     { os: 3, cloud: ["ir", "relay", "led"],       ble: [],                          hubProvisioning: true, mechKind: null,      label: "SESAME Hub3" },
+  [KIND.WIFI]:     { os: 3, cloud: ["ir", "relay", "led"],       ble: [],                          wifiProvisioning: true, mechKind: null,      label: "WiFi Module 2" },
   [KIND.UNKNOWN]:  { os: 0, cloud: [],                           ble: [],                                        mechKind: null,      label: "(未知のデバイス)" },
 });
 
@@ -100,7 +123,7 @@ export const PRODUCT_TYPES = Object.freeze({
   30: { model: "sesame_face_2_ai",          kind: KIND.BIOMETRIC },
   31: { model: "sesame_face_2_pro_ai",      kind: KIND.BIOMETRIC },
   32: { model: "sesame_6_pro_slidingdoor",  kind: KIND.LOCK5 },
-  33: { model: "bike_3",                    kind: KIND.BIKE2 },
+  33: { model: "bike_3",                    kind: KIND.BIKE3 },
   35: { model: "bot_3",                     kind: KIND.BOT2 },
   36: { model: "hub_3_lte",                 kind: KIND.HUB3 },
 });
@@ -129,13 +152,18 @@ export function kindForModel(model) {
  *   - cloud / ble : 各経路で操作可能な op
  *   - ops         : 和集合 (UI で見せる操作・提示順)
  *   - bleSupported: BLE 制御を実装しているか (= ble.length>0)
+ *   - biometric   : 生体・アクセス制御の BLE 登録 API を持つか (BIOMETRIC kind のみ true)
+ *   - wifiProvisioning: WM2 の BLE プロビジョニング API を持つか (WIFI kind のみ true)
+ *   - script      : Bot2/Bot3 のスクリプト API を持つか (BOT2 kind のみ true)
+ *   - fingerprint : Bike3 の指紋登録 API を持つか (BIKE3 kind のみ true)
+ *   - hubProvisioning: Hub3 の BLE プロビジョニング API を持つか (HUB3 kind のみ true)
  * @param {string|null|undefined} model
- * @returns {{kind:string, os:number, cloud:string[], ble:string[], ops:string[], mechKind:string|null, bleSupported:boolean, label:string}}
+ * @returns {{kind:string, os:number, cloud:string[], ble:string[], ops:string[], mechKind:string|null, bleSupported:boolean, biometric:boolean, wifiProvisioning:boolean, hubProvisioning:boolean, script:boolean, fingerprint:boolean, label:string}}
  */
 export function capabilitiesForModel(model) {
   const kind = kindForModel(model);
   const caps = CAPS[kind];
-  return { kind, ...caps, ops: unionOps(caps), bleSupported: caps.ble.length > 0 };
+  return { kind, ...caps, ops: unionOps(caps), bleSupported: caps.ble.length > 0, biometric: !!caps.biometric, wifiProvisioning: !!caps.wifiProvisioning, hubProvisioning: !!caps.hubProvisioning, script: !!caps.script, fingerprint: !!caps.fingerprint };
 }
 
 /** その model が op を (いずれかの経路で) 操作できるか。 */
