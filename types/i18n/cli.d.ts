@@ -41,6 +41,9 @@ declare namespace _default {
         "cli.setupPartialFail": string;
         "cli.setupDone": string;
         "cli.idTokenRefreshed": string;
+        "cli.logoutDone": string;
+        "cli.logoutPartial": string;
+        "cli.logoutNoSession": string;
         "cli.noCustomerInfo": string;
         "cli.companyId": string;
         "cli.subUuid": string;
@@ -214,6 +217,7 @@ declare namespace _default {
         "cli.descLogin": string;
         "cli.descVerify": string;
         "cli.descRefresh": string;
+        "cli.descLogout": string;
         "cli.descWhoami": string;
         "cli.descSend": string;
         "cli.optRemoteName": string;
@@ -336,6 +340,9 @@ declare namespace _default {
         "cli.setupPartialFail": string;
         "cli.setupDone": string;
         "cli.idTokenRefreshed": string;
+        "cli.logoutDone": string;
+        "cli.logoutPartial": string;
+        "cli.logoutNoSession": string;
         "cli.noCustomerInfo": string;
         "cli.companyId": string;
         "cli.subUuid": string;
@@ -509,6 +516,7 @@ declare namespace _default {
         "cli.descLogin": string;
         "cli.descVerify": string;
         "cli.descRefresh": string;
+        "cli.descLogout": string;
         "cli.descWhoami": string;
         "cli.descSend": string;
         "cli.optRemoteName": string;
