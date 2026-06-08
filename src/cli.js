@@ -29,6 +29,7 @@ import {
   getValidIdToken,
   loginInitiate,
   loginVerify,
+  logout,
 } from "./auth.js";
 import { isInteractive, selectFromList, promptText, confirm as confirmPrompt } from "./prompts.js";
 import { parseIrType, DEFAULT_IR_TYPE } from "./crypto.js";
@@ -354,6 +355,20 @@ async function cmdRefresh(_opts, program) {
   out(opts.json, () => {
     console.log(t("cli.idTokenRefreshed", { len: tok.length }));
   }, { ok: true, idTokenLength: tok.length });
+}
+
+async function cmdLogout(_opts, program) {
+  const { opts, tokenStore } = loadCtx(program);
+  if (!tokenStore.load()) {
+    out(opts.json, () => console.log(t("cli.logoutNoSession")), { ok: true, alreadyLoggedOut: true });
+    return;
+  }
+  // サーバ側 (ForgetDevice + RevokeToken) もクリーンにしてからローカルを消す。
+  const r = await logout(tokenStore);
+  out(opts.json, () => {
+    console.log(t("cli.logoutDone"));
+    if (!r.revokedToken || !r.forgotDevice) console.error(t("cli.logoutPartial"));
+  }, { ok: true, ...r });
 }
 
 async function cmdWhoami(_opts, program) {
@@ -1542,6 +1557,8 @@ export async function run(argv = process.argv) {
     .action((code, opts) => cmdVerify(code, opts, program));
   program.command("refresh").description(t("cli.descRefresh"))
     .action((opts) => cmdRefresh(opts, program));
+  program.command("logout").description(t("cli.descLogout"))
+    .action((opts) => cmdLogout(opts, program));
   program.command("whoami").description(t("cli.descWhoami"))
     .action((opts) => cmdWhoami(opts, program));
 

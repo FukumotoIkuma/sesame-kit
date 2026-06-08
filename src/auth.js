@@ -11,19 +11,30 @@
 //   - CUSTOM_AUTH passwordless: USERNAME → CUSTOM_CHALLENGE (email にコード) → コード回答
 //   - 新規ユーザーは dummy password "Aa123456" で SignUp してから sign-in (useAuthState.js:109-122)
 //
-// biz3 との唯一の機能的相違: Client ID を biz3 の `21u50hboia4s5q0sbk6pbdfmss` から、
-// 公式 iOS/Android/chat.candyhouse.co と同じ Consumer Client `6ialca0p8u0lsgvbmvsljfm305` に
-// 差し替え。これで refreshToken が事実上失効しなくなる。
+// biz3 との機能的相違:
+//   1. Client ID を biz3 の `21u50hboia4s5q0sbk6pbdfmss` から、公式
+//      iOS/Android/chat.candyhouse.co と同じ Consumer Client
+//      `6ialca0p8u0lsgvbmvsljfm305` に差し替え (アプリと同じトークン寿命)。
+//   2. ログイン後に ConfirmDevice でデバイスを確定する (loginVerify / confirmDevice)。
+//      デバイストラッキング有効 Pool では、これを省くと未確認の DEVICE_KEY で
+//      REFRESH_TOKEN_AUTH が `Invalid Refresh Token` になり、idToken 失効後の初回
+//      refresh で必ず落ちる。公式アプリ (Amplify) は自動で ConfirmDevice している。
 //
 // 状態は TokenStore (load/save/clear + loadPending/savePending/clearPending) に永続化を委譲。
 // CLI からは FileTokenStore、ライブラリ消費者は独自実装を渡せる。
 
 import {
   CognitoIdentityProviderClient,
+  ConfirmDeviceCommand,
+  ForgetDeviceCommand,
   InitiateAuthCommand,
   RespondToAuthChallengeCommand,
+  RevokeTokenCommand,
   SignUpCommand,
+  UpdateDeviceStatusCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
+import { hostname } from "node:os";
+import { generateDeviceVerifier } from "./device-srp.js";
 // i18n はエラーメッセージ文言の外出しだけに使用 (auth ロジックは不可侵)。
 // この関数内のローカル変数 `t` (= store.load()) と衝突しないよう `tr` で取り込む。
 import { t as tr } from "./i18n.js";
@@ -103,7 +114,9 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
     throw new Error("idToken expired and no refreshToken. Re-run login.");
   }
 
-  const clientId = t.clientId || DEFAULT_CLIENT_ID;
+  // clientId は保存値優先、無ければ idToken の aud から復元 (bootstrap/migrate で
+  // clientId 欠落のまま入った token を誤った client に投げないため)。
+  const clientId = t.clientId || jwtAud(t.idToken) || DEFAULT_CLIENT_ID;
   const authParameters = { REFRESH_TOKEN: t.refreshToken };
   if (t.deviceKey) authParameters.DEVICE_KEY = t.deviceKey;
 
@@ -123,6 +136,16 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
   t.idToken = r.IdToken;
   if (r.AccessToken)  t.accessToken  = r.AccessToken;
   if (r.RefreshToken) t.refreshToken = r.RefreshToken; // rotation 対応
+  // refresh で稀にデバイスキーがローテートされる。来たら再 ConfirmDevice しないと
+  // 未確認デバイス状態になり、次回 refresh が Invalid Refresh Token で落ちる。
+  if (r.NewDeviceMetadata?.DeviceKey) {
+    const device = await confirmDevice(r);
+    if (device) {
+      t.deviceKey = device.deviceKey;
+      t.deviceGroupKey = device.deviceGroupKey;
+      t.devicePassword = device.devicePassword;
+    }
+  }
   t.lastRefresh = new Date().toISOString();
   store.save(t);
   return t.idToken;
@@ -199,6 +222,14 @@ export async function loginVerify(store, code) {
   );
 
   if (!resp.AuthenticationResult) {
+    // コード誤り/期限切れだと Cognito は新しい Session 付きで CUSTOM_CHALLENGE を再発行する
+    // (既定 3 回)。古い Session は失効するので、新 Session を pending に書き戻して同じ
+    // login のまま verify をやり直せるようにする (clearPending しない)。これをしないと
+    // 1 文字のミスタイプで login からやり直しになる。
+    if (resp.ChallengeName === "CUSTOM_CHALLENGE" && resp.Session) {
+      store.savePending({ ...s, session: resp.Session, initiatedAt: new Date().toISOString() });
+      throw new Error(tr("auth.wrongCodeRetry"));
+    }
     if (resp.ChallengeName) {
       throw new Error(tr("auth.anotherChallenge", { name: resp.ChallengeName }));
     }
@@ -206,19 +237,122 @@ export async function loginVerify(store, code) {
   }
 
   const r = resp.AuthenticationResult;
+
+  // デバイストラッキングが有効な Pool では NewDeviceMetadata が返る。ConfirmDevice で
+  // デバイスを確定しないと REFRESH_TOKEN_AUTH が `Invalid Refresh Token` で落ちる
+  // (公式アプリ=Amplify は自動で ConfirmDevice する)。ここで同じ確定を行う。
+  const device = await confirmDevice(r);
+
   const tokens = {
     clientId: s.clientId,
     idToken: r.IdToken,
     refreshToken: r.RefreshToken,
     accessToken: r.AccessToken,
-    deviceKey: r.NewDeviceMetadata?.DeviceKey || null,
-    deviceGroupKey: r.NewDeviceMetadata?.DeviceGroupKey || null,
+    // device は ConfirmDevice 成功時のみ非 null。確定できなかった deviceKey を保存すると
+    // 未確認デバイスとして次回 refresh が落ちるため、ここでは確定済みのものだけ永続化する。
+    deviceKey: device?.deviceKey ?? null,
+    deviceGroupKey: device?.deviceGroupKey ?? null,
+    devicePassword: device?.devicePassword ?? null,
     username: s.username,
     lastRefresh: new Date().toISOString(),
   };
   store.save(tokens);
   store.clearPending();
   return tokens;
+}
+
+/**
+ * NewDeviceMetadata を持つ認証結果に対し ConfirmDevice (+ 必要なら remembered 化) を行う。
+ * デバイストラッキング無効の Pool では NewDeviceMetadata が無いので no-op。
+ *
+ * @param {object} authResult Cognito AuthenticationResult
+ * @returns {Promise<{deviceKey:string, deviceGroupKey:string, devicePassword:string}|null>}
+ *   確定したデバイス情報。デバイストラッキング無効 (NewDeviceMetadata 無し) なら null。
+ */
+async function confirmDevice(authResult) {
+  const meta = authResult?.NewDeviceMetadata;
+  if (!meta?.DeviceKey || !meta?.DeviceGroupKey) return null; // デバイストラッキング無効
+  if (!authResult.AccessToken) {
+    // NewDeviceMetadata は来たのに ConfirmDevice 用の AccessToken が無い異常系。ここで
+    // 黙って deviceKey を保存させると未確認デバイスになり次回 refresh が落ちる。確定不能を
+    // 明示的に失敗させ、呼び出し側が deviceKey を永続化しないようにする。
+    throw new Error("device confirmation failed: auth result has NewDeviceMetadata but no AccessToken");
+  }
+
+  const { devicePassword, passwordVerifier, salt } = generateDeviceVerifier(
+    meta.DeviceGroupKey,
+    meta.DeviceKey,
+  );
+
+  const resp = await cognito.send(
+    new ConfirmDeviceCommand({
+      AccessToken: authResult.AccessToken,
+      DeviceKey: meta.DeviceKey,
+      DeviceName: hostname() || "sesame-cli",
+      DeviceSecretVerifierConfig: { PasswordVerifier: passwordVerifier, Salt: salt },
+    }),
+  );
+
+  // User Opt-In Pool では確定だけでは remembered にならないため明示的に remembered 化する
+  // (公式アプリの "このデバイスを記憶する" 相当)。これをしないと refresh が device に
+  // 紐づかず失効する。
+  if (resp.UserConfirmationNecessary) {
+    await cognito.send(
+      new UpdateDeviceStatusCommand({
+        AccessToken: authResult.AccessToken,
+        DeviceKey: meta.DeviceKey,
+        DeviceRememberedStatus: "remembered",
+      }),
+    );
+  }
+
+  return { deviceKey: meta.DeviceKey, deviceGroupKey: meta.DeviceGroupKey, devicePassword };
+}
+
+/**
+ * ログアウト。公式アプリ相当にサーバ側もクリーンにする:
+ *   1. ForgetDevice — このデバイスの remembered 登録を解除 (ConfirmDevice の対。これが無いと
+ *      login のたびに remembered device がアカウントに溜まり続ける)。
+ *   2. RevokeToken  — この refresh token を失効 (ローカル削除だけでは生き残るため)。
+ * サーバ呼び出しは best-effort (失敗してもローカルは必ず消す)。どちらも対象はこのセッション/
+ * このデバイスのみで、公式アプリ等の別セッションには影響しない (GlobalSignOut は使わない)。
+ *
+ * @param {{load:Function, clear:Function, clearPending:Function, save:Function}} store
+ * @returns {Promise<{forgotDevice:boolean, revokedToken:boolean}>}
+ */
+export async function logout(store) {
+  const t = store.load();
+  const result = { forgotDevice: false, revokedToken: false };
+  if (t) {
+    const clientId = t.clientId || jwtAud(t.idToken) || DEFAULT_CLIENT_ID;
+
+    // ForgetDevice には有効な AccessToken が要る。可能なら refresh で更新してから使う。
+    if (t.deviceKey) {
+      let accessToken = t.accessToken;
+      try {
+        await getValidIdToken(store, { marginSec: 300 });
+        accessToken = store.load()?.accessToken || accessToken;
+      } catch { /* refresh token 失効済みなら ForgetDevice は諦める */ }
+      if (accessToken) {
+        try {
+          await cognito.send(new ForgetDeviceCommand({ AccessToken: accessToken, DeviceKey: t.deviceKey }));
+          result.forgotDevice = true;
+        } catch { /* best-effort */ }
+      }
+    }
+
+    // refresh で token がローテートされている可能性があるので最新を読み直して失効させる。
+    const refreshToken = store.load()?.refreshToken || t.refreshToken;
+    if (refreshToken) {
+      try {
+        await cognito.send(new RevokeTokenCommand({ Token: refreshToken, ClientId: clientId }));
+        result.revokedToken = true;
+      } catch { /* best-effort */ }
+    }
+  }
+  store.clear();
+  store.clearPending();
+  return result;
 }
 
 /**
