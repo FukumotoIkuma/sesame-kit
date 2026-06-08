@@ -73,6 +73,7 @@ sesame init                 # 設定ディレクトリ初期化 (~/.config/sesam
 sesame login your@email.com # email に確認コードを送る
 sesame verify               # コードを入力。デバイスを鍵ごと取り込む
 sesame devices              # 取り込んだデバイスと名前を一覧 (以降この名前を使う)
+sesame logout               # このセッションの token を失効 + サーバ側でこのデバイスを解除し、ローカル token を削除
 ```
 
 公式アプリでデバイスを後から追加したら `sesame setup` で取り込みを再実行します。
@@ -307,6 +308,7 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 - `No tokens stored` / `No config at ...`: `sesame init` → `sesame login`、または `sesame migrate`。
 - `UserNotFoundException`: 自動 SignUp は組み込み済みです。それでも出る場合は Cognito 側の特殊ケースです。
 - `Cognito refresh returned no IdToken`: refreshToken が無効化されました (公式アプリでログアウト等)。再 sign-in します。
+- 初回 refresh (ログインの約24h後) で `Invalid Refresh Token`: デバイス確認前の古いトークンです。`sesame login` で Cognito にデバイスを登録 (`ConfirmDevice`、公式アプリと同じ) するため refreshToken が有効に保たれます。一度だけ再 sign-in して移行してください。
 - `triggerLock timeout`: `secretKey` 不一致、Hub3 オフライン、または WS の半開接続 (自動再接続で復帰)。
 - `learn timeout`: Hub3 が REGISTER に入りましたが波形を受け取れませんでした。距離を縮めるか、別のボタンを試してください。
 - `apiKeyId required`: `webapi` 系は config.json に `apiKeyId` を入れます (biz3 dev console で発行)。
