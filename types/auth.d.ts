@@ -47,8 +47,29 @@ export function loginVerify(store: {
     accessToken: string;
     deviceKey: string;
     deviceGroupKey: string;
+    devicePassword: string;
     username: any;
     lastRefresh: string;
+}>;
+/**
+ * ログアウト。公式アプリ相当にサーバ側もクリーンにする:
+ *   1. ForgetDevice — このデバイスの remembered 登録を解除 (ConfirmDevice の対。これが無いと
+ *      login のたびに remembered device がアカウントに溜まり続ける)。
+ *   2. RevokeToken  — この refresh token を失効 (ローカル削除だけでは生き残るため)。
+ * サーバ呼び出しは best-effort (失敗してもローカルは必ず消す)。どちらも対象はこのセッション/
+ * このデバイスのみで、公式アプリ等の別セッションには影響しない (GlobalSignOut は使わない)。
+ *
+ * @param {{load:Function, clear:Function, clearPending:Function, save:Function}} store
+ * @returns {Promise<{forgotDevice:boolean, revokedToken:boolean}>}
+ */
+export function logout(store: {
+    load: Function;
+    clear: Function;
+    clearPending: Function;
+    save: Function;
+}): Promise<{
+    forgotDevice: boolean;
+    revokedToken: boolean;
 }>;
 /**
  * 既存の localStorage ダンプから bootstrap (互換用)。

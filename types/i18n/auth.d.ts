@@ -3,11 +3,13 @@ declare namespace _default {
         "auth.noTokens": string;
         "auth.noPending": string;
         "auth.anotherChallenge": string;
+        "auth.wrongCodeRetry": string;
     };
     let ja: {
         "auth.noTokens": string;
         "auth.noPending": string;
         "auth.anotherChallenge": string;
+        "auth.wrongCodeRetry": string;
     };
 }
 export default _default;
