@@ -43,7 +43,7 @@ function runStdioSession(requests) {
     proc.stderr.once("data", () => {
       for (const r of requests) proc.stdin.write(JSON.stringify(r) + "\n");
     });
-    setTimeout(() => { if (proc && !proc.killed) proc.kill("SIGKILL"); reject(new Error("timeout")); }, 5000);
+    setTimeout(() => { if (proc && !proc.killed) proc.kill("SIGKILL"); reject(new Error("timeout")); }, 14000);
   });
 }
 
@@ -70,14 +70,14 @@ describe("sesame serve --stdio (end-to-end)", () => {
     expect(byId[3].error.code).toBe(-32601);
     // 看板 op lock.unlock が stdio 経路でも hub に届く (5 番目の framing)
     expect(byId[4].result).toMatchObject({ ok: true, name: "front" });
-  });
+  }, 15000); // 並列スイート実行下で実プロセス spawn が遅れても落ちないよう余裕を持たせる
 
   it("stdout は純 JSON-RPC のみ (人間向け案内は stderr)", async () => {
     const res = await runStdioSession([{ jsonrpc: "2.0", id: 1, method: "status" }]);
     // 全行が JSON としてパースできている (runStdioSession が JSON.parse 済み)
     expect(res).toHaveLength(1);
     expect(res[0].jsonrpc).toBe("2.0");
-  });
+  }, 15000); // 並列スイート実行下で実プロセス spawn が遅れても落ちないよう余裕を持たせる
 
   it("起動直後に event.ready を stdout へ通知する (stderr 儀式の代替)", async () => {
     const firstLine = await new Promise((resolveP, reject) => {
@@ -106,11 +106,11 @@ describe("sesame rpc --paths (機械可読な接続情報)", () => {
       proc.stdout.on("data", (d) => { buf += d.toString(); });
       proc.on("error", reject);
       proc.on("close", () => resolveP(buf));
-      setTimeout(() => reject(new Error("timeout")), 5000);
+      setTimeout(() => reject(new Error("timeout")), 14000);
     });
     const info = JSON.parse(out);
     expect(info.socket).toContain("sesame.sock");
     expect(info.tokenFile).toContain("serve.token");
     expect(info.token).toBeNull(); // HTTP 未起動なので token ファイルは無い
-  });
+  }, 15000); // 並列スイート実行下で実プロセス spawn が遅れても落ちないよう余裕を持たせる
 });

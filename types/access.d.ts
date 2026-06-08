@@ -36,7 +36,8 @@ export function getPasscodes(client: import("./transport.js").Hub3WsClient, { de
  *
  * ⚠️ getCards/clearCards と異なり obj でラップせず、deviceUUID と list を
  *    トップレベルに置く非対称構造 (useManageAuthData.js:379-394)。混同しないこと。
- * ⚠️ これは「DB への登録」のみ。実ファームウェア書き込みは別途 BLE(iotCmd) で行う 2 段構造。
+ * ⚠️ これは「DB への登録」のみ。実ファームウェア書き込みは別途 BLE
+ *    (SesameBle.biometric.cardAdd / cardBatchAdd, src/ble/biometric.js) で行う 2 段構造。
  *    list.length < 1 なら何もしない (biz3:381)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
@@ -69,7 +70,8 @@ export function postPasscodes(client: import("./transport.js").Hub3WsClient, { d
  *
  * ⚠️ obj/deviceUUID ラップ無し、items 配列をトップレベルに置く (useManageAuthData.js:355-365)。
  *    items 要素は { deviceID, cardID } (deviceUUID ではなく deviceID)。
- * ⚠️ これは「BLE 削除 ack 後の DB 後始末」。実削除は BLE iotCmd 経由で行う 2 段構造。
+ * ⚠️ これは「BLE 削除 ack 後の DB 後始末」。実削除は BLE
+ *    (SesameBle.biometric.cardDelete, src/ble/biometric.js) 経由で行う 2 段構造。
  *    !items.length なら何もしない (biz3:356)。
  * ⚠️ biz3 では delCards に応答ハンドラもコールバック登録も無い (useManageAuthData.js:265-267)。
  *    サーバは応答 op を返さないため、request で待つと必ず timeout する。biz3 と同じく
@@ -140,8 +142,8 @@ export function clearPasscodes(client: import("./transport.js").Hub3WsClient, { 
  *
  * ⚠️ biz3 の updateItemName (438-471) は **cardNameUUID が UUIDv4 形式でない場合**、
  *    WS を直接投げず先に BLE (SSM_OS3_CARD_CHANGE=107) で nameUUID を v4 化する分岐がある。
- *    その BLE payload 構築は別モジュール (iotCmd) の責務。
- *    本関数は **WS の updateCardName 送信のみ** を行う。CLI で BLE 前段を回避するには、
+ *    その BLE payload 構築は SesameBle.biometric.cardChange (CARD_CHANGE=107, src/ble/biometric.js)
+ *    の責務。本関数は **WS の updateCardName 送信のみ** を行う。CLI で BLE 前段を回避するには、
  *    呼び出し側が cardNameUUID に v4 UUID を渡すこと (crypto.generateUUID() で生成可)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
@@ -159,7 +161,8 @@ export function updateCardName(client: import("./transport.js").Hub3WsClient, { 
  * (useManageAuthData.js:201-210,331-344)。
  *
  * ⚠️ keyBoardPassCodeNameUUID が UUIDv4 形式でない場合、biz3 は先に BLE
- *    (SSM_OS3_PASSCODE_CHANGE=123) で v4 化する分岐がある (別モジュール責務)。
+ *    (SSM_OS3_PASSCODE_CHANGE=123) で v4 化する分岐がある
+ *    (SesameBle.biometric.passcodeChange, src/ble/biometric.js の責務)。
  *    本関数は WS 送信のみ。v4 UUID を渡せば BLE 前段を回避できる。
  *
  * @param {import("./transport.js").Hub3WsClient} client
@@ -187,6 +190,70 @@ export function updatePasscodeName(client: import("./transport.js").Hub3WsClient
 export function updateCardOwner(client: import("./transport.js").Hub3WsClient, { cardID, ownerSubUUID, timeoutMs }: {
     cardID: string;
     ownerSubUUID: string;
+    timeoutMs?: number;
+}): Promise<object | null>;
+/**
+ * createEnrollCollector の records ({cardID, cardName, cardType}) を postCards/postPasscodes の
+ * list 要素 ({ cardID, name, cardType, nameUUID }) へ写像する純関数。
+ *
+ * ⚠️ 未確認 (実機検証要): NOTIFY 由来の cardName は hex 文字列で届くため、ここでは
+ *   name にはそのまま cardName を載せる。DB が要求する nameUUID は BLE publish には含まれない
+ *   ため、欠落時は v4 UUID を新規採番する (updateCardName の v4 要件と同じ流儀)。
+ *   表示名や既存 nameUUID との突き合わせが必要な運用では呼び出し側で list を補正すること。
+ *
+ * @param {Array<{cardID:string, cardName:string, cardType:number}>} records
+ * @returns {Array<{cardID:string, name:string, cardType:number, nameUUID:string}>}
+ */
+export function enrolledToCardList(records: Array<{
+    cardID: string;
+    cardName: string;
+    cardType: number;
+}>): Array<{
+    cardID: string;
+    name: string;
+    cardType: number;
+    nameUUID: string;
+}>;
+/**
+ * BLE で実機登録 (タップ) されたカードの集約結果を DB へ同期する (postCards への委譲)。
+ * BiometricCommands.onEnroll の onEnrolled({kind:'card', records}) からそのまま呼べる。
+ *
+ * @param {import("./transport.js").Hub3WsClient} client
+ * @param {{deviceUUID:string, records:Array<{cardID:string,cardName:string,cardType:number}>, list?:object[], timeoutMs?:number}} params
+ *   list を渡せば変換をスキップしてそのまま postCards へ流す (呼び出し側で補正したい場合)。
+ *   省略時は records を enrolledToCardList で変換する。
+ * @returns {Promise<object|null>} postCards の戻り (list 空のときは null)
+ */
+export function syncEnrolledCards(client: import("./transport.js").Hub3WsClient, { deviceUUID, records, list, timeoutMs }: {
+    deviceUUID: string;
+    records: Array<{
+        cardID: string;
+        cardName: string;
+        cardType: number;
+    }>;
+    list?: object[];
+    timeoutMs?: number;
+}): Promise<object | null>;
+/**
+ * BLE で実機登録された暗証番号の集約結果を DB へ同期する (postPasscodes への委譲)。
+ * syncEnrolledCards と同型。
+ *
+ * ⚠️ postPasscodes の list 要素は biz3 上未確認 (access.js:222 参照) のため、records からの
+ *   自動変換は **誇張せず** enrolledToCardList と同じ最小写像に留める。確実な運用には
+ *   呼び出し側が list を組み立てて渡すこと。
+ *
+ * @param {import("./transport.js").Hub3WsClient} client
+ * @param {{deviceUUID:string, records:Array<{cardID:string,cardName:string,cardType:number}>, list?:object[], timeoutMs?:number}} params
+ * @returns {Promise<object|null>}
+ */
+export function syncEnrolledPasscodes(client: import("./transport.js").Hub3WsClient, { deviceUUID, records, list, timeoutMs }: {
+    deviceUUID: string;
+    records: Array<{
+        cardID: string;
+        cardName: string;
+        cardType: number;
+    }>;
+    list?: object[];
     timeoutMs?: number;
 }): Promise<object | null>;
 export const NAMESPACE_OPS: string[];

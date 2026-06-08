@@ -21,17 +21,81 @@ import { createBleTransport } from "./transport.js";
 import {
   ITEM, MECH_STATE, historyTagBLE, autolockData,
 } from "./protocol.js";
-import { capabilitiesForModel } from "./devicemodel.js";
+import { capabilitiesForModel, KIND } from "./devicemodel.js";
+import { BiometricCommands } from "./biometric.js";
+import { Bot2Commands } from "./bot2.js";
+import { WifiModule2, WM2_GATT } from "./wm2.js";
+import { Hub3Commands } from "./hub3.js";
+import { updateFirmwareBleOnly, updateFirmwareWM2 } from "./dfu.js";
 
-import { scanSesames, NobleTransport } from "./transport.js";
+import { scanSesames, listNearbyDevices, NobleTransport } from "./transport.js";
+import { signGuestKey } from "../devices.js";
 
 export { SesameBleSession, BleResultError } from "./session.js";
 // SesameResultCode (デバイス層の結果コード taxonomy)。BLE エラーの .resultName で分岐可能。
 export { RESULT as SESAME_RESULT_CODES, resultName } from "./protocol.js";
-export { NobleTransport, createBleTransport, advToDeviceUUID, scanSesames } from "./transport.js";
+export { NobleTransport, createBleTransport, advToDeviceUUID, parseAdvertisement, scanSesames, listNearbyDevices, peripheralToDiscovery } from "./transport.js";
 export * as protocol from "./protocol.js";
 export * as devicemodel from "./devicemodel.js";
 export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, KIND, PRODUCT_TYPES } from "./devicemodel.js";
+
+// 生体・アクセス制御デバイス (Touch/Touch Pro/Face/Palm) の BLE 登録。BiometricCommands は
+// SesameBle.biometric ゲッタ経由でも露出するが、純関数のペイロード生成器/publish ハンドラを
+// 直接使いたい結線向けに本モジュールごと再公開する。
+export {
+  BiometricCommands, handleBiometricPublish, parseTouchCard, parseTouchFace,
+  parseRemoteNanoTrigger, remoteNanoTriggerDelayData, radarSensitivityData,
+  createEnrollCollector,
+} from "./biometric.js";
+export * as biometric from "./biometric.js";
+
+// SESAME Bot2/Bot3 のスクリプト機能 (click(index) / select / get / sendClickScript)。Bot2Commands は
+// SesameBle.script ゲッタ経由でも露出するが、純関数の payload 生成器/parser を直接使いたい結線向けに
+// 本モジュールごと再公開する (実体は src/ble/bot2.js)。
+export {
+  Bot2Commands, BOT_ACTION_TYPE,
+  clickItemCode, bot2ActionToBytes, scriptToBytes,
+  parseCurrentScript, parseScriptNameList,
+} from "./bot2.js";
+export * as bot2 from "./bot2.js";
+
+// WifiModule2 (WM2) の BLE プロビジョニング (Wi-Fi 設定・子 Sesame 鍵登録)。WifiModule2 は
+// SesameBle.wifi ゲッタ経由でも露出するが、純関数の data builder / publish parser を直接使いたい
+// 結線向けに本モジュールごと再公開する。WM2 は専用 GATT (WM2_GATT) で接続する必要がある。
+export {
+  WifiModule2, WM2_GATT, WM2_ACTION,
+  scanWifiSSIDData, setWifiSSIDData, setWifiPasswordData, connectWifiData,
+  insertSesamesData, removeSesameData, networkStatusData,
+  parseScanWifiSSID, parseWifiSSIDPublish, parseWifiPasswordPublish,
+  parseNetworkStatus, parseSesameKeys, parseWM2Publish,
+} from "./wm2.js";
+export * as wm2 from "./wm2.js";
+
+// SESAME Hub3 / Hub3 LTE の BLE プロビジョニング (Wi-Fi 設定・SSID スキャン・子鍵削除・接続種別)。
+// Hub3Commands は SesameBle.hub3 ゲッタ経由でも露出するが、純関数の data builder / publish parser を
+// 直接使いたい結線向けに本モジュールごと再公開する。Hub3 は SESAME 既定 GATT (WM2 のような専用 GATT
+// は不要) で接続し、Hub3 固有の SesameItemCode (itemcodes.js HUB3_*) を使う。
+export {
+  Hub3Commands,
+  parseHub3Publish, parseNetworkType, parseMechSetting as parseHub3MechSetting,
+  parseScanWifiSSID as parseHub3ScanWifiSSID, parseSesameKeys as parseHub3SesameKeys,
+  networkTypeData,
+} from "./hub3.js";
+export * as hub3 from "./hub3.js";
+
+// BLE 経由ファームウェア更新 (DFU/OTA)。SesameBle.updateFirmware() 経由でも露出するが、
+// model 別の純ロジック (Hub3=BleOnly / WM2=WM2 / OS3 lock=transport ハンドル返し) と進捗購読
+// ヘルパを直接使いたい結線向けに本モジュールごと再公開する (実体は src/ble/dfu.js)。
+export {
+  updateFirmware, updateFirmwareBleOnly, updateFirmwareWM2,
+  onMoveToOtaProgress, onWM2OtaProgress,
+} from "./dfu.js";
+export * as dfu from "./dfu.js";
+
+// OS2 デバイス (SESAME2/3/4・初代 Bot・初代 Bike) は別プロトコルの専用ファサードを使う。
+// SesameBle (OS3) とは API は揃えてあるが login が ECDH 由来 (keyIndex/ssmPublicKey が必須) で別物。
+export { SesameOS2Ble, SesameOS2BleSession, SesameOS2BleCipher } from "./os2/index.js";
+export * as os2 from "./os2/index.js";
 
 /** deviceUUID 正規化 (照合用)。 */
 function normId(u) { return String(u).replace(/-/g, "").toLowerCase(); }
@@ -44,19 +108,39 @@ const STATUS_WAIT_MS = 4_000;
 export class SesameBle {
   /**
    * @param {{
-   *   secretKey: string|Buffer,   // 32hex のロック共通鍵 (cloud の `sesame devices` で取得済み)
+   *   secretKey?: string|Buffer,  // 32hex のロック共通鍵 (cloud の `sesame devices` で取得済み)。
+   *                               //   register モードでは不要 (工場出荷デバイスは鍵が未確定)。
    *   deviceUUID?: string,        // 対象識別 (advertise 照合)。複数 SESAME が近接する環境で必須
    *   address?: string,           // BLE アドレスで識別する代替
+   *   registerMode?: boolean,     // true で工場出荷デバイスの register() 用 (secretKey 不要・session を鍵無しで構築)
+   *   needAuthFromServer?: boolean, // 登録済みだが server 認証が要るデバイス (ゲスト鍵等) で connect 時に signGuestKey login
+   *   registerTransport?: Function, // makeRegisterTransport の戻り (needAuthFromServer の signGuestKey / register に使用)
    *   debug?: boolean,
    *   transport?: object,         // 独自トランスポート (省略時 noble)
    * }} opts
    */
-  constructor({ secretKey, deviceUUID, address, model = null, debug = false, scanTimeoutMs, transport } = {}) {
-    if (!secretKey) throw new Error(t("ble.secretKeyRequired"));
-    this._transport = transport || createBleTransport({ deviceUUID, address, debug, scanTimeoutMs });
-    this._session = new SesameBleSession({ transport: this._transport, secretKey, debug });
+  constructor({ secretKey, deviceUUID, address, model = null, registerMode = false, needAuthFromServer = false, registerTransport = null, debug = false, scanTimeoutMs, transport } = {}) {
+    // register モードでは secretKey は未確定 (登録ハンドシェイクで導出する) ため要求しない。
+    if (!registerMode && !secretKey) throw new Error(t("ble.secretKeyRequired"));
+    // WM2 は SESAME ロックとは別 GATT サービス (WM2_GATT) で discover/subscribe する。
+    // 既定 transport を作る場合のみ、WM2 model なら GATT を注入する (外部 transport 指定時は尊重)。
+    const isWm2 = capabilitiesForModel(model).wifiProvisioning;
+    this._transport = transport || createBleTransport({ deviceUUID, address, debug, scanTimeoutMs, gatt: isWm2 ? WM2_GATT : undefined });
+    // register モードは secretKey 無しで session を構築 (SesameBleSession.register() の契約)。
+    this._session = new SesameBleSession({ transport: this._transport, secretKey: registerMode ? undefined : secretKey, debug });
     this._model = model;
     this._caps = capabilitiesForModel(model); // 型ごとの能力 (SDK CHProductModel 準拠)
+    this._deviceUUID = deviceUUID;
+    this._registerMode = registerMode;
+    this._secretKey = secretKey;
+    this._needAuthFromServer = !!needAuthFromServer;
+    this._registerTransport = registerTransport;
+    this._debug = debug;
+    this._biometric = null; // BiometricCommands の遅延生成キャッシュ (biometric ゲッタ)
+    this._bot2 = null;      // Bot2Commands の遅延生成キャッシュ (script ゲッタ)
+    this._wifi = null;      // WifiModule2 の遅延生成キャッシュ (wifi ゲッタ)
+    this._hub3 = null;      // Hub3Commands の遅延生成キャッシュ (hub3 ゲッタ)
+    this._fingerPrint = null; // BiometricCommands (指紋サブセット) の遅延生成キャッシュ (fingerPrint ゲッタ)
   }
 
   /** デバイスの model 文字列 (例 "sesame_5" / "bot_2")。未指定なら null。 */
@@ -65,6 +149,202 @@ export class SesameBle {
   get capabilities() { return this._caps; }
   /** この操作を BLE で送れるか (このファサードは BLE 専用なので ble 能力で判定)。 */
   supports(op) { return this._caps.ble.includes(op); }
+
+  /**
+   * 生体・アクセス制御デバイス (Touch/Touch Pro/Face/Palm 系) の BLE 登録 API。
+   *
+   * card/finger/passcode/face/palm の ModeSet/Get・Add/Delete/Change・batchAdd と、publish
+   * 受信を delegate に流す registerDelegate() を持つ BiometricCommands を返す
+   * (実体は src/ble/biometric.js、契約は session.request / session.onPublish に乗る)。
+   *
+   * capabilitiesForModel(model).biometric が true の機種でのみ露出する。それ以外 (ロック/Bot/
+   * Bike/Hub3/WiFi/未知) で参照すると enroll 非対応として明示エラーを投げる (op を捏造しない)。
+   * connect() 前でも参照できる (session.request は connect 後に login 済みを要求する)。
+   *
+   * @returns {BiometricCommands}
+   */
+  get biometric() {
+    if (!this._caps.biometric) {
+      throw new Error(t("ble.biometricNotSupported", {
+        label: this._caps.label,
+        modelSuffix: this._model ? ` (${this._model})` : "",
+      }));
+    }
+    if (!this._biometric) this._biometric = new BiometricCommands(this._session);
+    return this._biometric;
+  }
+
+  /**
+   * SESAME Bike3 の指紋登録 API (CHSesameBike3Device.kt:20-24 が mixin する CHFingerPrintCapable と 1:1)。
+   *
+   * Bike3 は Bike2 (解錠のみ) に CHFingerPrintCapable **だけ**を足した固有型で、card/passcode/face/palm
+   * は持たない。よって biometric ゲッタ (生体全機能) ではなく、指紋サブセットのみを露出する:
+   *   fingerPrints() / fingerPrintDelete(id) / fingerPrintChange(id, hexName) /
+   *   fingerPrintModeGet() / fingerPrintModeSet(mode) と、publish 受信を delegate に流す
+   *   registerDelegate()。実体は biometric.js の BiometricCommands (itemCode 115-122) を共用する
+   *   (重複実装しない) が、ここでは指紋系メソッドだけを通す薄いビューに絞る。
+   *
+   * capabilitiesForModel(model).fingerprint が true の機種 (= Bike3) でのみ露出する。それ以外
+   * (ロック/Bot/Bike2/biometric/Hub3/WiFi/未知) で参照すると非対応として明示エラーを投げる (op を捏造しない)。
+   * connect() 前でも参照できる (session.request は connect 後に login 済みを要求する)。
+   *
+   * @returns {{fingerPrints:Function, fingerPrintDelete:Function, fingerPrintChange:Function, fingerPrintModeGet:Function, fingerPrintModeSet:Function, registerDelegate:Function}}
+   */
+  get fingerPrint() {
+    if (!this._caps.fingerprint) {
+      throw new Error(t("ble.fingerPrintNotSupported", {
+        label: this._caps.label,
+        modelSuffix: this._model ? ` (${this._model})` : "",
+      }));
+    }
+    if (!this._fingerPrint) {
+      // BiometricCommands を共用しつつ、指紋系メソッドだけを bind した限定ビューを返す
+      // (card/passcode/face/palm を露出しないことで Bike3 の能力を SDK 通り絞る)。
+      const c = new BiometricCommands(this._session);
+      this._fingerPrint = {
+        fingerPrints: c.fingerPrints.bind(c),
+        fingerPrintDelete: c.fingerPrintDelete.bind(c),
+        fingerPrintChange: c.fingerPrintChange.bind(c),
+        fingerPrintModeGet: c.fingerPrintModeGet.bind(c),
+        fingerPrintModeSet: c.fingerPrintModeSet.bind(c),
+        registerDelegate: c.registerDelegate.bind(c),
+      };
+    }
+    return this._fingerPrint;
+  }
+
+  /**
+   * SESAME Bot2 / Bot3 のスクリプト API (CHSesameBot2Device.kt:73-193 と 1:1)。
+   *
+   * click(index, tag) / sendClickScript(index, script) / selectScript(index) /
+   * getCurrentScript(index) / getScriptNameList() と、直近の SCRIPT_NAME_LIST 結果を保持する
+   * scripts プロパティを持つ Bot2Commands を返す (実体は src/ble/bot2.js、契約は session.request に乗る)。
+   *
+   * capabilitiesForModel(model).script が true の機種 (= Bot2/Bot3) でのみ露出する。それ以外
+   * (ロック/Bike/biometric/Hub3/WiFi/未知) で参照すると非対応として明示エラーを投げる (op を捏造しない)。
+   * connect() 前でも参照できる (session.request は connect 後に login 済みを要求する)。
+   *
+   * 注: ファサードの click(tag) (CLICK=89) は従来通り残す (index 無しの単純クリック)。index 指定 click と
+   * スクリプト管理はこの script ゲッタ経由で行う。
+   *
+   * @returns {Bot2Commands}
+   */
+  get script() {
+    if (!this._caps.script) {
+      throw new Error(t("ble.bot2NotSupported", {
+        label: this._caps.label,
+        modelSuffix: this._model ? ` (${this._model})` : "",
+      }));
+    }
+    if (!this._bot2) this._bot2 = new Bot2Commands(this._session, historyTagBLE);
+    return this._bot2;
+  }
+
+  /**
+   * WifiModule2 (WM2) の BLE プロビジョニング API。
+   *
+   * scanWifiSSID / setWifiSSID / setWifiPassword / connectWifi / insertSesames / removeSesame /
+   * networkStatus と、正規化済み WM2 publish ({kind, ...}) を購読する onPublish を持つ
+   * WifiModule2 を返す (実体は src/ble/wm2.js、契約は session.request / session.onPublish に乗る)。
+   *
+   * capabilitiesForModel(model).wifiProvisioning が true の機種 (= WM2) でのみ露出する。それ以外
+   * (ロック/Bot/Bike/biometric/Hub3/未知) で参照すると非対応として明示エラーを投げる (op を捏造しない)。
+   * connectWifi の companyId (= BuildConfig.API_GATEWAY_CLIENT_ID) と deviceUUID はここで束ねて
+   * WifiModule2 に渡す (本番では config/env から供給する想定)。
+   *
+   * 注: WM2 は専用 GATT (WM2_GATT) で接続する必要がある。SesameBle を WM2 model で構築すると
+   * 既定 transport に WM2_GATT が注入される (constructor)。connect() 前でも参照できる
+   * (session.request は connect 後に login 済みを要求する)。
+   *
+   * @param {{companyId?:string}} [opts] connectWifi 用 companyId (API_GATEWAY_CLIENT_ID) の上書き。
+   * @returns {WifiModule2}
+   */
+  wifi({ companyId } = {}) {
+    if (!this._caps.wifiProvisioning) {
+      throw new Error(t("ble.wm2NotSupported", {
+        label: this._caps.label,
+        modelSuffix: this._model ? ` (${this._model})` : "",
+      }));
+    }
+    if (!this._wifi) {
+      this._wifi = new WifiModule2({ session: this._session, companyId, deviceUUID: this._deviceUUID });
+    }
+    return this._wifi;
+  }
+
+  /**
+   * WM2 を工場出荷状態へリセットする (CHWifiModule2Device.kt:437-448 reset() と 1:1)。
+   *
+   * RESET_WM2(18) を送り、成功時にセッションを破棄する (= SDK の dropKey 相当)。詳細は
+   * WifiModule2.reset() を参照。wifiProvisioning 非対応機種では wifi() と同じく明示エラーを投げる。
+   *
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer}>} RESET_WM2 の応答 (成功時 resultCode=0)
+   */
+  resetWifiModule2(opts = {}) {
+    return this.wifi().reset(opts);
+  }
+
+  /**
+   * SESAME Hub3 / Hub3 LTE の BLE プロビジョニング API (CHHub3Device.kt の Wi-Fi/SSID/子鍵/接続種別と 1:1)。
+   *
+   * scanWifiSSID / setWifiSSID / setWifiPassword / removeSesame / networkType と、正規化済み Hub3
+   * publish ({kind, ...}) を購読する onPublish を持つ Hub3Commands を返す (実体は src/ble/hub3.js、
+   * 契約は session.request / session.onPublish に乗る)。
+   *
+   * capabilitiesForModel(model).hubProvisioning が true の機種 (= Hub3/Hub3 LTE) でのみ露出する。
+   * それ以外 (ロック/Bot/Bike/biometric/WM2/未知) で参照すると非対応として明示エラーを投げる (op を捏造しない)。
+   *
+   * 注: Hub3 は SESAME 既定 GATT で接続する (WM2 のような専用 GATT は不要)。connect() 前でも参照できる
+   * (session.request は connect 後に login 済みを要求する)。Hub3 は BLE 施錠制御 op (lock/unlock 等) を
+   * 持たない (ble[] は空) が、connect/login/register/reset/updateFirmware は OS3 共通経路で動く。
+   *
+   * @returns {Hub3Commands}
+   */
+  hub3() {
+    if (!this._caps.hubProvisioning) {
+      throw new Error(t("ble.hub3NotSupported", {
+        label: this._caps.label,
+        modelSuffix: this._model ? ` (${this._model})` : "",
+      }));
+    }
+    if (!this._hub3) {
+      this._hub3 = new Hub3Commands({ session: this._session });
+    }
+    return this._hub3;
+  }
+
+  /**
+   * BLE 経由ファームウェア更新 (DFU/OTA) を開始する。model で経路が分岐する (SDK と 1:1):
+   *   - WM2 (wifiProvisioning)        → OPEN_OTA_SERVER(126) を送る updateFirmwareWM2
+   *                                     (CHWifiModule2Device.kt:450-458)
+   *   - Hub3 / OS3 lock (それ以外の OS3) → MOVE_TO(84) を送る updateFirmwareBleOnly
+   *                                     (CHHub3Device.kt:213-226 / CHSesameOS3.kt:441-449)
+   *
+   * 進捗は publish の payload 先頭バイト (onProgress(progress, body))。応答が来た時点 (OTA サーバ
+   * 起動完了) で内部購読は停止する。100% 完了まで進捗を取り続けたい場合は ble.onMoveToOtaProgress /
+   * ble.onWM2OtaProgress を直接購読する。
+   *
+   * OTA に対応しない機種 (OS2 系・Bot/Bike/biometric・未知) は明示エラーを投げる (op を捏造しない)。
+   *
+   * @param {{onProgress?:(progress:number|null, body:Buffer)=>void, timeoutMs?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer, session:object}>}
+   */
+  updateFirmware(opts = {}) {
+    // OTA は OS3 系の Hub3 / WM2 / OS3 lock のみ。能力テーブル上は dedicated フラグを持たないので
+    // kind (HUB3 / WIFI / LOCK5) で対象を判定する (mechSetting を autolock 能力で弾くのと同じ流儀)。
+    const kind = this._caps.kind;
+    if (this._caps.wifiProvisioning || kind === KIND.WIFI) {
+      return updateFirmwareWM2(this._session, opts);
+    }
+    if (kind === KIND.HUB3 || kind === KIND.LOCK5) {
+      return updateFirmwareBleOnly(this._session, opts);
+    }
+    throw new Error(t("ble.dfuNotSupported", {
+      label: this._caps.label,
+      modelSuffix: this._model ? ` (${this._model})` : "",
+    }));
+  }
 
   /** BLE で送れない操作を弾く。SDK では型ごとに能力が非対称 (Bot は click のみ等)。 */
   _assertOp(op) {
@@ -79,16 +359,99 @@ export class SesameBle {
     }
   }
 
+  /**
+   * Sesame5/6 系 OS3 ロック (LOCK5 kind) 固有の BLE コマンドを弾く。
+   * SDK では magnet(17)/OPS_CONTROL(92)/SET_ADV_PRODUCT_TYPE(205)/mechSetting(80) の itemCode は
+   * CHSesame5 インターフェース (open/devices/CHSesame5.kt:16/19/21) にのみ宣言され、実装も
+   * ble/os3/CHSesame5Device.kt のみ。OS2 ロック (CHSesame2Device) や Bot/Bike/biometric/Hub3/WM2 は
+   * 持たない。autolock 能力は OS2 SESAME2/4 も持つため _assertOp("autolock") では弾けない
+   * (over-exposure)。setBleTxPower と同様に os===3 && kind===LOCK5 で明示判定する。
+   * @param {string} api エラー文に出すメソッド名
+   */
+  _assertLock5(api) {
+    if (!(this._caps.os === 3 && this._caps.kind === KIND.LOCK5)) {
+      throw new Error(t("ble.lock5OnlyNotSupported", {
+        label: this._caps.label,
+        modelSuffix: this._model ? ` (${this._model})` : "",
+        api,
+      }));
+    }
+  }
+
   /** mechStatus publish を購読 (戻り値 unsubscribe)。 */
   onStatus(fn) { return this._session.onStatus(fn); }
   /** 最後に受信した mechStatus。 */
   get lastStatus() { return this._session.lastStatus; }
+  /** 最後に受信した mechSetting (角度キャリブレーション lockPosition/unlockPosition/autoLockSecond)。未受信なら null。 */
+  get lastMechSetting() { return this._session.lastMechSetting; }
+  /** 最後に受信した opsSetting (opsLockSecond)。未受信なら null。 */
+  get lastOpsSetting() { return this._session.lastOpsSetting; }
   get isConnected() { return this._session.isLoggedIn; }
 
-  /** 接続 + login。 */
-  async connect() { await this._session.connect(); return this; }
+  /**
+   * 接続 + login。
+   *
+   * needAuthFromServer=true (かつ registerTransport 指定) のとき、initial token を
+   * signGuestKey に渡してサーバ署名済み session token を取得する経路で login する
+   * (CHHub3Device.kt:163-174 token!=null / CHSesameOS3.kt:473-487)。登録済みだが
+   * ゲスト鍵・期限付き鍵などで secretKey 単体では session を確立できないデバイス向け。
+   * needAuthFromServer=false の通常デバイスは secretKey からローカルに session 鍵を導出する。
+   */
+  async connect() {
+    // login が失敗 (login timeout / signLogin throw / 非0 resultCode) すると、その時点で
+    // transport.connect() は既に実 GATT 接続を確立済み (transport.js:189)。失敗パスで
+    // disconnect しないと BLE 接続 + notify 購読がリークするため、必ずクリーンアップしてから
+    // rethrow する (connectMany / use の失敗パスと対称)。disconnect 自体のエラーは握り潰す
+    // (本来の login エラーを覆い隠さないため)。
+    try {
+      if (this._needAuthFromServer) {
+        if (typeof this._registerTransport !== "function") throw new Error(t("ble.needAuthRequiresTransport"));
+        if (!this._deviceUUID) throw new Error(t("ble.registerDeviceUUIDRequired"));
+        const secretKeyHex = Buffer.isBuffer(this._secretKey) ? this._secretKey.toString("hex") : this._secretKey;
+        // signLogin: 4B token の hex を受け取り、サーバ署名済み session token (hex) を返す。
+        await this._session.connect({
+          signLogin: (tokenHex) => signGuestKey(this._registerTransport, {
+            deviceUUID: this._deviceUUID, tokenHex, secretKey: secretKeyHex,
+          }),
+        });
+      } else {
+        await this._session.connect();
+      }
+    } catch (err) {
+      await this._session.disconnect().catch(() => {});
+      throw err;
+    }
+    return this;
+  }
   /** 切断。 */
   async close() { await this._session.disconnect(); }
+
+  /**
+   * 工場出荷 (未登録) デバイスの初期ペアリング / 登録 (ECDH + サーバ認証)。
+   * `registerMode: true` で構築した SesameBle で呼ぶ (secretKey 無し)。
+   *
+   * フロー (CHHub3Device.kt:176-211): connect(register モード) → session.register() で
+   * REGISTRATION ハンドシェイク → 確定した {deviceUUID, secretKey, productType, serverSecret} を返す。
+   * 戻り値の secretKey を保存すれば、以降は通常の SesameBle({ secretKey }).connect() で操作できる。
+   *
+   * @param {{deviceUUID?:string, productType?:(string|number), nowMs?:number}} [opts]
+   *   deviceUUID 省略時はコンストラクタの deviceUUID を使用。
+   * @returns {Promise<{deviceUUID:string, secretKey:string, productType:(string|number|undefined), serverSecret:string}>}
+   */
+  async register({ deviceUUID, productType, nowMs } = {}) {
+    // ファサード文脈のガード: secretKey 付き (= 非 registerMode) で構築した SesameBle で
+    // register() を呼ぶのは誤用。session 層へ素通しすると低レベルの registerNeedsFactory
+    // (「session を鍵無しで構築せよ」) が表面化し、ファサード利用者に session を直せと誤誘導する。
+    // ここで registerMode: true を渡せ / secretKey 無しで構築せよ、というファサード文脈の案内を出す
+    // (session.register の _secretKey ガードに到達する前に弾く)。
+    if (!this._registerMode && this._secretKey) throw new Error(t("ble.registerNeedsFactoryFacade"));
+    return this._session.register({
+      deviceUUID: deviceUUID || this._deviceUUID,
+      productType: productType ?? this._model ?? undefined,
+      registerTransport: typeof this._registerTransport === "function" ? this._registerTransport : undefined,
+      nowMs,
+    });
+  }
 
   /**
    * 施錠 (BLE item=82)。tag は履歴に残す任意ラベル。
@@ -138,13 +501,114 @@ export class SesameBle {
   }
 
   /**
-   * 履歴を 1 バッチ取得 (BLE item=4)。payload の解析は呼び出し側 (生バイト返し)。
+   * mechSetting (角度キャリブレーション) を書き込む (BLE item=80)。Sesame5/6 系ロックのみ。
+   * **BLE 経由のみ**で本体に反映される (クラウド経路には存在しない設定)。
+   * lockTarget/unlockTarget は施錠/解錠位置のエンコーダ角 (符号付き 16bit)。
+   * 成功時は lastMechSetting キャッシュの lock/unlock 位置も更新される (SDK と同じ局所更新)。
+   * @param {number} lockTarget   施錠目標角 (-32768..32767)
+   * @param {number} unlockTarget 解錠目標角 (-32768..32767)
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  configureLockPosition(lockTarget, unlockTarget) {
+    // mechSetting (item=80) は CHSesame5 固有 (CHSesame5.kt)。OS2 SESAME2/4 も autolock を持つため
+    // _assertOp("autolock") では OS2 ロックを通してしまう。os===3 && kind===LOCK5 で厳密に弾く。
+    this._assertLock5("configureLockPosition");
+    return this._session.configureLockPosition(lockTarget, unlockTarget);
+  }
+
+  /**
+   * magnet コマンドを送る (BLE item=17、CHSesame5Device.kt:118-126 magnet() と 1:1)。
+   * 引数なし・空ペイロード。magnet() は CHSesame5 固有 (CHSesame5.kt:16) のため
+   * os===3 && kind===LOCK5 で厳密に弾く (OS2 SESAME2/4 も autolock を持つので op では弾けない)。
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  magnet() {
+    this._assertLock5("magnet");
+    return this._session.magnet();
+  }
+
+  /**
+   * opSensorControl(seconds) — Open Sensor の自動施錠秒数を設定する (BLE item=92、
+   * CHSesame5Device.kt:107-116 と 1:1)。OPS_CONTROL は CHSesame5 固有 (CHSesame5.kt:19) のため
+   * os===3 && kind===LOCK5 で厳密に弾く (OS2 SESAME2/4 も autolock を持つので op では弾けない)。
+   * 成功時は lastOpsSetting キャッシュの opsLockSecond も更新される (SDK と同じ局所更新)。
+   * @param {number} seconds 0..65535 (0 = 無効)
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  opSensorControl(seconds) {
+    this._assertLock5("opSensorControl");
+    return this._session.opSensorControl(seconds);
+  }
+
+  /**
+   * sendAdvProductType(data) — LOCK5 のアドバタイズ productType を書き換える (BLE item=205、
+   * CHSesame5Device.kt:85-94 と 1:1)。data は機種固有の生バイト列をそのまま送る。
+   * SET_ADV_PRODUCT_TYPE は CHSesame5 固有 (CHSesame5.kt:21) のため os===3 && kind===LOCK5 で
+   * 厳密に弾く (OS2 SESAME2/4 も autolock を持つので op では弾けない)。
+   * @param {Buffer} data 送信する生バイト列
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  sendAdvProductType(data) {
+    this._assertLock5("sendAdvProductType");
+    return this._session.sendAdvProductType(data);
+  }
+
+  /**
+   * setBleTxPower(txPower) — BLE 送信出力を設定する (BLE item=206)。
+   * SDK では OS3 ロック (CHSesameOS3LockBase.kt:62-71) と生体・アクセス制御デバイス
+   * (CHSesameBiometricDeviceImpl.kt:332-341) の双方が実装する。よって OS3 の
+   * LOCK5 または biometric kind のみで露出し、それ以外 (OS2 系・Bot/Bike・Hub3・WM2・未知) は
+   * 明示エラーを投げる (op を捏造しない)。txPower は符号付き 1B (-128..127)。
+   * @param {number} txPower -128..127
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  setBleTxPower(txPower) {
+    if (!(this._caps.os === 3 && (this._caps.kind === KIND.LOCK5 || this._caps.biometric))) {
+      throw new Error(t("ble.txPowerNotSupported", {
+        label: this._caps.label,
+        modelSuffix: this._model ? ` (${this._model})` : "",
+      }));
+    }
+    return this._session.setBleTxPower(txPower);
+  }
+
+  /**
+   * reset() — OS3 デバイスを工場出荷状態へ戻す (BLE item=104、CHSesameOS3.kt:420-439 と 1:1)。
+   * SDK の reset() は CHSesameOS3 の open fun で、全 OS3 デバイス (LOCK5/Bot2/Bike2/Bike3/
+   * biometric/Hub3/WM2) が継承する。OS2 系 (CHSesame2/Bot/Bike) は別の reset 系統なので弾く。
+   * 成功時はセッションが破棄される (session.reset 内で disconnect 相当、dropKey に対応)。
+   * 鍵レコードの削除そのものは呼び出し側の責務。
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  reset() {
+    if (this._caps.os !== 3) {
+      throw new Error(t("ble.resetNotSupported", {
+        label: this._caps.label,
+        modelSuffix: this._model ? ` (${this._model})` : "",
+      }));
+    }
+    return this._session.reset();
+  }
+
+  /**
+   * versionTag (ファームウェアバージョン文字列) を取得する (BLE item=5)。
+   * @returns {Promise<string>}
+   */
+  getVersionTag() { return this._session.getVersionTag(); }
+
+  /**
+   * 履歴を 1 件取得 (BLE item=4)。payload の解析は呼び出し側 (生バイト返し)。
+   * 先頭 4B が recordId で、deleteHistory に渡せばその 1 件をデバイスから削除できる。
    * @returns {Promise<Buffer>}
    */
-  async history() {
-    const r = await this._session.request(ITEM.HISTORY, Buffer.from([0x01]));
-    return r.payload;
-  }
+  history() { return this._session.readHistory(); }
+
+  /**
+   * 履歴 1 件をデバイスから削除する (BLE item=18)。
+   * @param {Buffer} historyPayload history() が返した payload (先頭 4B が recordId)
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  deleteHistory(historyPayload) { return this._session.deleteHistory(historyPayload); }
 
   /**
    * connect → fn → close を自動で行うヘルパー。
@@ -156,6 +620,37 @@ export class SesameBle {
     await lock.connect();
     try { return await fn(lock); }
     finally { await lock.close(); }
+  }
+
+  /**
+   * 工場出荷 (未登録) デバイスを scan → connect → register → close まで自動化する。
+   * register モードで SesameBle を構築し、登録ハンドシェイクを実行して確定した鍵を返す。
+   *
+   * @param {{deviceUUID?:string, address?:string, productType?:(string|number),
+   *          registerTransport?:Function, debug?:boolean, scanTimeoutMs?:number,
+   *          transport?:object, nowMs?:number}} opts
+   *   deviceUUID/address はスキャン照合用。registerTransport を渡すと register() 内で
+   *   サーバ側 registerSesame5 もコールする (失敗してもログのみで継続)。
+   * @param {(result:{deviceUUID:string, secretKey:string, productType:(string|number|undefined), serverSecret:string})=>Promise<any>} [fn]
+   *   登録結果を受け取る任意のコールバック (鍵の保存など)。close 前に実行される。
+   * @returns {Promise<{deviceUUID:string, secretKey:string, productType:(string|number|undefined), serverSecret:string}>}
+   *   登録結果 (fn 指定時もこの結果を返す)。
+   */
+  static async registerOnce(opts = {}, fn) {
+    const { productType, nowMs, ...ctorOpts } = opts;
+    const ble = new SesameBle({ ...ctorOpts, registerMode: true });
+    // register() は内部で transport.connect() 済み (session.js:192) なので、その後の例外
+    // (registerTimeout / registerNotReady / device pubkey 長エラー / ECDH 失敗) でも実 GATT
+    // 接続が開いたまま残る。ble 構築直後から try/finally で囲み、register の reject 時も含めて
+    // 必ず close() する (connect() の失敗パスと対称・取りこぼし防止)。
+    try {
+      // session.register() が transport.connect → initial 待ち → ハンドシェイクまで一括で行う。
+      const result = await ble.register({ productType, nowMs });
+      if (typeof fn === "function") await fn(result);
+      return result;
+    } finally {
+      await ble.close().catch(() => {});
+    }
   }
 
   /**
@@ -187,5 +682,46 @@ export class SesameBle {
     }));
 
     return { connected, unreachable, failed };
+  }
+
+  /**
+   * 近接 SESAME を**鍵無しで**列挙する (transport.listNearbyDevices の薄いファサード)。
+   * scanSesames が deviceUUID→peripheral の Map しか返さないのに対し、こちらは advertise だけから
+   * 判る属性 ({deviceUUID, productType, model, kind, isRegistered, advTagB1, isConnectable, rssi,
+   * localName, address, peripheral}) を機種付きで返す (CHBleManager.kt の chDeviceMap 構築に対応)。
+   *
+   * 用途: 登録前 (工場出荷) デバイスの発見 (isRegistered=false を拾って registerOnce へ)、
+   * 鍵を持たない近接デバイスの可視化、接続前の機種判定など。返り値の peripheral を
+   * SesameBle.fromDiscovery() / connectMany / NobleTransport に渡せば**再スキャン無しで**接続できる。
+   *
+   * @param {{timeoutMs?:number, debug?:boolean, includeUnknown?:boolean}} [opts]
+   * @returns {Promise<Array<object>>} listNearbyDevices の発見結果配列
+   */
+  static listNearby(opts = {}) {
+    return listNearbyDevices(opts);
+  }
+
+  /**
+   * listNearbyDevices() / listNearby() の発見結果 1 件から、**再スキャン無しで**接続可能な
+   * SesameBle を構築する。発見結果の peripheral・deviceUUID・model をそのまま引き継ぎ、
+   * secretKey など鍵情報は呼び出し側が補う (発見段階では鍵は未知)。
+   *
+   * @param {object} entry listNearbyDevices() の要素 ({deviceUUID, model, peripheral, ...})
+   * @param {{secretKey?:string|Buffer, registerMode?:boolean, needAuthFromServer?:boolean,
+   *          registerTransport?:Function, debug?:boolean}} [opts]
+   *   secretKey 等の鍵/モード指定。registerMode:true なら工場出荷デバイスの register() 用 (鍵不要)。
+   * @returns {SesameBle}
+   */
+  static fromDiscovery(entry, opts = {}) {
+    if (!entry || !entry.peripheral) throw new Error(t("ble.discoveryEntryRequired"));
+    const { debug = false, ...rest } = opts;
+    return new SesameBle({
+      deviceUUID: entry.deviceUUID,
+      model: entry.model,
+      debug,
+      // 発見済み peripheral を注入 = connect() 時にスキャンを省略する (connectMany と同じ高速パス)。
+      transport: new NobleTransport({ peripheral: entry.peripheral, debug }),
+      ...rest,
+    });
   }
 }

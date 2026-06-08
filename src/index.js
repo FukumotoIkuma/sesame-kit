@@ -40,6 +40,9 @@ export * as lock from "./lock.js";
 // BLE 直接制御 (クラウド非経由)。SesameBle.use({secretKey, deviceUUID}, fn) で利用。
 export * as ble from "./ble/index.js";
 export { SesameBle } from "./ble/index.js";
+// OS2 デバイス (SESAME2/3/4・初代 Bot・初代 Bike) の BLE 直接制御。login が ECDH 由来のため
+// SesameBle とは別ファサード (keyIndex/ssmPublicKey + transport 注入が必須)。
+export { SesameOS2Ble } from "./ble/index.js";
 // WS 応答 success 判定の共通 helper (低レベル import で op を直叩きする消費者向け)。
 export { assertSuccess } from "./util.js";
 // lock.* の主要関数は個別 named export でも提供 (後方互換 + 利便性)。

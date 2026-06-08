@@ -13,15 +13,28 @@
 //   publish(8)+mechStatus(81) は onStatus リスナへ。
 
 import { Buffer } from "node:buffer";
+import { createECDH } from "node:crypto";
 import { t } from "../i18n.js";
+import { ecdhSecretPre16 } from "../crypto.js";
+import { registerSesame5 } from "../devices.js";
 import {
-  deriveSessionKey, loginPayload, ccmEncrypt, ccmDecrypt,
-  splitSegments, SegmentAssembler, buildSendFrame, parseRecvFrame,
-  parseMechStatus, OP, ITEM, SEG, resultName,
+  deriveSessionKey, deriveSessionKeyFromEcdh, loginPayload, ccmEncrypt, ccmDecrypt,
+  splitSegments, SegmentAssembler, buildSendFrame, parseRecvFrame, registrationData,
+  parseMechStatus, parseMechSetting, parseOpsSetting, configureLockPositionData,
+  opSensorControlData, bleTxPowerData,
+  timeSyncData, parseDeviceTimeSeconds, needsTimeSync,
+  historyReadData, historyDeleteData, OP, ITEM, SEG, resultName,
 } from "./protocol.js";
+import { parseBiometricMechStatus } from "./biometric.js";
 
 const DEFAULT_TIMEOUT_MS = 5_000;
 const LOGIN_TIMEOUT_MS = 8_000;
+const REGISTER_TIMEOUT_MS = 8_000;
+
+// EC point uncompressed 形式の先頭バイト (0x04 ‖ X32 ‖ Y32 = 65B)。
+// SDK の EccKey.getPubK() は prefix 無しの 64B raw (X‖Y) を送る (registrationData の契約)
+// ため、Node の getPublicKey() (既定 65B) から先頭 1B を剥がして 64B にする。
+const ECDH_UNCOMPRESSED_PREFIX = 0x04;
 
 /**
  * BLE デバイスが非 0 の resultCode を返したときのエラー。
@@ -56,14 +69,19 @@ export class BleResultError extends Error {
 
 export class SesameBleSession {
   /**
-   * @param {{transport:BleTransport, secretKey:string|Buffer, debug?:boolean,
+   * @param {{transport:BleTransport, secretKey?:string|Buffer, debug?:boolean,
    *          defaultTimeoutMs?:number}} opts
+   *   secretKey は **登録済みデバイスへのログイン時のみ必須**。工場出荷 (未登録) デバイスを
+   *   register() で登録する場合は secretKey を渡さずに構築する (initial 受信で login を試みず
+   *   ReadyToRegister 状態へ遷移する。CHSesameOS3.kt:468-491 isRegistered=false 相当)。
    */
   constructor({ transport, secretKey, debug = false, defaultTimeoutMs = DEFAULT_TIMEOUT_MS }) {
     if (!transport) throw new Error(t("ble.transportRequired"));
-    if (!secretKey) throw new Error(t("ble.secretKeyRequiredSession"));
+    // secretKey 無し = 工場出荷デバイスの register() 用。connect()/login は secretKey を要求する。
     this._transport = transport;
-    this._secretKey = Buffer.isBuffer(secretKey) ? secretKey : Buffer.from(secretKey, "hex");
+    this._secretKey = secretKey == null
+      ? null
+      : (Buffer.isBuffer(secretKey) ? secretKey : Buffer.from(secretKey, "hex"));
     this._debug = debug;
     this._defaultTimeoutMs = defaultTimeoutMs;
 
@@ -73,20 +91,51 @@ export class SesameBleSession {
     this._encCount = 0;
     this._decCount = 0;
     this._loggedIn = false;
+    this._readyToRegister = false; // initial 受信時 secretKey 無しで true (CHSesameOS3.kt:468-491)
+    this._readyWaiter = null;      // register() 内で ReadyToRegister(=initial 受信) を待つ
+    this._registerWaiter = null;   // register() の REGISTRATION 応答待ち
 
     /** @type {Map<number, Array<{resolve:Function, reject:Function, timer:any}>>} item → FIFO */
     this._pending = new Map();
     this._statusListeners = new Set();
     this._publishListeners = new Set();
     this._lastStatus = null;
+    this._lastMechSetting = null; // 最後に受けた mechSetting (parseMechSetting の結果)
+    this._lastOpsSetting = null;  // 最後に受けた opsSetting (parseOpsSetting の結果)
     this._loginWaiter = null;
+    // サーバ認証 login (isNeedAuthFromServer) 用の非同期 token 解決器。
+    // connect({ signLogin }) で注入される。設定時は initial 受信で
+    // deriveSessionKey(secretKey, token) を使わず signLogin(tokenHex) の戻り (hex) を
+    // session 鍵として login する (CHSesameOS3.kt:473-487 / CHHub3Device.kt:163-174 token!=null)。
+    this._signLogin = null;
   }
 
   _log(...a) { if (this._debug) console.error("[ble]", ...a); }
 
+  /**
+   * connect()/register() 再入ガード。既に login 済み、または connect/register ハンドシェイク
+   * (login/ready/register いずれかの待機者) が進行中なら true。
+   *
+   * セッションは 1 回限りの使い捨て (transport の GATT 接続とカウンタ状態を 1 接続に束縛する)。
+   * 二重 connect()/register() は _loginWaiter/_readyWaiter/_registerWaiter を上書きして前の
+   * 待機者をリーク(永久ハング)させ、また再入時に古い this._token / this._key を流用して
+   * カウンタ整合が壊れる。ファサード (use/registerOnce) は 1 回限りなので通常は到達しないが、
+   * SesameBleSession を直接使う誤用を安全側で弾く (黙って壊れた状態に進めない)。
+   */
+  _isBusy() {
+    return this._loggedIn || this._readyToRegister
+      || this._loginWaiter != null || this._readyWaiter != null || this._registerWaiter != null;
+  }
+
   /** 最後に受信した mechStatus (parseMechStatus の結果)。未受信なら null。 */
   get lastStatus() { return this._lastStatus; }
+  /** 最後に受信した mechSetting (parseMechSetting の結果)。未受信なら null。 */
+  get lastMechSetting() { return this._lastMechSetting; }
+  /** 最後に受信した opsSetting (parseOpsSetting の結果)。未受信なら null。 */
+  get lastOpsSetting() { return this._lastOpsSetting; }
   get isLoggedIn() { return this._loggedIn; }
+  /** initial(14) を受信したが secretKey 未設定で login を試みていない状態 (register 待ち)。 */
+  get isReadyToRegister() { return this._readyToRegister; }
 
   /** mechStatus publish を購読。戻り値 unsubscribe。 */
   onStatus(fn) { this._statusListeners.add(fn); return () => this._statusListeners.delete(fn); }
@@ -94,10 +143,29 @@ export class SesameBleSession {
   onPublish(fn) { this._publishListeners.add(fn); return () => this._publishListeners.delete(fn); }
 
   /**
-   * 接続して login まで完了させる。
+   * 接続して login まで完了させる (登録済みデバイス用)。secretKey 必須。
+   *
+   * 通常 login (既定): session 鍵 = deriveSessionKey(secretKey, token4) = CMAC(secretKey, token4)
+   *   をローカル計算し、loginPayload で平文 login する (CHHub3Device.kt:168-172 token==null 経路)。
+   *
+   * サーバ認証 login (signLogin 指定時): isNeedAuthFromServer 相当。initial で得た token を
+   *   signLogin(tokenHex) に渡して**サーバ署名済み session token (hex)** を取得し、それを session 鍵
+   *   として login する (CHHub3Device.kt:163-174 token!=null / CHSesameOS3.kt:473-487 の
+   *   signGuestKey→login(it.data) 経路)。ゲスト鍵・期限付き鍵など secretKey 単体では session を
+   *   確立できないデバイス向け。
+   *
+   * @param {{signLogin?:(tokenHex:string)=>Promise<string>}} [opts]
+   *   signLogin: 4B initial token の hex を受け取り、サーバ署名済み session token (16B/32hex) を返す
+   *     非同期関数。省略時は通常 login。
    * @returns {Promise<void>} login 成功で resolve
    */
-  async connect() {
+  async connect({ signLogin } = {}) {
+    if (!this._secretKey) return Promise.reject(new Error(t("ble.secretKeyRequiredSession")));
+    // 再入ガード: 二重 connect / connect→disconnect 後の再 connect は待機者上書き・古い token
+    // 流用を招くため明示エラー (使い捨てセッションの誤用)。disconnect() は _loggedIn 等を
+    // クリアするが transport/カウンタは初期状態に戻らないため、再接続は新インスタンスで行う。
+    if (this._isBusy()) return Promise.reject(new Error(t("ble.alreadyConnected")));
+    this._signLogin = typeof signLogin === "function" ? signLogin : null;
     const loginPromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this._loginWaiter = null;
@@ -105,19 +173,183 @@ export class SesameBleSession {
       }, LOGIN_TIMEOUT_MS);
       this._loginWaiter = { resolve, reject, timer };
     });
-    await this._transport.connect((packet) => this._onPacket(packet));
+    await this._transport.connect(
+      (packet) => this._onPacket(packet),
+      (reason) => this._handleTransportDisconnect(reason),
+    );
     return loginPromise;
   }
 
-  async disconnect() {
-    // pending を全て reject してリーク防止
+  /**
+   * 工場出荷 (未登録) デバイスの初期ペアリング / 登録ハンドシェイク。
+   * secretKey を渡さずに構築した session で呼ぶ (CHHub3Device.kt:176-211)。
+   *
+   * フロー (CHHub3Device.kt:176-211, CHSesameOS3.kt:468-492):
+   *   1. transport 接続 → device の initial(14) publish を待つ。secretKey 無しのため login せず
+   *      ReadyToRegister へ遷移 (_handleInitial の分岐, CHSesameOS3.kt:468-491 isRegistered=false)。
+   *   2. (任意) registerSesame5 をコール (CHHub3Device.kt:187-189: 失敗してもログのみで継続)。
+   *   3. ECDH 鍵ペア (P-256) を生成し、生公開鍵 64B (X‖Y) を registrationData(pubK, ts) に乗せて
+   *      REGISTRATION(1) を **PLAINTEXT** 送出 (CHHub3Device.kt:191-194 / CHSesameOS3.kt:495-499)。
+   *   4. response(7)+REGISTRATION(1)+resultCode+devicePubK(64B) を待つ。
+   *   5. ecdhSecretPre16(keyPair, devicePubK) = ECDH 共有秘密の先頭 16B (CHHub3Device.kt:197)。
+   *      secretKey(=wm2Key) = pre16 の hex で確定 (CHHub3Device.kt:198-200)。
+   *   6. sessionKey = deriveSessionKeyFromEcdh(pre16, token4) (CHHub3Device.kt:202-203)。
+   *      sault = 0x00 ++ token4 は CCM nonce 側 (ccmEncrypt/ccmDecrypt) が消費する。
+   *      enc/decCount=0 で cipher を確立し、以降のコマンドは暗号化される。
+   *   7. {deviceUUID, secretKey, productType, serverSecret(=token hex)} を返す
+   *      (CHHub3Device.kt:196-208。serverSecret は mSesameToken.toHexString())。
+   *
+   * @param {{deviceUUID:string, productType?:(string|number),
+   *          registerTransport?:(req)=>Promise<any>, nowMs?:number}} opts
+   *   - deviceUUID: 登録対象の UUID (戻り値・任意の registerSesame5 で使用)。
+   *   - productType: 戻り値に載せる model 名 or 数値 productType (任意)。
+   *   - registerTransport: 渡された場合のみ registerSesame5 をコール (失敗はログのみ)。
+   *   - nowMs: registration timestamp (テスト用に注入可、既定 Date.now())。
+   * @returns {Promise<{deviceUUID:string, secretKey:string, productType:(string|number|undefined),
+   *                    serverSecret:string}>}
+   */
+  async register({ deviceUUID, productType, registerTransport, nowMs } = {}) {
+    if (this._secretKey) return Promise.reject(new Error(t("ble.registerNeedsFactory")));
+    if (!deviceUUID) return Promise.reject(new Error(t("ble.registerDeviceUUIDRequired")));
+    // 再入ガード: 二重 register / 進行中の connect・register との競合を弾く。register() は
+    // 自身の中で _readyToRegister を true にする (initial 受信時) ので、ここで既に true なのは
+    // **別の** connect()/register() が先行した誤用 (= 古い token を流用しかねない再入)。
+    // ファサード registerOnce は 1 回限りなので通常は到達しない安全側ガード。
+    if (this._isBusy()) return Promise.reject(new Error(t("ble.alreadyConnected")));
+
+    // 1. 接続 → initial を待って ReadyToRegister に遷移するのを待つ。
+    if (!this._readyToRegister) {
+      const readyPromise = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          this._readyWaiter = null;
+          reject(new Error(t("ble.registerNotReady")));
+        }, LOGIN_TIMEOUT_MS);
+        this._readyWaiter = { resolve, reject, timer };
+      });
+      await this._transport.connect(
+        (packet) => this._onPacket(packet),
+        (reason) => this._handleTransportDisconnect(reason),
+      );
+      await readyPromise;
+    }
+
+    // serverSecret = mSesameToken.toHexString() (CHHub3Device.kt:182)。
+    const serverSecret = this._token.toString("hex");
+
+    // 2. (任意) サーバ側 register。失敗してもログのみで継続 (CHHub3Device.kt:187-189)。
+    if (typeof registerTransport === "function") {
+      try {
+        await registerSesame5(registerTransport, { deviceUUID, productType, serverSecret });
+      } catch (e) {
+        this._log("registerSesame5 failed (continuing, server-side only)", e?.message);
+      }
+    }
+
+    // 3. ECDH 鍵ペア生成 → 生公開鍵 64B (0x04 prefix を剥がす) を registrationData に。
+    const keyPair = createECDH("prime256v1");
+    keyPair.generateKeys();
+    const pubK65 = keyPair.getPublicKey(); // 0x04 ‖ X32 ‖ Y32 = 65B
+    if (pubK65.length !== 65 || pubK65[0] !== ECDH_UNCOMPRESSED_PREFIX) {
+      // Node が uncompressed 65B 以外を返すことは無いが、契約違反を黙って通さない。
+      throw new Error(t("ble.registerDevicePubKeyLen", { len: pubK65.length }));
+    }
+    const pubK64 = pubK65.subarray(1); // SDK EccKey.getPubK() 契約 = prefix 無し 64B
+
+    // 4. REGISTRATION 応答待ちを登録してから PLAINTEXT で送る (race 防止)。
+    const regPromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this._registerWaiter = null;
+        reject(new Error(t("ble.registerTimeout")));
+      }, REGISTER_TIMEOUT_MS);
+      this._registerWaiter = { resolve, reject, timer };
+    });
+    this._sendPlain(buildSendFrame(ITEM.REGISTRATION, registrationData(pubK64, nowMs ?? Date.now())));
+    const regPayload = await regPromise; // REGISTRATION 応答 payload (機種で長さが異なる)
+
+    // 機種で応答 payload の構造が分かれる (応答長で分岐):
+    //   - 64B (Hub3 等): payload 全体が device の生公開鍵 (CHHub3Device.kt:197 で payload を
+    //     そのまま ECDH に渡す)。
+    //   - 77B (SESAME 5 実機): CHSesame5Device.kt:200-202 handleRegisterResponse 準拠で
+    //       payload[0..6]  = mechStatus  (7B, CHSesame5MechStatus)
+    //       payload[7..12] = mechSetting (6B, CHSesame5MechSettings)
+    //       payload[13..76]= devicePubKey(64B)
+    //     先頭 13B を parse してキャッシュ (_lastStatus/_lastMechSetting) へ載せ、末尾 64B を
+    //     device pubkey として ECDH に渡す。
+    // SDK の Hub3 経路は mechStatus/mechSetting を register 応答からは取らない (publish で別途
+    // 受ける) ため 64B のみ。SS5 は登録応答に同梱するため 77B。
+    const devicePubK = this._extractRegisterDevicePubK(regPayload);
+
+    // 5. ECDH 共有秘密の先頭 16B → secretKey(=wm2Key) = pre16 の hex (CHHub3Device.kt:197-200)。
+    const pre16 = ecdhSecretPre16(keyPair, devicePubK);
+    const secretKey = pre16.toString("hex");
+
+    // 6. sessionKey = CMAC(pre16, token4)。enc/decCount=0 で cipher 確立 (CHHub3Device.kt:202-203)。
+    //    sault = 0x00 ++ token4 は CCM nonce 側で消費 (ccmNonce)。
+    this._key = deriveSessionKeyFromEcdh(pre16, this._token);
+    this._encCount = 0;
+    this._decCount = 0;
+    this._loggedIn = true;       // 以降のコマンドは暗号化セッションで送れる
+    this._readyToRegister = false;
+    this._secretKey = Buffer.from(secretKey, "hex"); // 確定した wm2Key を保持
+
+    // 機微中間値 (ECDH 共有 16B) を零クリア (crypto.js の機微値配慮方針と整合)。
+    pre16.fill(0);
+
+    // 7. 登録結果を返す (CHHub3Device.kt:196-208)。
+    return { deviceUUID, secretKey, productType, serverSecret };
+  }
+
+  /**
+   * 単一待機者 (_loginWaiter/_readyWaiter/_registerWaiter) を reject + timer clear して
+   * フィールドを null に戻す。disconnect() で 3 つを対称に解放するためのヘルパ
+   * (取りこぼし防止: 待機者を追加したらここに 1 行足すだけで済む)。
+   * @param {"_loginWaiter"|"_readyWaiter"|"_registerWaiter"} field
+   */
+  _rejectWaiter(field, err) {
+    const w = this[field];
+    if (!w) return;
+    this[field] = null;
+    clearTimeout(w.timer);
+    w.reject(err);
+  }
+
+  /**
+   * pending request と 3 待機者 (login/ready/register) を全て reject + timer clear し、
+   * セッション状態フラグを倒す。能動 disconnect() と、transport からの非同期切断通知
+   * (_handleTransportDisconnect) の両方が共有する内部解放処理 (transport.disconnect() は呼ばない)。
+   * @param {Error} err pending/待機者へ渡す reject 理由
+   */
+  _failAllPending(err) {
     for (const [, queue] of this._pending) {
-      for (const p of queue) { clearTimeout(p.timer); p.reject(new Error(t("ble.disconnected"))); }
+      for (const p of queue) { clearTimeout(p.timer); p.reject(err); }
     }
     this._pending.clear();
-    if (this._loginWaiter) { clearTimeout(this._loginWaiter.timer); this._loginWaiter = null; }
-    await this._transport.disconnect();
+    this._rejectWaiter("_loginWaiter", err);
+    this._rejectWaiter("_readyWaiter", err);
+    this._rejectWaiter("_registerWaiter", err);
     this._loggedIn = false;
+    this._readyToRegister = false;
+    this._signLogin = null; // 次回 connect() の引数で再設定 (古い resolver を持ち越さない)
+  }
+
+  /**
+   * transport から「リンクが切れた」と通知されたときのハンドラ (transport.connect の onDisconnect)。
+   * SDK CHSesameOS3.kt:228-263 onConnectionStateChange の STATE_DISCONNECTED 分岐
+   * (connectR.remove / cmdCallBack.clear) に相当。pending/待機者を即 reject して **timeout 宙づりを
+   * 防ぐ** (fail-fast)。能動 disconnect() と異なり transport.disconnect() は呼ばない (既に切断済み・
+   * 自分が起点ではないため)。何度呼ばれても安全 (待機者が無ければ no-op)。
+   * @param {any} reason 切断理由 (noble の reason 文字列等)
+   */
+  _handleTransportDisconnect(reason) {
+    this._log("transport disconnected, failing pending requests", reason);
+    this._failAllPending(new Error(t("ble.linkLost")));
+  }
+
+  async disconnect() {
+    // pending / 待機者を全て reject してリーク防止 (connect()/register() の await が
+    // 永久ハングしないよう、login/ready/register の 3 待機者を対称に解放する)。
+    this._failAllPending(new Error(t("ble.disconnected")));
+    await this._transport.disconnect();
   }
 
   /**
@@ -143,16 +375,166 @@ export class SesameBleSession {
     });
   }
 
+  /**
+   * mechSetting (角度キャリブレーション) を書き込む。
+   *   data = configureLockPositionData(lockTarget, unlockTarget) (CHSesame5Device.kt:69-83)。
+   * 成功時はキャッシュ (_lastMechSetting) の lock/unlock 位置も更新する (SDK と同じ局所更新)。
+   * @param {number} lockTarget   施錠目標角 (-32768..32767)
+   * @param {number} unlockTarget 解錠目標角 (-32768..32767)
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  async configureLockPosition(lockTarget, unlockTarget, opts = {}) {
+    const data = configureLockPositionData(lockTarget, unlockTarget);
+    const res = await this.request(ITEM.MECH_SETTING, data, opts);
+    // SDK は成功時に mechSetting?.lockPosition/unlockPosition を更新する (CHSesame5Device.kt:76-77)。
+    if (this._lastMechSetting) {
+      this._lastMechSetting = { ...this._lastMechSetting, lockPosition: lockTarget, unlockPosition: unlockTarget };
+    } else {
+      this._lastMechSetting = { lockPosition: lockTarget, unlockPosition: unlockTarget, autoLockSecond: 0 };
+    }
+    return res;
+  }
+
+  /**
+   * magnet — LOCK5 系ロック固有のコマンド (CHSesame5Device.kt:118-126 magnet() と 1:1)。
+   *   item = magnet(17)、data = 空 ByteArray。引数なし・cipher セグメントで送り、成功で解決する。
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  magnet(opts = {}) {
+    return this.request(ITEM.MAGNET, Buffer.alloc(0), opts);
+  }
+
+  /**
+   * opSensorControl(isEnable) — Open Sensor の自動施錠秒数を設定する
+   * (CHSesame5Device.kt:107-116 と 1:1)。
+   *   item = OPS_CONTROL(92)、data = opSensorControlData(seconds) (2B LE)。
+   * SDK は成功時に opsSetting?.opsLockSecond = isEnable.toUShort() でキャッシュを局所更新する。
+   * 本実装も成功 (resultCode==0) のとき _lastOpsSetting.opsLockSecond を更新する。
+   * @param {number} seconds 0..65535 (0 = 無効)
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  async opSensorControl(seconds, opts = {}) {
+    const data = opSensorControlData(seconds);
+    const res = await this.request(ITEM.OPS_CONTROL, data, opts);
+    // SDK は成功時に opsSetting?.opsLockSecond を更新する (CHSesame5Device.kt:113)。
+    if (res.resultCode === 0) {
+      this._lastOpsSetting = { ...(this._lastOpsSetting || {}), opsLockSecond: seconds };
+    }
+    return res;
+  }
+
+  /**
+   * setBleTxPower(txPower) — BLE 送信出力を設定する
+   * (CHSesameOS3LockBase.kt:62-71 / CHSesameBiometricDeviceImpl.kt:332-341 と 1:1)。
+   *   item = SSM3_ITEM_CODE_BLE_TX_POWER_SETTING(206)、data = bleTxPowerData(txPower) (符号付き 1B)。
+   * SDK は応答を待たず空コールバック ({}) で送りっぱなしにするが、本 kit の request() は
+   * response(7)+item を待つ共通実装なので、ここでもそれに従い応答を返す (より堅牢、後方互換)。
+   * @param {number} txPower -128..127
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  setBleTxPower(txPower, opts = {}) {
+    return this.request(ITEM.SSM3_ITEM_CODE_BLE_TX_POWER_SETTING, bleTxPowerData(txPower), opts);
+  }
+
+  /**
+   * sendAdvProductType(data) — LOCK5 のアドバタイズ productType を書き換える
+   * (CHSesame5Device.kt:85-94 と 1:1)。
+   *   item = SS3_ITEM_CODE_SET_ADV_PRODUCT_TYPE(205)、data = 任意 ByteArray をそのまま。
+   * 中身の意味は機種固有 (SDK も raw ByteArray を素通し) のため、呼び出し側が組み立てた
+   * Buffer をそのまま送る。
+   * @param {Buffer} data 送信する生バイト列
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  sendAdvProductType(data, opts = {}) {
+    if (!Buffer.isBuffer(data)) throw new Error(t("ble.advProductTypeMustBeBuffer"));
+    return this.request(ITEM.SS3_ITEM_CODE_SET_ADV_PRODUCT_TYPE, data, opts);
+  }
+
+  /**
+   * reset() — OS3 デバイスを工場出荷状態へ戻す (CHSesameOS3.kt:420-439 と 1:1)。
+   *   item = Reset(104)、data = 空 ByteArray。成功 (cmdResultCode==success) のとき SDK は
+   *   dropKey() を呼び、ローカルの鍵レコードを削除してセッションを破棄する。
+   * 本 kit には永続鍵ストアが無い (secretKey は呼び出し側が保持) ため、dropKey 相当として
+   * **成功時に disconnect() してセッションを破棄する** (WM2 reset と同じ流儀、wm2.js:440-448)。
+   * 鍵レコードの削除そのものは呼び出し側の責務 (誇張せず明記)。
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer}>} 成功時 resultCode=0
+   */
+  async reset(opts = {}) {
+    const res = await this.request(ITEM.RESET, Buffer.alloc(0), opts);
+    // cmdResultCode==success のときだけ dropKey 相当 (= session 破棄) を行う (kt:425-426)。
+    if (res.resultCode === 0) {
+      await this.disconnect();
+    }
+    return res;
+  }
+
+  /**
+   * versionTag (ファームウェアバージョン文字列) を取得する。
+   *   item = versionTag(5)、data = 空、payload = UTF-8 文字列 (CHSesameOS3.kt:398-418)。
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<string>} versionTag 文字列
+   */
+  async getVersionTag(opts = {}) {
+    const res = await this.request(ITEM.VERSION_TAG, Buffer.alloc(0), opts);
+    return res.payload.toString("utf8");
+  }
+
+  /**
+   * 履歴を 1 件読み出す。
+   *   item = history(4)、data = [0x01] (CHSesameOS3LockBase.kt:185-192)。
+   * payload は 1 件分の履歴生バイト列 (先頭 4B が recordId)。サーバ post / 削除は呼び出し側の責務。
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<Buffer>} 履歴 payload (空なら 0 件)
+   */
+  async readHistory(opts = {}) {
+    const res = await this.request(ITEM.HISTORY, historyReadData(), opts);
+    return res.payload;
+  }
+
+  /**
+   * 履歴 1 件をデバイスから削除する。
+   *   item = SSM2_ITEM_CODE_HISTORY_DELETE(18)、data = recordId = historyPayload[0..3]
+   *   (CHSesameOS3LockBase.kt:201-209)。
+   * @param {Buffer} historyPayload readHistory が返した payload (先頭 4B が recordId)
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  deleteHistory(historyPayload, opts = {}) {
+    return this.request(ITEM.HISTORY_DELETE, historyDeleteData(historyPayload), opts);
+  }
+
+  /**
+   * 1 セグメントを transport へ書く。write が (リトライ尽きて) reject したときの後始末は
+   * transport→onDisconnect→_handleTransportDisconnect が pending を fail-fast する経路で行うので、
+   * ここでは未処理 Promise 拒否 (unhandledRejection) を避けるためだけに握りつぶす
+   * (元から fire-and-forget。送信失敗は応答 timeout / 切断通知のどちらかで必ず表面化する)。
+   */
+  _writeSeg(seg) {
+    try {
+      const r = this._transport.write(seg);
+      if (r && typeof r.then === "function") r.catch((e) => this._log("write rejected (handled via disconnect)", e?.message));
+    } catch (e) {
+      // 同期 throw (notConnected 等) も同経路。pending は切断通知で解放される。
+      this._log("write threw (handled via disconnect)", e?.message);
+    }
+  }
+
   /** 暗号化なしで item+data を送る (login 等のハンドシェイク用低レベル)。 */
   _sendPlain(frame) {
-    for (const seg of splitSegments(frame, SEG.PLAINTEXT)) this._transport.write(seg);
+    for (const seg of splitSegments(frame, SEG.PLAINTEXT)) this._writeSeg(seg);
   }
 
   /** CCM 暗号化して送る (encCount++)。 */
   _sendCipher(frame) {
     const ct = ccmEncrypt(this._key, this._encCount, this._token, frame);
     this._encCount += 1;
-    for (const seg of splitSegments(ct, SEG.CIPHERTEXT)) this._transport.write(seg);
+    for (const seg of splitSegments(ct, SEG.CIPHERTEXT)) this._writeSeg(seg);
   }
 
   _dequeue(itemCode, entry) {
@@ -173,16 +555,20 @@ export class SesameBleSession {
 
     let frame;
     if (assembled.type === SEG.CIPHERTEXT) {
+      // SDK 忠実: SesameOS3BleCipher.decrypt() は doFinal() の **前** に decryptCounter を
+      // inc() する (SesameOS3BleCipher.kt:23-31)。よって復号が失敗しても counter は進む。
+      // デバイス側は受信フレームごとに enc counter を 1 進めて送るため、こちらも 1:1 で
+      // dec counter を進めることで、単発の破損/取りこぼし後も後続フレームと整合が保たれる
+      // (進めないと 1 度の失敗で以降全フレームが恒久的にずれて復号不能 = セッションがハングする)。
+      const usedCount = this._decCount;
+      this._decCount += 1;
       try {
-        frame = ccmDecrypt(this._key, this._decCount, this._token, assembled.data);
+        frame = ccmDecrypt(this._key, usedCount, this._token, assembled.data);
       } catch (e) {
-        // 復号失敗 = カウンタずれ or 破損。デバイス側が当該メッセージで enc カウンタを進めたかは
-        // 判別不能なため _decCount は進めない (進めると正常時にずれる)。以降ずれ続けるが、これは
-        // 異常系であり、回復は再接続 (initial で両カウンタ 0 リセット) に委ねる。
-        this._log("decrypt failed (count desync / corruption)", e?.message);
+        // この 1 フレームだけ捨てる。counter は既に進めたので後続は復号継続できる。
+        this._log("decrypt failed (corruption / dropped frame); skipping this frame", e?.message);
         return;
       }
-      this._decCount += 1;
     } else {
       frame = assembled.data; // PLAINTEXT (initial / login 応答が平文の場合)
     }
@@ -196,8 +582,25 @@ export class SesameBleSession {
     if (opCode === OP.PUBLISH) {
       if (itemCode === ITEM.INITIAL) { this._handleInitial(body); return; }
       if (itemCode === ITEM.MECH_STATUS) {
-        try { this._lastStatus = parseMechStatus(body); } catch { /* ignore */ }
+        // ロック (Sesame5/6=7B, Bot/Bike=3B) は parseMechStatus で position/target/flags を読む。
+        // 生体・アクセス制御デバイス (Touch/Face/Palm) の mechStatus はロックのバイト構造を持たず
+        // (SDK CHSesameTouchProMechStatus は raw を保持するだけ)、長さも 7B/3B に一致しないため
+        // parseMechStatus は throw する。その場合は biometric.js の pass-through parse に落として
+        // _lastStatus を必ず更新する (CHSesameBiometricDeviceImpl.kt:214-217 handleMechStatus と整合)。
+        try {
+          this._lastStatus = parseMechStatus(body);
+        } catch {
+          this._lastStatus = parseBiometricMechStatus(body);
+        }
         for (const fn of [...this._statusListeners]) { try { fn(this._lastStatus); } catch { /* ignore */ } }
+      }
+      // mechSetting(80) / OPS_CONTROL(92) の publish を解析してキャッシュする
+      // (CHSesame5Device.kt:220-227 handleDevicePublish)。
+      else if (itemCode === ITEM.MECH_SETTING) {
+        try { this._lastMechSetting = parseMechSetting(body); } catch { /* ignore */ }
+      }
+      else if (itemCode === ITEM.OPS_CONTROL) {
+        try { this._lastOpsSetting = parseOpsSetting(body); } catch { /* ignore */ }
       }
       for (const fn of [...this._publishListeners]) { try { fn({ opCode, itemCode, body }); } catch { /* ignore */ } }
       return;
@@ -206,7 +609,8 @@ export class SesameBleSession {
     if (opCode === OP.RESPONSE) {
       const resultCode = body.length > 0 ? body[0] : 0;
       const payload = body.subarray(1);
-      if (itemCode === ITEM.LOGIN) { this._handleLoginResponse(resultCode); return; }
+      if (itemCode === ITEM.LOGIN) { this._handleLoginResponse(resultCode, payload); return; }
+      if (itemCode === ITEM.REGISTRATION) { this._handleRegistrationResponse(resultCode, payload); return; }
       this._resolvePending(itemCode, resultCode, payload);
     }
   }
@@ -216,18 +620,125 @@ export class SesameBleSession {
     this._token = Buffer.from(token.subarray(0, 4));
     this._encCount = 0;
     this._decCount = 0;
+    // secretKey 未設定 (工場出荷) なら login を試みず ReadyToRegister へ遷移する
+    // (CHSesameOS3.kt:468-491: isRegistered=false のとき login せず register を待つ)。
+    if (!this._secretKey) {
+      this._readyToRegister = true;
+      this._log("initial token received, no secretKey → ReadyToRegister");
+      if (this._readyWaiter) {
+        const w = this._readyWaiter;
+        this._readyWaiter = null;
+        clearTimeout(w.timer);
+        w.resolve();
+      }
+      return;
+    }
+    // サーバ認証 login (isNeedAuthFromServer): token を signLogin に渡して
+    // サーバ署名済み session token を取得し、それを session 鍵として login する
+    // (CHSesameOS3.kt:473-487 signGuestKey→login(it.data))。signLogin は非同期なので
+    // 別経路 (_loginViaServer) で解決し、失敗は _loginWaiter を reject する。
+    if (this._signLogin) { this._loginViaServer(); return; }
+
     this._key = deriveSessionKey(this._secretKey, this._token);
     this._log("initial token received, sending login");
     this._sendPlain(loginPayload(this._key)); // login は PLAINTEXT
   }
 
-  _handleLoginResponse(resultCode) {
+  /**
+   * サーバ認証 login の非同期本体。signLogin(tokenHex) でサーバ署名済み session token (hex) を
+   * 取得し、それを session 鍵 (16B) として平文 login を送る (CHSesameOS3.kt:474-484)。
+   * signLogin が投げた場合は login 待機者を reject (connect() の await が解放される)。
+   */
+  async _loginViaServer() {
+    let serverToken;
+    try {
+      serverToken = await this._signLogin(this._token.toString("hex"));
+    } catch (e) {
+      this._rejectWaiter("_loginWaiter", e instanceof Error ? e : new Error(String(e)));
+      return;
+    }
+    // signLogin の戻り (= guestKeysSignPost の String) を 16B session 鍵として採用。
+    const key = Buffer.isBuffer(serverToken) ? serverToken : Buffer.from(String(serverToken), "hex");
+    if (key.length !== 16) {
+      this._rejectWaiter("_loginWaiter", new Error(t("ble.serverTokenMustBe16", { len: key.length })));
+      return;
+    }
+    this._key = key;
+    this._log("server-signed session token received, sending login");
+    this._sendPlain(loginPayload(this._key)); // login は PLAINTEXT
+  }
+
+  _handleRegistrationResponse(resultCode, payload) {
+    if (!this._registerWaiter) return;
+    const w = this._registerWaiter;
+    this._registerWaiter = null;
+    clearTimeout(w.timer);
+    if (resultCode === 0) w.resolve(Buffer.from(payload));
+    else w.reject(new BleResultError("command", resultCode, ITEM.REGISTRATION));
+  }
+
+  /**
+   * REGISTRATION 応答 payload から device の生公開鍵 64B を取り出す (機種で構造が異なるため
+   * 応答長で分岐)。SS5 形 (77B) のときは先頭 13B の mechStatus(7B)/mechSetting(6B) を parse して
+   * キャッシュ (_lastStatus/_lastMechSetting) に載せてから末尾 64B を返す。
+   *
+   *   - 64B → payload 全体が device pubkey (Hub3 等。CHHub3Device.kt:197)。
+   *   - 77B → payload[0..6]=mechStatus, [7..12]=mechSetting, [13..76]=devicePubKey
+   *           (CHSesame5Device.kt:200-202 handleRegisterResponse と 1:1)。
+   *
+   * 注: SS5 形の 13B 先頭 parse・mechStatus/mechSetting 同梱は SDK の Kotlin を移植したもので、
+   *   実機 SESAME 5 応答での検証は未了 (README の Known limitations と整合)。
+   * @param {Buffer} payload REGISTRATION 応答 payload
+   * @returns {Buffer} device の生公開鍵 64B (X‖Y)
+   */
+  _extractRegisterDevicePubK(payload) {
+    if (!Buffer.isBuffer(payload) || (payload.length !== 64 && payload.length !== 77)) {
+      throw new Error(t("ble.registerDevicePubKeyLen", {
+        len: Buffer.isBuffer(payload) ? payload.length : "non-buffer",
+      }));
+    }
+    if (payload.length === 64) return payload; // Hub3: payload 全体が pubkey
+
+    // 77B = SS5: mechStatus(7B) ++ mechSetting(6B) ++ devicePubKey(64B)。
+    // 先頭 13B を既存 parse 関数で読み、login 経路と同じキャッシュ (_lastStatus/_lastMechSetting)
+    // へ載せる (publish 経由の更新と同じ流れ。parse 失敗は登録自体を妨げないよう握りつぶす)。
+    try { this._lastStatus = parseMechStatus(payload.subarray(0, 7)); } catch { /* ignore */ }
+    try { this._lastMechSetting = parseMechSetting(payload.subarray(7, 13)); } catch { /* ignore */ }
+    return Buffer.from(payload.subarray(13, 77));
+  }
+
+  _handleLoginResponse(resultCode, payload) {
     if (!this._loginWaiter) return;
     const w = this._loginWaiter;
     this._loginWaiter = null;
     clearTimeout(w.timer);
-    if (resultCode === 0) { this._loggedIn = true; w.resolve(); }
+    if (resultCode === 0) {
+      this._loggedIn = true;
+      // 時刻同期 (CHSesameOS3LockBase.kt:126-138): login 応答 payload[0..3] のデバイス時刻 (秒) と
+      // 端末時刻の差が 3 秒を超えていたら time(8) を CIPHERTEXT 送出する。login() の resolve は
+      // 同期送信を待たず即時に行う (SDK も同期送信は fire-and-forget で応答を待たない)。
+      this._maybeSyncTime(payload);
+      w.resolve();
+    }
     else w.reject(new BleResultError("login", resultCode));
+  }
+
+  /**
+   * login 直後の時刻同期。デバイス時刻と端末時刻の差が >3 秒なら time(8) を暗号化送出する。
+   * SDK の handleLoginResponse (CHSesameOS3LockBase.kt:126-138) と同じ判定・送出。
+   * time(8) は応答を待たず投げっぱなし (fire-and-forget)。エラーは握りつぶす (login を妨げない)。
+   * @param {Buffer} payload login response の payload (resultCode を除いた本体)
+   */
+  _maybeSyncTime(payload) {
+    try {
+      const deviceSeconds = parseDeviceTimeSeconds(payload);
+      if (deviceSeconds == null) return;
+      if (!needsTimeSync(deviceSeconds)) return;
+      this._log("time drift > 3s, sending time sync", { deviceSeconds });
+      this._sendCipher(buildSendFrame(ITEM.TIME, timeSyncData()));
+    } catch (e) {
+      this._log("time sync failed (ignored)", e?.message);
+    }
   }
 
   _resolvePending(itemCode, resultCode, payload) {

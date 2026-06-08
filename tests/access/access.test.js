@@ -15,6 +15,9 @@ import {
   updateCardName,
   updatePasscodeName,
   updateCardOwner,
+  enrolledToCardList,
+  syncEnrolledCards,
+  syncEnrolledPasscodes,
 } from "../../src/access.js";
 
 // ---------- request 系 mock client ----------
@@ -336,5 +339,68 @@ describe("updateCardOwner", () => {
     const c = requestClient({ success: true });
     expect(await updateCardOwner(c, { cardID: "C1" })).toBeNull();
     expect(c.sent).toHaveLength(0);
+  });
+});
+
+// enroll → DB 同期ブリッジ。BLE 由来の enroll レコードを postCards/postPasscodes へ委譲する糊。
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+describe("enrolledToCardList", () => {
+  it("records ({cardID,cardName,cardType}) を list 要素 ({cardID,name,cardType,nameUUID v4}) へ写像", () => {
+    const list = enrolledToCardList([{ cardID: "aa", cardName: "41", cardType: 1 }]);
+    expect(list).toHaveLength(1);
+    expect(list[0].cardID).toBe("aa");
+    expect(list[0].name).toBe("41"); // NOTIFY 由来 hex 名をそのまま
+    expect(list[0].cardType).toBe(1);
+    expect(list[0].nameUUID).toMatch(UUID_V4); // 欠落 nameUUID は v4 採番
+  });
+
+  it("各要素に独立した nameUUID を採番する", () => {
+    const list = enrolledToCardList([{ cardID: "a" }, { cardID: "b" }]);
+    expect(list[0].nameUUID).not.toBe(list[1].nameUUID);
+  });
+
+  it("非配列は空配列を返す", () => {
+    expect(enrolledToCardList(undefined)).toEqual([]);
+  });
+});
+
+describe("syncEnrolledCards", () => {
+  it("records を変換し postCards (deviceUUID/list トップレベル) へ委譲する", async () => {
+    const c = requestClient({ success: true });
+    await syncEnrolledCards(c, { deviceUUID: "dev1", records: [{ cardID: "aa", cardName: "41", cardType: 1 }] });
+    expect(c.sent[0].action).toBe(ACTION);
+    expect(c.sent[0].op).toBe("postCards");
+    expect(c.sent[0].deviceUUID).toBe("dev1");
+    expect(c.sent[0].list[0]).toMatchObject({ cardID: "aa", name: "41", cardType: 1 });
+    expect(c.sent[0].list[0].nameUUID).toMatch(UUID_V4);
+  });
+
+  it("list を渡すと変換せずそのまま postCards へ流す", async () => {
+    const c = requestClient({ success: true });
+    const list = [{ cardID: "C1", nameUUID: "u1", name: "x", cardType: 1 }];
+    await syncEnrolledCards(c, { deviceUUID: "dev1", list });
+    expect(c.sent[0].list).toEqual(list);
+  });
+
+  it("空 records なら postCards へ委譲して null (list 空ガード)", async () => {
+    const c = requestClient({ success: true });
+    expect(await syncEnrolledCards(c, { deviceUUID: "dev1", records: [] })).toBeNull();
+    expect(c.sent).toHaveLength(0);
+  });
+});
+
+describe("syncEnrolledPasscodes", () => {
+  it("records を変換し postPasscodes へ委譲する", async () => {
+    const c = requestClient({ success: true });
+    await syncEnrolledPasscodes(c, { deviceUUID: "dev1", records: [{ cardID: "0102", cardName: "70", cardType: 0 }] });
+    expect(c.sent[0].op).toBe("postPasscodes");
+    expect(c.sent[0].deviceUUID).toBe("dev1");
+    expect(c.sent[0].list[0]).toMatchObject({ cardID: "0102", name: "70", cardType: 0 });
+  });
+
+  it("空 records なら null", async () => {
+    const c = requestClient({ success: true });
+    expect(await syncEnrolledPasscodes(c, { deviceUUID: "dev1", records: [] })).toBeNull();
   });
 });

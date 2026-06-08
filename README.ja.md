@@ -16,8 +16,20 @@
 
 ## 何ができるか
 
-- **BLE 直接制御**: Bluetooth でロックを直接操作（クラウド不要・オフライン・低遅延）。autolock 等の設定系は BLE でのみ実機に反映されます。OS3 プロトコルを純 JS で実装（Raspberry Pi でも動作・アダプタ差し替え可）
-- ロック制御: 施錠 / 解錠 / トグル / SESAME Bot クリック（BLE / クラウドを自動選択）
+- **BLE 直接制御**: Bluetooth でロックを直接操作（クラウド不要・オフライン・低遅延）。autolock 等の設定系は BLE でのみ実機に反映されます。OS3 **と OS2** のプロトコルを純 JS で実装（Raspberry Pi でも動作・アダプタ差し替え可）
+- ロック制御: 施錠 / 解錠 / トグル / SESAME Bot クリック（BLE / クラウドを自動選択）。OS2 デバイス（SESAME 2/3/4・Bot1・Bike1）はライブラリの `SesameOS2Ble` から BLE で操作
+- **BLE 専用の実機設定**: 角度キャリブレーション（`configureLockPosition`：施錠 / 解錠の目標角）、`magnet`、autolock、Open Sensor 自動施錠（`opSensorControl`）、BLE 送信出力（`setBleTxPower`）、アドバタイズ productType（`sendAdvProductType`）、工場出荷リセット（`reset`） — クラウドに相当機能はなく実機へ直接書き込み
+- **BLE 専用の読み出し**: ファームウェアの `versionTag`、実機履歴の読み出し・1 件単位の削除、直近の `mechSetting` / `opsSetting`、login 時の時刻同期（デバイス時刻が 3 秒以上ずれていたら自動補正）
+- 全機種の advertise パース（`parseAdvertisement`）: productType・登録済みフラグ・接続可否・deviceUUID
+- **鍵なしの BLE デバイス発見**（`listNearbyDevices()` / `SesameBle.listNearby()`）: 1 回のスキャンで近接 SESAME を `{ deviceUUID, productType, model, kind, isRegistered, advTagB1, isConnectable, rssi, localName, address, peripheral }` のリストで返します（`secretKey` 不要）。結果の `peripheral` を `SesameBle.fromDiscovery()` に渡せば再スキャンなしで接続できます（例: `isRegistered: false` の工場出荷デバイスを見つけて `registerOnce` に渡す）
+- **堅牢な BLE リンク**: 既定の `NobleTransport` は peripheral の切断イベントを購読してセッションへ伝播し、リンク断（相手側切断 / 圏外）時に処理中リクエストを **timeout を待たず即座に fail-fast** させます。write は数回の指数バックオフ付きリトライ後にリンク断とみなします（`CHSesameOS3.kt` `transmit` の「リトライ→最終的に切断」を移植）。MTU は CoreBluetooth が自動協商します（noble に能動的な `requestMtu` API はなく、SDK の iOS 経路と同じ挙動）
+- **BLE ペアリング**: 工場出荷デバイスを BLE で登録（ECDH ハンドシェイク + サーバ認証）し、その `secretKey` を取得 — OS3（`SesameBle.registerOnce()`）/ OS2（`SesameOS2Ble.registerOnce()`）
+- **生体・アクセス制御の BLE 登録**: Touch / Touch Pro / Face / Palm へのカード / 指紋 / 暗証番号 / 顔 / 掌紋の登録（`SesameBle#biometric`）。`registerDelegate` は登録以外のデバイス publish も配信します — Touch Pro `mechStatus`・電池電圧・子鍵スロット（`PUB_KEY_SESAME`）・スロット非サポートフラグ・BLE 送信出力
+- **SESAME Bike3 指紋の BLE 対応**: Bike3 の指紋の一覧 / 削除 / 改名・登録モードの取得 / 設定（`SesameBle#fingerPrint`）— Bike3 は Bike2（解錠）に指紋 capability を足した型なので、指紋サブセットのみを露出
+- **SESAME Bot2 / Bot3 スクリプトの BLE 対応**: index 指定でスクリプト実行・アクティブスクリプトの切替・現在スクリプトの取得・名前一覧の取得・スクリプトの書き込み（`SesameBle#script`）
+- **WifiModule2 の BLE 対応**: Wi-Fi プロビジョニングと子鍵登録（`SesameBle#wifi`）
+- **Hub3 の BLE 対応**: Wi-Fi プロビジョニング（SSID スキャン / SSID / パスワード）・子鍵の削除・接続種別（Wi-Fi / LTE）の読み出し（`SesameBle#hub3`）
+- **BLE 経由ファームウェア更新**（DFU / OTA）: Hub3 / OS3 ロック / WM2（`SesameBle#updateFirmware`）
 - Hub3 IR: 既存リモコンの発射、物理リモコンからの学習、リモコン / キー CRUD、プリセット DB 検索
 - デバイス管理: 一覧、リネーム、削除、現在状態、state push 購読
 - 履歴: ロック開閉履歴、電池残量履歴
@@ -206,6 +218,49 @@ await SesameHub3.use(async (hub) => {
 
 ---
 
+## BLE 初期ペアリング / 登録（上級）
+
+工場出荷（未登録）デバイスは BLE から直接ペアリングできます。ファサードが ECDH 登録ハンドシェイクを実行し、保存すべき `secretKey` を返します。`SesameBle.registerOnce()` は scan → connect → register → close を一括で行います。
+
+```js
+import { SesameBle } from "sesame-kit";
+
+const key = await SesameBle.registerOnce(
+  { deviceUUID: "<advertise から取得した uuid>", model: "sesame_5" },
+  async ({ deviceUUID, secretKey, productType, serverSecret }) => {
+    // 必ず保存すること。secretKey は以降ロックを操作できる唯一の資格情報です。
+    // 例: ~/.config/sesame-kit/config.json の devices{} (deviceUUID → { secretKey }) に永続化。
+    console.log({ deviceUUID, secretKey });
+  },
+);
+// `key` は同じ { deviceUUID, secretKey, productType, serverSecret } オブジェクト。
+```
+
+ペアリング後は、返ってきた `secretKey` で登録済みデバイスと全く同様に操作できます。
+
+```js
+await SesameBle.use({ deviceUUID: key.deviceUUID, secretKey: key.secretKey }, (lock) => lock.unlock());
+```
+
+返り値 4 フィールドの意味と保存先:
+
+| フィールド | 内容 | 保存先 |
+|-----------|------|--------|
+| `secretKey` | ECDH 共有秘密から導出した 32hex のデバイス鍵。ログイン / 操作のための**資格情報**。 | `config.json` の `devices{}`（または独自ストア）に保存。秘匿すること。 |
+| `deviceUUID` | 登録したデバイス識別子。 | `devices{}` のキー。 |
+| `productType` | 渡した model（例 `sesame_5`）のエコーバック。 | 任意。型別能力テーブルに利用可。 |
+| `serverSecret` | デバイスの `initial` token を hex 化したもの（`mSesameToken`）。サーバ登録ペイロード。 | サーバ登録呼び出しを配線する場合に使用。 |
+
+低レベルの部品も利用できます。
+
+- `new SesameBle({ registerMode: true, deviceUUID, transport }).register()` — スキャン済み / 注入済みトランスポートに対して登録する。`register()` は工場出荷デバイス専用なので、`registerMode: true`（`secretKey` 無し）で構築したファサードでのみ有効。`secretKey` 付きのファサードで呼ぶと throw する。
+- **サーバ認証**が要る登録済みデバイス（ゲスト鍵・期限付き鍵）は、ローカル導出ではなくサーバ署名済み token で login できます。`{ secretKey, deviceUUID, needAuthFromServer: true, registerTransport }` で構築すると `connect()` が `signGuestKey` を呼び、返った token で `login` します（`CHHub3Device.kt:163-174` / `CHSesameOS3.kt:473-487` の移植）。`registerTransport` は `makeRegisterTransport(...)` の戻りです。
+- **OS2 のサーバ認証登録**（サーバの `getRegisterKey` ステップが要る SESAME 2/3/4 の工場ペアリング）は、サーバ認証 login と同じコールバック注入で配線しています。`SesameOS2BleSession.register({ registerServer })` が `IRER` を読み、`registerServer({ ak, n, e, appPubK64, ... })` から `{ sig1, st, pubkey }` を受けて ECDH/登録鍵ハンドシェイクを完走します（`CHSesame2Device.kt:406-482` の移植）。サーバの役割は `CHServerAuth.getRegisterKey`（`CHServerAuth.kt:41-65`）で、これを**自分のコードからオフライン実行**（クラウド不要）するには `makeLocalRegisterServer()`（`src/crypto.js`、`sesame-kit/ble/os2` から再公開）を `registerServer` に渡すか、`SesameOS2Ble` ファサードで `localServerAuth: true` を指定して自動配線します。既定の BLE-only register は不変です（`registerServer` も `localServerAuth` も無ければ従来どおり明示エラー）。`getRegisterKey` は依然 **未照合 (UNVERIFIED) な移植**で（[既知の制限](#既知の制限)参照）、実機 SESAME 2/3/4 キャプチャとのバイト一致は未確認です。
+
+> 登録ハンドシェイクとサーバ認証 login は SDK から 1:1 で移植し mock の end-to-end テストで検証済みですが、依存するサーバ認証プリミティブと REST ホストは**実機 OS3 で未照合**です（[既知の制限](#既知の制限)参照）。実機での利用は自己責任で。
+
+---
+
 ## 設定ディレクトリ
 
 優先順位: `--config-dir <path>` → `SESAME_KIT_HOME` → `$XDG_CONFIG_HOME/sesame-kit` → `~/.config/sesame-kit`。
@@ -242,7 +297,8 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 - 未実装 op は Stripe 課金切替のみです。それ以外の biz3 op (社員 / グループ / 役割 / デバイスグループ / 鍵共有 / アクセス制御 / 予約 / IoT) はコマンド化済みです。
 - WS ステージの既定は `/public` です。`/production` は使用しません (config に残っていれば load 時に `/public` へ書き換えます)。
 - AWS IoT WS は IPv4 必須です。IPv6-only 回線では繋がりません。
-- 新規ペアリング (未登録デバイスの登録) は未対応です。登録済みデバイスの操作のみです。
+- 新規ペアリング (未登録デバイスの登録) は Node ライブラリから提供しています (`SesameBle.register()` / `SesameBle.registerOnce()`、[BLE 初期ペアリング / 登録](#ble-初期ペアリング--登録上級)参照) が、**実機 OS3 では未確認**で CLI コマンドとしては未公開です。BLE の **セッション層**の登録ハンドシェイク自体は実装済みで mock ベクタで単体テスト済みです (`src/ble/session.js` の `SesameBleSession.register()`: secretKey 無しで構築した工場出荷デバイスが `initial(14)` 受信時に login せず `ReadyToRegister` へ遷移し、`REGISTRATION(1)` を平文送出、応答のデバイス公開鍵から ECDH で `secretKey`/session key を導出して cipher を確立。`CHHub3Device.kt:176-211` / `CHSesameOS3.kt:468-492` の移植)。`REGISTRATION` 応答は長さで機種分岐します: **64B** (Hub3 等 — payload 全体がデバイス公開鍵、`CHHub3Device.kt:197`) または **77B** (実機 SESAME 5 — `mechStatus(7B)` + `mechSetting(6B)` + `devicePubKey(64B)`。先頭 13B を parse してキャッシュへ、末尾 64B を ECDH に使用、`CHSesame5Device.kt:200-202` 準拠)。77B の SS5 経路は Kotlin から移植済みですが**実機 SESAME 5 では未確認**です。ファサードは `register()`・`registerMode` コンストラクタフラグ・`registerOnce()` (scan→connect→register→close)・`needAuthFromServer` login 経路 (`signGuestKey`→`login`、`CHSesameOS3.kt:473-487`) を追加し、いずれも mock の end-to-end テストで検証済みです。ただし依存するサーバ認証プリミティブ (`getRegisterKey`) と REST クライアント (`signGuestKey`/`registerSesame5`) は未照合 (UNVERIFIED) で、フロー全体は実機 OS3 で未確認です。サーバ認証プリミティブ `getRegisterKey` (`src/crypto.js`) は **OS2 register の任意経路に配線済み**になりました: `SesameOS2BleSession.register({ registerServer })` が `{ sig1, st, pubkey }` コールバックを受け、`makeLocalRegisterServer()` が `getRegisterKey` をそのコールバックに適合させてオフライン実行を可能にします (`SesameOS2Ble({ localServerAuth: true })` でも到達可)。mock end-to-end テスト (`tests/ble/os2-register.test.js`) で kit 内の app↔device 鍵一致は確認済みですが、実機一致は未確認です。既定の BLE-only register (OS3 `SesameBleSession.register()` と、`registerServer`/`localServerAuth` 無しの OS2 `register()`) は不変です。OS3 register (`CHHub3Device.kt:176-211`) は純 ECDH で `getRegisterKey` を使わないため、本配線は OS2 専用です (SDK で唯一の呼び出し元 `CHSesame2Device.kt:406-482`)。なお旧記載の「`e`/`ak`/`n` は各 16B」という想定は **一次資料が否定する未照合の推測**でした: `CHSesame2Device.kt:424-447` + `EccKey.kt:19-25` の照合により、実 wire は `ak` = app の 64B ECDH 公開鍵の base64、`n` = 4B の `mSesameToken`、`e` = 可変長の `ER` と判明したため、16B 固定 assert は下限 (空でない) チェックに訂正しました (CMAC は長さ非依存)。
+- **OS2 BLE** ファサード (`SesameOS2Ble`: SESAME 2/3/4・Bot1・Bike1 — 制御・autolock・履歴・ECDH login・register・`mechSetting` 書き込み [2/3/4 は `configureLockPosition`、Bot1 は `updateSetting`]・`updateFirmware` [DFU 開始コマンドのみ])、**生体・アクセス制御の登録** (`SesameBle#biometric`: カード / 指紋 / 暗証番号 / 顔 / 掌紋)、**SESAME Bike3 指紋** (`SesameBle#fingerPrint`: 一覧 / 削除 / 改名 / モード)、**SESAME Bot2 / Bot3 スクリプト** (`SesameBle#script`: index 実行 / 切替 / 取得 / 一覧 / 書き込み)、**WifiModule2 プロビジョニング** (`SesameBle#wifi`)、**Hub3 プロビジョニング** (`SesameBle#hub3`: SSID スキャン / SSID 設定 / パスワード設定 / 子鍵削除 / 接続種別 — `CHHub3Device.kt` から移植、Hub3 固有の `SesameItemCode` 131‑136 / 209。Hub3 は既定 SESAME GATT で接続し BLE のロック制御 op は持たないが、`connect`/`login`/`register`/`reset`/`updateFirmware` は OS3 共通経路で動作する。これにより `updateFirmware` の Hub3 分岐 [`MOVE_TO(84)`、`CHHub3Device.kt:213-226`] が到達可能になる)、**BLE 経由ファームウェア更新 / OTA** (`SesameBle#updateFirmware`) は、いずれも公式 SesameSDK から 1:1 で移植しユニット / mock end-to-end テストで検証済みですが、**ライブラリ専用 (CLI コマンドなし)** かつ**実機未確認**です。実機で最もよく通る経路は OS3 のロック / Bot / Bike 制御と読み出しです。使い方は [docs/ja/ble.md](./docs/ja/ble.md) を参照してください。
 
 ---
 

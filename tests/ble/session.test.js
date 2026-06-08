@@ -116,6 +116,23 @@ describe("SesameBleSession", () => {
     await expect(session.request(ITEM.LOCK)).rejects.toThrow(/not logged in/);
   });
 
+  it("復号失敗フレームでも dec カウンタを進め、後続フレームの復号が継続する (SDK 忠実: SesameOS3BleCipher.kt:23-31)", async () => {
+    await session.connect();
+    // device の enc カウンタを 1 進めた「対応する平文が無い/破損した」cipher フレームを注入。
+    // 旧実装は失敗時に dec カウンタを進めず、以降全フレームが恒久ずれで復号不能になっていた。
+    const garbage = ccmEncrypt(dev.key, dev.encCount, dev.token, Buffer.from([0xff, 0xff, 0xff]));
+    dev.encCount += 1;
+    // 受信時 parseRecvFrame は通るが (opCode 不明 → 無視されるだけ)、ここで重要なのは dec カウンタが
+    // 進むこと。破損を模すため、parse 前に意図的に 1 バイト壊して復号自体を失敗させる。
+    const corrupted = Buffer.from(garbage); corrupted[corrupted.length - 1] ^= 0xff; // tag を壊す
+    for (const s of splitSegments(corrupted, SEG.CIPHERTEXT)) session._onPacket(s);
+
+    // 後続の正常コマンドが往復できる = dec カウンタが device の enc カウンタと再同期している。
+    const r = await session.request(ITEM.LOCK);
+    expect(r.resultCode).toBe(0);
+    expect(dev.lastCommand.item).toBe(ITEM.LOCK);
+  });
+
   it("onStatus に mechStatus publish が届き parseMechStatus される", async () => {
     await session.connect();
     const got = [];

@@ -4,7 +4,7 @@ import { Buffer } from "node:buffer";
 import {
   deriveSessionKey, loginPayload, ccmEncrypt, ccmDecrypt,
   splitSegments, SegmentAssembler, buildSendFrame, parseRecvFrame,
-  historyTagBLE, autolockData, parseMechStatus,
+  historyTagBLE, autolockData, opSensorControlData, bleTxPowerData, parseMechStatus,
   OP, ITEM, SEG, GATT, MECH_STATE,
 } from "../../src/ble/protocol.js";
 
@@ -140,6 +140,21 @@ describe("コマンド data 生成", () => {
     expect([...autolockData(300)]).toEqual([0x2c, 0x01]);
     expect([...autolockData(0)]).toEqual([0, 0]);
     expect(() => autolockData(70000)).toThrow(/0\.\.65535/);
+  });
+  it("opSensorControlData は 2B LE (UShort, autolockData と同形式)", () => {
+    expect([...opSensorControlData(300)]).toEqual([0x2c, 0x01]);
+    expect([...opSensorControlData(0)]).toEqual([0, 0]);
+    expect([...opSensorControlData(65535)]).toEqual([0xff, 0xff]);
+    expect(() => opSensorControlData(-1)).toThrow(/0\.\.65535/);
+    expect(() => opSensorControlData(70000)).toThrow(/0\.\.65535/);
+  });
+  it("bleTxPowerData は符号付き 1B (-128..127)", () => {
+    expect([...bleTxPowerData(0)]).toEqual([0]);
+    expect([...bleTxPowerData(127)]).toEqual([127]);
+    expect([...bleTxPowerData(-4)]).toEqual([0xfc]);   // -4 を Int8 で詰めると 0xFC
+    expect([...bleTxPowerData(-128)]).toEqual([0x80]);
+    expect(() => bleTxPowerData(128)).toThrow(/-128\.\.127/);
+    expect(() => bleTxPowerData(-129)).toThrow(/-128\.\.127/);
   });
 });
 

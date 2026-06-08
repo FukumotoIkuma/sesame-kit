@@ -10,11 +10,13 @@ describe("kindForModel", () => {
       expect(kindForModel(m)).toBe(KIND.LOCK5);
     }
   });
-  it("Bot2/Bot3 は bot2、Bike2/Bike3 は bike2", () => {
+  it("Bot2/Bot3 は bot2、Bike2 は bike2、Bike3 は bike3 (指紋固有型)", () => {
     expect(kindForModel("bot_2")).toBe(KIND.BOT2);
     expect(kindForModel("bot_3")).toBe(KIND.BOT2);
     expect(kindForModel("bike_2")).toBe(KIND.BIKE2);
-    expect(kindForModel("bike_3")).toBe(KIND.BIKE2);
+    // Bike3 は CHSesameBike3Device : CHSesameBike2Device(), CHFingerPrintCapable で
+    // 指紋 capability を足した固有型なので Bike2 と同一視せず別 kind。
+    expect(kindForModel("bike_3")).toBe(KIND.BIKE3);
   });
   it("OS2 系は sesame2/botOs2/bikeOs2", () => {
     expect(kindForModel("sesame_2")).toBe(KIND.SESAME2);
@@ -52,12 +54,32 @@ describe("capabilitiesForModel / supportsOp (型×経路の和集合)", () => {
     expect(supportsOp("bot_2", "click")).toBe(true);
     expect(supportsOp("bot_2", "lock")).toBe(false);
   });
-  it("OS2 ロックは cloud のみ操作可 (BLE 未実装)", () => {
+  it("OS2 ロックは cloud + BLE (SesameOS2Ble) で操作可", () => {
     const c = capabilitiesForModel("sesame_2");
-    expect(c.ble).toEqual([]);
+    expect(c.ble).toEqual(["lock", "unlock", "toggle", "autolock"]); // OS2 BLE 直接制御 (autolock 含む)
     expect(c.cloud).toEqual(["lock", "unlock", "toggle"]);
-    expect(c.ops).toEqual(["lock", "unlock", "toggle"]); // cloud だけでも操作可能 = 和集合に出る
-    expect(c.bleSupported).toBe(false);
+    // 和集合 = ble (lock/unlock/toggle/autolock) + cloud 固有 (なし)。autolock は BLE 専用。
+    expect(c.ops).toEqual(["lock", "unlock", "toggle", "autolock"]);
+    expect(c.bleSupported).toBe(true);
+  });
+  it("Bike2 = unlock のみ (指紋なし)、Bike3 = unlock + fingerprint", () => {
+    const b2 = capabilitiesForModel("bike_2");
+    expect(b2.ble).toEqual(["unlock"]);
+    expect(b2.ops).toEqual(["unlock"]);
+    expect(b2.fingerprint).toBe(false); // Bike2 は CHFingerPrintCapable を持たない
+    const b3 = capabilitiesForModel("bike_3");
+    expect(b3.kind).toBe(KIND.BIKE3);
+    expect(b3.ble).toEqual(["unlock"]);   // 解錠能力は Bike2 を継承
+    expect(b3.ops).toEqual(["unlock"]);
+    expect(b3.fingerprint).toBe(true);    // 指紋登録 API のみ追加で持つ
+    expect(b3.biometric).toBe(false);     // card/passcode/face/palm は持たない (指紋専用)
+    expect(b3.mechKind).toBe("os3bot");   // mechStatus 解釈は Bike2 と同じ 3B
+  });
+  it("OS2 Bot1 = click / Bike1 = unlock (ble+cloud)", () => {
+    expect(capabilitiesForModel("ssmbot_1").ble).toEqual(["click"]);
+    expect(capabilitiesForModel("ssmbot_1").ops).toEqual(["click"]);
+    expect(capabilitiesForModel("bike_1").ble).toEqual(["unlock"]);
+    expect(capabilitiesForModel("bike_1").ops).toEqual(["unlock"]);
   });
   it("Hub3 は cloud で ir/relay/led", () => {
     const c = capabilitiesForModel("hub_3");
@@ -77,7 +99,8 @@ describe("transportsForOp (型×op→経路) / isOperable", () => {
     const { transportsForOp, isOperable } = await import("../../src/ble/devicemodel.js");
     expect(transportsForOp("sesame_5", "autolock")).toEqual(["ble"]);          // ロックの autolock は BLE 専用
     expect(transportsForOp("sesame_5", "lock").sort()).toEqual(["ble", "cloud"]);
-    expect(transportsForOp("sesame_2", "lock")).toEqual(["cloud"]);            // OS2 は cloud のみ
+    expect(transportsForOp("sesame_2", "lock").sort()).toEqual(["ble", "cloud"]); // OS2 lock は ble+cloud
+    expect(transportsForOp("sesame_2", "autolock")).toEqual(["ble"]);          // OS2 autolock も BLE 専用
     expect(transportsForOp("hub_3", "ir")).toEqual(["cloud"]);                 // Hub3 IR は cloud
     expect(transportsForOp("sesame_5", "ir")).toEqual([]);                     // ロックに ir は無い
     expect(isOperable("sesame_2")).toBe(true);   // cloud で操作可
@@ -90,7 +113,10 @@ describe("itemCode 一本化 (CMD === ITEM)", () => {
     const { CMD } = await import("../../src/crypto.js");
     const { ITEM } = await import("../../src/ble/protocol.js");
     const { ITEM_CODES } = await import("../../src/itemcodes.js");
-    for (const k of ["AUTOLOCK", "LOCK", "UNLOCK", "TOGGLE", "CLICK", "MECH_STATUS"]) {
+    // OS2 系の代表キーだけでなく ITEM_CODES 全件を走査し、OS3 で追加された
+    // CARD_*/FINGERPRINT_*/PASSCODE_*/FACE_*/PALM_* / ADD_SESAME 等も
+    // CMD ≡ ITEM ≡ ITEM_CODES の不変条件が崩れないことを担保する。
+    for (const k of Object.keys(ITEM_CODES)) {
       expect(CMD[k]).toBe(ITEM_CODES[k]);
       expect(ITEM[k]).toBe(ITEM_CODES[k]);
     }
@@ -105,6 +131,9 @@ describe("PRODUCT_TYPES", () => {
     expect(PRODUCT_TYPES[7].model).toBe("sesame_5_pro");
     expect(PRODUCT_TYPES[17].model).toBe("bot_2");
     expect(PRODUCT_TYPES[35].model).toBe("bot_3");
+    expect(PRODUCT_TYPES[33].model).toBe("bike_3");
+    expect(PRODUCT_TYPES[33].kind).toBe(KIND.BIKE3); // Bike3 は固有 kind (指紋)
+    expect(PRODUCT_TYPES[6].kind).toBe(KIND.BIKE2);  // Bike2 は従来どおり
     expect(PRODUCT_TYPES[13].model).toBe("hub_3");
     expect(PRODUCT_TYPES[10].model).toBe("ssm_touch");
   });

@@ -44,6 +44,14 @@
       "types": "./types/devices.d.ts",
       "default": "./src/devices.js"
     },
+    "./ble": {
+      "types": "./types/ble/index.d.ts",
+      "default": "./src/ble/index.js"
+    },
+    "./ble/os2": {
+      "types": "./types/ble/os2/index.d.ts",
+      "default": "./src/ble/os2/index.js"
+    },
     "./client": {
       "default": "./clients/js/sesame-client.mjs"
     }

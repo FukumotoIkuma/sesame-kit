@@ -113,4 +113,88 @@ export function webapiSendCmd(client: any, { apiKeyId, deviceId, cmd, sign, hist
     sign: any;
     history: any;
 }): Promise<any>;
+/**
+ * デフォルト REST transport を作る。原典は API Gateway (AWSCredentialsProvider) だが、
+ * 本 kit は既存の Cognito idToken (getValidIdToken) を再利用し Authorization に乗せる。
+ *
+ * ★ホストは UNVERIFIED (上記ブロック注記参照)。`baseUrl` を必ず注入すること。
+ *
+ * @param {{baseUrl:string, tokenStore:{load:Function,save:Function}, fetchImpl?:Function}} opts
+ * @returns {(req:{method:string, path:string, body?:object}) => Promise<{status:number, text:string, json:any}>}
+ */
+export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl }?: {
+    baseUrl: string;
+    tokenStore: {
+        load: Function;
+        save: Function;
+    };
+    fetchImpl?: Function;
+}): (req: {
+    method: string;
+    path: string;
+    body?: object;
+}) => Promise<{
+    status: number;
+    text: string;
+    json: any;
+}>;
+/**
+ * guestKeysSign — 既存登録済みデバイスの再ログイン時に session token を取得する
+ * (CHSesameOS3.kt:474-484, CHAPIClientBiz.kt:143-144)。
+ *
+ * リクエスト整形 (CHRemoveSignKeyRequest, CHHistoryUploadRequest.kt:8):
+ *   { deviceId: <deviceUUID 大文字>, token: <tokenHex>, secretKey: <secretKey> }
+ *   ・deviceId は **大文字化** (CHSesameOS3.kt:476 deviceId.uppercase())
+ *   ・token は mSesameToken の **hex** 文字列 (CHSesameOS3.kt:477 toHexString())
+ *   ・secretKey は sesame2KeyData.secretKey をそのまま
+ *
+ * 戻り値: guestKeysSignPost は String を返し、SDK は login(it.data) に渡す。
+ *   = session token (hex)。JSON ラップ ({data:...} 等) されている可能性があるため
+ *     text / json.data / json をこの順で session token として解決する。
+ *
+ * @param {(req)=>Promise<{status,text,json}>} transport makeRegisterTransport の戻り値、または fake。
+ * @param {{deviceUUID:string, tokenHex:string, secretKey:string}} p
+ * @returns {Promise<string>} session token (hex)。
+ */
+export function signGuestKey(transport: (req: any) => Promise<{
+    status: any;
+    text: any;
+    json: any;
+}>, { deviceUUID, tokenHex, secretKey }: {
+    deviceUUID: string;
+    tokenHex: string;
+    secretKey: string;
+}): Promise<string>;
+/**
+ * registerSesame5 — OS3 (SESAME5 系) デバイスをサーバに登録する
+ * (CHHub3Device.kt:183-186, CHAPIClientBiz.kt:193-195)。
+ *
+ * パス: POST /device/v1/sesame5/{device_id}  (CHAPIClient.kt:84)
+ *   ・device_id は CHHub3Device.kt:184 deviceId.toString() (大文字化なし。SDK 厳守)。
+ * リクエスト整形 (CHOS3RegisterReq, CHSS2RegisterReq.kt:5 → Gson キー {t, pk}):
+ *   { t: <productType 文字列>, pk: <serverSecret> }
+ *   ・t = productModel.productType().toString() (CHHub3Device.kt:185)
+ *     → 本 kit は model 名を crypto.js productTypeFromModelName で productType に解決し
+ *       .toString() する (完了条件 4)。数値 productType を直接渡すことも許容。
+ *   ・pk = serverSecret。SDK では serverSecret は register 時に新規生成される別値ではなく、
+ *     その時点の BLE セッショントークン mSesameToken を hex 化した値そのもの
+ *     (CHHub3Device.kt:182 `val serverSecret = mSesameToken.toHexString()`)。
+ *     よって本関数が受け取る serverSecret は、signGuestKey が token として送る
+ *     mSesameToken hex (L353) と同一カテゴリの値である (両者が値衝突して見えるのは正常)。
+ *     本 kit はこの値を呼び出し側から受け取り、整形せずそのまま pk に乗せるだけ。
+ *
+ * @param {(req)=>Promise<{status,text,json}>} transport makeRegisterTransport の戻り値、または fake。
+ * @param {{deviceUUID:string, productType:(string|number), serverSecret:string}} p
+ *   productType は model 名 (例 "sesame_5") または数値 productType。
+ * @returns {Promise<any>} サーバ応答 (json があれば json、無ければ text)。
+ */
+export function registerSesame5(transport: (req: any) => Promise<{
+    status: any;
+    text: any;
+    json: any;
+}>, { deviceUUID, productType, serverSecret }: {
+    deviceUUID: string;
+    productType: (string | number);
+    serverSecret: string;
+}): Promise<any>;
 //# sourceMappingURL=devices.d.ts.map

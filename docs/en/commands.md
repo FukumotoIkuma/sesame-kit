@@ -270,11 +270,11 @@ The operation set differs by device type. The SDK defines capabilities asymmetri
 | Lock `sesame_5`/`_pro`/`sesame_6`/`_pro`/`_us`/`miwa` | `lock` `unlock` `toggle` `autolock` `status` | locked/unlocked + position |
 | Bot `bot_2`/`bot_3` | `click` `status` | locked/unlocked (no position) |
 | Bike `bike_2`/`bike_3` | `unlock` `status` | locked/unlocked (no position) |
-| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (no BLE lock operations) | — |
-| OS2 `sesame_2`/`_4`, `ssmbot_1`, `bike_1` | BLE not implemented (key derivation/crypto is a separate path). Operate over cloud | — |
+| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (no BLE lock op via the CLI) — biometric enroll / Wi-Fi provisioning are **library-only** (`SesameBle#biometric` / `#wifi`, see [ble.md](./ble.md)) | — |
+| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | BLE supported via the **library** (`SesameOS2Ble`, separate protocol); the CLI route is cloud-only for OS2 | locked/unlocked/moved + position |
 
 > "locked/unlocked" is only the **two values** based on the presence of `isInLockRange` in OS3. OS3 has no intermediate (moved) state
-> (only OS2 devices such as Sesame2 have moved). For the BLE implementation design, see [architecture.md](./architecture.md).
+> (only OS2 devices such as Sesame2/3/4 have moved). For the BLE implementation design, see [architecture.md](./architecture.md).
 
 Usable as a library too:
 
@@ -287,7 +287,7 @@ await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
 });
 ```
 
-> The target is **SesameOS3** (SESAME 5 / 5 Pro / Touch, etc.). New pairing (registering an unregistered device) is a separate phase.
+> The **CLI** drives OS3 lock/Bot/Bike control. The **library** additionally covers OS2 devices (`SesameOS2Ble`), new pairing/registration (`SesameBle.registerOnce()` / `SesameOS2Ble.registerOnce()`), biometric/access-control enrollment, WifiModule2 provisioning, and BLE OTA — all ported from the SesameSDK but partly unverified against real hardware. See [ble.md](./ble.md) and the README's [Known limitations](../../README.md#known-limitations).
 
 ---
 
