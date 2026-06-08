@@ -7,6 +7,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const BIN = resolve(__dirname, "..", "..", "bin", "sesame.js");
+// 実 `node bin/sesame.js` を spawn する e2e。CLI 一式のコールドロードは、フルスイート
+// 並列実行下では多数の vitest ワーカーと CPU を奪い合い、vitest 既定の 5s testTimeout を
+// 稀に超える。超えると afterEach の SIGTERM が出力前の子を殺し、stdout 空 →
+// JSON.parse("") で落ちる (偽陽性)。spawn 系は本質的に unit より遅いので余裕を持たせる。
+const E2E_TIMEOUT = 30000;
 let workDir, proc;
 
 beforeEach(() => { workDir = mkdtempSync(join(tmpdir(), "sesame-serve-")); });
@@ -43,7 +48,7 @@ function runStdioSession(requests) {
     proc.stderr.once("data", () => {
       for (const r of requests) proc.stdin.write(JSON.stringify(r) + "\n");
     });
-    setTimeout(() => { if (proc && !proc.killed) proc.kill("SIGKILL"); reject(new Error("timeout")); }, 5000);
+    setTimeout(() => { if (proc && !proc.killed) proc.kill("SIGKILL"); reject(new Error("timeout")); }, E2E_TIMEOUT);
   });
 }
 
@@ -70,14 +75,14 @@ describe("sesame serve --stdio (end-to-end)", () => {
     expect(byId[3].error.code).toBe(-32601);
     // 看板 op lock.unlock が stdio 経路でも hub に届く (5 番目の framing)
     expect(byId[4].result).toMatchObject({ ok: true, name: "front" });
-  });
+  }, E2E_TIMEOUT);
 
   it("stdout は純 JSON-RPC のみ (人間向け案内は stderr)", async () => {
     const res = await runStdioSession([{ jsonrpc: "2.0", id: 1, method: "status" }]);
     // 全行が JSON としてパースできている (runStdioSession が JSON.parse 済み)
     expect(res).toHaveLength(1);
     expect(res[0].jsonrpc).toBe("2.0");
-  });
+  }, E2E_TIMEOUT);
 
   it("起動直後に event.ready を stdout へ通知する (stderr 儀式の代替)", async () => {
     const firstLine = await new Promise((resolveP, reject) => {
@@ -91,11 +96,11 @@ describe("sesame serve --stdio (end-to-end)", () => {
         if (nl >= 0) resolveP(JSON.parse(buf.slice(0, nl)));
       });
       proc.on("error", reject);
-      setTimeout(() => reject(new Error("timeout")), 15000);
+      setTimeout(() => reject(new Error("timeout")), E2E_TIMEOUT);
     });
     expect(firstLine.method).toBe("event.ready");
     expect("id" in firstLine).toBe(false); // 通知なので id は無い
-  }, 15000); // 並列スイート実行下で実プロセス spawn が遅れても落ちないよう余裕を持たせる
+  }, E2E_TIMEOUT); // 並列スイート実行下で実プロセス spawn が遅れても落ちないよう余裕を持たせる
 });
 
 describe("sesame rpc --paths (機械可読な接続情報)", () => {
@@ -106,11 +111,11 @@ describe("sesame rpc --paths (機械可読な接続情報)", () => {
       proc.stdout.on("data", (d) => { buf += d.toString(); });
       proc.on("error", reject);
       proc.on("close", () => resolveP(buf));
-      setTimeout(() => reject(new Error("timeout")), 5000);
+      setTimeout(() => reject(new Error("timeout")), E2E_TIMEOUT);
     });
     const info = JSON.parse(out);
     expect(info.socket).toContain("sesame.sock");
     expect(info.tokenFile).toContain("serve.token");
     expect(info.token).toBeNull(); // HTTP 未起動なので token ファイルは無い
-  });
+  }, E2E_TIMEOUT);
 });

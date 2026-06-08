@@ -61,6 +61,7 @@ sesame init                 # initialize the config directory (~/.config/sesame-
 sesame login your@email.com # send a verification code to your email
 sesame verify               # enter the code; imports your devices (with keys)
 sesame devices              # list your devices and their names (use these names below)
+sesame logout               # revoke this session's token + forget this device server-side, then clear local tokens
 ```
 
 Run `sesame setup` to re-import after adding devices in the official app later.
@@ -248,6 +249,7 @@ Full docs: **[docs/en/](./docs/en/index.md)** ([日本語](./docs/ja/index.md)).
 - `No tokens stored` / `No config at ...`: `sesame init` → `sesame login`, or `sesame migrate`.
 - `UserNotFoundException`: auto sign-up is built in. If it still appears, it is a Cognito-side edge case.
 - `Cognito refresh returned no IdToken`: the refresh token was invalidated (e.g., logged out in the official app). Sign in again.
+- `Invalid Refresh Token` on the first refresh (≈24h after login): your tokens predate device confirmation. `sesame login` registers the device with Cognito (`ConfirmDevice`, like the official app) so the refresh token stays valid; sign in again once to migrate.
 - `triggerLock timeout`: wrong `secretKey`, Hub3 offline, or a half-open WS (recovers on auto-reconnect).
 - `learn timeout`: the Hub3 entered REGISTER mode but did not receive a waveform. Move closer or try a different button.
 - `apiKeyId required`: for `webapi` commands, set `apiKeyId` in config.json (issue one in the biz3 dev console).

@@ -5,10 +5,12 @@ export default {
     "auth.noTokens": "No tokens stored. Sign in with `sesame login <email>`.",
     "auth.noPending": "No pending sign-in. Run `login <email>` first.",
     "auth.anotherChallenge": "Another challenge required: {name}. (sign in again)",
+    "auth.wrongCodeRetry": "Incorrect code. Run `sesame verify <code>` again with the right code.",
   },
   ja: {
     "auth.noTokens": "No tokens stored. `sesame login <email>` で sign-in してください。",
     "auth.noPending": "No pending sign-in. 先に `login <email>` を実行してください。",
     "auth.anotherChallenge": "Another challenge required: {name}. (再 login が必要)",
+    "auth.wrongCodeRetry": "コードが違います。正しいコードで `sesame verify <code>` をもう一度実行してください。",
   },
 };

@@ -1,6 +1,6 @@
 // ファイルシステム実装の TokenStore。auth.js から I/O を分離するための薄いラッパ。
 // ライブラリ消費者は独自の実装 (例: keychain, in-memory) に差し替え可能。
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { configPaths } from "./paths.js";
 
@@ -19,7 +19,12 @@ function writeJson(path, data) {
   //     パーミッションは変わらない)。旧バージョンで 0755 で作られたディレクトリは
   //     `chmod 700 ~/.config/sesame-kit` で手動修正が必要。
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileSync(path, JSON.stringify(data, null, 2) + "\n", { mode: 0o600 });
+  // アトミック書き込み: 一時ファイルに書いてから rename。serve デーモンの
+  // onTokenRefreshNeeded と CLI の refresh が同じ tokens.json を同時更新しても、
+  // 半端な書き込みでファイルが壊れない (rename は POSIX で atomic)。
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify(data, null, 2) + "\n", { mode: 0o600 });
+  renameSync(tmp, path);
 }
 
 function unlinkIfExists(path) {
