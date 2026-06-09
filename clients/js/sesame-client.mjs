@@ -18,13 +18,22 @@ import os from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 
+// CLI の権威ある解決順 (src/paths.js) に合わせる:
+//   1. SESAME_KIT_HOME (アプリ専用) → そのディレクトリ直下
+//   2. XDG_CONFIG_HOME → $XDG_CONFIG_HOME/sesame-kit
+//   3. ~/.config/sesame-kit
+// クライアントは standalone コピーなので src/ から import せず自前で再現する。
+function defaultConfigDir() {
+  if (process.env.SESAME_KIT_HOME) return process.env.SESAME_KIT_HOME;
+  const xdg = process.env.XDG_CONFIG_HOME;
+  if (xdg) return join(xdg, "sesame-kit");
+  return join(os.homedir(), ".config", "sesame-kit");
+}
 function defaultSocketPath() {
-  const base = process.env.XDG_CONFIG_HOME || join(os.homedir(), ".config");
-  return join(base, "sesame-kit", "sesame.sock");
+  return join(defaultConfigDir(), "sesame.sock");
 }
 function defaultTokenPath() {
-  const base = process.env.XDG_CONFIG_HOME || join(os.homedir(), ".config");
-  return join(base, "sesame-kit", "serve.token");
+  return join(defaultConfigDir(), "serve.token");
 }
 function defaultToken() {
   try { return readFileSync(defaultTokenPath(), "utf8").trim(); } catch { return null; }
@@ -176,7 +185,8 @@ class HttpTransport {
     return r.status === 204 ? { id: this._ids, result: null } : r.json();
   }
   async subscribe(topics, onEvent) {
-    const url = `${this._base}/events?topics=${topics.join(",")}` + (this._token ? `&token=${this._token}` : "");
+    // token は Authorization ヘッダ (_headers) で送る。URL クエリに載せると proxy/access ログに漏れる。
+    const url = `${this._base}/events?topics=${topics.join(",")}`;
     let res;
     try { res = await fetch(url, { headers: this._headers() }); }
     catch (e) { throw new SesameError(`events 接続失敗: ${e.message}`, "connection_lost"); }

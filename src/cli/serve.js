@@ -22,6 +22,36 @@ import { t } from "../i18n.js";
 
 const DEF = { http: 8080, ws: 8081, grpc: 50051 };
 
+/**
+ * serve が投げる/橋渡しする拡張 Error。
+ * - exitCode: usage エラー等で run() が尊重する終了コード。
+ * - code/data/rpcError: rpc 経路で JSON-RPC error 封筒を CLI エラーへ橋渡しするマーカー
+ *   (外側 CLI ハンドラが data.kind を失わず stale config 誤案内を避けるため)。
+ * @typedef {Error & {
+ *   exitCode?: number,
+ *   code?: number|string,
+ *   data?: unknown,
+ *   rpcError?: boolean,
+ * }} ServeError
+ */
+
+/**
+ * net.Socket 等が投げる errno 付きエラー (ENOENT/ECONNREFUSED で分岐する)。
+ * @typedef {Error & { code?: string }} ErrnoError
+ */
+
+/**
+ * JSON-RPC 応答/通知の最小形 (1 行 JSON をパースした結果)。
+ * @typedef {{
+ *   jsonrpc?: string,
+ *   id?: number|string|null,
+ *   method?: string,
+ *   params?: unknown,
+ *   result?: unknown,
+ *   error?: { code: number, message: string, data?: unknown },
+ * }} RpcMessage
+ */
+
 function pkgVersion() {
   try {
     const p = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json");
@@ -29,39 +59,71 @@ function pkgVersion() {
   } catch { return "0.0.0"; }
 }
 
-/** opts の任意ポート値 (true=既定 / "N"=指定) を数値へ。無効なら null。 */
+/**
+ * opts の任意ポート値 (true=既定 / "N"=指定) を数値へ。無効なら null。
+ * @param {string|boolean|undefined} v
+ * @param {number} def
+ * @returns {number|null}
+ */
 function portOf(v, def) {
   if (v === undefined || v === false) return null;
   if (v === true) return def;
   const n = parseInt(v, 10);
   if (!Number.isFinite(n) || n < 0 || n > 65535) {
-    throw new Error(t("serve.invalidPort", { v })); // 黙って既定にせず明示エラー
+    // 不正なポート指定は usage エラー (exit 2)。黙って既定にせず明示エラー。
+    const err = /** @type {ServeError} */ (new Error(t("serve.invalidPort", { v })));
+    err.exitCode = 2;
+    throw err;
   }
   return n;
 }
 
-/** テスト用スタブ hub (env-gated)。実クラウドに繋がず契約だけ検証できるようにする。 */
+/**
+ * テスト用スタブ hub (env-gated)。実クラウドに繋がず契約だけ検証できるようにする。
+ * daemon が触る HubLike 面 + テスト用の _emit/listDevices 等を備える。HubLike にない
+ * メソッド (getLoginUser 等) も持つため、unknown 経由で HubLike にナロー化する。
+ * @returns {import("../serve/daemon.js").HubLike & { _emit: (m: unknown) => void }}
+ */
 function makeStubHub() {
+  /** @type {((msg: unknown) => void)|null} */
   let duFn = null;
-  return {
+  const stub = {
     connected: true, subUUID: "stub-sub", config: { devices: {} },
     async connect() {}, async close() {},
+    /** @param {unknown} _i @param {(msg: unknown) => void} fn */
     onDeviceUpdate: (_i, fn) => { duFn = fn; return () => { duFn = null; }; },
+    /** @param {unknown} m */
     _emit: (m) => duFn && duFn(m),
     async getLoginUser() { return { stub: true }; },
     async listDevices() { return []; },
+    /** @param {string} name */
     async unlock(name) { return { ok: true, name }; },
+    /** @param {{ deviceUUID: string }} p */
     async unlockDevice({ deviceUUID }) { return { ok: true, deviceUUID }; },
   };
+  return /** @type {import("../serve/daemon.js").HubLike & { _emit: (m: unknown) => void }} */ (
+    /** @type {unknown} */ (stub)
+  );
 }
 
+/**
+ * @param {import("commander").Command} program
+ * @returns {Promise<import("../serve/daemon.js").HubLike>}
+ */
 async function buildHub(program) {
   // テストスタブは本番では絶対に使わない (NODE_ENV=production では無効化)。
   if (process.env.SESAME_SERVE_TEST_HUB === "1" && process.env.NODE_ENV !== "production") return makeStubHub();
   const g = program.opts();
-  return SesameHub3.fromConfig({ configDir: g.configDir, debug: !!g.debug });
+  // SesameHub3 は HubLike の上位互換だが onDeviceUpdate の items が string 厳密 (HubLike は
+  // unknown) で、関数引数の非変性により直接代入できない。daemon が触る面は安全なため
+  // unknown 経由で HubLike へナロー化する (cross-file: 真因は HubLike.onDeviceUpdate の
+  // items 型を SesameHub3 と揃えること。本ファイル外なのでここでは橋渡しに留める)。
+  return /** @type {import("../serve/daemon.js").HubLike} */ (
+    /** @type {unknown} */ (SesameHub3.fromConfig({ configDir: g.configDir, debug: !!g.debug }))
+  );
 }
 
+/** @param {import("commander").Command} program */
 export function registerServeCommand(program) {
   program.command("serve")
     .description(t("serve.cmd.desc"))
@@ -73,6 +135,7 @@ export function registerServeCommand(program) {
     .option("--grpc [port]", t("serve.opt.grpc", { port: DEF.grpc }))
     .option("--bind <addr>", t("serve.opt.bind"), "127.0.0.1")
     .option("--token <t>", t("serve.opt.token"))
+    .option("--cors <origins>", t("serve.opt.cors"))
     .addHelpText("after", t("serve.help.after"))
     .action((opts) => cmdServe(opts, program));
 
@@ -89,9 +152,14 @@ export function registerServeCommand(program) {
     .action((method, opts) => cmdRpc(method, opts, program));
 }
 
-/** UDS を保持し events を購読、各イベントを 1 行 JSON で出し続ける (Ctrl-C で終了)。 */
+/**
+ * UDS を保持し events を購読、各イベントを 1 行 JSON で出し続ける (Ctrl-C で終了)。
+ * @param {string} socketPath
+ * @param {string[]} topics
+ * @returns {Promise<void>}
+ */
 function rpcSubscribe(socketPath, topics) {
-  return new Promise((resolve, reject) => {
+  return new Promise((/** @type {() => void} */ resolve, reject) => {
     const sock = net.connect(socketPath);
     let buf = "";
     sock.on("connect", () => {
@@ -104,13 +172,14 @@ function rpcSubscribe(socketPath, topics) {
       while ((nl = buf.indexOf("\n")) >= 0) {
         const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
         if (!line.trim()) continue;
+        /** @type {RpcMessage} */
         let msg; try { msg = JSON.parse(line); } catch { continue; }
         if (typeof msg.method === "string" && msg.method.startsWith("event.")) {
           console.log(JSON.stringify({ topic: msg.method.slice(6), payload: msg.params }));
         }
       }
     });
-    sock.on("error", (e) => {
+    sock.on("error", (/** @type {ErrnoError} */ e) => {
       if (e.code === "ENOENT" || e.code === "ECONNREFUSED") {
         reject(new Error(t("serve.notRunning", { socketPath })));
       } else reject(e);
@@ -119,9 +188,16 @@ function rpcSubscribe(socketPath, topics) {
   });
 }
 
-/** UDS 経由で 1 リクエスト送り result を返す。未起動は分かりやすいエラーに。 */
+/**
+ * UDS 経由で 1 リクエスト送り result を返す。未起動は分かりやすいエラーに。
+ * @param {string} socketPath
+ * @param {string} method
+ * @param {unknown} params
+ * @param {number} [timeoutMs]
+ * @returns {Promise<unknown>}
+ */
 function rpcCall(socketPath, method, params, timeoutMs = 15000) {
-  return new Promise((resolve, reject) => {
+  return new Promise((/** @type {(result: unknown) => void} */ resolve, reject) => {
     const sock = net.connect(socketPath);
     let buf = "";
     const to = setTimeout(() => { sock.destroy(); reject(new Error(t("serve.rpcTimeout"))); }, timeoutMs);
@@ -135,15 +211,24 @@ function rpcCall(socketPath, method, params, timeoutMs = 15000) {
         const line = buf.slice(0, nl);
         buf = buf.slice(nl + 1);
         if (!line.trim()) continue;
+        /** @type {RpcMessage} */
         let msg; try { msg = JSON.parse(line); } catch { continue; }
         if (typeof msg.method === "string" && msg.method.startsWith("event.")) continue;
         if (msg.id !== 1) continue;
         clearTimeout(to); sock.destroy();
-        if (msg.error) { const e = new Error(msg.error.message); e.code = msg.error.code; return reject(e); }
+        if (msg.error) {
+          // JSON-RPC error をそのまま CLI エラーへ橋渡し。data.kind を失わず、外側の
+          // CLI ハンドラが stale config 誤案内を避けられるよう rpcError マーカーも立てる。
+          const e = /** @type {ServeError} */ (new Error(msg.error.message));
+          e.code = msg.error.code;
+          e.data = msg.error.data;
+          e.rpcError = true;
+          return reject(e);
+        }
         return resolve(msg.result);
       }
     });
-    sock.on("error", (e) => {
+    sock.on("error", (/** @type {ErrnoError} */ e) => {
       clearTimeout(to);
       if (e.code === "ENOENT" || e.code === "ECONNREFUSED") {
         reject(new Error(t("serve.notRunning", { socketPath })));
@@ -152,7 +237,15 @@ function rpcCall(socketPath, method, params, timeoutMs = 15000) {
   });
 }
 
-/** HTTP の `serve --http` へ 1 リクエスト送り result を返す。serve.token を既定トークンに使う。 */
+/**
+ * HTTP の `serve --http` へ 1 リクエスト送り result を返す。serve.token を既定トークンに使う。
+ * @param {string} url
+ * @param {string|null} token
+ * @param {string} method
+ * @param {unknown} params
+ * @param {number} [timeoutMs]
+ * @returns {Promise<unknown>}
+ */
 async function rpcCallHttp(url, token, method, params, timeoutMs = 15000) {
   const endpoint = url.replace(/\/+$/, "") + "/rpc";
   const ctrl = new AbortController();
@@ -166,20 +259,36 @@ async function rpcCallHttp(url, token, method, params, timeoutMs = 15000) {
       signal: ctrl.signal,
     });
   } catch (e) {
-    if (e.name === "AbortError") throw new Error(t("serve.rpcTimeout"));
+    if (e instanceof Error && e.name === "AbortError") throw new Error(t("serve.rpcTimeout"));
     throw new Error(t("serve.httpNotRunning", { url })); // 接続拒否 (未起動) 等
   } finally { clearTimeout(to); }
   if (resp.status === 401) throw new Error(t("serve.httpUnauthorized"));
-  const msg = await resp.json();
-  if (msg.error) { const e = new Error(msg.error.message); e.code = msg.error.code; throw e; }
+  const msg = /** @type {RpcMessage} */ (await resp.json());
+  if (msg.error) {
+    // UDS 経路と同様、data.kind / rpcError マーカーを引き継ぐ (誤った stale config 案内を回避)。
+    const e = /** @type {ServeError} */ (new Error(msg.error.message));
+    e.code = msg.error.code;
+    e.data = msg.error.data;
+    e.rpcError = true;
+    throw e;
+  }
   return msg.result;
 }
 
-/** --http の URL を解決 (値省略時は既定)。 */
+/**
+ * --http の URL を解決 (値省略時は既定)。
+ * @param {string|boolean|undefined} http
+ * @returns {string}
+ */
 function resolveHttpUrl(http) {
   return typeof http === "string" ? http : "http://127.0.0.1:8080";
 }
 
+/**
+ * @param {string|undefined} method
+ * @param {Record<string, any>} opts
+ * @param {import("commander").Command} program
+ */
 async function cmdRpc(method, opts, program) {
   const dir = configPaths(program.opts().configDir);
   const socketPath = opts.socket || dir.socket;
@@ -194,7 +303,7 @@ async function cmdRpc(method, opts, program) {
   }
   // --subscribe: イベントを出し続ける (イベントの行き止まり解消)。
   if (opts.subscribe) {
-    const topics = opts.subscribe.split(",").map((s) => s.trim()).filter(Boolean);
+    const topics = String(opts.subscribe).split(",").map((/** @type {string} */ s) => s.trim()).filter(Boolean);
     if (opts.http) {
       // HTTP の購読は SSE (GET /events)。ここでは curl の SSE 例を案内する。
       console.error(t("serve.subscribeHttpUnsupported", { url: resolveHttpUrl(opts.http), topics: topics.join(",") }));
@@ -205,10 +314,21 @@ async function cmdRpc(method, opts, program) {
   }
 
   const m = method || "rpc.discover";
+  /** @type {unknown} */
   let params = {};
   if (opts.params) {
-    try { params = JSON.parse(opts.params); } catch (e) { console.error(t("serve.badParamsJson", { message: e.message })); process.exit(2); }
+    try {
+      params = JSON.parse(opts.params);
+    } catch (e) {
+      // --json 時は構造化封筒 (CLI の --json エラー契約に合わせ {error,code})、
+      // 非 --json は従来どおり人間向けメッセージ。どちらも usage エラーなので exit 2。
+      const msg = t("serve.badParamsJson", { message: e instanceof Error ? e.message : String(e) });
+      if (program.opts().json) console.error(JSON.stringify({ error: msg, code: 2 }));
+      else console.error(msg);
+      process.exit(2);
+    }
   }
+  /** @type {unknown} */
   let result;
   if (opts.http) {
     const url = resolveHttpUrl(opts.http);
@@ -219,22 +339,30 @@ async function cmdRpc(method, opts, program) {
     result = await rpcCall(socketPath, m, params);
   }
   // 未ログイン/失効を見たら次の一手を案内 (degraded で居座る問題の出口)。
-  if (m === "status" && result && result.authState && result.authState !== "ok") {
+  // result は unknown (rpc 応答)。status 応答の authState を読むためにナロー化する。
+  const statusRes = /** @type {{ authState?: string }} */ (result);
+  if (m === "status" && result && statusRes.authState && statusRes.authState !== "ok") {
     console.error(t("serve.hint.notLoggedIn"));
   }
   if (program.opts().json) { console.log(JSON.stringify(result, null, 2)); return; }
   if (m === "rpc.discover") {
     // 人間向けの表: メソッド名 + 引数 (required はそのまま、任意は [name])。
-    for (const meth of result.methods) {
+    // rpc.discover の result 形状にナロー化する。
+    const disc = /** @type {{ methods: Array<{ name: string, params?: Array<{ name: string, required?: boolean }> }> }} */ (result);
+    for (const meth of disc.methods) {
       const ps = (meth.params || []).map((p) => (p.required ? p.name : `[${p.name}]`)).join(" ");
       console.log(`${meth.name.padEnd(28)} ${ps}`);
     }
-    console.error(t("serve.discoverFooter", { count: result.methods.length }));
+    console.error(t("serve.discoverFooter", { count: disc.methods.length }));
     return;
   }
   console.log(JSON.stringify(result, null, 2));
 }
 
+/**
+ * @param {Record<string, any>} opts
+ * @param {import("commander").Command} program
+ */
 async function cmdServe(opts, program) {
   // どのフレーミングを上げるか決定。明示が無ければ UDS のみ。
   const wantStdio = !!opts.stdio;
@@ -247,17 +375,35 @@ async function cmdServe(opts, program) {
   const needsToken = httpPort != null || wsPort != null || grpcPort != null;
   const token = needsToken ? (opts.token || generateToken()) : null;
 
+  // 全フレーミングを解決した結果、1 つも上がらない (例: `--no-socket` 単独) なら
+  // 何も listen しないデーモンを起動しても無意味。usage エラー (exit 2) で明示拒否する。
+  if (!wantStdio && !wantSocket && httpPort == null && wsPort == null && grpcPort == null) {
+    const err = /** @type {ServeError} */ (new Error(t("serve.noFraming")));
+    err.exitCode = 2; // run() の catch が usage コード 2 を尊重する
+    throw err;
+  }
+
+  // CORS は HTTP 専用のオプトイン設定。"*" か、カンマ区切りの origin リスト。
+  const corsOrigins = opts.cors
+    ? (String(opts.cors).trim() === "*" ? "*" : String(opts.cors).split(",").map((/** @type {string} */ s) => s.trim()).filter(Boolean))
+    : null;
+
   const hub = await buildHub(program);
   const daemon = new Daemon({ hub, version: pkgVersion(), debug: !!program.opts().debug });
 
   // 人間向けの案内は **stderr** へ (stdio モードでは stdout が RPC チャネル)。
+  /** @param {...unknown} a */
   const note = (...a) => console.error("[serve]", ...a);
 
+  /** @type {Array<{ stop?: () => void|Promise<void>, path?: string, url?: string, port?: number }>} */
   const handles = [];
   let shuttingDown = false;
+  /** @type {(value?: void) => void} */
   let resolveRun;
+  /** @type {Promise<void>} */
   const runUntilShutdown = new Promise((r) => { resolveRun = r; });
 
+  /** @param {string} reason */
   const shutdown = async (reason) => {
     if (shuttingDown) return;
     shuttingDown = true;
@@ -278,7 +424,11 @@ async function cmdServe(opts, program) {
       note(t("serve.note.unixSocket", { path: h.path }));
       note(t("serve.note.socketTest", { path: h.path }));
     }
-    if (httpPort != null) { const h = await startHttpFraming(daemon, { bind: opts.bind, port: httpPort, token }); handles.push(h); note(t("serve.note.http", { url: h.url })); }
+    if (httpPort != null) {
+      const h = await startHttpFraming(daemon, { bind: opts.bind, port: httpPort, token, corsOrigins }); handles.push(h);
+      note(t("serve.note.http", { url: h.url }));
+      if (corsOrigins) note(t("serve.note.cors", { origins: corsOrigins === "*" ? "*" : corsOrigins.join(", ") }));
+    }
     if (wsPort != null) {
       const h = await startWsFraming(daemon, { bind: opts.bind, port: wsPort, token }); handles.push(h);
       note(t("serve.note.ws", { url: h.url }));
@@ -319,6 +469,7 @@ async function cmdServe(opts, program) {
   note(t("serve.note.ready"));
 
   // シグナル/致命例外で graceful shutdown。プロセスはここで shutdown まで生き続ける。
+  /** @param {string} s */
   const onSig = (s) => shutdown(s);
   process.once("SIGINT", () => onSig("SIGINT"));
   process.once("SIGTERM", () => onSig("SIGTERM"));
@@ -328,9 +479,10 @@ async function cmdServe(opts, program) {
   // unhandledRejection はログのみ (良性の reject 1 個でロック制御を落とさない)。
   // ただし**短時間のバースト**は構造的バグなので exit (無限ログ垂れ流しを防ぐ)。
   // 生涯累積で数えると無期限常駐が良性 reject の蓄積でいつか必ず落ちるため、直近 60s の窓で判定する。
+  /** @type {number[]} */
   const rejTimes = [];
-  process.on("unhandledRejection", (e) => {
-    note(t("serve.note.unhandled"), e?.message || e);
+  process.on("unhandledRejection", (/** @type {unknown} */ e) => {
+    note(t("serve.note.unhandled"), (e instanceof Error ? e.message : e));
     const now = Date.now();
     rejTimes.push(now);
     while (rejTimes.length && now - rejTimes[0] > 60_000) rejTimes.shift();

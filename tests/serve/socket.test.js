@@ -80,4 +80,17 @@ describe("socket framing", () => {
     handle = await startSocketFraming(d, { socketPath });
     await expect(ensureFreeSocket(socketPath)).rejects.toThrow(/already running/);
   });
+
+  it("親ディレクトリが存在しなくても 0700 で作って listen する (未初期化 config dir で EACCES にしない)", async () => {
+    // 既定 UDS は configPaths.dir 配下に置かれるが、その親が未作成のケースを再現する。
+    const nestedPath = join(workDir, "nope", "sesame.sock");
+    const d = new Daemon({ hub: fakeHub() });
+    handle = await startSocketFraming(d, { socketPath: nestedPath });
+    // 親ディレクトリが 0700 で作られている。
+    const dirMode = statSync(join(workDir, "nope")).mode & 0o777;
+    expect(dirMode).toBe(0o700);
+    // 実際に待受できている。
+    const res = await rpc(nestedPath, { jsonrpc: "2.0", id: 9, method: "status" });
+    expect(res.result).toBeDefined();
+  });
 });

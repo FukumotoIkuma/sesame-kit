@@ -28,7 +28,7 @@ import { t } from "../i18n.js";
 
 /**
  * @param {import("commander").Command} program
- * @param {object} ctx cli.js makeCtx() が供給する共有コンテキスト
+ * @param {import("../cli.js").CliCtx} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
 export function registerOrgCommands(program, ctx) {
   const org = program.command("org").description(t("org.cmd.org"));
@@ -43,8 +43,10 @@ export function registerOrgCommands(program, ctx) {
     .description(t("org.employee.ls.desc"))
     .action(() =>
       ctx.withAccount(async (hub, { opts }) => {
-        // 戻りは { count, list } (count=totalCount)。
-        const { count, list } = await hub.org.getEmployees();
+        // 戻りは { count, list } (count=totalCount)。namespace getter は unknown に erase する。
+        const { count, list } = /** @type {{count:number, list:any[]}} */ (
+          await hub.org.getEmployees()
+        );
         ctx.out(opts.json, () => {
           if (!Array.isArray(list) || list.length === 0) {
             console.log(t("org.employee.ls.none"));
@@ -238,7 +240,10 @@ export function registerOrgCommands(program, ctx) {
         }
         const item = ctx.parseJson(cmdOpts.json, t("org.group.add.hint"));
         if (item === undefined) return;
-        const created = await hub.org.addEmployeeGroup({ item });
+        // namespace getter は unknown を返すため、追加グループ (resp.data) の形へ cast。
+        const created = /** @type {{gid?:string}|undefined} */ (
+          await hub.org.addEmployeeGroup({ item })
+        );
         ctx.out(opts.json, () => {
           console.log(created?.gid ? t("org.group.add.okId", { gid: created.gid }) : t("org.group.add.ok"));
         }, { ok: true, group: created });
@@ -708,7 +713,8 @@ export function registerOrgCommands(program, ctx) {
         }
         const data = ctx.parseJson(cmdOpts.json, '{"deviceUUID":"…","secretKey":"…"}');
         if (data === undefined) return;
-        const guestKeyId = await hub.org.generateGuestQR({ data });
+        // namespace getter は unknown を返すが、本体 generateGuestQR は guestKeyId (string) を返す。
+        const guestKeyId = /** @type {string} */ (await hub.org.generateGuestQR({ data }));
         ctx.out(opts.json, () => {
           console.log(t("org.keys.generateGuestQr.ok", { guestKeyId }));
         }, { ok: true, guestKeyId });
@@ -759,19 +765,25 @@ export function registerOrgCommands(program, ctx) {
         }
 
         // guest (level 2) のみ使い捨て guestKeyId を発行 (biz3 と同じ。0/1 は deviceKey.secretKey)。
+        // namespace getter は unknown を返すが、本体 generateGuestQR は guestKeyId (string) を返す。
+        /** @type {string|undefined} */
         let guestKeyId;
         if (level === 2) {
-          guestKeyId = await hub.org.generateGuestQR({ data: deviceKey });
+          guestKeyId = /** @type {string} */ (await hub.org.generateGuestQR({ data: deviceKey }));
         }
 
         const url = buildShareKeyUrl(deviceKey, { keyLevel: level, guestKeyId, name: cmdOpts.name });
 
         // --qr 指定時のみ端末 QR を試みる (qrcode-terminal は任意依存。未導入なら案内のみ)。
+        /** @type {string|null} */
         let qrText = null;
         if (cmdOpts.qr && !opts.json) {
           try {
+            // qrcode-terminal は型定義の無い任意 (optional) 依存。未導入の環境では catch で案内に
+            // フォールバックするため、解決不能でも実害は無い (型を付与する手段が無い唯一のケース)。
+            // @ts-expect-error optional untyped dep (qrcode-terminal): no type declarations available
             const { default: qrcodeTerminal } = await import("qrcode-terminal");
-            qrcodeTerminal.generate(url, { small: true }, (out) => { qrText = out; });
+            qrcodeTerminal.generate(url, { small: true }, (/** @type {string} */ out) => { qrText = out; });
           } catch {
             qrText = t("org.keys.shareUrl.qrNotInstalled");
           }

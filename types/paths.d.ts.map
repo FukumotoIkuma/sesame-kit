@@ -1,1 +1,1 @@
-{"version":3,"file":"paths.d.ts","sourceRoot":"","sources":["../src/paths.js"],"names":[],"mappings":"AAUA,2DAMC;AAED;;;;;;;EAWC"}
+{"version":3,"file":"paths.d.ts","sourceRoot":"","sources":["../src/paths.js"],"names":[],"mappings":"AAUA;;;;GAIG;AACH,+CAHW,MAAM,GACJ,MAAM,CAQlB;AAED;;;;;;;;GAQG;AAEH;;;;GAIG;AACH,0CAHW,MAAM,GACJ,WAAW,CAavB;;;;;SAxBa,MAAM;;;;YACN,MAAM;;;;YACN,MAAM;;;;gBACN,MAAM;;;;aACN,MAAM;;;;YACN,MAAM"}

@@ -66,11 +66,15 @@
     "types/",
     "vendor/",
     "clients/",
+    "schema/",
+    "sdk/",
     "docs/",
     "README.md",
     "README.ja.md",
     "LICENSE",
-    "LICENSE.biz3"
+    "LICENSE.biz3",
+    "!**/__pycache__",
+    "!**/*.pyc"
   ],
   "keywords": [
     "sesame",
@@ -95,6 +99,7 @@
     "test:unit": "vitest run --project unit",
     "test:e2e": "vitest run --project e2e",
     "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:types": "tsc -p tsconfig.json",
     "build:rpc-schema": "node scripts/gen-rpc-schema.mjs",
     "build:grpc-proto": "node scripts/gen-grpc-proto.mjs",
@@ -105,7 +110,7 @@
     "typecheck:sdk": "tsc -p sdk/ts/tsconfig.json",
     "check:sdk:py": "python3 -m py_compile sdk/python/sesame_client.py",
     "build": "tsc -p tsconfig.json && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs && node scripts/gen-openrpc.mjs && node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
-    "prepack": "tsc -p tsconfig.json && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs",
+    "prepack": "tsc -p tsconfig.json && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs && node scripts/gen-openrpc.mjs && node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
     "release": "bash scripts/release.sh"
   },
   "dependencies": {
@@ -123,6 +128,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "overrides": {
+    "tar": "^7.5.11"
   },
   "devDependencies": {
     "ink-testing-library": "^4.0.0",

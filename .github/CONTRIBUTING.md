@@ -40,7 +40,7 @@ npm test            # run the test suite / テスト実行
 npm run build:types # type-check via JSDoc -> .d.ts / 型チェック
 ```
 
-Requirements / 必要環境: Node.js >= 18.
+Requirements / 必要環境: Node.js >= 20 (matches `package.json` `engines`).
 
 ## Development workflow / 開発の流れ
 
@@ -49,7 +49,7 @@ Requirements / 必要環境: Node.js >= 18.
 3. Implement the change until tests pass. / テストが通るまで実装。
 4. Run `npm test` and `npm run build:types` locally. / ローカルで両方を実行。
 5. Update `README.md` / `README.ja.md` if behavior changed. / 挙動が変わるなら README を更新。
-6. Open a PR; fill in the template. CI (Node 18/20/22) must pass. / PR を作成、テンプレを記入。CI を通す。
+6. Open a PR; fill in the template. CI (Node 20/22) must pass. / PR を作成、テンプレを記入。CI を通す。
 
 ## Testing notes / テストの注意
 

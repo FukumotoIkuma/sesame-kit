@@ -33,14 +33,27 @@ import urllib.request
 from typing import Any, Callable, Optional
 
 
+def _default_config_dir() -> str:
+    # CLI の権威ある解決順 (src/paths.js) に合わせる:
+    #   1. SESAME_KIT_HOME (アプリ専用) → そのディレクトリ直下
+    #   2. XDG_CONFIG_HOME → $XDG_CONFIG_HOME/sesame-kit
+    #   3. ~/.config/sesame-kit
+    # クライアントは standalone コピーなので src/ から import せず自前で再現する。
+    home = os.environ.get("SESAME_KIT_HOME")
+    if home:
+        return home
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        return os.path.join(xdg, "sesame-kit")
+    return os.path.join(os.path.expanduser("~"), ".config", "sesame-kit")
+
+
 def _default_socket_path() -> str:
-    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
-    return os.path.join(base, "sesame-kit", "sesame.sock")
+    return os.path.join(_default_config_dir(), "sesame.sock")
 
 
 def _default_token_path() -> str:
-    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
-    return os.path.join(base, "sesame-kit", "serve.token")
+    return os.path.join(_default_config_dir(), "serve.token")
 
 
 class SesameError(RuntimeError):
@@ -281,9 +294,8 @@ class _HttpTransport:
 
     def subscribe(self, topics, on_event):
         q = ",".join(topics)
+        # token は Authorization ヘッダ (_headers) で送る。URL クエリに載せると proxy/access ログに漏れる。
         url = f"{self._base}/events?topics={q}"
-        if self._token:
-            url += f"&token={self._token}"
         # 初回接続を**同期で**確立し、401/400 (不正 topic) をその場で raise (JS と対称。
         # バックグラウンドで黙って失敗していた旧挙動を是正)。
         req = urllib.request.Request(url, headers=self._headers())

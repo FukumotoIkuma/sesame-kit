@@ -103,6 +103,50 @@ describe("sesame serve --stdio (end-to-end)", () => {
   }, E2E_TIMEOUT); // 並列スイート実行下で実プロセス spawn が遅れても落ちないよう余裕を持たせる
 });
 
+/** 引数つきで bin を spawn し、{code, stdout, stderr} を返す (待受しない短命コマンド用)。 */
+function runCli(args) {
+  return new Promise((resolveP, reject) => {
+    proc = spawn("node", [BIN, ...args, "--config-dir", workDir], {
+      env: { ...process.env, SESAME_SERVE_TEST_HUB: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "", stderr = "";
+    proc.stdout.on("data", (d) => { stdout += d.toString(); });
+    proc.stderr.on("data", (d) => { stderr += d.toString(); });
+    proc.on("error", reject);
+    proc.on("close", (code) => resolveP({ code, stdout, stderr }));
+    setTimeout(() => { if (proc && !proc.killed) proc.kill("SIGKILL"); reject(new Error("timeout")); }, E2E_TIMEOUT);
+  });
+}
+
+describe("sesame serve framing 選択 (usage エラー)", () => {
+  it("--no-socket 単独 (他フレーミング無し) は exit 2 で待受せず明示拒否する", async () => {
+    const { code, stderr } = await runCli(["serve", "--no-socket"]);
+    expect(code).toBe(2); // usage エラー (0=success,1=runtime,2=usage)
+    expect(stderr).toMatch(/at least one|1 つ以上|framing|フレーミング/i);
+  }, E2E_TIMEOUT);
+});
+
+describe("sesame rpc --params 不正 JSON のエラー契約", () => {
+  it("非 --json は人間向けメッセージで exit 2", async () => {
+    const { code, stderr } = await runCli(["rpc", "--params", "{bad", "status"]);
+    expect(code).toBe(2);
+    expect(stderr).toMatch(/--params/);
+    // 構造化封筒ではない (人間向け)。
+    expect(() => JSON.parse(stderr.trim())).toThrow();
+  }, E2E_TIMEOUT);
+
+  it("--json は {error,code:2} の構造化封筒を stderr に出して exit 2", async () => {
+    const { code, stdout, stderr } = await runCli(["--json", "rpc", "--params", "{bad", "status"]);
+    expect(code).toBe(2);
+    expect(stdout.trim()).toBe(""); // stdout は成功 JSON 専用 (エラーは出さない)
+    const env = JSON.parse(stderr.trim());
+    expect(env.code).toBe(2);
+    expect(typeof env.error).toBe("string");
+    expect(env.error).toMatch(/--params/);
+  }, E2E_TIMEOUT);
+});
+
 describe("sesame rpc --paths (機械可読な接続情報)", () => {
   it("socket / tokenFile / token を JSON で出力する", async () => {
     const out = await new Promise((resolveP, reject) => {

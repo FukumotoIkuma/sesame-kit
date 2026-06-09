@@ -8,7 +8,11 @@ export function generateToken() {
   return randomBytes(32).toString("hex");
 }
 
-/** 定数時間比較。長さ不一致は false。 */
+/** 定数時間比較。長さ不一致は false。
+ * @param {unknown} provided
+ * @param {unknown} expected
+ * @returns {boolean}
+ */
 export function tokenMatches(provided, expected) {
   if (typeof provided !== "string" || typeof expected !== "string") return false;
   if (provided.length !== expected.length) return false;
@@ -24,12 +28,16 @@ export function tokenMatches(provided, expected) {
  * `?token=` クエリは **ブラウザ専用のフォールバック** (EventSource/WebSocket がヘッダを送れないため)。
  * クエリに載せると proxy ログ/履歴に残るので、ヘッダを送れるクライアントは必ずヘッダを使う。
  */
+/**
+ * @param {import("node:http").IncomingMessage} req
+ * @returns {string}
+ */
 export function extractToken(req) {
   const auth = req.headers?.authorization || "";
   const m = /^Bearer\s+(.+)$/i.exec(auth);
   if (m) return m[1];
   try {
-    return new URL(req.url, "http://localhost").searchParams.get("token") || "";
+    return new URL(req.url || "", "http://localhost").searchParams.get("token") || "";
   } catch {
     return "";
   }

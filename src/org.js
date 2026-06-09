@@ -68,7 +68,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  */
 export async function getEmployees(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!companyID) throw badRequest("org.req.companyID");
-  return collectChunks(client, {
+  return /** @type {{count:number, list:any[]}} */ (await collectChunks(client, {
     action: ACT_EMPLOYEE,
     pubOp: "pubEmployees", // useManageEmployee.js:7
     sendFrame: { action: ACT_EMPLOYEE, companyID, op: "get" }, // :18-22
@@ -79,7 +79,7 @@ export async function getEmployees(client, { companyID, timeoutMs = DEFAULT_TIME
       const inner = msg?.data?.data ?? {};
       return { totalCount, list: inner.list ?? [], page: inner.page ?? 1 };
     },
-  });
+  }));
 }
 
 /**
@@ -93,7 +93,7 @@ export async function getEmployees(client, { companyID, timeoutMs = DEFAULT_TIME
 export async function getCurrentUserInfo(client, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const resp = await client.request({ action: ACT_EMPLOYEE, op: "currentInfo" }, timeoutMs);
   assertSuccess(resp, "getCurrentUserInfo");
-  return resp.data; // vendor は常に res.data を読む (?? resp フォールバックは推測だった)
+  return /** @type {object} */ (resp.data); // vendor は常に res.data を読む (?? resp フォールバックは推測だった)
 }
 
 /**
@@ -179,7 +179,7 @@ export async function reorderEmployees(client, { items, timeoutMs = DEFAULT_TIME
  */
 export async function queryByCS(client, { keyword, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!keyword) throw badRequest("org.req.keyword");
-  return collectChunks(client, {
+  return /** @type {any[]} */ (await collectChunks(client, {
     action: ACT_EMPLOYEE,
     pubOp: "pubQueryByCS", // useManageEmployee.js:411,415
     sendFrame: { action: ACT_EMPLOYEE, keyword, op: "queryByCS" }, // :394-398
@@ -195,7 +195,7 @@ export async function queryByCS(client, { keyword, timeoutMs = DEFAULT_TIMEOUT_M
         totalPage: top.totalPage ?? 1,
       };
     },
-  });
+  }));
 }
 
 /**
@@ -236,7 +236,7 @@ export async function getEmployeeGroups(client, { companyID, timeoutMs = DEFAULT
     timeoutMs,
   );
   assertSuccess(resp, "getEmployeeGroups");
-  return resp?.data ?? [];
+  return /** @type {any[]} */ (resp?.data ?? []);
 }
 
 /**
@@ -386,7 +386,7 @@ export async function getTags(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_M
     timeoutMs,
   );
   assertSuccess(resp, "getTags");
-  return resp?.data ?? [];
+  return /** @type {any[]} */ (resp?.data ?? []);
 }
 
 /**
@@ -443,7 +443,7 @@ export async function getDeviceGroups(client, { companyID, timeoutMs = DEFAULT_T
     timeoutMs,
   );
   assertSuccess(resp, "getDeviceGroups");
-  return resp?.data ?? [];
+  return /** @type {any[]} */ (resp?.data ?? []);
 }
 
 /**
@@ -694,7 +694,7 @@ export async function generateGuestQR(client, { data, timeoutMs = DEFAULT_TIMEOU
     timeoutMs,
   );
   assertSuccess(resp, "generateGuestQR");
-  return resp.data; // guestKeyId (MobileDeviceShareQRCode.js:58-69)
+  return /** @type {string} */ (resp.data); // guestKeyId (MobileDeviceShareQRCode.js:58-69)
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -719,7 +719,7 @@ export async function getDeviceEmployeeKeys(client, { deviceUUID, companyID, lim
     timeoutMs,
   );
   assertSuccess(resp, "getDeviceEmployeeKeys");
-  return resp?.data ?? [];
+  return /** @type {any[]} */ (resp?.data ?? []);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -740,7 +740,7 @@ export async function getDeviceEmployeeKeys(client, { deviceUUID, companyID, lim
  * @param {{
  *   action:string,
  *   pubOp:string,
- *   sendFrame:object,
+ *   sendFrame:import("./transport.js").WsFrame,
  *   timeoutMs:number,
  *   parseChunk:(msg:any)=>{list:any[], page:number, totalPage?:number, totalCount?:number},
  *   returnListOnly?:boolean,
@@ -751,7 +751,9 @@ function collectChunks(client, cfg) {
   const { action, pubOp, sendFrame, timeoutMs, parseChunk, returnListOnly } = cfg;
   // 蓄積は本関数のクロージャで持ち、ライフサイクル (Promise/cleanup/timeout/二重解決ガード) は
   // util.subscribeChunks に委譲する (devices/access と共通の定型)。
+  /** @type {any[]} */
   let acc = [];
+  /** @type {number|null} */
   let total = null; // totalCount (件数) を見るモード用
   return subscribeChunks(client, {
     sendFrame,
@@ -760,6 +762,7 @@ function collectChunks(client, cfg) {
     result: () => (returnListOnly ? acc : { count: total ?? acc.length, list: acc }),
     subscriptions: [{
       key: `${action}:${pubOp}`,
+      /** @param {any} msg @param {(err?: Error) => void} finish */
       onMessage: (msg, finish) => {
         if (msg?.success === false) {
           finish(rejected(`${action}:${pubOp} failed: ${msg.message || JSON.stringify(msg)}`,

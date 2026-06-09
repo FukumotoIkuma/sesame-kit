@@ -13,20 +13,23 @@ let _idSeq = 0;
 /**
  * @param {import("node:stream").Readable} readable
  * @param {import("node:stream").Writable} writable
- * @param {{ onLine:(conn:object, raw:string)=>void, onClose?:()=>void,
+ * @param {{ onLine:(conn:import("../daemon.js").Connection, raw:string)=>void, onClose?:()=>void,
  *           maxQueue?:number, maxLine?:number, closeWritable?:boolean }} opts
- * @returns {{ id:string, send:(obj:object)=>void, close:()=>void }}
+ * @returns {import("../daemon.js").Connection}
  */
 export function makeLineConnection(readable, writable, opts) {
   const { onLine, onClose, maxQueue = 1000, maxLine = 1_000_000, closeWritable = false } = opts;
   let closed = false;
   let draining = false;
+  /** @type {string[]} */
   const queue = [];
   const decoder = new StringDecoder("utf8");
   let inbuf = "";
 
+  /** @type {import("../daemon.js").Connection} */
   const conn = {
     id: `c${++_idSeq}`,
+    /** @param {unknown} obj */
     send(obj) {
       if (closed) return;
       const line = JSON.stringify(obj) + "\n";
@@ -46,6 +49,7 @@ export function makeLineConnection(readable, writable, opts) {
     },
   };
 
+  /** @param {Buffer} chunk */
   function onData(chunk) {
     if (closed) return;
     inbuf += decoder.write(chunk);

@@ -16,12 +16,12 @@
  *           が count=data.length / Items=data に自前で詰め替えている点に注意)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{subUUID:string, timeoutMs?:number}} params
+ * @param {{subUUID?:string, timeoutMs?:number}} [params]
  *   subUUID は gStripe.customerInfo.subUUID 相当 (生の文字列をそのまま userId に入れる)
  * @returns {Promise<ScheduleItem[]>} スケジュール item の配列 (空なら [])
  */
 export function getScheduleList(client: import("./transport.js").Hub3WsClient, { subUUID, timeoutMs }?: {
-    subUUID: string;
+    subUUID?: string;
     timeoutMs?: number;
 }): Promise<ScheduleItem[]>;
 /**
@@ -38,13 +38,13 @@ export function getScheduleList(client: import("./transport.js").Hub3WsClient, {
  * resp.success が明示的に false の場合のみ throw する。成功フラグ等の data 形は実機検証要。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{subUUID:string, scheduleId:string, timeoutMs?:number}} params
+ * @param {{subUUID?:string, scheduleId?:string, timeoutMs?:number}} [params]
  *   scheduleId は getScheduleList で得た item.scheduleId をそのまま渡す。
  * @returns {Promise<any>} サーバ応答 (ack)。data の構造は未確認のため raw を返す。
  */
 export function cancelSchedule(client: import("./transport.js").Hub3WsClient, { subUUID, scheduleId, timeoutMs }?: {
-    subUUID: string;
-    scheduleId: string;
+    subUUID?: string;
+    scheduleId?: string;
     timeoutMs?: number;
 }): Promise<any>;
 export const NAMESPACE_OPS: string[];

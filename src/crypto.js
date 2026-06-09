@@ -143,7 +143,7 @@ export function parseIrType(v) {
   if (typeof v === "number") return v;
   if (typeof v !== "string") throw new Error(`irType must be a string or number (got ${typeof v})`);
   const key = v.trim().toLowerCase();
-  if (key in IR_TYPE) return IR_TYPE[key];
+  if (key in IR_TYPE) return IR_TYPE[/** @type {keyof typeof IR_TYPE} */ (key)];
   const n = Number(key);
   if (Number.isFinite(n)) return n;
   const aliases = Object.keys(IR_TYPE).join(", ");
@@ -161,6 +161,11 @@ export const PRODUCT_TYPE = Object.freeze(
   ),
 );
 
+/**
+ * モデル名 (例 "sesame_5") から biz3 の productType 数値を引く。
+ * @param {string} modelName
+ * @returns {number|undefined}
+ */
 export function productTypeFromModelName(modelName) {
   return PRODUCT_TYPE[modelName];
 }
@@ -213,14 +218,16 @@ const ECDH_RAW_PUBKEY_LEN = 64;        // P-256 生公開鍵 = X(32B) ‖ Y(32B)
 function resolveEcdh(keyPair) {
   if (!keyPair) throw new Error("keyPair required (createECDH instance)");
   // 直接 ECDH インスタンス、またはそれを内包するラッパのどちらでも受ける。
+  // 構造的にプロパティ存在を見るため、union を緩く読める形にナロー化する。
+  const kp = /** @type {{ ecdh?: import("node:crypto").ECDH, computeSecret?: Function }} */ (keyPair);
   const candidate =
-    typeof keyPair.computeSecret === "function" ? keyPair
-      : (keyPair.ecdh && typeof keyPair.ecdh.computeSecret === "function") ? keyPair.ecdh
+    typeof kp.computeSecret === "function" ? kp
+      : (kp.ecdh && typeof kp.ecdh.computeSecret === "function") ? kp.ecdh
         : null;
   if (!candidate) {
     throw new Error("keyPair must expose computeSecret() (a createECDH('prime256v1') instance)");
   }
-  return candidate;
+  return /** @type {{computeSecret:(other:Buffer)=>Buffer}} */ (candidate);
 }
 
 /**
@@ -381,6 +388,11 @@ export const SERVER_AUTH_PUBKEY =
 // crypto.js 内の唯一の正規化ポイント。cmacTime() もこの helper 経由で揃える
 // (l.69 参照)。別モジュールの src/ble/protocol.js:78 は独立した正規化を持つが、
 // モジュール境界をまたぐため統一は任意。
+/**
+ * @param {Buffer} key 16B 鍵
+ * @param {Buffer} msg 署名対象メッセージ
+ * @returns {Buffer}
+ */
 function cmacBuf(key, msg) {
   const mac = aesCmac(key, msg);
   return Buffer.isBuffer(mac) ? mac : Buffer.from(mac, "hex");

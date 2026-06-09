@@ -18,12 +18,21 @@
 // lock.status = vendor 検証済 / lock.lock/unlock/toggle/click ack = vendor 非検証
 // (web は trigger ack を読まない / src 観測のみ) なので全 optional の緩い型。
 
+/** @typedef {Record<string, unknown>} JsonSchema JSON-Schema 風のスキーマ片 */
+
+/** @type {JsonSchema} */
 const STR = { type: "string" };
+/** @type {JsonSchema} */
 const NUM = { type: "number" };
+/** @type {JsonSchema} */
 const BOOL = { type: "boolean" };
+/** @type {JsonSchema} */
 const OBJ = { type: "object" }; // 中身未確定 → unknown/Any
+/** @param {JsonSchema} items @returns {JsonSchema} */
 const arr = (items) => ({ type: "array", items });
+/** @param {Record<string, JsonSchema>} properties @param {string[]} [required] @returns {JsonSchema} */
 const obj = (properties, required = []) => ({ type: "object", properties, required });
+/** @param {JsonSchema} schema @returns {JsonSchema} */
 const nullable = (schema) => ({ ...schema, nullable: true }); // 値が null になりうる (SDK で `| null` / `| None`)
 
 // デバイス 1 件 (devices.list の要素 / lock.status の単機状態は同形)。stateInfo は内部形未確定。
@@ -39,6 +48,7 @@ const LOCK_ACK = obj(
   ["action"],
 );
 
+/** @type {Readonly<Record<string, JsonSchema>>} */
 export const RESULT_SCHEMAS = Object.freeze({
   // daemon 自前 (確実)
   "status": obj(

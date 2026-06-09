@@ -45,7 +45,7 @@ export function bleWasUsed(): boolean;
  * @param {{deviceUUIDs?:string[], timeoutMs?:number, debug?:boolean, gatt?:{SERVICE:string}}} opts
  *   gatt: スキャンフィルタに使う service UUID (省略時 SESAME GATT fd81)。WM2 は WM2_GATT を渡す。
  *     advertise の company ID (0x055A) は全 SESAME 共通なので parse は機種別に分岐する (gatt 非依存)。
- * @returns {Promise<Map<string, any>>} key = deviceUUID(小文字ダッシュ付き) → noble peripheral
+ * @returns {Promise<Map<string, NoblePeripheral>>} key = deviceUUID(小文字ダッシュ付き) → noble peripheral
  */
 export function scanSesames({ deviceUUIDs, timeoutMs, debug, gatt }?: {
     deviceUUIDs?: string[];
@@ -54,7 +54,7 @@ export function scanSesames({ deviceUUIDs, timeoutMs, debug, gatt }?: {
     gatt?: {
         SERVICE: string;
     };
-}): Promise<Map<string, any>>;
+}): Promise<Map<string, NoblePeripheral>>;
 /**
  * noble peripheral 1 件を「型付き発見結果」に変換する純関数 (listNearbyDevices の中核を
  * noble 非依存に切り出したもの)。SDK CHBleManager.kt:134-140 の `CHadv(scanResult)` →
@@ -149,37 +149,56 @@ export function listNearbyDevices({ timeoutMs, debug, includeUnknown, gatt }?: {
 }>>;
 /**
  * 既定の BLE トランスポートを生成する (noble を遅延ロード)。
- * @param {object} opts NobleTransport の opts
+ * @param {NobleTransportOpts} [opts] NobleTransport の opts
  * @returns {NobleTransport}
  */
-export function createBleTransport(opts?: object): NobleTransport;
+export function createBleTransport(opts?: NobleTransportOpts): NobleTransport;
 /**
- * @abandonware/noble ベースの BLE トランスポート。
- *
- * @param {{
- *   deviceUUID?: string,   // 対象 SESAME の deviceUUID (advertise から照合)
- *   address?: string,      // BLE アドレスで照合 (deviceUUID が取れない環境向け)
- *   peripheral?: object,   // 既にスキャン済みの noble peripheral (scanSesames の結果)。あればスキャンしない
- *   scanTimeoutMs?: number,
- *   debug?: boolean,
- *   gatt?: {SERVICE:string, WRITE_CHAR:string, NOTIFY_CHAR:string}, // discover/subscribe する GATT
- *                          // (省略時 SESAME GATT fd81)。WM2 は WM2_GATT を渡す。
- * }} opts
+ * @typedef {object} Gatt discover/subscribe する GATT (省略時 SESAME GATT fd81)。
+ * @property {string} SERVICE
+ * @property {string} WRITE_CHAR
+ * @property {string} NOTIFY_CHAR
+ */
+/**
+ * NobleTransport のコンストラクタ opts。
+ * @typedef {object} NobleTransportOpts
+ * @property {string} [deviceUUID] 対象 SESAME の deviceUUID (advertise から照合)。
+ * @property {string} [address] BLE アドレスで照合 (deviceUUID が取れない環境向け)。
+ * @property {NoblePeripheral} [peripheral] 既にスキャン済みの noble peripheral (scanSesames の結果)。あればスキャンしない。
+ * @property {number} [scanTimeoutMs]
+ * @property {boolean} [debug]
+ * @property {Gatt} [gatt] discover/subscribe する GATT (省略時 SESAME GATT fd81)。WM2 は WM2_GATT を渡す。
+ */
+/**
+ * noble (@abandonware/noble) ベースの BLE トランスポート。
  */
 export class NobleTransport {
-    constructor(opts?: {});
-    _opts: {};
-    _noble: any;
-    _peripheral: any;
+    /** @param {NobleTransportOpts} [opts] */
+    constructor(opts?: NobleTransportOpts);
+    _opts: NobleTransportOpts;
+    /** @type {Noble|null} */
+    _noble: Noble | null;
+    /** @type {NoblePeripheral|null} */
+    _peripheral: NoblePeripheral | null;
     _scanned: boolean;
-    _gatt: any;
-    _writeChar: any;
-    _notifyChar: any;
+    _gatt: Readonly<{
+        SERVICE: "fd81";
+        WRITE_CHAR: "16860002-a5ae-9856-b6d3-dbb4c676993e";
+        NOTIFY_CHAR: "16860003-a5ae-9856-b6d3-dbb4c676993e";
+    }> | Gatt;
+    /** @type {NobleCharacteristic|null} */
+    _writeChar: NobleCharacteristic | null;
+    /** @type {NobleCharacteristic|null} */
+    _notifyChar: NobleCharacteristic | null;
+    /** @type {Promise<void>} */
     _writeChain: Promise<void>;
     _debug: boolean;
-    _onDisconnect: (reason: any) => void;
+    /** @type {((reason:any)=>void)|null} */
+    _onDisconnect: ((reason: any) => void) | null;
     _disconnected: boolean;
-    _onPeripheralDisconnect: (reason: any) => void;
+    /** @type {((reason:any)=>void)|null} */
+    _onPeripheralDisconnect: ((reason: any) => void) | null;
+    /** @param {...any} a */
     _log(...a: any[]): void;
     /**
      * @param {(packet:Buffer)=>void} onPacket notify 1 件ごとに呼ばれる
@@ -193,10 +212,16 @@ export class NobleTransport {
      * リンク断扱い (_handleDisconnect) として onDisconnect を発火させ、最後のエラーを投げる。
      * SDK CHSesameOS3.kt:321-346 transmit の「リトライ→最終的に失敗で disconnect」と同じ流儀
      * (回数は noble の非同期 writeAsync に合わせて妥当な少数に縮小。仕様で許容)。
+     * @param {Buffer|Uint8Array} bytes
+     * @returns {Promise<void>}
      */
-    write(bytes: any): Promise<void>;
-    /** writeAsync を有限回リトライ。全失敗で _handleDisconnect → 最後のエラーを rethrow。 */
-    _writeWithRetry(buf: any): Promise<void>;
+    write(bytes: Buffer | Uint8Array): Promise<void>;
+    /**
+     * writeAsync を有限回リトライ。全失敗で _handleDisconnect → 最後のエラーを rethrow。
+     * @param {Buffer} buf
+     * @returns {Promise<void>}
+     */
+    _writeWithRetry(buf: Buffer): Promise<void>;
     /**
      * リンク切断 (peripheral 'disconnect' / write 連続失敗) を 1 回だけ session に伝播する。
      * SDK の onConnectionStateChange STATE_DISCONNECTED 側 (cmdCallBack.clear) に相当。
@@ -204,12 +229,111 @@ export class NobleTransport {
      */
     _handleDisconnect(reason: any): void;
     disconnect(): Promise<void>;
-    _waitPoweredOn(noble: any): Promise<any>;
-    _scanForDevice(noble: any, { deviceUUID, address, scanTimeoutMs }: {
-        deviceUUID: any;
-        address: any;
-        scanTimeoutMs: any;
-    }): Promise<any>;
+    /** @param {Noble} noble */
+    _waitPoweredOn(noble: Noble): Promise<void>;
+    /**
+     * @param {Noble} noble
+     * @param {{deviceUUID?:string, address?:string, scanTimeoutMs:number}} opts
+     * @returns {Promise<NoblePeripheral>}
+     */
+    _scanForDevice(noble: Noble, { deviceUUID, address, scanTimeoutMs }: {
+        deviceUUID?: string;
+        address?: string;
+        scanTimeoutMs: number;
+    }): Promise<NoblePeripheral>;
 }
+/**
+ * noble の characteristic (使用メソッドのみ)。
+ */
+export type NobleCharacteristic = {
+    uuid: string;
+    on: (event: "data", listener: (data: Buffer) => void) => void;
+    subscribeAsync: () => Promise<void>;
+    unsubscribeAsync: () => Promise<void>;
+    writeAsync: (data: Buffer, withoutResponse: boolean) => Promise<void>;
+};
+/**
+ * noble の advertisement (使用フィールドのみ)。
+ */
+export type NobleAdvertisement = {
+    /**
+     * company ID 2B を含む生バイト列。
+     */
+    manufacturerData?: Buffer<ArrayBufferLike> | undefined;
+    localName?: string | undefined;
+};
+/**
+ * noble の peripheral (使用メソッド/プロパティのみ)。
+ */
+export type NoblePeripheral = {
+    address?: string | undefined;
+    id?: string | undefined;
+    rssi?: number | undefined;
+    mtu?: number | undefined;
+    advertisement?: NobleAdvertisement | undefined;
+    on: (event: "disconnect", listener: (reason: any) => void) => void;
+    removeListener: (event: string, listener: (...args: any[]) => void) => void;
+    connectAsync: () => Promise<void>;
+    disconnectAsync: () => Promise<void>;
+    discoverSomeServicesAndCharacteristicsAsync: (serviceUUIDs: string[], characteristicUUIDs: string[]) => Promise<{
+        characteristics: NobleCharacteristic[];
+    }>;
+};
+/**
+ * noble モジュール (@abandonware/noble) の使用メソッド/プロパティのみ。
+ */
+export type Noble = {
+    state: string;
+    on: (event: string, listener: (...args: any[]) => void) => void;
+    removeListener: (event: string, listener: (...args: any[]) => void) => void;
+    stopScanningAsync: () => Promise<void>;
+    startScanningAsync: (serviceUUIDs: string[], allowDuplicates: boolean) => Promise<void>;
+};
+/**
+ * code 付きエラー (CLI が分岐に使う BLE_* コード)。
+ */
+export type CodedError = Error & {
+    code?: string;
+};
+export type ProbeResult = {
+    kind: "ok";
+    state: string;
+} | {
+    kind: "noAdapter";
+    cause: string;
+} | {
+    kind: "aborted";
+};
+/**
+ * discover/subscribe する GATT (省略時 SESAME GATT fd81)。
+ */
+export type Gatt = {
+    SERVICE: string;
+    WRITE_CHAR: string;
+    NOTIFY_CHAR: string;
+};
+/**
+ * NobleTransport のコンストラクタ opts。
+ */
+export type NobleTransportOpts = {
+    /**
+     * 対象 SESAME の deviceUUID (advertise から照合)。
+     */
+    deviceUUID?: string | undefined;
+    /**
+     * BLE アドレスで照合 (deviceUUID が取れない環境向け)。
+     */
+    address?: string | undefined;
+    /**
+     * 既にスキャン済みの noble peripheral (scanSesames の結果)。あればスキャンしない。
+     */
+    peripheral?: NoblePeripheral | undefined;
+    scanTimeoutMs?: number | undefined;
+    debug?: boolean | undefined;
+    /**
+     * discover/subscribe する GATT (省略時 SESAME GATT fd81)。WM2 は WM2_GATT を渡す。
+     */
+    gatt?: Gatt | undefined;
+};
 import { Buffer } from "node:buffer";
 //# sourceMappingURL=transport.d.ts.map

@@ -1,28 +1,25 @@
-/** メソッド名 → "stable" | "experimental" (provenance から導出)。 */
-export function stabilityOf(name: any): "stable" | "experimental";
-/** メソッド名 → provenance 文字列。未登録は "unverified"。 */
-export function provenanceOf(name: any): any;
-/** イベント名 → "stable" | "experimental"。 */
-export function eventStabilityOf(name: any): "stable" | "experimental";
-/** イベント名 → provenance。 */
-export function eventProvenanceOf(name: any): any;
-export const STABLE_METHODS: {
-    status: string;
-    "account.whoami": string;
-    "lock.lock": string;
-    "lock.unlock": string;
-    "lock.toggle": string;
-    "lock.click": string;
-    "lock.status": string;
-    "devices.list": string;
-    "device.history": string;
-    "device.battery": string;
-    "events.subscribe": string;
-    "events.unsubscribe": string;
-};
-export const STABLE_EVENTS: {
-    "event.lockState": string;
-    "event.deviceUpdate": string;
-    "event.ready": string;
-};
+/** メソッド名 → "stable" | "experimental" (provenance から導出)。
+ * @param {string} name
+ * @returns {"stable"|"experimental"}
+ */
+export function stabilityOf(name: string): "stable" | "experimental";
+/** メソッド名 → provenance 文字列。未登録は "unverified"。
+ * @param {string} name
+ * @returns {string}
+ */
+export function provenanceOf(name: string): string;
+/** イベント名 → "stable" | "experimental"。
+ * @param {string} name
+ * @returns {"stable"|"experimental"}
+ */
+export function eventStabilityOf(name: string): "stable" | "experimental";
+/** イベント名 → provenance。
+ * @param {string} name
+ * @returns {string}
+ */
+export function eventProvenanceOf(name: string): string;
+/** @type {Record<string, string>} */
+export const STABLE_METHODS: Record<string, string>;
+/** @type {Record<string, string>} */
+export const STABLE_EVENTS: Record<string, string>;
 //# sourceMappingURL=stability.d.ts.map

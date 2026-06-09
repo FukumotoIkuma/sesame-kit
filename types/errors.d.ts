@@ -9,17 +9,17 @@ export const ERR: Readonly<{
 export class SesameError extends Error {
     /**
      * @param {string} message
-     * @param {{ code: string, retryable?: boolean, data?: object|null, cause?: any }} opts
+     * @param {{ code?: string, retryable?: boolean, data?: object|null, cause?: unknown }} [opts]
      */
     constructor(message: string, { code, retryable, data, cause }?: {
-        code: string;
+        code?: string;
         retryable?: boolean;
         data?: object | null;
-        cause?: any;
+        cause?: unknown;
     });
-    code: string;
+    code: string | undefined;
     retryable: boolean;
-    data: any;
-    cause: any;
+    data: object | null;
+    cause: unknown;
 }
 //# sourceMappingURL=errors.d.ts.map

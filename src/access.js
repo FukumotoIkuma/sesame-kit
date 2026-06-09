@@ -118,16 +118,17 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs 
 function aggregate(byDevice, idKey) {
   /** @type {Record<string, Set<string>>} */
   const idMap = {};
+  /** @type {Array<Record<string, unknown>>} */
   const cards = [];
   for (const [deviceUUID, list] of Object.entries(byDevice)) {
-    for (const card of list) {
-      const id = card[idKey];
+    for (const card of /** @type {Array<Record<string, unknown>>} */ (list)) {
+      const id = String(card[idKey]);
       if (!idMap[id]) idMap[id] = new Set();
       idMap[id].add(deviceUUID);
       cards.push(card);
     }
   }
-  return cards.map((card) => ({ ...card, uuids: Array.from(idMap[card[idKey]]) }));
+  return cards.map((card) => ({ ...card, uuids: Array.from(idMap[String(card[idKey])]) }));
 }
 
 // ---------- カード: 取得 ----------
@@ -179,6 +180,10 @@ export async function getPasscodes(client, { deviceUUIDs, timeoutMs = DEFAULT_TI
  * action+op 一致の同期応答を request で待つ。biz3 は invokeCallbacks(message) で
  * コールバック発火しているだけだが (useManageAuthData.js:260-271)、CLI では
  * 応答メッセージ (reqContext 含む) を呼び出し側に返す。
+ * @param {import("./transport.js").Hub3WsClient} client
+ * @param {import("./transport.js").WsFrame} frame
+ * @param {string} opLabel
+ * @param {number} [timeoutMs]
  * @returns {Promise<object>} 応答メッセージ
  */
 async function requestOp(client, frame, opLabel, timeoutMs) {

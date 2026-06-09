@@ -214,14 +214,22 @@ export class HXDCommandProcessor {
         key: number;
         mode: number;
     } | null;
-    setPower(power: any): this;
-    setTemperature(temperature: any): this;
-    setModel(model: any): this;
-    setFanSpeed(fanSpeed: any): this;
-    setWindDirection(windDirection: any): this;
-    setAutoWindDirection(autoWindDirection: any): this;
-    setKey(key: any): this;
-    setCode(code: any): this;
+    /** @param {number} power */
+    setPower(power: number): this;
+    /** @param {number} temperature */
+    setTemperature(temperature: number): this;
+    /** @param {number} model */
+    setModel(model: number): this;
+    /** @param {number} fanSpeed */
+    setFanSpeed(fanSpeed: number): this;
+    /** @param {number} windDirection */
+    setWindDirection(windDirection: number): this;
+    /** @param {number} autoWindDirection */
+    setAutoWindDirection(autoWindDirection: number): this;
+    /** @param {number} key */
+    setKey(key: number): this;
+    /** @param {number} code */
+    setCode(code: number): this;
 }
 /**
  * HXD パラメータ変換器。biz3 HXDParametersSwapper.js を 1:1 移植。
@@ -231,10 +239,10 @@ export class HXDParametersSwapper {
     /**
      * エアコン key (HXDParametersSwapper.js:4-17)。
      * 注: UI type 'POWER_ON'/'TEMP_ADD' 等は keyMap に無く default 0x01 (ファイル冒頭トラップ参照)。
-     * @param {string} type
+     * @param {string} [type]  未指定時は default 0x01
      * @returns {number}
      */
-    getAirKey(type: string): number;
+    getAirKey(type?: string): number;
     /**
      * mode index → HXD 値 (vendor:45-54)。{0:自動,1:制冷,2:除湿,3:送風,4:制熱}
      * @param {number} index @returns {number}

@@ -9,8 +9,8 @@ import { makeLineConnection } from "./ndjson.js";
  * @returns {{ stop:()=>void }}
  */
 export function startStdioFraming(daemon, { onShutdown } = {}) {
-  let conn;
-  conn = makeLineConnection(process.stdin, process.stdout, {
+  /** @type {import("../daemon.js").Connection} */
+  const conn = makeLineConnection(process.stdin, process.stdout, {
     onLine: (c, raw) => daemon.handleLine(c, raw),
     onClose: () => {
       daemon.removeConnection(conn);

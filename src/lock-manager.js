@@ -21,7 +21,7 @@ export class LockManager {
   /**
    * @param {{
    *   getWs: () => (import("./transport.js").Hub3WsClient | null),
-   *   getConfig: () => object,
+   *   getConfig: () => import("./config.js").LoadedConfig,
    *   getSubUUID: () => (string | null),
    *   ensureConnected: () => void,
    * }} accessors
@@ -34,8 +34,19 @@ export class LockManager {
   }
 
   /**
+   * 接続済み WS を返す。各 lock 操作は直前に `_ensureConnected()` を呼ぶため、
+   * この時点で WS は非 null。型レベルで非 null を確定させるだけのアクセサ (実行時挙動なし)。
+   * @returns {import("./transport.js").Hub3WsClient}
+   */
+  _ws() {
+    return /** @type {import("./transport.js").Hub3WsClient} */ (this._getWs());
+  }
+
+  /**
    * lock 設定を name から解決。name 省略時は default.lock、
    * 無ければ locks が 1 つだけならそれ。
+   * @param {string|null} [name]
+   * @returns {{name: string, lock: import("./config.js").LockView}}
    */
   resolveLock(name) {
     const cfg = this._getConfig();
@@ -50,7 +61,11 @@ export class LockManager {
     return { name: chosen, lock };
   }
 
-  /** name 解決 + 必須フィールド検査 → triggerLock 用 params。 */
+  /**
+   * name 解決 + 必須フィールド検査 → triggerLock 用 params。
+   * @param {string|null} [name]
+   * @returns {{deviceId: string, secretKey: string, subUUID: string}}
+   */
   _lockParams(name) {
     const subUUID = this._getSubUUID();
     if (!subUUID) throw new SesameError(t("domain.client.subUUIDNotAvailableConnect"), { code: ERR.NOT_CONNECTED, retryable: true });
@@ -62,34 +77,34 @@ export class LockManager {
 
   // ---------- name-based ----------
 
-  /** ロック施錠 (name-based, cmd=82)。 */
+  /** ロック施錠 (name-based, cmd=82)。 @param {string|null} [name] */
   async lock(name) {
     this._ensureConnected();
-    return lockLock(this._getWs(), this._lockParams(name));
+    return lockLock(this._ws(), this._lockParams(name));
   }
 
-  /** ロック解錠 (name-based, cmd=83)。 */
+  /** ロック解錠 (name-based, cmd=83)。 @param {string|null} [name] */
   async unlock(name) {
     this._ensureConnected();
-    return lockUnlock(this._getWs(), this._lockParams(name));
+    return lockUnlock(this._ws(), this._lockParams(name));
   }
 
-  /** トグル (name-based, cmd=88, cloud のみの合成命令)。 */
+  /** トグル (name-based, cmd=88, cloud のみの合成命令)。 @param {string|null} [name] */
   async toggle(name) {
     this._ensureConnected();
-    return lockToggle(this._getWs(), this._lockParams(name));
+    return lockToggle(this._ws(), this._lockParams(name));
   }
 
-  /** SESAME Bot クリック (name-based, cmd=89)。 */
+  /** SESAME Bot クリック (name-based, cmd=89)。 @param {string|null} [name] */
   async botClick(name) {
     this._ensureConnected();
-    return botClick(this._getWs(), this._lockParams(name));
+    return botClick(this._ws(), this._lockParams(name));
   }
 
-  /** 任意 cmd 直指定 (上級用)。 */
+  /** 任意 cmd 直指定 (上級用)。 @param {string|null} name @param {number} cmd */
   async triggerRaw(name, cmd) {
     this._ensureConnected();
-    return triggerLock(this._getWs(), { ...this._lockParams(name), cmd });
+    return triggerLock(this._ws(), { ...this._lockParams(name), cmd });
   }
 
   /**
@@ -101,7 +116,7 @@ export class LockManager {
   async setAutolock(name, seconds, timeoutMs) {
     this._ensureConnected();
     const { deviceId, secretKey } = this._lockParams(name); // subUUID は autolock では未使用
-    return setAutolock(this._getWs(), { deviceId, secretKey, seconds, timeoutMs });
+    return setAutolock(this._ws(), { deviceId, secretKey, seconds, timeoutMs });
   }
 
   // ---------- direct (config-less) ----------
@@ -114,15 +129,15 @@ export class LockManager {
     this._ensureConnected();
     const subUUID = this._getSubUUID();
     if (!subUUID) throw new SesameError(t("domain.client.subUUIDNotAvailable"), { code: ERR.NOT_CONNECTED, retryable: true });
-    return triggerLock(this._getWs(), { deviceId: deviceUUID, secretKey, subUUID, cmd, timeoutMs });
+    return triggerLock(this._ws(), { deviceId: deviceUUID, secretKey, subUUID, cmd, timeoutMs });
   }
 
-  /** 直接 解錠 (cmd=83)。 */
+  /** 直接 解錠 (cmd=83)。 @param {{deviceUUID:string, secretKey:string, timeoutMs?:number}} p */
   unlockDevice(p)   { return this.triggerDevice({ ...p, cmd: CMD.UNLOCK }); }
-  /** 直接 施錠 (cmd=82)。 */
+  /** 直接 施錠 (cmd=82)。 @param {{deviceUUID:string, secretKey:string, timeoutMs?:number}} p */
   lockDevice(p)     { return this.triggerDevice({ ...p, cmd: CMD.LOCK }); }
-  /** 直接 トグル (cmd=88)。 */
+  /** 直接 トグル (cmd=88)。 @param {{deviceUUID:string, secretKey:string, timeoutMs?:number}} p */
   toggleDevice(p)   { return this.triggerDevice({ ...p, cmd: CMD.TOGGLE }); }
-  /** 直接 Bot クリック (cmd=89)。 */
+  /** 直接 Bot クリック (cmd=89)。 @param {{deviceUUID:string, secretKey:string, timeoutMs?:number}} p */
   botClickDevice(p) { return this.triggerDevice({ ...p, cmd: CMD.CLICK }); }
 }

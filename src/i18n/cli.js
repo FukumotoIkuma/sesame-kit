@@ -331,6 +331,7 @@ export default {
 
     // ---- error handling / hints ----
     "cli.usageError": "usage error",
+    "cli.unknownLang": "Warning: unknown --lang \"{lang}\"; falling back to English. Supported: en, ja.",
     "cli.bleOpenedPrivacy": "→ Opened Bluetooth privacy settings. Turn ON the terminal you are running in (Terminal/iTerm, etc.) and retry.",
     "cli.bleEnablePrivacy": "→ Allow your terminal in System Settings → Privacy & Security → Bluetooth.",
     "cli.staleHint": "{msg}\nHint: your local config may be stale.\n  IR keys: sesame remote sync-keys [name]\n  locks/Hub3: sesame locks sync-from-devices / sesame hub3 sync-from-devices",
@@ -671,6 +672,7 @@ export default {
 
     // ---- error handling / hints ----
     "cli.usageError": "usage error",
+    "cli.unknownLang": "警告: 未知の --lang \"{lang}\" です。英語にフォールバックします (対応: en, ja)。",
     "cli.bleOpenedPrivacy": "→ Bluetooth のプライバシー設定を開きました。実行中のターミナル (Terminal/iTerm 等) を ON にして再実行してください。",
     "cli.bleEnablePrivacy": "→ システム設定 → プライバシーとセキュリティ → Bluetooth でターミナルを許可してください。",
     "cli.staleHint": "{msg}\nヒント: ローカル config が古い可能性があります。\n  IR キー: sesame remote sync-keys [name]\n  ロック/Hub3: sesame locks sync-from-devices / sesame hub3 sync-from-devices",

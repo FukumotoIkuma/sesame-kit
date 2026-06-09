@@ -85,6 +85,36 @@ describe("JS 同梱クライアント e2e", () => {
     await expect(c.subscribe(["bogus_topic"], () => {})).rejects.toBeInstanceOf(SesameError);
   });
 
+  it("HTTP: SSE subscribe は token を URL に載せず Authorization ヘッダで認証する (ログ漏れ防止)", async () => {
+    const { httpUrl } = await boot();
+    // 同梱クライアントが叩く /events の URL を捕捉しつつ実リクエストは通す。
+    let sseUrl = null;
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => {
+      if (typeof url === "string" && url.includes("/events")) sseUrl = url;
+      return realFetch(url, init);
+    });
+    try {
+      const c = SesameClient.http(httpUrl, TOKEN); clients.push(c);
+      const got = new Promise((resolve) => {
+        // SSE は接続直後に `ready` ハンドシェイクイベントを流すので、実データ (lockState) だけ待つ。
+        c.subscribe(["lockState"], (topic, payload) => { if (topic === "lockState") resolve({ topic, payload }); });
+      });
+      // subscribe が SSE 接続を確立する猶予 (URL 捕捉は同期的に起きる)。
+      await new Promise((r) => setTimeout(r, 50));
+      expect(sseUrl).toBeTruthy();
+      // バグ修正の核心: token がクエリに載っていない。ヘッダ認証なので 401 にもならない。
+      expect(sseUrl).not.toContain("token=");
+      expect(sseUrl).not.toContain(TOKEN);
+      // ヘッダ認証で実際にイベントが届くこと (401 で黙って失敗していない) を確認。
+      daemon.hub._emit({ deviceUUID: "d1", state: "locked" });
+      const ev = await Promise.race([got, new Promise((_, rej) => setTimeout(() => rej(new Error("no event")), 1500))]);
+      expect(ev.topic).toBe("lockState");
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("未起動 UDS は connection_lost を自己説明的に throw", async () => {
     const c = SesameClient.unix(join(workDir, "nope.sock")); clients.push(c);
     await expect(c.status()).rejects.toMatchObject({ kind: "connection_lost" });

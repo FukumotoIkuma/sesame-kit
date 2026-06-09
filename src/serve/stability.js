@@ -15,10 +15,11 @@
 // stable コア (= docs/api-stability.md の "Stable 1.0 surface")。値は provenance。
 // export しているのは整合テスト用 (全キーが実レジストリ/イベントに実在することを保証し、
 // typo/rename による無言の experimental 降格を防ぐ)。
-export // 注: `rpc.discover` は daemon が特別扱いで直接処理し、レジストリ＝discover の methods 配列
+// 注: `rpc.discover` は daemon が特別扱いで直接処理し、レジストリ＝discover の methods 配列
 // には現れない (注釈対象外)。OpenRPC 仕様の暗黙メタとして常に存在し implicit に stable なので
 // ここには載せない (載せると整合ガードで「実在しない」と落ちる)。
-const STABLE_METHODS = {
+/** @type {Record<string, string>} */
+export const STABLE_METHODS = {
   "status": "local",
   "account.whoami": "app-core",
   "lock.lock": "app-core",
@@ -35,32 +36,50 @@ const STABLE_METHODS = {
 
 // サーバ発イベントの provenance。event.ready は daemon が全永続接続の確立時に一律発火する
 // ローカルなライフサイクル通知 (vendor 非依存)。lockState/deviceUpdate は上流由来 (app-core)。
+/** @type {Record<string, string>} */
 export const STABLE_EVENTS = {
   "event.lockState": "app-core",
   "event.deviceUpdate": "app-core",
   "event.ready": "local",
 };
 
+/**
+ * @param {Record<string, string>} map
+ * @param {string} name
+ * @returns {boolean}
+ */
 function has(map, name) {
   return Object.prototype.hasOwnProperty.call(map, name);
 }
 
-/** メソッド名 → "stable" | "experimental" (provenance から導出)。 */
+/** メソッド名 → "stable" | "experimental" (provenance から導出)。
+ * @param {string} name
+ * @returns {"stable"|"experimental"}
+ */
 export function stabilityOf(name) {
   return has(STABLE_METHODS, name) ? "stable" : "experimental";
 }
 
-/** メソッド名 → provenance 文字列。未登録は "unverified"。 */
+/** メソッド名 → provenance 文字列。未登録は "unverified"。
+ * @param {string} name
+ * @returns {string}
+ */
 export function provenanceOf(name) {
   return STABLE_METHODS[name] ?? "unverified";
 }
 
-/** イベント名 → "stable" | "experimental"。 */
+/** イベント名 → "stable" | "experimental"。
+ * @param {string} name
+ * @returns {"stable"|"experimental"}
+ */
 export function eventStabilityOf(name) {
   return has(STABLE_EVENTS, name) ? "stable" : "experimental";
 }
 
-/** イベント名 → provenance。 */
+/** イベント名 → provenance。
+ * @param {string} name
+ * @returns {string}
+ */
 export function eventProvenanceOf(name) {
   return STABLE_EVENTS[name] ?? "unverified";
 }

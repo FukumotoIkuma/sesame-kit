@@ -1,5 +1,10 @@
-/** 個人ユーザのデバイス一覧。companyID 不要。 */
-export function getUserDevices(client: any, { timeoutMs }?: {
+/**
+ * 個人ユーザのデバイス一覧。companyID 不要。
+ * @param {WsClient} client
+ * @param {{timeoutMs?: number}} [opts]
+ * @returns {Promise<any[]>}
+ */
+export function getUserDevices(client: WsClient, { timeoutMs }?: {
     timeoutMs?: number;
 }): Promise<any[]>;
 /**
@@ -11,22 +16,34 @@ export function getUserDevices(client: any, { timeoutMs }?: {
  * よって生の transport 配列を露出せず vendor と同じ「単一 device-status または null」を返す
  * (配列を返すと全消費者に `[0]` を強要し、2 要素目が来ない契約が暗黙になる)。
  *
+ * @param {WsClient} client
+ * @param {{deviceUUID: string}} p
  * @returns {Promise<object|null>} 単一の device-status (devices 一覧の 1 要素と同形)、無ければ null
  */
-export function getDeviceStatus(client: any, { deviceUUID }: {
-    deviceUUID: any;
+export function getDeviceStatus(client: WsClient, { deviceUUID }: {
+    deviceUUID: string;
 }): Promise<object | null>;
-/** デバイス名変更。subUUID は呼び出し側 (client.js) が持つ。 */
-export function updateDeviceName(client: any, { subUUID, deviceUUID, deviceName }: {
-    subUUID: any;
-    deviceUUID: any;
-    deviceName: any;
-}): Promise<any>;
-/** デバイスを company から削除。items=[{deviceUUID,...}] */
-export function deleteDevices(client: any, { companyID, items }: {
-    companyID: any;
-    items: any;
-}): Promise<any>;
+/**
+ * デバイス名変更。subUUID は呼び出し側 (client.js) が持つ。
+ * @param {WsClient} client
+ * @param {{subUUID: string, deviceUUID: string, deviceName: string}} p
+ */
+export function updateDeviceName(client: WsClient, { subUUID, deviceUUID, deviceName }: {
+    subUUID: string;
+    deviceUUID: string;
+    deviceName: string;
+}): Promise<import("./transport.js").WsMessage>;
+/**
+ * デバイスを company から削除。items=[{deviceUUID,...}]
+ * @param {WsClient} client
+ * @param {{companyID: string, items: Array<{deviceUUID: string}>}} p
+ */
+export function deleteDevices(client: WsClient, { companyID, items }: {
+    companyID: string;
+    items: Array<{
+        deviceUUID: string;
+    }>;
+}): Promise<import("./transport.js").WsMessage>;
 /**
  * デバイス state push を購読。subscribeDevicesUpdate (biz3ManageDevice) を投げて購読要求し、
  * 実際の state push は **`biz3TriggerLocker:pubDeviceStateChange`** で届く。
@@ -40,114 +57,127 @@ export function deleteDevices(client: any, { companyID, items }: {
  *
  * **既知の制限**: biz3 プロトコルに `unsubscribeDevicesUpdate` op は無いため、
  * unsubscribe()/close() 後もサーバ側 push は止まらない (ローカルで無視するだけ)。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, items: any[], onUpdate: (msg: any) => void}} p
+ * @returns {() => void} unsubscribe
  */
-export function subscribeDevicesUpdate(client: any, { companyID, items, onUpdate }: {
-    companyID: any;
-    items: any;
-    onUpdate: any;
-}): any;
+export function subscribeDevicesUpdate(client: WsClient, { companyID, items, onUpdate }: {
+    companyID: string;
+    items: any[];
+    onUpdate: (msg: any) => void;
+}): () => void;
 /**
  * ロックの開閉履歴を取得。`list` はデバイス指定の配列。
- * @param {{companyID:string, list:any[], pageSize?:number}} p
+ * @param {WsClient} client
+ * @param {{companyID:string, list:any[], pageSize?:number|null}} p
  */
-export function getDeviceHistory(client: any, { companyID, list, pageSize }: {
-    companyID: any;
-    list: any;
-    pageSize?: any;
-}): Promise<any>;
+export function getDeviceHistory(client: WsClient, { companyID, list, pageSize }: {
+    companyID: string;
+    list: any[];
+    pageSize?: number | null;
+}): Promise<unknown>;
 /**
  * 開閉履歴の1エントリを非表示化 (論理削除)。
  * biz3 useManageGroup.js makeInvisibleHistory: フラット {action, deviceUUID, timestamp, op}。
+ * @param {WsClient} client
  * @param {{deviceUUID:string, timestamp:number}} p
  */
-export function makeHistoryInvisible(client: any, { deviceUUID, timestamp }: {
-    deviceUUID: any;
-    timestamp: any;
-}): Promise<any>;
+export function makeHistoryInvisible(client: WsClient, { deviceUUID, timestamp }: {
+    deviceUUID: string;
+    timestamp: number;
+}): Promise<import("./transport.js").WsMessage>;
 /**
  * 電池履歴を取得。DynamoDB の lastEvaluatedKey でページング。
  * 1 回呼ぶごとに 1 ページ分。null → 最新ページ。
  * 戻り値: { records: [{ts, light, heavy, lightPercentage, heavyPercentage}], lastEvaluatedKey }
+ * @param {WsClient} client
+ * @param {{deviceUUID:string, lastEvaluatedKey?:unknown, pageSize?:number}} p
  */
-export function getBatteryRecord(client: any, { deviceUUID, lastEvaluatedKey, pageSize }: {
-    deviceUUID: any;
-    lastEvaluatedKey?: any;
+export function getBatteryRecord(client: WsClient, { deviceUUID, lastEvaluatedKey, pageSize }: {
+    deviceUUID: string;
+    lastEvaluatedKey?: unknown;
     pageSize?: number;
-}): Promise<any>;
+}): Promise<{}>;
 /**
  * 電池履歴の1エントリを非表示化 (論理削除)。
  * biz3 MobileBatteryChart.js makeInvisibleRecord: フラット {action, deviceUUID, timestamp_second, op}。
+ * @param {WsClient} client
  * @param {{deviceUUID:string, timestampSecond:number}} p
  */
-export function makeBatteryRecordInvisible(client: any, { deviceUUID, timestampSecond }: {
-    deviceUUID: any;
-    timestampSecond: any;
-}): Promise<any>;
-/** 配信中ファームウェア一覧。 */
-export function listFirmware(client: any): Promise<any[]>;
+export function makeBatteryRecordInvisible(client: WsClient, { deviceUUID, timestampSecond }: {
+    deviceUUID: string;
+    timestampSecond: number;
+}): Promise<import("./transport.js").WsMessage>;
+/**
+ * 配信中ファームウェア一覧。
+ * @param {WsClient} client
+ * @returns {Promise<any[]>}
+ */
+export function listFirmware(client: WsClient): Promise<any[]>;
 /**
  * biz3InvokeWebAPIs 経由で REST WebAPI を呼ぶ。
  * func 例: 'webapi_ssm_shadow_get', 'webapi_history_get', 'webapi_cmd_send'。
  * apiKeyId は別途 biz3 の dev console で発行されたもの。
  *
+ * @param {WsClient} client
  * @param {{func:string, apiKeyId:string, query?:object, body?:object}} p
  */
-export function invokeWebAPI(client: any, { func, apiKeyId, query, body }: {
-    func: any;
-    apiKeyId: any;
-    query?: {};
-    body?: {};
-}): Promise<any>;
-/** WebAPI 経由で 単機の shadow state を取得。 */
-export function webapiDeviceState(client: any, { apiKeyId, deviceId }: {
-    apiKeyId: any;
-    deviceId: any;
-}): Promise<any>;
+export function invokeWebAPI(client: WsClient, { func, apiKeyId, query, body }: {
+    func: string;
+    apiKeyId: string;
+    query?: object;
+    body?: object;
+}): Promise<unknown>;
+/**
+ * WebAPI 経由で 単機の shadow state を取得。
+ * @param {WsClient} client
+ * @param {{apiKeyId: string, deviceId: string}} p
+ */
+export function webapiDeviceState(client: WsClient, { apiKeyId, deviceId }: {
+    apiKeyId: string;
+    deviceId: string;
+}): Promise<unknown>;
 /**
  * WebAPI 経由で履歴を取得。
  * biz3 useDeveloper.js:67-80: query = {device_id, page:0, lg:5, isBiz:true}。
  * lg は言語コードの**数値 ID** (biz3 は 5 を渡す)。旧実装は "ja" (文字列) で誤り。
+ * @param {WsClient} client
+ * @param {{apiKeyId: string, deviceId: string, page?: number, lg?: number, isBiz?: boolean}} p
  */
-export function webapiDeviceHistory(client: any, { apiKeyId, deviceId, page, lg, isBiz }: {
-    apiKeyId: any;
-    deviceId: any;
+export function webapiDeviceHistory(client: WsClient, { apiKeyId, deviceId, page, lg, isBiz }: {
+    apiKeyId: string;
+    deviceId: string;
     page?: number;
     lg?: number;
     isBiz?: boolean;
-}): Promise<any>;
-/** WebAPI 経由でロック cmd 送信 (sign/history は呼び出し側で組み立て)。 */
-export function webapiSendCmd(client: any, { apiKeyId, deviceId, cmd, sign, history }: {
-    apiKeyId: any;
-    deviceId: any;
-    cmd: any;
-    sign: any;
-    history: any;
-}): Promise<any>;
+}): Promise<unknown>;
+/**
+ * WebAPI 経由でロック cmd 送信 (sign/history は呼び出し側で組み立て)。
+ * @param {WsClient} client
+ * @param {{apiKeyId: string, deviceId: string, cmd: unknown, sign: unknown, history: unknown}} p
+ */
+export function webapiSendCmd(client: WsClient, { apiKeyId, deviceId, cmd, sign, history }: {
+    apiKeyId: string;
+    deviceId: string;
+    cmd: unknown;
+    sign: unknown;
+    history: unknown;
+}): Promise<unknown>;
 /**
  * デフォルト REST transport を作る。原典は API Gateway (AWSCredentialsProvider) だが、
  * 本 kit は既存の Cognito idToken (getValidIdToken) を再利用し Authorization に乗せる。
  *
  * ★ホストは UNVERIFIED (上記ブロック注記参照)。`baseUrl` を必ず注入すること。
  *
- * @param {{baseUrl:string, tokenStore:{load:Function,save:Function}, fetchImpl?:Function}} opts
- * @returns {(req:{method:string, path:string, body?:object}) => Promise<{status:number, text:string, json:any}>}
+ * @param {{baseUrl?:string, tokenStore?:import("./tokens.js").TokenStore, fetchImpl?:typeof globalThis.fetch}} [opts]
+ * @returns {RegisterTransport}
  */
 export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl }?: {
-    baseUrl: string;
-    tokenStore: {
-        load: Function;
-        save: Function;
-    };
-    fetchImpl?: Function;
-}): (req: {
-    method: string;
-    path: string;
-    body?: object;
-}) => Promise<{
-    status: number;
-    text: string;
-    json: any;
-}>;
+    baseUrl?: string;
+    tokenStore?: import("./tokens.js").TokenStore;
+    fetchImpl?: typeof globalThis.fetch;
+}): RegisterTransport;
 /**
  * guestKeysSign — 既存登録済みデバイスの再ログイン時に session token を取得する
  * (CHSesameOS3.kt:474-484, CHAPIClientBiz.kt:143-144)。
@@ -162,15 +192,11 @@ export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl }?: {
  *   SDK 確認: CHAPIClient.kt:95 `guestKeysSignPost(...): String` → CHSesameOS3.kt:481
  *   login(it.data)。JSON ラップ ({data:...}) は vendor に存在しないので生 body (text) を採る。
  *
- * @param {(req)=>Promise<{status,text,json}>} transport makeRegisterTransport の戻り値、または fake。
+ * @param {RegisterTransport} transport makeRegisterTransport の戻り値、または fake。
  * @param {{deviceUUID:string, tokenHex:string, secretKey:string}} p
  * @returns {Promise<string>} session token (hex)。
  */
-export function signGuestKey(transport: (req: any) => Promise<{
-    status: any;
-    text: any;
-    json: any;
-}>, { deviceUUID, tokenHex, secretKey }: {
+export function signGuestKey(transport: RegisterTransport, { deviceUUID, tokenHex, secretKey }: {
     deviceUUID: string;
     tokenHex: string;
     secretKey: string;
@@ -193,18 +219,34 @@ export function signGuestKey(transport: (req: any) => Promise<{
  *     mSesameToken hex (L353) と同一カテゴリの値である (両者が値衝突して見えるのは正常)。
  *     本 kit はこの値を呼び出し側から受け取り、整形せずそのまま pk に乗せるだけ。
  *
- * @param {(req)=>Promise<{status,text,json}>} transport makeRegisterTransport の戻り値、または fake。
+ * @param {RegisterTransport} transport makeRegisterTransport の戻り値、または fake。
  * @param {{deviceUUID:string, productType:(string|number), serverSecret:string}} p
  *   productType は model 名 (例 "sesame_5") または数値 productType。
  * @returns {Promise<any>} サーバ応答 (json があれば json、無ければ text)。
  */
-export function registerSesame5(transport: (req: any) => Promise<{
-    status: any;
-    text: any;
-    json: any;
-}>, { deviceUUID, productType, serverSecret }: {
+export function registerSesame5(transport: RegisterTransport, { deviceUUID, productType, serverSecret }: {
     deviceUUID: string;
     productType: (string | number);
     serverSecret: string;
 }): Promise<any>;
+/**
+ * 下位 WS トランスポート。完全な型は transport.js の Hub3WsClient。
+ */
+export type WsClient = import("./transport.js").Hub3WsClient;
+/**
+ * REST register transport の応答。
+ */
+export type RegisterResponse = {
+    status?: number | undefined;
+    text?: string | undefined;
+    json?: any;
+};
+/**
+ * REST register transport の呼び出しシグネチャ。
+ */
+export type RegisterTransport = (req: {
+    method: string;
+    path: string;
+    body?: object;
+}) => Promise<RegisterResponse>;
 //# sourceMappingURL=devices.d.ts.map

@@ -300,6 +300,7 @@ declare namespace _default {
         "cli.okBootstrapped": string;
         "cli.descMeta": string;
         "cli.usageError": string;
+        "cli.unknownLang": string;
         "cli.bleOpenedPrivacy": string;
         "cli.bleEnablePrivacy": string;
         "cli.staleHint": string;
@@ -607,6 +608,7 @@ declare namespace _default {
         "cli.okBootstrapped": string;
         "cli.descMeta": string;
         "cli.usageError": string;
+        "cli.unknownLang": string;
         "cli.bleOpenedPrivacy": string;
         "cli.bleEnablePrivacy": string;
         "cli.staleHint": string;

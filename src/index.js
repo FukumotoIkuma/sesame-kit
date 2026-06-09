@@ -1,9 +1,9 @@
 // 公開ライブラリエントリ。
 //
 // パッケージ名は "sesame-kit" (package.json の "name")。
-// 注: このパッケージは `"private": true` のため npm publish されていません。
-//     他プロジェクトから使うには `npm link sesame-kit` か
-//     `npm install /path/to/sesame-kit` で取り込んでください。
+// 注: このパッケージは npm に公開可能です (`npm install sesame-kit` で取得)。
+//     ローカル開発でチェックアウトを直接使うには `npm link sesame-kit` か
+//     `npm install /path/to/sesame-kit` で取り込めます。
 //
 // 高レベル:
 //   import { SesameHub3 } from "sesame-kit";

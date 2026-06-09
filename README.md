@@ -36,7 +36,7 @@
 - Access control: NFC card / keypad passcode DB sync, plus **bulk IC-card enroll over BLE** (`access cards enroll` — tap several cards, register them all in one call; experimental)
 - Scheduling / company & org: schedules, enterprise features (employees, roles, device groups, key sharing)
 - Hub3 IoT: LED dimming, LTE relay, firmware update, Matter pairing
-- Language-agnostic backend: `sesame serve` exposes every feature as JSON-RPC over stdio / UDS / HTTP / WS / gRPC
+- Language-agnostic backend: `sesame serve` exposes every **cloud** feature as JSON-RPC over stdio / UDS / HTTP / WS / gRPC (BLE provisioning / pairing / firmware are library-only — not over RPC)
 - Interactive mode and a library API
 
 See [command reference](./docs/en/commands.md), [library usage](./docs/en/library.md), and [design notes](./docs/en/architecture.md) for details.
@@ -60,11 +60,23 @@ git clone https://github.com/FukumotoIkuma/sesame-kit.git
 cd sesame-kit && npm install && npm link
 ```
 
+### Dependencies & security posture
+
+BLE support depends on the **optional** native package `@abandonware/noble` (listed under `optionalDependencies`). The cloud / CLI / `sesame serve` paths do **not** require it — if it fails to build (e.g. no Bluetooth toolchain) the rest of the kit still installs and works.
+
+The native BLE toolchain pulls in `node-gyp`, which historically dragged in vulnerable transitive copies of `node-tar`. We pin it to a patched release with a package.json `overrides` field:
+
+```json
+"overrides": { "tar": "^7.5.11" }
+```
+
+With this single override, `npm audit --omit=dev` reports **0** vulnerabilities. The patched `tar@^7.5.11` is API-compatible with the extraction surface `node-gyp` / `cacache` / `@mapbox/node-pre-gyp` use, so the optional native build is unaffected. Production (non-dev) dependencies of the core kit have no known advisories.
+
 ---
 
 ## Setup
 
-Your devices must already be set up in the official SESAME app — this tool operates existing devices and does not pair new ones.
+Cloud operation requires devices already set up in the official SESAME app — the cloud path operates existing devices and does not pair new ones. New-device BLE pairing is a separate, advanced flow (`SesameBle.registerOnce()` / OS2) that registers a factory-reset device directly over Bluetooth; see [BLE pairing / registration (advanced)](#ble-pairing--registration-advanced).
 
 Authenticate with `login` and `verify`. `verify` imports your devices **together with their keys** (and companyID and Hub3 IR remotes) into `~/.config/sesame-kit/`, so `sesame <device> <action>` works afterward with no further key setup.
 
@@ -128,7 +140,7 @@ It is a SemVer for the machine contract; only breaking changes bump the major. C
 
 ## Language-agnostic backend (`sesame serve`)
 
-`sesame serve` is a long-running JSON-RPC 2.0 daemon. It logs in once, keeps the WS connection alive, runs ops repeatedly, and pushes events. Every feature is callable from any language through the same API.
+`sesame serve` is a long-running JSON-RPC 2.0 daemon. It logs in once, keeps the WS connection alive, runs ops repeatedly, and pushes events. Every **cloud** feature is callable from any language through the same API. (BLE is library-only: every RPC method is backed by the resident cloud-WS client, and `serve` exposes no BLE path — see [docs/api-stability.md](./docs/api-stability.md). BLE provisioning / pairing / firmware live in the Node library only.)
 
 ```bash
 sesame serve                          # Unix socket only (default. ~/.config/sesame-kit/sesame.sock)
@@ -149,7 +161,7 @@ There are five framings, all exposing the same methods:
 - `rpc.discover` enumerates every method machine-readably (OpenRPC). Param names, requiredness, and types are extracted from the actual code.
 - Locks: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`. Namespace ops are all exposed as `<ns>.<op>` (`org.*` / `iot.*` / `access.*` …).
 - Events: `events.subscribe {topics:["lockState","deviceUpdate"]}` then `event.<topic>` notifications arrive.
-- Errors are `{error:{code, message, data:{kind}}}`. `kind` is one of six: `not_authenticated` / `connection_lost` / `timeout` / `bad_params` / `not_implemented` / `internal`.
+- Errors are `{error:{code, message, data:{kind}}}`. `kind` is one of seven: `not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented`.
 
 Start `sesame serve` in one terminal, then call it over the socket from another with `sesame rpc`:
 
@@ -176,6 +188,15 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
 sesame rpc --http status                          # default URL http://127.0.0.1:8080
 sesame rpc --http http://host:8080 lock.unlock --params '{"name":"front"}'
 ```
+
+**Calling from a browser (CORS):** cross-origin browser requests are blocked by default (no `Access-Control-*` headers, secure default). Opt in per-origin with `--cors`:
+
+```bash
+sesame serve --http 8080 --cors https://app.example.com   # allow one origin (comma-separate for several)
+sesame serve --http 8080 --cors '*'                       # allow any origin (dev only)
+```
+
+This adds `OPTIONS` preflight handling and `Access-Control-Allow-Origin` to `/rpc` and `/events`. The Bearer token is still required — CORS only relaxes the browser's same-origin check, it is not authentication.
 
 ### Which should I use? — `sdk/` vs `clients/`
 
@@ -220,7 +241,7 @@ The JSON-RPC surface is a **versioned, machine-readable contract** so you can bu
 - [`schema/openrpc.json`](./schema/openrpc.json) — the published OpenRPC document (also live via `rpc.discover`). Each method/event carries `x-stability` (`stable` | `experimental`) and `x-provenance`; `apiVersion` (SemVer) is in `status` and `rpc.discover`. A CI drift gate keeps it in lockstep with the implementation.
 - **Generated, typed SDKs** from that schema — [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) (`client.lock.unlock({ name })`) and [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py) (`client.lock.unlock(name=...)`, zero deps), both with `SesameRpcError` exposing `kind` / `retryable`. Regenerate with `npm run build:sdk`.
 - **Stability:** only the `stable` core (`lock.*`, `devices.list`, `device.history`/`battery`, `status`, `account.whoami`, `events.*`) is covered by the API SemVer; `experimental` methods may change without notice. See [docs/api-stability.md](./docs/api-stability.md).
-- **Errors** are structured: branch on `error.data.kind` (`not_authenticated` / `connection_lost` / `timeout` / `rejected` / `bad_params` / …) and `error.data.retryable`, never on message text.
+- **Errors** are structured: branch on `error.data.kind` (`not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented`) and `error.data.retryable`, never on message text.
 
 ---
 

@@ -15,6 +15,24 @@ import { t } from "./i18n.js";
 import { productTypeFromModelName } from "./crypto.js";
 import { getValidIdToken } from "./auth.js";
 
+/**
+ * 下位 WS トランスポート。完全な型は transport.js の Hub3WsClient。
+ * @typedef {import("./transport.js").Hub3WsClient} WsClient
+ */
+
+/**
+ * REST register transport の応答。
+ * @typedef {Object} RegisterResponse
+ * @property {number} [status]
+ * @property {string} [text]
+ * @property {*} [json]
+ */
+
+/**
+ * REST register transport の呼び出しシグネチャ。
+ * @typedef {(req: {method: string, path: string, body?: object}) => Promise<RegisterResponse>} RegisterTransport
+ */
+
 // action 文字列は vendor (biz3 messageConstants) から引く (手書きしない)。
 const ACT_MANAGE = ACTION_TYPES.BIZ3_MANAGE_DEVICE;       // "biz3ManageDevice"
 const ACT_HISTORY = ACTION_TYPES.BIZ3_GET_DEVICEHISTORY;  // "biz3GetDeviceHistory"
@@ -26,12 +44,18 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 // ---------- device CRUD (biz3ManageDevice) ----------
 
-/** 個人ユーザのデバイス一覧。companyID 不要。 */
+/**
+ * 個人ユーザのデバイス一覧。companyID 不要。
+ * @param {WsClient} client
+ * @param {{timeoutMs?: number}} [opts]
+ * @returns {Promise<any[]>}
+ */
 export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   // biz3 PubedUserDevice は page 単位 push (vendor 確認: useManageDevice.js:38-55):
   //   message.data = { totalPage, data: { list, page } }
   // page===1 で全置換、page>1 で追記、totalPage===page で完了。単発 resolve だと複数
   // ページのデバイスを取りこぼすため、全 page を蓄積して返す。
+  /** @type {any[]} */
   let acc = [];
   return subscribeChunks(client, {
     sendFrame: { action: ACT_MANAGE, op: "getUserDevice" },
@@ -40,6 +64,7 @@ export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS } 
     result: () => acc,
     subscriptions: [{
       key: `${ACT_MANAGE}:PubedUserDevice`,
+      /** @param {any} msg @param {(err?: Error) => void} finish */
       onMessage: (msg, finish) => {
         const totalPage = msg?.data?.totalPage;
         const inner = msg?.data?.data ?? {};
@@ -61,6 +86,8 @@ export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS } 
  * よって生の transport 配列を露出せず vendor と同じ「単一 device-status または null」を返す
  * (配列を返すと全消費者に `[0]` を強要し、2 要素目が来ない契約が暗黙になる)。
  *
+ * @param {WsClient} client
+ * @param {{deviceUUID: string}} p
  * @returns {Promise<object|null>} 単一の device-status (devices 一覧の 1 要素と同形)、無ければ null
  */
 export async function getDeviceStatus(client, { deviceUUID }) {
@@ -72,7 +99,11 @@ export async function getDeviceStatus(client, { deviceUUID }) {
   return Array.isArray(resp.data) && resp.data.length > 0 ? resp.data[0] : null;
 }
 
-/** デバイス名変更。subUUID は呼び出し側 (client.js) が持つ。 */
+/**
+ * デバイス名変更。subUUID は呼び出し側 (client.js) が持つ。
+ * @param {WsClient} client
+ * @param {{subUUID: string, deviceUUID: string, deviceName: string}} p
+ */
 export async function updateDeviceName(client, { subUUID, deviceUUID, deviceName }) {
   const resp = await client.request(
     {
@@ -86,7 +117,11 @@ export async function updateDeviceName(client, { subUUID, deviceUUID, deviceName
   return resp;
 }
 
-/** デバイスを company から削除。items=[{deviceUUID,...}] */
+/**
+ * デバイスを company から削除。items=[{deviceUUID,...}]
+ * @param {WsClient} client
+ * @param {{companyID: string, items: Array<{deviceUUID: string}>}} p
+ */
 export async function deleteDevices(client, { companyID, items }) {
   const resp = await client.request(
     { action: ACT_MANAGE, op: "del", companyID, items },
@@ -109,6 +144,10 @@ export async function deleteDevices(client, { companyID, items }) {
  *
  * **既知の制限**: biz3 プロトコルに `unsubscribeDevicesUpdate` op は無いため、
  * unsubscribe()/close() 後もサーバ側 push は止まらない (ローカルで無視するだけ)。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, items: any[], onUpdate: (msg: any) => void}} p
+ * @returns {() => void} unsubscribe
  */
 export function subscribeDevicesUpdate(client, { companyID, items, onUpdate }) {
   client.send({ action: ACT_MANAGE, op: "subscribeDevicesUpdate", items, companyID });
@@ -121,7 +160,8 @@ export function subscribeDevicesUpdate(client, { companyID, items, onUpdate }) {
 
 /**
  * ロックの開閉履歴を取得。`list` はデバイス指定の配列。
- * @param {{companyID:string, list:any[], pageSize?:number}} p
+ * @param {WsClient} client
+ * @param {{companyID:string, list:any[], pageSize?:number|null}} p
  */
 export async function getDeviceHistory(client, { companyID, list, pageSize = null }) {
   const resp = await client.request(
@@ -135,6 +175,7 @@ export async function getDeviceHistory(client, { companyID, list, pageSize = nul
 /**
  * 開閉履歴の1エントリを非表示化 (論理削除)。
  * biz3 useManageGroup.js makeInvisibleHistory: フラット {action, deviceUUID, timestamp, op}。
+ * @param {WsClient} client
  * @param {{deviceUUID:string, timestamp:number}} p
  */
 export async function makeHistoryInvisible(client, { deviceUUID, timestamp }) {
@@ -152,6 +193,8 @@ export async function makeHistoryInvisible(client, { deviceUUID, timestamp }) {
  * 電池履歴を取得。DynamoDB の lastEvaluatedKey でページング。
  * 1 回呼ぶごとに 1 ページ分。null → 最新ページ。
  * 戻り値: { records: [{ts, light, heavy, lightPercentage, heavyPercentage}], lastEvaluatedKey }
+ * @param {WsClient} client
+ * @param {{deviceUUID:string, lastEvaluatedKey?:unknown, pageSize?:number}} p
  */
 export async function getBatteryRecord(client, { deviceUUID, lastEvaluatedKey = null, pageSize = 100 }) {
   const resp = await client.request(
@@ -165,6 +208,7 @@ export async function getBatteryRecord(client, { deviceUUID, lastEvaluatedKey = 
 /**
  * 電池履歴の1エントリを非表示化 (論理削除)。
  * biz3 MobileBatteryChart.js makeInvisibleRecord: フラット {action, deviceUUID, timestamp_second, op}。
+ * @param {WsClient} client
  * @param {{deviceUUID:string, timestampSecond:number}} p
  */
 export async function makeBatteryRecordInvisible(client, { deviceUUID, timestampSecond }) {
@@ -178,9 +222,14 @@ export async function makeBatteryRecordInvisible(client, { deviceUUID, timestamp
 
 // ---------- firmware ----------
 
-/** 配信中ファームウェア一覧。 */
+/**
+ * 配信中ファームウェア一覧。
+ * @param {WsClient} client
+ * @returns {Promise<any[]>}
+ */
 export async function listFirmware(client) {
   // この op は op フィールド無し (action のみ)。応答は単発 push (`${ACT_FIRMWARE}:`)。
+  /** @type {any[]} */
   let data = [];
   return subscribeChunks(client, {
     sendFrame: { action: ACT_FIRMWARE },
@@ -189,6 +238,7 @@ export async function listFirmware(client) {
     result: () => data,
     subscriptions: [{
       key: `${ACT_FIRMWARE}:`,
+      /** @param {any} msg @param {(err?: Error) => void} finish */
       onMessage: (msg, finish) => { data = msg?.data || []; finish(); },
     }],
   });
@@ -201,6 +251,7 @@ export async function listFirmware(client) {
  * func 例: 'webapi_ssm_shadow_get', 'webapi_history_get', 'webapi_cmd_send'。
  * apiKeyId は別途 biz3 の dev console で発行されたもの。
  *
+ * @param {WsClient} client
  * @param {{func:string, apiKeyId:string, query?:object, body?:object}} p
  */
 export async function invokeWebAPI(client, { func, apiKeyId, query = {}, body = {} }) {
@@ -214,7 +265,11 @@ export async function invokeWebAPI(client, { func, apiKeyId, query = {}, body = 
 
 // ---------- 便利ラッパ (WebAPI 経由の高頻度ユースケース) ----------
 
-/** WebAPI 経由で 単機の shadow state を取得。 */
+/**
+ * WebAPI 経由で 単機の shadow state を取得。
+ * @param {WsClient} client
+ * @param {{apiKeyId: string, deviceId: string}} p
+ */
 export function webapiDeviceState(client, { apiKeyId, deviceId }) {
   return invokeWebAPI(client, {
     func: "webapi_ssm_shadow_get",
@@ -227,6 +282,8 @@ export function webapiDeviceState(client, { apiKeyId, deviceId }) {
  * WebAPI 経由で履歴を取得。
  * biz3 useDeveloper.js:67-80: query = {device_id, page:0, lg:5, isBiz:true}。
  * lg は言語コードの**数値 ID** (biz3 は 5 を渡す)。旧実装は "ja" (文字列) で誤り。
+ * @param {WsClient} client
+ * @param {{apiKeyId: string, deviceId: string, page?: number, lg?: number, isBiz?: boolean}} p
  */
 export function webapiDeviceHistory(client, { apiKeyId, deviceId, page = 0, lg = 5, isBiz = true }) {
   return invokeWebAPI(client, {
@@ -236,7 +293,11 @@ export function webapiDeviceHistory(client, { apiKeyId, deviceId, page = 0, lg =
   });
 }
 
-/** WebAPI 経由でロック cmd 送信 (sign/history は呼び出し側で組み立て)。 */
+/**
+ * WebAPI 経由でロック cmd 送信 (sign/history は呼び出し側で組み立て)。
+ * @param {WsClient} client
+ * @param {{apiKeyId: string, deviceId: string, cmd: unknown, sign: unknown, history: unknown}} p
+ */
 export function webapiSendCmd(client, { apiKeyId, deviceId, cmd, sign, history }) {
   return invokeWebAPI(client, {
     func: "webapi_cmd_send",
@@ -313,8 +374,8 @@ function assertHttpOk(res, op) {
  *
  * ★ホストは UNVERIFIED (上記ブロック注記参照)。`baseUrl` を必ず注入すること。
  *
- * @param {{baseUrl:string, tokenStore:{load:Function,save:Function}, fetchImpl?:Function}} opts
- * @returns {(req:{method:string, path:string, body?:object}) => Promise<{status:number, text:string, json:any}>}
+ * @param {{baseUrl?:string, tokenStore?:import("./tokens.js").TokenStore, fetchImpl?:typeof globalThis.fetch}} [opts]
+ * @returns {RegisterTransport}
  */
 export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalThis.fetch } = {}) {
   if (!baseUrl) throw badRequest("domain.devices.registerBaseUrlRequired");
@@ -354,7 +415,7 @@ export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalT
  *   SDK 確認: CHAPIClient.kt:95 `guestKeysSignPost(...): String` → CHSesameOS3.kt:481
  *   login(it.data)。JSON ラップ ({data:...}) は vendor に存在しないので生 body (text) を採る。
  *
- * @param {(req)=>Promise<{status,text,json}>} transport makeRegisterTransport の戻り値、または fake。
+ * @param {RegisterTransport} transport makeRegisterTransport の戻り値、または fake。
  * @param {{deviceUUID:string, tokenHex:string, secretKey:string}} p
  * @returns {Promise<string>} session token (hex)。
  */
@@ -396,7 +457,7 @@ export async function signGuestKey(transport, { deviceUUID, tokenHex, secretKey 
  *     mSesameToken hex (L353) と同一カテゴリの値である (両者が値衝突して見えるのは正常)。
  *     本 kit はこの値を呼び出し側から受け取り、整形せずそのまま pk に乗せるだけ。
  *
- * @param {(req)=>Promise<{status,text,json}>} transport makeRegisterTransport の戻り値、または fake。
+ * @param {RegisterTransport} transport makeRegisterTransport の戻り値、または fake。
  * @param {{deviceUUID:string, productType:(string|number), serverSecret:string}} p
  *   productType は model 名 (例 "sesame_5") または数値 productType。
  * @returns {Promise<any>} サーバ応答 (json があれば json、無ければ text)。

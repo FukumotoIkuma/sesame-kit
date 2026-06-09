@@ -32,7 +32,56 @@ import { PRODUCT_TYPES, KIND } from "./devicemodel.js";
 // optionalDependency (@abandonware/noble) を ESM から遅延 require するためのブリッジ。
 const require = createRequire(import.meta.url);
 
-/** noble 形式 (小文字・ハイフン無し) に正規化。 */
+// ---------- noble の最小型定義 ----------
+//
+// @abandonware/noble は型定義を持たない (untyped CJS)。本アダプタが実際に触る
+// メソッド/プロパティだけを最小 typedef として定義し、any を避ける。実装が露出する
+// 全 API ではなく「ここで使うもの」だけを宣言する (過剰宣言しない)。
+
+/**
+ * @typedef {object} NobleCharacteristic noble の characteristic (使用メソッドのみ)。
+ * @property {string} uuid
+ * @property {(event:"data", listener:(data:Buffer)=>void)=>void} on
+ * @property {()=>Promise<void>} subscribeAsync
+ * @property {()=>Promise<void>} unsubscribeAsync
+ * @property {(data:Buffer, withoutResponse:boolean)=>Promise<void>} writeAsync
+ */
+
+/**
+ * @typedef {object} NobleAdvertisement noble の advertisement (使用フィールドのみ)。
+ * @property {Buffer} [manufacturerData] company ID 2B を含む生バイト列。
+ * @property {string} [localName]
+ */
+
+/**
+ * @typedef {object} NoblePeripheral noble の peripheral (使用メソッド/プロパティのみ)。
+ * @property {string} [address]
+ * @property {string} [id]
+ * @property {number} [rssi]
+ * @property {number} [mtu]
+ * @property {NobleAdvertisement} [advertisement]
+ * @property {(event:"disconnect", listener:(reason:any)=>void)=>void} on
+ * @property {(event:string, listener:(...args:any[])=>void)=>void} removeListener
+ * @property {()=>Promise<void>} connectAsync
+ * @property {()=>Promise<void>} disconnectAsync
+ * @property {(serviceUUIDs:string[], characteristicUUIDs:string[])=>Promise<{characteristics:NobleCharacteristic[]}>} discoverSomeServicesAndCharacteristicsAsync
+ */
+
+/**
+ * noble モジュール (@abandonware/noble) の使用メソッド/プロパティのみ。
+ * @typedef {object} Noble
+ * @property {string} state
+ * @property {(event:string, listener:(...args:any[])=>void)=>void} on
+ * @property {(event:string, listener:(...args:any[])=>void)=>void} removeListener
+ * @property {()=>Promise<void>} stopScanningAsync
+ * @property {(serviceUUIDs:string[], allowDuplicates:boolean)=>Promise<void>} startScanningAsync
+ */
+
+/**
+ * @typedef {Error & {code?:string}} CodedError code 付きエラー (CLI が分岐に使う BLE_* コード)。
+ */
+
+/** noble 形式 (小文字・ハイフン無し) に正規化。 @param {string} u @returns {string} */
 function nobleUuid(u) {
   return String(u).replace(/-/g, "").toLowerCase();
 }
@@ -99,9 +148,9 @@ export function parseAdvertisement(md) {
   if (b[0] !== (COMPANY_ID & 0xff) || b[1] !== ((COMPANY_ID >> 8) & 0xff)) return null;
 
   // advBytes[i] = b[i + ADV_OFF]。SDK と同じ添字で読めるヘルパ。
-  const a = (i) => b[i + ADV_OFF];
+  const a = (/** @type {number} */ i) => b[i + ADV_OFF];
   const productType = a(0);
-  const entry = PRODUCT_TYPES[productType] || null;
+  const entry = /** @type {Record<number, {model:string, kind:string}>} */ (PRODUCT_TYPES)[productType] || null;
   const model = entry ? entry.model : null;
   const kind = entry ? entry.kind : KIND.UNKNOWN;
 
@@ -152,7 +201,12 @@ export function advToDeviceUUID(md) {
   return parsed ? parsed.deviceUUID : null;
 }
 
-/** 2 つの deviceUUID/アドレスを正規化比較 (ハイフン/大文字無視)。 */
+/**
+ * 2 つの deviceUUID/アドレスを正規化比較 (ハイフン/大文字無視)。
+ * @param {string|null|undefined} a
+ * @param {string|null|undefined} b
+ * @returns {boolean}
+ */
 function idEquals(a, b) {
   if (!a || !b) return false;
   return nobleUuid(a) === nobleUuid(b);
@@ -206,7 +260,12 @@ const BLE_PROBE_SRC = `(function () {
   }
 })()`;
 
+/**
+ * @typedef {{kind:"ok", state:string} | {kind:"noAdapter", cause:string} | {kind:"aborted"}} ProbeResult
+ */
+
 // プローブ結果のキャッシュ (1 プロセス 1 回で十分。子 spawn のコストを毎回払わない)。
+/** @type {ProbeResult|null} */
 let _probeResult = null;
 
 /**
@@ -238,13 +297,14 @@ function probeBleAvailability() {
  * (Linux/RPi/headless: アダプタ無し・権限不足) は BLE_UNSUPPORTED にマップする。
  * いずれも waitPoweredOn の既存 i18n 文言を流用し、abort 由来の追加ヒントを添える。
  */
+/** @returns {CodedError} */
 function bleAbortError() {
   if (process.platform === "darwin") {
-    const e = new Error(`${t("ble.bluetoothUnauthorized")} ${t("ble.nativeAbortHint")}`);
+    const e = /** @type {CodedError} */ (new Error(`${t("ble.bluetoothUnauthorized")} ${t("ble.nativeAbortHint")}`));
     e.code = "BLE_UNAUTHORIZED"; // CLI 側で設定ペインを開く判定に使う (waitPoweredOn と同じ)
     return e;
   }
-  const e = new Error(`${t("ble.bluetoothUnsupported")} ${t("ble.nativeAbortHint")}`);
+  const e = /** @type {CodedError} */ (new Error(`${t("ble.bluetoothUnsupported")} ${t("ble.nativeAbortHint")}`));
   e.code = "BLE_UNSUPPORTED";
   return e;
 }
@@ -255,12 +315,12 @@ function bleAbortError() {
  * ★ require() の前に必ず子プロセスプローブを通す。noble の state を本プロセスで触ると
  * 権限/アダプタ無し環境では SIGABRT (exit 134, JS で握れない) で**無言クラッシュ**するため、
  * 危険判定は子プロセスに肩代わりさせ、本プロセスは安全と分かってからのみ noble を初期化する。
- * @returns {any} noble モジュール
+ * @returns {Noble} noble モジュール
  */
 function loadNoble() {
   const probe = probeBleAvailability();
   if (probe.kind === "noAdapter") {
-    const err = new Error(t("ble.noAdapter", { cause: probe.cause }));
+    const err = /** @type {CodedError} */ (new Error(t("ble.noAdapter", { cause: probe.cause })));
     err.code = "BLE_NO_ADAPTER";
     throw err;
   }
@@ -271,41 +331,48 @@ function loadNoble() {
   // probe.kind === "ok": 子プロセスで central manager 初期化に成功している → 本プロセスでも安全。
   try {
     // @abandonware/noble は optionalDependency。未導入なら下で握る (通常はプローブが先に検知する)。
-    const noble = require("@abandonware/noble");
+    // noble は untyped CJS。最小 typedef (Noble) として扱う。
+    const noble = /** @type {Noble} */ (require("@abandonware/noble"));
     _nobleLoaded = true;
     return noble;
   } catch (e) {
     // MODULE_NOT_FOUND の message は require stack を含むので 1 行目だけ拾う。
-    const cause = String(e?.message || e).split("\n")[0];
-    const err = new Error(t("ble.noAdapter", { cause }));
+    const cause = String(/** @type {{message?:string}} */ (e)?.message || e).split("\n")[0];
+    const err = /** @type {CodedError} */ (new Error(t("ble.noAdapter", { cause })));
     err.code = "BLE_NO_ADAPTER";
     throw err;
   }
 }
 
-/** Bluetooth が poweredOn になるまで待つ (権限/未対応は導線付きエラー)。 */
+/**
+ * Bluetooth が poweredOn になるまで待つ (権限/未対応は導線付きエラー)。
+ * @param {Noble} noble
+ * @param {(...a:any[])=>void} [log]
+ * @returns {Promise<void>}
+ */
 function waitPoweredOn(noble, log = () => {}) {
   return new Promise((resolve, reject) => {
     if (noble.state === "poweredOn") return resolve();
     const to = setTimeout(() => { noble.removeListener("stateChange", onState); reject(new Error(t("ble.bluetoothInitTimeout"))); }, 10_000);
+    /** @param {string} state */
     const onState = (state) => {
       log("noble state", state);
       if (state === "poweredOn") { clearTimeout(to); noble.removeListener("stateChange", onState); resolve(); }
       else if (state === "unauthorized") {
         clearTimeout(to); noble.removeListener("stateChange", onState);
-        const e = new Error(t("ble.bluetoothUnauthorized"));
+        const e = /** @type {CodedError} */ (new Error(t("ble.bluetoothUnauthorized")));
         e.code = "BLE_UNAUTHORIZED"; // CLI 側で設定ペインを開く判定に使う
         reject(e);
       }
       else if (state === "poweredOff") {
         clearTimeout(to); noble.removeListener("stateChange", onState);
-        const e = new Error(t("ble.bluetoothPoweredOff"));
+        const e = /** @type {CodedError} */ (new Error(t("ble.bluetoothPoweredOff")));
         e.code = "BLE_POWERED_OFF";
         reject(e);
       }
       else if (state === "unsupported") {
         clearTimeout(to); noble.removeListener("stateChange", onState);
-        const e = new Error(t("ble.bluetoothUnsupported"));
+        const e = /** @type {CodedError} */ (new Error(t("ble.bluetoothUnsupported")));
         e.code = "BLE_UNSUPPORTED";
         reject(e);
       }
@@ -322,13 +389,14 @@ function waitPoweredOn(noble, log = () => {}) {
  * @param {{deviceUUIDs?:string[], timeoutMs?:number, debug?:boolean, gatt?:{SERVICE:string}}} opts
  *   gatt: スキャンフィルタに使う service UUID (省略時 SESAME GATT fd81)。WM2 は WM2_GATT を渡す。
  *     advertise の company ID (0x055A) は全 SESAME 共通なので parse は機種別に分岐する (gatt 非依存)。
- * @returns {Promise<Map<string, any>>} key = deviceUUID(小文字ダッシュ付き) → noble peripheral
+ * @returns {Promise<Map<string, NoblePeripheral>>} key = deviceUUID(小文字ダッシュ付き) → noble peripheral
  */
 export async function scanSesames({ deviceUUIDs = [], timeoutMs = 8_000, debug = false, gatt = GATT } = {}) {
   const noble = loadNoble();
-  const log = debug ? (...a) => console.error("[ble:scan]", ...a) : () => {};
+  const log = debug ? (/** @type {any[]} */ ...a) => console.error("[ble:scan]", ...a) : () => {};
   await waitPoweredOn(noble, log);
   const want = new Set(deviceUUIDs.map(nobleUuid));
+  /** @type {Map<string, NoblePeripheral>} */
   const found = new Map(); // deviceUUID(dashed lower) -> peripheral
 
   return new Promise((resolve) => {
@@ -341,6 +409,7 @@ export async function scanSesames({ deviceUUIDs = [], timeoutMs = 8_000, debug =
       resolve(found);
     };
     const to = setTimeout(finish, timeoutMs);
+    /** @param {NoblePeripheral} p */
     const onDiscover = (p) => {
       const uuid = advToDeviceUUID(p.advertisement?.manufacturerData);
       if (!uuid) return; // SESAME でない
@@ -352,7 +421,7 @@ export async function scanSesames({ deviceUUIDs = [], timeoutMs = 8_000, debug =
       }
     };
     noble.on("discover", onDiscover);
-    noble.startScanningAsync([nobleUuid(gatt.SERVICE)], false).catch((e) => {
+    noble.startScanningAsync([nobleUuid(gatt.SERVICE)], false).catch((/** @type {any} */ e) => {
       log("scan start failed", e?.message);
       finish();
     });
@@ -432,9 +501,10 @@ export function peripheralToDiscovery(p, { includeUnknown = false } = {}) {
  */
 export async function listNearbyDevices({ timeoutMs = 8_000, debug = false, includeUnknown = false, gatt = GATT } = {}) {
   const noble = loadNoble();
-  const log = debug ? (...a) => console.error("[ble:list]", ...a) : () => {};
+  const log = debug ? (/** @type {any[]} */ ...a) => console.error("[ble:list]", ...a) : () => {};
   await waitPoweredOn(noble, log);
   // deviceUUID(dashed lower) -> 発見結果。SDK の chDeviceMap.getOrPut(deviceID) と同じく dedup する。
+  /** @type {Map<string, NonNullable<ReturnType<typeof peripheralToDiscovery>>>} */
   const found = new Map();
 
   return new Promise((resolve) => {
@@ -447,17 +517,19 @@ export async function listNearbyDevices({ timeoutMs = 8_000, debug = false, incl
       resolve([...found.values()]);
     };
     const to = setTimeout(finish, timeoutMs);
+    /** @param {NoblePeripheral} p */
     const onDiscover = (p) => {
       const entry = peripheralToDiscovery(p, { includeUnknown });
       if (!entry) return; // SESAME でない / deviceUUID=null / (既定で) 未知機種
       const key = entry.deviceUUID;
       // SDK chDeviceMap.getOrPut(deviceID) と同じく dedup。再受信時は最新 rssi/localName/peripheral
       // で上書きしつつ、最初の発見順を保つ (Map は挿入順)。
-      if (!found.has(key)) { found.set(key, entry); log("found", key, entry.model); }
-      else { Object.assign(found.get(key), { rssi: entry.rssi, localName: entry.localName, peripheral: entry.peripheral }); }
+      const existing = found.get(key);
+      if (!existing) { found.set(key, entry); log("found", key, entry.model); }
+      else { Object.assign(existing, { rssi: entry.rssi, localName: entry.localName, peripheral: entry.peripheral }); }
     };
     noble.on("discover", onDiscover);
-    noble.startScanningAsync([nobleUuid(gatt.SERVICE)], false).catch((e) => {
+    noble.startScanningAsync([nobleUuid(gatt.SERVICE)], false).catch((/** @type {any} */ e) => {
       log("scan start failed", e?.message);
       finish();
     });
@@ -465,34 +537,51 @@ export async function listNearbyDevices({ timeoutMs = 8_000, debug = false, incl
 }
 
 /**
- * @abandonware/noble ベースの BLE トランスポート。
- *
- * @param {{
- *   deviceUUID?: string,   // 対象 SESAME の deviceUUID (advertise から照合)
- *   address?: string,      // BLE アドレスで照合 (deviceUUID が取れない環境向け)
- *   peripheral?: object,   // 既にスキャン済みの noble peripheral (scanSesames の結果)。あればスキャンしない
- *   scanTimeoutMs?: number,
- *   debug?: boolean,
- *   gatt?: {SERVICE:string, WRITE_CHAR:string, NOTIFY_CHAR:string}, // discover/subscribe する GATT
- *                          // (省略時 SESAME GATT fd81)。WM2 は WM2_GATT を渡す。
- * }} opts
+ * @typedef {object} Gatt discover/subscribe する GATT (省略時 SESAME GATT fd81)。
+ * @property {string} SERVICE
+ * @property {string} WRITE_CHAR
+ * @property {string} NOTIFY_CHAR
+ */
+
+/**
+ * NobleTransport のコンストラクタ opts。
+ * @typedef {object} NobleTransportOpts
+ * @property {string} [deviceUUID] 対象 SESAME の deviceUUID (advertise から照合)。
+ * @property {string} [address] BLE アドレスで照合 (deviceUUID が取れない環境向け)。
+ * @property {NoblePeripheral} [peripheral] 既にスキャン済みの noble peripheral (scanSesames の結果)。あればスキャンしない。
+ * @property {number} [scanTimeoutMs]
+ * @property {boolean} [debug]
+ * @property {Gatt} [gatt] discover/subscribe する GATT (省略時 SESAME GATT fd81)。WM2 は WM2_GATT を渡す。
+ */
+
+/**
+ * noble (@abandonware/noble) ベースの BLE トランスポート。
  */
 export class NobleTransport {
+  /** @param {NobleTransportOpts} [opts] */
   constructor(opts = {}) {
     this._opts = opts;
+    /** @type {Noble|null} */
     this._noble = null;
+    /** @type {NoblePeripheral|null} */
     this._peripheral = opts.peripheral || null; // 事前スキャン済みなら受け取る
     this._scanned = false; // 自前でスキャンしたか (disconnect 時の stopScanning 判定)
     this._gatt = opts.gatt || GATT; // discover/subscribe する GATT (WM2 は WM2_GATT を注入)
+    /** @type {NobleCharacteristic|null} */
     this._writeChar = null;
+    /** @type {NobleCharacteristic|null} */
     this._notifyChar = null;
+    /** @type {Promise<void>} */
     this._writeChain = Promise.resolve();
     this._debug = !!opts.debug;
+    /** @type {((reason:any)=>void)|null} */
     this._onDisconnect = null;     // session が connect() 時に渡す切断ハンドラ
     this._disconnected = false;    // 切断検知済みか (onDisconnect の二重発火・以後の write を防ぐ)
+    /** @type {((reason:any)=>void)|null} */
     this._onPeripheralDisconnect = null; // peripheral 'disconnect' リスナ (解除用に保持)
   }
 
+  /** @param {...any} a */
   _log(...a) { if (this._debug) console.error("[ble:noble]", ...a); }
 
   /**
@@ -511,7 +600,8 @@ export class NobleTransport {
       this._scanned = true;
       this._peripheral = await this._scanForDevice(noble, { deviceUUID, address, scanTimeoutMs });
     }
-    const peripheral = this._peripheral;
+    // この時点で _peripheral は必ず非 null (上で peripheral 受領 or scan 済み)。型のみ非 null 化。
+    const peripheral = /** @type {NoblePeripheral} */ (this._peripheral);
     this._log("connecting to", peripheral.address || peripheral.id);
 
     // 切断イベント購読 (noble peripheral.js:69-77 / noble.js:245-251 で OS の切断通知が 'disconnect'
@@ -535,8 +625,8 @@ export class NobleTransport {
       [nobleUuid(this._gatt.SERVICE)],
       [nobleUuid(this._gatt.WRITE_CHAR), nobleUuid(this._gatt.NOTIFY_CHAR)],
     );
-    this._writeChar = characteristics.find((c) => idEquals(c.uuid, this._gatt.WRITE_CHAR));
-    this._notifyChar = characteristics.find((c) => idEquals(c.uuid, this._gatt.NOTIFY_CHAR));
+    this._writeChar = characteristics.find((c) => idEquals(c.uuid, this._gatt.WRITE_CHAR)) || null;
+    this._notifyChar = characteristics.find((c) => idEquals(c.uuid, this._gatt.NOTIFY_CHAR)) || null;
     if (!this._writeChar || !this._notifyChar) {
       throw new Error(t("ble.gattNotFound"));
     }
@@ -556,6 +646,8 @@ export class NobleTransport {
    * リンク断扱い (_handleDisconnect) として onDisconnect を発火させ、最後のエラーを投げる。
    * SDK CHSesameOS3.kt:321-346 transmit の「リトライ→最終的に失敗で disconnect」と同じ流儀
    * (回数は noble の非同期 writeAsync に合わせて妥当な少数に縮小。仕様で許容)。
+   * @param {Buffer|Uint8Array} bytes
+   * @returns {Promise<void>}
    */
   write(bytes) {
     const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
@@ -563,10 +655,15 @@ export class NobleTransport {
     return this._writeChain;
   }
 
-  /** writeAsync を有限回リトライ。全失敗で _handleDisconnect → 最後のエラーを rethrow。 */
+  /**
+   * writeAsync を有限回リトライ。全失敗で _handleDisconnect → 最後のエラーを rethrow。
+   * @param {Buffer} buf
+   * @returns {Promise<void>}
+   */
   async _writeWithRetry(buf) {
     if (this._disconnected) throw new Error(t("ble.notConnected")); // 既に切断 → 再送しない
     if (!this._writeChar) throw new Error(t("ble.notConnected"));
+    /** @type {unknown} */
     let lastErr = null;
     for (let attempt = 0; attempt <= WRITE_MAX_RETRIES; attempt++) {
       try {
@@ -577,13 +674,13 @@ export class NobleTransport {
         if (this._disconnected) break; // リトライ中に切断検知したら即諦める
         if (attempt < WRITE_MAX_RETRIES) {
           const delay = WRITE_RETRY_BASE_MS * (1 << attempt); // 20,40,80,160,320ms
-          this._log("write failed, retrying", { attempt: attempt + 1, delay, cause: e?.message });
+          this._log("write failed, retrying", { attempt: attempt + 1, delay, cause: /** @type {{message?:string}} */ (e)?.message });
           await new Promise((r) => setTimeout(r, delay));
         }
       }
     }
     // 全リトライ失敗 = リンク断とみなす (SDK: 最終的に disconnect)。session に fail-fast させる。
-    this._log("write failed after retries; treating as disconnect", lastErr?.message);
+    this._log("write failed after retries; treating as disconnect", /** @type {{message?:string}} */ (lastErr)?.message);
     this._handleDisconnect(lastErr);
     throw lastErr || new Error(t("ble.notConnected"));
   }
@@ -620,8 +717,14 @@ export class NobleTransport {
     this._notifyChar = null;
   }
 
-  _waitPoweredOn(noble) { return waitPoweredOn(noble, (...a) => this._log(...a)); }
+  /** @param {Noble} noble */
+  _waitPoweredOn(noble) { return waitPoweredOn(noble, (/** @type {any[]} */ ...a) => this._log(...a)); }
 
+  /**
+   * @param {Noble} noble
+   * @param {{deviceUUID?:string, address?:string, scanTimeoutMs:number}} opts
+   * @returns {Promise<NoblePeripheral>}
+   */
   _scanForDevice(noble, { deviceUUID, address, scanTimeoutMs }) {
     return new Promise((resolve, reject) => {
       const to = setTimeout(async () => {
@@ -630,6 +733,7 @@ export class NobleTransport {
         reject(new Error(t("ble.deviceNotFound", { scanTimeoutMs })));
       }, scanTimeoutMs);
 
+      /** @param {NoblePeripheral} peripheral */
       const onDiscover = async (peripheral) => {
         const md = peripheral.advertisement?.manufacturerData;
         const advUuid = advToDeviceUUID(md);
@@ -649,7 +753,7 @@ export class NobleTransport {
       };
 
       noble.on("discover", onDiscover);
-      noble.startScanningAsync([nobleUuid(this._gatt.SERVICE)], false).catch((e) => {
+      noble.startScanningAsync([nobleUuid(this._gatt.SERVICE)], false).catch((/** @type {any} */ e) => {
         clearTimeout(to);
         noble.removeListener("discover", onDiscover);
         reject(new Error(t("ble.scanStartFailed", { cause: e?.message || e })));
@@ -660,7 +764,7 @@ export class NobleTransport {
 
 /**
  * 既定の BLE トランスポートを生成する (noble を遅延ロード)。
- * @param {object} opts NobleTransport の opts
+ * @param {NobleTransportOpts} [opts] NobleTransport の opts
  * @returns {NobleTransport}
  */
 export function createBleTransport(opts = {}) {

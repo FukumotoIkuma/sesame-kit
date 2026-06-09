@@ -47,6 +47,23 @@ CANDY HOUSE, not here. Report here for issues in **this codebase**
 SESAME ハードウェアや公式クラウド自体の脆弱性は CANDY HOUSE へ。ここでは**本コードベース**
 （暗号処理・トークン保管・BLE/RPC ロジック・依存関係リスク等）の問題を報告してください。
 
+## Dependency advisories / 依存関係の advisory
+
+BLE support relies on the **optional** native dependency `@abandonware/noble`
+(under `optionalDependencies`); cloud / CLI / `sesame serve` do not need it. Its
+native toolchain (`node-gyp`) historically pulled in a vulnerable `node-tar`. We
+pin a patched release via a package.json `overrides` field
+(`"overrides": { "tar": "^7.5.11" }`), after which `npm audit --omit=dev` reports
+**0** vulnerabilities. If a future advisory cannot be cleared without breaking the
+optional native build, it will be documented here as an optional-only advisory
+that affects only users who install `@abandonware/noble` for BLE.
+BLE 対応は**任意**のネイティブ依存 `@abandonware/noble`（`optionalDependencies`）に依存し、
+クラウド / CLI / `sesame serve` には不要です。そのネイティブツールチェーン（`node-gyp`）は従来
+脆弱な `node-tar` を引き込みました。package.json の `overrides`（`"overrides": { "tar": "^7.5.11" }`）で
+パッチ版に固定しており、適用後 `npm audit --omit=dev` は脆弱性 **0** を報告します。今後、任意の
+ネイティブビルドを壊さずに解消できない advisory が出た場合は、BLE 用に `@abandonware/noble` を
+インストールしたユーザのみに影響する「任意依存限定の advisory」としてここに記載します。
+
 ## Supported versions / サポート対象
 
 The latest released version on the `main` branch is supported.

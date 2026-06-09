@@ -6,6 +6,12 @@ import { t } from "./i18n.js";
 import { SesameError, ERR } from "./errors.js";
 
 /**
+ * WS 応答に共通して現れうるフィールド。op ごとに `data` 等が付くため index 可。
+ * @typedef {{ success?: boolean, message?: string, code?: string|number|null }
+ *   & Record<string, unknown>} OpResponse
+ */
+
+/**
  * WS op の応答 `resp` を検査し、失敗していれば例外を投げる。成功なら resp を返す。
  *
  * biz3 の応答には 2 系統あり、本ライブラリも両方を扱う:
@@ -18,7 +24,7 @@ import { SesameError, ERR } from "./errors.js";
  * `error.data.kind=rejected` へ写像でき、ライブラリ直利用者も `err.code` で分岐できる
  * (上流が明示的に失敗を返した = 再試行しても無駄なので retryable=false)。
  *
- * @template T
+ * @template {OpResponse|null|undefined} T
  * @param {T} resp           WS 応答メッセージ
  * @param {string} op        失敗時メッセージに使う op ラベル
  * @param {{strict?:boolean}} [opts]
@@ -42,7 +48,7 @@ export function assertSuccess(resp, op, { strict = false } = {}) {
  * serve 層は code=`bad_request` を JSON-RPC `INVALID_PARAMS` / kind=`bad_params` へ写像する。
  *
  * @param {string} key   i18n メッセージキー
- * @param {object} [vars] i18n 変数
+ * @param {Record<string, string|number>} [vars] i18n 変数
  * @returns {SesameError}
  */
 export function badRequest(key, vars) {
@@ -89,7 +95,7 @@ export function rejected(message, data = null) {
  * @template T
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {object} cfg
- * @param {object} cfg.sendFrame                       購読開始のために送るフレーム
+ * @param {import("./transport.js").WsFrame} cfg.sendFrame  購読開始のために送るフレーム
  * @param {Array<{key:string, onMessage:(msg:any, finish:(err?:Error)=>void)=>void}>} cfg.subscriptions
  *        dispatch key (`${action}:${op}`) と、その push を処理するハンドラの組。
  * @param {number} cfg.timeoutMs
@@ -100,6 +106,7 @@ export function rejected(message, data = null) {
 export function subscribeChunks(client, { sendFrame, subscriptions, timeoutMs, onTimeout, result }) {
   return new Promise((resolve, reject) => {
     let done = false;
+    /** @type {Array<() => void>} */
     const unsubs = [];
     const cleanup = () => {
       clearTimeout(to);
@@ -107,6 +114,7 @@ export function subscribeChunks(client, { sendFrame, subscriptions, timeoutMs, o
         try { u(); } catch { /* unsubscribe は冪等扱い */ }
       }
     };
+    /** @param {Error} [err] */
     const finish = (err) => {
       if (done) return;
       done = true;
@@ -122,7 +130,7 @@ export function subscribeChunks(client, { sendFrame, subscriptions, timeoutMs, o
       unsubs.push(client.subscribe(sub.key, (msg) => {
         if (done) return;
         try { sub.onMessage(msg, finish); }
-        catch (e) { finish(e); }
+        catch (e) { finish(/** @type {Error} */ (e)); }
       }));
     }
     client.send(sendFrame);

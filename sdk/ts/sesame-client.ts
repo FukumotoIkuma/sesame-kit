@@ -60,9 +60,52 @@ export class SesameClient {
       headers,
       body: JSON.stringify({ jsonrpc: "2.0", id: ++this._id, method, params }),
     });
-    const msg = (await res.json()) as { result?: unknown; error?: { code: number; message: string; data?: Record<string, unknown> } };
-    if (msg.error) throw new SesameRpcError(msg.error.message, msg.error.code, msg.error.data);
+    // The daemon answers JSON-RPC faults with HTTP 200 + an `error` body, but transport-level
+    // rejections (auth, oversized body, unknown route) come back as real HTTP status codes with a
+    // plain `{ error, hint }` body — or no parseable body at all. Mirror streamEvents()'s !res.ok
+    // guard so a 401/500/non-JSON body never crashes with an unhelpful parse error.
+    let msg: { result?: unknown; error?: unknown } | undefined;
+    let parseFailed = false;
+    try {
+      msg = (await res.json()) as { result?: unknown; error?: unknown };
+    } catch {
+      parseFailed = true;
+    }
+    if (!res.ok) {
+      // A genuine JSON-RPC error body can ride on a non-200 status — honor it verbatim.
+      if (msg && msg.error != null) throw this._rpcError(msg.error, res.status);
+      // Otherwise synthesize from the HTTP status (carry `{ error, hint }` detail if present).
+      const detail = this._httpDetail(msg);
+      const kind = res.status === 401 ? "not_authenticated" : res.status >= 500 ? "internal" : "bad_params";
+      throw new SesameRpcError(`HTTP ${res.status}${detail ? `: ${detail}` : ""}`, res.status, {
+        kind,
+        retryable: res.status >= 500,
+        httpStatus: res.status,
+      });
+    }
+    if (parseFailed || !msg) throw new SesameRpcError("invalid JSON-RPC response", res.status, { kind: "internal" });
+    if (msg.error != null) throw this._rpcError(msg.error, res.status);
     return msg.result;
+  }
+
+  /** Build a SesameRpcError from a JSON-RPC `error` member that may be a string or an object. */
+  private _rpcError(error: unknown, httpStatus: number): SesameRpcError {
+    if (typeof error === "string") return new SesameRpcError(error, httpStatus, { kind: "internal" });
+    if (error && typeof error === "object") {
+      const e = error as { code?: unknown; message?: unknown; data?: unknown };
+      const message = typeof e.message === "string" ? e.message : "error";
+      const code = typeof e.code === "number" ? e.code : httpStatus;
+      const data = e.data && typeof e.data === "object" ? (e.data as Record<string, unknown>) : undefined;
+      return new SesameRpcError(message, code, data);
+    }
+    return new SesameRpcError("error", httpStatus, { kind: "internal" });
+  }
+
+  /** Extract a human-readable detail from a plain `{ error, hint }` HTTP body, if any. */
+  private _httpDetail(msg: { error?: unknown } | undefined): string {
+    if (!msg || typeof msg.error !== "string") return "";
+    const hint = (msg as { hint?: unknown }).hint;
+    return typeof hint === "string" && hint ? `${msg.error} (${hint})` : msg.error;
   }
 
   /**
@@ -278,9 +321,9 @@ export class SesameClient {
 
   readonly schedule = {
     /** @experimental unverified — may change without notice. */
-    cancelSchedule: (params: { subUUID: string; scheduleId: string; timeoutMs?: number }): Promise<unknown> => this._call("schedule.cancelSchedule", params) as Promise<unknown>,
+    cancelSchedule: (params: { subUUID?: string; scheduleId?: string; timeoutMs?: number }): Promise<unknown> => this._call("schedule.cancelSchedule", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getScheduleList: (params: { subUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("schedule.getScheduleList", params) as Promise<unknown>,
+    getScheduleList: (params: { subUUID?: string; timeoutMs?: number }): Promise<unknown> => this._call("schedule.getScheduleList", params) as Promise<unknown>,
   };
 
   readonly webapi = {

@@ -25,6 +25,30 @@
 import { t } from "../i18n.js";
 
 /**
+ * getCards の items 要素 (lib access.js:144 の集約結果)。表示で読むフィールドのみ宣言。
+ * @typedef {object} CardItem
+ * @property {string} [cardID]
+ * @property {string} [name]
+ * @property {number|string} [cardType]
+ * @property {string[]} [uuids] 該当 deviceUUID 群 (idKey 集約で付与)
+ */
+
+/**
+ * getPasscodes の items 要素 (lib access.js:165 の集約結果)。表示で読むフィールドのみ宣言。
+ * @typedef {object} PasscodeItem
+ * @property {string} [passwordID]
+ * @property {string} [name]
+ * @property {string[]} [uuids] 該当 deviceUUID 群 (idKey 集約で付与)
+ */
+
+/**
+ * getCards / getPasscodes の戻り (lib access.js:68,143,164)。namespace getter は
+ * これを unknown に erase するため CLI 側で cast に使う。
+ * @template T
+ * @typedef {{items: T[], byDevice: Record<string, object[]>}} AccessListResult
+ */
+
+/**
  * --device オプション値を deviceUUID 配列に正規化する。
  * commander の variadic / 繰り返し指定で配列になるが、各要素に "uuid1,uuid2" の
  * カンマ連結が混ざっても受けられるように分解する。
@@ -44,8 +68,8 @@ function normalizeDevices(raw) {
  * deviceUUID 群を確定する。--device 指定があればそれを優先。
  * 未指定かつ対話可能なら listDevices() から選択させる (selectFromList は単一選択)。
  * 非対話なら die(...,2) で必須を案内。
- * @param {object} hub
- * @param {object} ctx
+ * @param {import("../client.js").SesameHub3} hub
+ * @param {import("../cli.js").CliCtx} ctx
  * @param {string[]} devices
  * @param {string} cmdHint die 時に出すコマンド例
  * @returns {Promise<string[]|null>} 確定できなければ null (die 済み)
@@ -72,7 +96,7 @@ async function resolveDeviceUUIDs(hub, ctx, devices, cmdHint) {
 
 /**
  * @param {import("commander").Command} program
- * @param {object} ctx cli.js makeCtx() が供給する共有コンテキスト
+ * @param {import("../cli.js").CliCtx} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
 export function registerAccessCommands(program, ctx) {
   // --device オプション (variadic) のヘルプ文言。複数指定 or カンマ連結を受ける。
@@ -95,7 +119,10 @@ export function registerAccessCommands(program, ctx) {
         const devices = normalizeDevices(subOpts.device);
         const deviceUUIDs = await resolveDeviceUUIDs(hub, ctx, devices, "sesame access cards ls --device <uuid...>");
         if (!deviceUUIDs) return;
-        const { items, byDevice } = await hub.access.getCards({ deviceUUIDs });
+        // namespace getter は unknown を返すため、本体 getCards の戻り形へ cast。
+        const { items, byDevice } = /** @type {AccessListResult<CardItem>} */ (
+          await hub.access.getCards({ deviceUUIDs })
+        );
         ctx.out(opts.json, () => {
           if (!Array.isArray(items) || items.length === 0) {
             console.log(t("access.noCards"));
@@ -296,7 +323,7 @@ export function registerAccessCommands(program, ctx) {
           // die() は process.exit するため finally の close は走らない。明示的に後始末してから die。
           await ble.biometric.cardModeSet(0).catch(() => {}); // best-effort で control へ戻す
           await ble.close().catch(() => {});
-          ctx.die(t("access.err.cards.enroll.bleFailed", { error: e?.message || String(e) }), 1);
+          ctx.die(t("access.err.cards.enroll.bleFailed", { error: /** @type {{message?:string}} */ (e)?.message || String(e) }), 1);
           return;
         } finally {
           await ble.close().catch(() => {});
@@ -329,7 +356,10 @@ export function registerAccessCommands(program, ctx) {
         const devices = normalizeDevices(subOpts.device);
         const deviceUUIDs = await resolveDeviceUUIDs(hub, ctx, devices, "sesame access passcodes ls --device <uuid...>");
         if (!deviceUUIDs) return;
-        const { items, byDevice } = await hub.access.getPasscodes({ deviceUUIDs });
+        // namespace getter は unknown を返すため、本体 getPasscodes の戻り形へ cast。
+        const { items, byDevice } = /** @type {AccessListResult<PasscodeItem>} */ (
+          await hub.access.getPasscodes({ deviceUUIDs })
+        );
         ctx.out(opts.json, () => {
           if (!Array.isArray(items) || items.length === 0) {
             console.log(t("access.noPasscodes"));

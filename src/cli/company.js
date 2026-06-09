@@ -23,7 +23,7 @@ import { t } from "../i18n.js";
 
 /**
  * @param {import("commander").Command} program
- * @param {object} ctx cli.js makeCtx() が供給する共有コンテキスト
+ * @param {import("../cli.js").CliCtx} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
 export function registerCompanyCommands(program, ctx) {
   const company = program.command("company").description(t("company.cmd.desc"));
@@ -57,7 +57,10 @@ export function registerCompanyCommands(program, ctx) {
     .action((name) =>
       ctx.withAccount(async (hub, { opts }) => {
         // companyID は refreshAccount() 済みなので namespace が自動注入する。
-        const resp = await hub.company.updateCompanyName({ name });
+        // namespace getter は unknown を返すため、本体 updateCompanyName の戻り形へ cast。
+        const resp = /** @type {{companyID?:string, name?:string}} */ (
+          await hub.company.updateCompanyName({ name })
+        );
         ctx.out(opts.json, () => {
           console.log(t("company.rename.ok", { companyID: resp?.companyID ?? "", name: resp?.name ?? name }));
         }, { ok: true, company: resp });
@@ -78,7 +81,10 @@ export function registerCompanyCommands(program, ctx) {
           ctx.die(t("company.add.missingCustomerInfo"), 1);
           return;
         }
-        const resp = await hub.company.addCompany({ name, employeeEmail, subUUID });
+        // namespace getter は unknown を返すため、本体 addCompany の戻り形へ cast。
+        const resp = /** @type {{companyID?:string}|null} */ (
+          await hub.company.addCompany({ name, employeeEmail, subUUID })
+        );
         ctx.out(opts.json, () => {
           // add 応答 data の個別フィールドは biz3 で読み出されておらず詳細は未確認。
           console.log(t("company.add.ok", { name, idSuffix: resp?.companyID ? ` (${resp.companyID})` : "" }));

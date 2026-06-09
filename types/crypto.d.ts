@@ -41,7 +41,12 @@ export function uuidToHistoryBase64(uuid: string, prefix?: string): string;
  * @returns {number}
  */
 export function parseIrType(v: string | number): number;
-export function productTypeFromModelName(modelName: any): number;
+/**
+ * モデル名 (例 "sesame_5") から biz3 の productType 数値を引く。
+ * @param {string} modelName
+ * @returns {number|undefined}
+ */
+export function productTypeFromModelName(modelName: string): number | undefined;
 /**
  * ECDH 共有秘密 (生 X 座標 32B) を導出する。
  * EccKey.ecdh():27-33 — remote 公開鍵 (64B raw) に uncompressed prefix を付与し、

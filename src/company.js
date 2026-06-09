@@ -80,7 +80,8 @@ export async function updateCompanyName(client, { companyID, name, timeoutMs = D
   );
   assertSuccess(resp, "updateCompanyName");
   // data は {companyID, name} (useStripeInfo.js:170)。
-  return resp.data ?? { companyID, name };
+  // resp.data は WsMessage 上 unknown。上流形状を JSDoc cast で明示する (実機検証済の構造)。
+  return /** @type {{companyID:string, name:string}|undefined} */ (resp.data) ?? { companyID, name };
 }
 
 /**
@@ -100,7 +101,7 @@ export async function updateCompanyName(client, { companyID, name, timeoutMs = D
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{name:string, employeeEmail:string, subUUID:string, timeoutMs?:number}} params
- * @returns {Promise<object>} 新規 company オブジェクト (応答 data)
+ * @returns {Promise<object|null>} 新規 company オブジェクト (応答 data。欠落時 null)
  */
 export async function addCompany(client, { name, employeeEmail, subUUID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!name) throw badRequest("company.err.nameRequired");
@@ -111,7 +112,8 @@ export async function addCompany(client, { name, employeeEmail, subUUID, timeout
     timeoutMs,
   );
   assertSuccess(resp, "addCompany");
-  return resp.data ?? null;
+  // resp.data は WsMessage 上 unknown。新規 company オブジェクト (object) として扱う。
+  return /** @type {object|undefined} */ (resp.data) ?? null;
 }
 
 /**
@@ -138,7 +140,10 @@ export async function getPaymentConfig(client, { companyID, timeoutMs = DEFAULT_
     timeoutMs,
   );
   assertSuccess(resp, "getPaymentConfig");
-  return resp?.data ?? null;
+  // resp.data は WsMessage 上 unknown。consumer (settings/index.js) 確定の形状へ cast。
+  return /** @type {{config:any,isYear:boolean,time:any,total:any,level:any,nextPrice:any}|undefined} */ (
+    resp?.data
+  ) ?? null;
 }
 
 // 公開 op の allowlist (SesameHub3._bindNs / serve registry が参照する単一の真実)。

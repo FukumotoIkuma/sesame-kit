@@ -574,11 +574,11 @@ class _Schedule:
     def __init__(self, c: "SesameClient") -> None:
         self._c = c
 
-    def cancelSchedule(self, *, subUUID: str, scheduleId: str, timeoutMs: float | None = None) -> Any:
+    def cancelSchedule(self, *, subUUID: str | None = None, scheduleId: str | None = None, timeoutMs: float | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
         return self._c._call("schedule.cancelSchedule", _omit_none({"subUUID": subUUID, "scheduleId": scheduleId, "timeoutMs": timeoutMs}))
 
-    def getScheduleList(self, *, subUUID: str, timeoutMs: float | None = None) -> Any:
+    def getScheduleList(self, *, subUUID: str | None = None, timeoutMs: float | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
         return self._c._call("schedule.getScheduleList", _omit_none({"subUUID": subUUID, "timeoutMs": timeoutMs}))
 

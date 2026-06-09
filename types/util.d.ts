@@ -1,4 +1,9 @@
 /**
+ * WS 応答に共通して現れうるフィールド。op ごとに `data` 等が付くため index 可。
+ * @typedef {{ success?: boolean, message?: string, code?: string|number|null }
+ *   & Record<string, unknown>} OpResponse
+ */
+/**
  * WS op の応答 `resp` を検査し、失敗していれば例外を投げる。成功なら resp を返す。
  *
  * biz3 の応答には 2 系統あり、本ライブラリも両方を扱う:
@@ -11,14 +16,14 @@
  * `error.data.kind=rejected` へ写像でき、ライブラリ直利用者も `err.code` で分岐できる
  * (上流が明示的に失敗を返した = 再試行しても無駄なので retryable=false)。
  *
- * @template T
+ * @template {OpResponse|null|undefined} T
  * @param {T} resp           WS 応答メッセージ
  * @param {string} op        失敗時メッセージに使う op ラベル
  * @param {{strict?:boolean}} [opts]
  * @returns {T} 成功時はそのまま resp を返す (呼び出し側で resp.data 等を取り出せる)
  * @throws {SesameError} 失敗時 (code=rejected, `<op> failed: <message|JSON>`)
  */
-export function assertSuccess<T>(resp: T, op: string, { strict }?: {
+export function assertSuccess<T extends OpResponse | null | undefined>(resp: T, op: string, { strict }?: {
     strict?: boolean;
 }): T;
 /**
@@ -27,10 +32,10 @@ export function assertSuccess<T>(resp: T, op: string, { strict }?: {
  * serve 層は code=`bad_request` を JSON-RPC `INVALID_PARAMS` / kind=`bad_params` へ写像する。
  *
  * @param {string} key   i18n メッセージキー
- * @param {object} [vars] i18n 変数
+ * @param {Record<string, string|number>} [vars] i18n 変数
  * @returns {SesameError}
  */
-export function badRequest(key: string, vars?: object): SesameError;
+export function badRequest(key: string, vars?: Record<string, string | number>): SesameError;
 /**
  * 応答待ちタイムアウトを表す {@link SesameError} を生成する (code=`timeout`, retryable=true)。
  * @param {string} message 既存文言をそのまま渡す (テスト互換のため caller が組み立てる)
@@ -65,7 +70,7 @@ export function rejected(message: string, data?: object | null): SesameError;
  * @template T
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {object} cfg
- * @param {object} cfg.sendFrame                       購読開始のために送るフレーム
+ * @param {import("./transport.js").WsFrame} cfg.sendFrame  購読開始のために送るフレーム
  * @param {Array<{key:string, onMessage:(msg:any, finish:(err?:Error)=>void)=>void}>} cfg.subscriptions
  *        dispatch key (`${action}:${op}`) と、その push を処理するハンドラの組。
  * @param {number} cfg.timeoutMs
@@ -74,14 +79,22 @@ export function rejected(message: string, data?: object | null): SesameError;
  * @returns {Promise<T>}
  */
 export function subscribeChunks<T>(client: import("./transport.js").Hub3WsClient, { sendFrame, subscriptions, timeoutMs, onTimeout, result }: {
-    sendFrame: object;
+    sendFrame: import("./transport.js").WsFrame;
     subscriptions: Array<{
         key: string;
         onMessage: (msg: any, finish: (err?: Error) => void) => void;
     }>;
     timeoutMs: number;
-    onTimeout?: () => Error;
+    onTimeout?: (() => Error) | undefined;
     result: () => T;
 }): Promise<T>;
+/**
+ * WS 応答に共通して現れうるフィールド。op ごとに `data` 等が付くため index 可。
+ */
+export type OpResponse = {
+    success?: boolean;
+    message?: string;
+    code?: string | number | null;
+} & Record<string, unknown>;
 import { SesameError } from "./errors.js";
 //# sourceMappingURL=util.d.ts.map

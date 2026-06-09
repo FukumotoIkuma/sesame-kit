@@ -48,7 +48,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  *           が count=data.length / Items=data に自前で詰め替えている点に注意)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{subUUID:string, timeoutMs?:number}} params
+ * @param {{subUUID?:string, timeoutMs?:number}} [params]
  *   subUUID は gStripe.customerInfo.subUUID 相当 (生の文字列をそのまま userId に入れる)
  * @returns {Promise<ScheduleItem[]>} スケジュール item の配列 (空なら [])
  */
@@ -84,7 +84,7 @@ export async function getScheduleList(client, { subUUID, timeoutMs = DEFAULT_TIM
  * resp.success が明示的に false の場合のみ throw する。成功フラグ等の data 形は実機検証要。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{subUUID:string, scheduleId:string, timeoutMs?:number}} params
+ * @param {{subUUID?:string, scheduleId?:string, timeoutMs?:number}} [params]
  *   scheduleId は getScheduleList で得た item.scheduleId をそのまま渡す。
  * @returns {Promise<any>} サーバ応答 (ack)。data の構造は未確認のため raw を返す。
  */

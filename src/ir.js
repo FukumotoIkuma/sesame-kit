@@ -39,6 +39,11 @@ import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { assertSuccess, rejected, timeoutError } from "./util.js";
 import { t } from "./i18n.js";
 
+/**
+ * 下位 WS トランスポート (transport.js の Hub3WsClient)。
+ * @typedef {import("./transport.js").Hub3WsClient} WsClient
+ */
+
 const ACTION = ACTION_TYPES.BIZ3_IR_REMOTE; // "biz3IRRemote" (vendor 由来)
 const DEFAULT_TIMEOUT_MS = 10_000;
 const LEARN_DEFAULT_TIMEOUT_MS = 60_000;
@@ -48,13 +53,16 @@ const MODE = Object.freeze({
   REGISTER: 1,
 });
 
+/** @param {string} deviceId */
 const modeTopic = (deviceId) => `hub3/${deviceId}/ir/mode`;
+/** @param {string} deviceId */
 const dataTopic = (deviceId) => `hub3/${deviceId}/ir/learned/data`;
 
 // ---------- remote 一覧 / 検索 ----------
 
 /**
  * 登録済みリモコン一覧を取得 (ページング)。
+ * @param {WsClient} client
  * @param {{type:number, companyID:string, page?:number, pageSize?:number}} p
  *   type は **実 remote.type** (自己学習=0xFE00, UI メニューの 0xFEFF ではない / 上記トラップ参照)
  */
@@ -73,6 +81,7 @@ export async function getRemoteList(client, p) {
 
 /**
  * プリセットリモコン (メーカー DB) 検索。最大 1000 件返却。
+ * @param {WsClient} client
  * @param {{type:number, companyID:string, searchTerm:string}} p
  */
 export async function searchRemoteList(client, p) {
@@ -95,6 +104,8 @@ export async function searchRemoteList(client, p) {
  * リモコンを追加 (Hub3 1 台あたり 3 個上限がサーバ側にある)。
  * `remote` の形は biz3 がそのまま remoteDevice オブジェクトを渡しているので、
  * 呼び出し側で {hub3DeviceId, type, name, irOperation, ...} を入れる。
+ * @param {WsClient} client
+ * @param {{remote: object, companyID: string}} p
  */
 export async function addIRRemote(client, { remote, companyID }) {
   const frame = { action: ACTION, op: "addIRRemote", remote, companyID };
@@ -103,7 +114,11 @@ export async function addIRRemote(client, { remote, companyID }) {
   return resp.data || resp;
 }
 
-/** リモコン削除。 */
+/**
+ * リモコン削除。
+ * @param {WsClient} client
+ * @param {{hub3DeviceId: string, uuid: string, companyID: string}} p
+ */
 export async function deleteIRRemote(client, { hub3DeviceId, uuid, companyID }) {
   const frame = { action: ACTION, op: "deleteIRRemote", hub3DeviceId, uuid, companyID };
   const resp = await client.request(frame, DEFAULT_TIMEOUT_MS);
@@ -111,7 +126,11 @@ export async function deleteIRRemote(client, { hub3DeviceId, uuid, companyID }) 
   return resp;
 }
 
-/** リモコンの alias を更新。注: 命名差で `deviceId`/`uuid`。 */
+/**
+ * リモコンの alias を更新。注: 命名差で `deviceId`/`uuid`。
+ * @param {WsClient} client
+ * @param {{hub3DeviceId: string, uuid: string, alias: string, companyID: string}} p
+ */
 export async function updateRemoteAlias(client, { hub3DeviceId, uuid, alias, companyID }) {
   const frame = {
     action: ACTION,
@@ -132,6 +151,8 @@ export async function updateRemoteAlias(client, { hub3DeviceId, uuid, alias, com
  * IR キー (ボタン) を追加。学習フロー (learnIRKey) から呼ばれることが多い。
  * `irCode` の形は biz3 がオブジェクトをそのまま乗せるので、
  * 呼び出し側で {hub3DeviceId, remoteId, name, irData, irWaveLength, irType, ...} を入れる。
+ * @param {WsClient} client
+ * @param {{irCode: object, companyID: string}} p
  */
 export async function addIRCode(client, { irCode, companyID }) {
   const frame = { action: ACTION, op: "addIRCode", irCode, companyID };
@@ -140,7 +161,11 @@ export async function addIRCode(client, { irCode, companyID }) {
   return resp.data || resp;
 }
 
-/** キー名変更。 */
+/**
+ * キー名変更。
+ * @param {WsClient} client
+ * @param {{hub3DeviceId: string, remoteId: string, keyUUID: string, name: string, companyID: string}} p
+ */
 export async function updateIRCode(client, { hub3DeviceId, remoteId, keyUUID, name, companyID }) {
   const frame = {
     action: ACTION,
@@ -156,7 +181,11 @@ export async function updateIRCode(client, { hub3DeviceId, remoteId, keyUUID, na
   return resp;
 }
 
-/** キー削除。 */
+/**
+ * キー削除。
+ * @param {WsClient} client
+ * @param {{hub3DeviceId: string, remoteId: string, keyUUID: string, companyID: string}} p
+ */
 export async function deleteIRCode(client, { hub3DeviceId, remoteId, keyUUID, companyID }) {
   const frame = {
     action: ACTION,
@@ -173,7 +202,11 @@ export async function deleteIRCode(client, { hub3DeviceId, remoteId, keyUUID, co
 
 // ---------- mode 制御 + subscribe ----------
 
-/** 現在の IR モード (CONTROL=0 / REGISTER=1) を取得。 */
+/**
+ * 現在の IR モード (CONTROL=0 / REGISTER=1) を取得。
+ * @param {WsClient} client
+ * @param {{deviceId: string, companyID: string}} p
+ */
 export async function getIRMode(client, { deviceId, companyID }) {
   const frame = { action: ACTION, op: "getIRMode", deviceId, companyID };
   const resp = await client.request(frame, DEFAULT_TIMEOUT_MS);
@@ -181,7 +214,11 @@ export async function getIRMode(client, { deviceId, companyID }) {
   return resp.data;
 }
 
-/** モード切替。学習するには REGISTER に入れる必要がある。 */
+/**
+ * モード切替。学習するには REGISTER に入れる必要がある。
+ * @param {WsClient} client
+ * @param {{deviceId: string, mode: number, companyID: string}} p
+ */
 export async function setIRMode(client, { deviceId, mode, companyID }) {
   const frame = { action: ACTION, op: "setIRMode", deviceId, mode, companyID };
   const resp = await client.request(frame, DEFAULT_TIMEOUT_MS);
@@ -193,6 +230,9 @@ export async function setIRMode(client, { deviceId, mode, companyID }) {
  * IR データ (= 学習で取り込まれた赤外線波形) の購読を開始。
  * 戻り値は `{ unsubscribe, onData }`。`onData(fn)` で `subscribeIRDataRsp` 受信ごとに fn が呼ばれる。
  * 利用後は必ず `unsubscribe()` を呼ぶこと。
+ * @param {WsClient} client
+ * @param {{deviceId: string, companyID: string}} p
+ * @returns {Promise<{onData: (fn: (msg: any) => void) => (() => void), unsubscribe: () => void}>}
  */
 export async function subscribeIRData(client, { deviceId, companyID }) {
   const topic = dataTopic(deviceId);
@@ -206,6 +246,7 @@ export async function subscribeIRData(client, { deviceId, companyID }) {
   const ack = await client.request(ackFrame, DEFAULT_TIMEOUT_MS);
   if (!ack.success) throw rejected(t("domain.ir.subscribeIRDataFailed", { detail: ack.message || JSON.stringify(ack) }), { upstreamCode: ack?.code ?? null });
 
+  /** @type {Set<(msg: any) => void>} */
   const listeners = new Set();
   const unsub = client.subscribe(`${ACTION}:subscribeIRDataRsp`, (msg) => {
     if (msg?.deviceId && msg.deviceId !== deviceId) return;
@@ -215,6 +256,7 @@ export async function subscribeIRData(client, { deviceId, companyID }) {
   });
 
   return {
+    /** @param {(msg: any) => void} fn */
     onData(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     unsubscribe() {
       unsub();
@@ -227,7 +269,12 @@ export async function subscribeIRData(client, { deviceId, companyID }) {
   };
 }
 
-/** モード変化 (例: REGISTER から CONTROL に戻った瞬間) の購読。subscribeIRData と同形。 */
+/**
+ * モード変化 (例: REGISTER から CONTROL に戻った瞬間) の購読。subscribeIRData と同形。
+ * @param {WsClient} client
+ * @param {{deviceId: string, companyID: string}} p
+ * @returns {Promise<{onData: (fn: (msg: any) => void) => (() => void), unsubscribe: () => void}>}
+ */
 export async function subscribeIRMode(client, { deviceId, companyID }) {
   const topic = modeTopic(deviceId);
   const ack = await client.request(
@@ -235,6 +282,7 @@ export async function subscribeIRMode(client, { deviceId, companyID }) {
     DEFAULT_TIMEOUT_MS,
   );
   if (!ack.success) throw rejected(t("domain.ir.subscribeIRModeFailed", { detail: ack.message || JSON.stringify(ack) }), { upstreamCode: ack?.code ?? null });
+  /** @type {Set<(msg: any) => void>} */
   const listeners = new Set();
   const unsub = client.subscribe(`${ACTION}:subscribeIRModeRsp`, (msg) => {
     if (msg?.deviceId && msg.deviceId !== deviceId) return;
@@ -243,6 +291,7 @@ export async function subscribeIRMode(client, { deviceId, companyID }) {
     }
   });
   return {
+    /** @param {(msg: any) => void} fn */
     onData(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     unsubscribe() {
       unsub();
@@ -258,6 +307,7 @@ export async function subscribeIRMode(client, { deviceId, companyID }) {
 
 /**
  * 学習で取った irData を既知のメーカー DB と照合する。
+ * @param {WsClient} client
  * @param {{irData:string, irType:number, brandName?:string, companyID:string}} p
  */
 export async function matchRemote(client, { irData, irType, brandName, companyID }) {
@@ -273,7 +323,7 @@ export async function matchRemote(client, { irData, irType, brandName, companyID
   const resp = await client.request(frame, DEFAULT_TIMEOUT_MS);
   assertSuccess(resp, "matchRemote", { strict: true });
   // biz3 remote-match/index.js:158: 一致候補は response.data.matches (配列)
-  return resp.data?.matches || [];
+  return /** @type {{matches?: any[]}} */ (resp.data ?? {}).matches || [];
 }
 
 // ---------- composite: 学習フロー ----------
@@ -297,6 +347,7 @@ export async function matchRemote(client, { irData, irType, brandName, companyID
  *   timeoutMs?: number,          // ボタン押下待ち timeout (default 60s)
  *   onPrompt?: () => void,       // 学習モード突入後に呼ばれる (ユーザに「ボタン押して」と促す)
  * }} p
+ * @param {WsClient} client
  * @returns {Promise<{keyUUID: string, captured: any, saved: any}>}
  *   keyUUID はクライアント発番 (これを send の command に使う)
  */
@@ -310,12 +361,13 @@ export async function learnIRKey(client, p) {
   //   - 波形は subscribeIRDataRsp の `response.data.data` (msg.data.data)
   //   - keyUUID は **クライアントが発番** (generateUUID)。サーバ発番ではない。
   //   - addIRCode に渡す irCode = {keyUUID, name, uuid: remote.uuid, deviceId: hub3, data: 波形}
+  /** @type {any} */
   let waveform = null;
   try {
     if (p.onPrompt) try { p.onPrompt(); } catch { /* ignore */ }
     waveform = await new Promise((resolve, reject) => {
       const to = setTimeout(() => reject(timeoutError(t("domain.ir.learnTimeout"))), timeoutMs);
-      sub.onData((msg) => {
+      sub.onData((/** @type {any} */ msg) => {
         clearTimeout(to);
         resolve(msg?.data?.data); // biz3: response.data.data が生波形
       });

@@ -8,6 +8,11 @@ import { resolve } from "node:path";
 
 const APP_DIRNAME = "sesame-kit";
 
+/**
+ * 設定ディレクトリの絶対パスを解決する。
+ * @param {string} [overrideDir] 明示指定された設定ディレクトリ (CLI --config-dir)
+ * @returns {string} 設定ディレクトリの絶対パス
+ */
 export function resolveConfigDir(overrideDir) {
   if (overrideDir) return resolve(overrideDir);
   if (process.env.SESAME_KIT_HOME) return resolve(process.env.SESAME_KIT_HOME);
@@ -16,6 +21,21 @@ export function resolveConfigDir(overrideDir) {
   return resolve(homedir(), ".config", APP_DIRNAME);
 }
 
+/**
+ * @typedef {object} ConfigPaths
+ * @property {string} dir 設定ディレクトリ
+ * @property {string} config config.json への絶対パス
+ * @property {string} tokens tokens.json への絶対パス
+ * @property {string} loginState login_state.json への絶対パス
+ * @property {string} devices devices.json への絶対パス
+ * @property {string} socket `sesame serve` の Unix domain socket パス
+ */
+
+/**
+ * 設定ディレクトリ配下の各ファイルパスを解決する。
+ * @param {string} [overrideDir] 明示指定された設定ディレクトリ
+ * @returns {ConfigPaths}
+ */
 export function configPaths(overrideDir) {
   const dir = resolveConfigDir(overrideDir);
   return {

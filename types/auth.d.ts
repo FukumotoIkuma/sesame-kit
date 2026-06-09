@@ -2,55 +2,43 @@
  * idToken の `sub` claim (= Cognito user UUID) を返す。
  * biz3 が `gStripe.customerInfo.subUUID` として使っている値と同じで、
  * `biz3TriggerLocker` の `history` フィールドに乗せる必要がある。
+ * @param {string} token
+ * @returns {string|null}
  */
-export function jwtSub(token: any): any;
+export function jwtSub(token: string): string | null;
 /**
  * 失効していない idToken を返す。必要なら refresh する。
  * 失効まで `marginSec` 以下なら早期 refresh する (デフォルト 60秒)。
  *
- * @param {{load:Function, save:Function}} store
+ * @param {import("./tokens.js").TokenStore} store
+ * @param {{ marginSec?: number }} [opts]
+ * @returns {Promise<string>}
  */
-export function getValidIdToken(store: {
-    load: Function;
-    save: Function;
-}, { marginSec }?: {
+export function getValidIdToken(store: import("./tokens.js").TokenStore, { marginSec }?: {
     marginSec?: number;
-}): Promise<any>;
+}): Promise<string>;
 /**
  * Step 1: CUSTOM_AUTH を開始。Cognito が email に確認コードを送る。
  * 新規ユーザーの場合は SignUp してから retry。
  *
- * @param {{savePending:Function}} store
+ * @param {import("./tokens.js").TokenStore} store
+ * @param {string} username
+ * @param {{ clientId?: string }} [opts]
  */
-export function loginInitiate(store: {
-    savePending: Function;
-}, username: any, { clientId }?: {
+export function loginInitiate(store: import("./tokens.js").TokenStore, username: string, { clientId }?: {
     clientId?: string;
 }): Promise<{
     challenge: "CUSTOM_CHALLENGE";
-    params: Record<string, string>;
+    params: Record<string, string> | undefined;
 }>;
 /**
  * Step 2: email で受け取ったコードで CUSTOM_CHALLENGE を回答。
  * 成功するとトークンを保存し、pending 状態を消す。
  *
- * @param {{loadPending:Function, save:Function, clearPending:Function}} store
+ * @param {import("./tokens.js").TokenStore} store
+ * @param {string} code
  */
-export function loginVerify(store: {
-    loadPending: Function;
-    save: Function;
-    clearPending: Function;
-}, code: any): Promise<{
-    clientId: any;
-    idToken: string;
-    refreshToken: string;
-    accessToken: string;
-    deviceKey: any;
-    deviceGroupKey: any;
-    devicePassword: any;
-    username: any;
-    lastRefresh: string;
-}>;
+export function loginVerify(store: import("./tokens.js").TokenStore, code: string): Promise<import("./tokens.js").StoredTokens>;
 /**
  * ログアウト。公式アプリ相当にサーバ側もクリーンにする:
  *   1. ForgetDevice — このデバイスの remembered 登録を解除 (ConfirmDevice の対。これが無いと
@@ -59,34 +47,21 @@ export function loginVerify(store: {
  * サーバ呼び出しは best-effort (失敗してもローカルは必ず消す)。どちらも対象はこのセッション/
  * このデバイスのみで、公式アプリ等の別セッションには影響しない (GlobalSignOut は使わない)。
  *
- * @param {{load:Function, clear:Function, clearPending:Function, save:Function}} store
+ * @param {import("./tokens.js").TokenStore} store
  * @returns {Promise<{forgotDevice:boolean, revokedToken:boolean}>}
  */
-export function logout(store: {
-    load: Function;
-    clear: Function;
-    clearPending: Function;
-    save: Function;
-}): Promise<{
+export function logout(store: import("./tokens.js").TokenStore): Promise<{
     forgotDevice: boolean;
     revokedToken: boolean;
 }>;
 /**
  * 既存の localStorage ダンプから bootstrap (互換用)。
  *
- * @param {{save:Function}} store
+ * @param {import("./tokens.js").TokenStore} store
+ * @param {Partial<import("./tokens.js").StoredTokens>} values
+ * @returns {import("./tokens.js").StoredTokens}
  */
-export function bootstrap(store: {
-    save: Function;
-}, values: any): {
-    clientId: any;
-    idToken: any;
-    refreshToken: any;
-    accessToken: any;
-    deviceKey: any;
-    username: any;
-    lastRefresh: string;
-};
+export function bootstrap(store: import("./tokens.js").TokenStore, values: Partial<import("./tokens.js").StoredTokens>): import("./tokens.js").StoredTokens;
 export const CONSUMER_CLIENT_ID: "6ialca0p8u0lsgvbmvsljfm305";
 export const BIZ_CLIENT_ID: "21u50hboia4s5q0sbk6pbdfmss";
 export namespace CONFIG_META {
