@@ -24,6 +24,7 @@ export class Daemon {
         info: {
             title: string;
             version: any;
+            "x-apiVersion": string;
             "x-contractVersion": string;
             description: any;
         };
@@ -33,16 +34,18 @@ export class Daemon {
             params: any;
             result: {
                 name: string;
-                schema: {
-                    description: any;
-                    type: string;
-                };
+                schema: any;
             };
+            "x-stability": string;
+            "x-provenance": any;
         }[];
         "x-events": {
-            name: string;
+            name: any;
             description: any;
+            "x-stability": string;
+            "x-provenance": any;
         }[];
+        "x-event-topics": string[];
     };
     /** @type {Map<string, Promise<any>>} メソッド名→直列化チェーン末尾 */
     _locks: Map<string, Promise<any>>;
@@ -109,6 +112,7 @@ export class Daemon {
         info: {
             title: string;
             version: any;
+            "x-apiVersion": string;
             "x-contractVersion": string;
             description: any;
         };
@@ -118,16 +122,18 @@ export class Daemon {
             params: any;
             result: {
                 name: string;
-                schema: {
-                    description: any;
-                    type: string;
-                };
+                schema: any;
             };
+            "x-stability": string;
+            "x-provenance": any;
         }[];
         "x-events": {
-            name: string;
+            name: any;
             description: any;
+            "x-stability": string;
+            "x-provenance": any;
         }[];
+        "x-event-topics": string[];
     };
 }
 //# sourceMappingURL=daemon.d.ts.map

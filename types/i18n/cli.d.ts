@@ -250,6 +250,8 @@ declare namespace _default {
         "cli.optLockSecret": string;
         "cli.optLockModel": string;
         "cli.optLockAlias": string;
+        "cli.optLockFromUrl": string;
+        "cli.shareUrlParseFailed": string;
         "cli.helpLockAdd": string;
         "cli.descLockRm": string;
         "cli.optYes": string;
@@ -280,8 +282,14 @@ declare namespace _default {
         "cli.descDeviceRm": string;
         "cli.descHistory": string;
         "cli.optPageSize": string;
+        "cli.optHistoryDelete": string;
+        "cli.historyDeleted": string;
+        "cli.historyTimestampInvalid": string;
         "cli.descBattery": string;
         "cli.optPageSize100": string;
+        "cli.optBatteryDelete": string;
+        "cli.batteryDeleted": string;
+        "cli.batteryTimestampInvalid": string;
         "cli.descFirmware": string;
         "cli.descWebapi": string;
         "cli.optWebapiQuery": string;
@@ -549,6 +557,8 @@ declare namespace _default {
         "cli.optLockSecret": string;
         "cli.optLockModel": string;
         "cli.optLockAlias": string;
+        "cli.optLockFromUrl": string;
+        "cli.shareUrlParseFailed": string;
         "cli.helpLockAdd": string;
         "cli.descLockRm": string;
         "cli.optYes": string;
@@ -579,8 +589,14 @@ declare namespace _default {
         "cli.descDeviceRm": string;
         "cli.descHistory": string;
         "cli.optPageSize": string;
+        "cli.optHistoryDelete": string;
+        "cli.historyDeleted": string;
+        "cli.historyTimestampInvalid": string;
         "cli.descBattery": string;
         "cli.optPageSize100": string;
+        "cli.optBatteryDelete": string;
+        "cli.batteryDeleted": string;
+        "cli.batteryTimestampInvalid": string;
         "cli.descFirmware": string;
         "cli.descWebapi": string;
         "cli.optWebapiQuery": string;

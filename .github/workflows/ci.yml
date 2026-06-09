@@ -34,8 +34,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check (generate .d.ts from JSDoc)
-        run: npm run build:types
+      # Regenerate every committed build artifact (types/*.d.ts via tsc, plus the
+      # RPC param schema, gRPC proto/map, OpenRPC doc, and TS/Python SDKs).
+      - name: Build generated artifacts
+        run: npm run build
+
+      # Drift guard: the committed artifacts must byte-match a fresh build. tsc is
+      # version-pinned through npm ci and the generators are deterministic, so any
+      # diff here means source changed without running `npm run build`.
+      # (types/ used to rot silently because only the JSON/proto artifacts were
+      #  guarded — this extends the guard to the whole generated surface.)
+      - name: Verify committed artifacts are up to date
+        run: |
+          git add -A
+          if ! git diff --cached --quiet; then
+            echo "::error::Committed build artifacts are stale. Run 'npm run build' and commit the result."
+            git diff --cached --stat
+            exit 1
+          fi
 
       - name: Run tests
         run: npm test

@@ -103,3 +103,23 @@ sesame-kit/
     ├── tokens.js           # FileTokenStore
     └── paths.js            # config directory resolution
 ```
+
+## Generated artifacts (committed + CI-guarded)
+
+Several files in the repo are **generated, committed, and guarded** — not hand-edited. Change the source, then run `npm run build` and commit the result:
+
+| Artifact | Generated from | By |
+| --- | --- | --- |
+| `types/**/*.d.ts` (+ `.d.ts.map`) | JSDoc in `src/**/*.js` | `tsc` (`npm run build:types`) |
+| `src/serve/rpc-params.generated.json` | each module's `NAMESPACE_OPS` + `types/*.d.ts` | `npm run build:rpc-schema` |
+| `src/serve/sesame.proto`, `src/serve/grpc-methods.generated.json` | the RPC registry | `npm run build:grpc-proto` |
+| `schema/openrpc.json` | the RPC registry | `npm run build:openrpc` |
+| `sdk/ts/sesame-client.ts`, `sdk/python/sesame_client.py` | the OpenRPC doc | `npm run build:sdk` |
+
+**Policy: commit the generated output** (same convention as the JSON/proto contracts; consumers who clone the repo get working `.d.ts` without a build step, and `npm publish` still regenerates everything via `prepack`).
+
+Two guards keep the committed copies honest:
+- `tests/serve/schema-drift.test.js` re-generates the RPC param schema and gRPC proto in-process and byte-compares them.
+- CI (`.github/workflows/ci.yml`) runs the **full** `npm run build` and fails if `git` shows any diff, covering the whole generated surface including `types/`.
+
+`tsc` is version-pinned through `package-lock.json` + `npm ci`, and every generator is deterministic (no timestamps/PRNG; `.d.ts.map` uses relative source paths), so a fresh build is byte-stable across machines. If CI's "Verify committed artifacts are up to date" step fails, run `npm run build` locally and commit the result. (Historically `types/` rotted because only the JSON/proto artifacts were guarded; the CI build-diff guard closes that gap.)

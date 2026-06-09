@@ -311,10 +311,20 @@ export class SesameHub3 {
     subscribeDeviceUpdates(deviceInfos: any, onUpdate: any): any;
     /** ロック開閉履歴を取得。`list` はデバイス指定の配列。 */
     getDeviceHistory(list: any, pageSize: any): Promise<any>;
+    /** 開閉履歴の1エントリを非表示化 (論理削除)。timestamp は getDeviceHistory の各 record の値。 */
+    hideDeviceHistory({ deviceUUID, timestamp }: {
+        deviceUUID: any;
+        timestamp: any;
+    }): Promise<any>;
     /** 電池履歴を取得 (1ページ)。lastEvaluatedKey でページング。 */
     getDeviceBattery(deviceUUID: any, { lastEvaluatedKey, pageSize }?: {
         lastEvaluatedKey?: any;
         pageSize?: number;
+    }): Promise<any>;
+    /** 電池履歴の1エントリを非表示化 (論理削除)。timestampSecond は getDeviceBattery の record.ts。 */
+    hideBatteryRecord({ deviceUUID, timestampSecond }: {
+        deviceUUID: any;
+        timestampSecond: any;
     }): Promise<any>;
     listFirmware(): Promise<any>;
     /** WebAPI proxy 経由で REST API を叩く。apiKeyId は config 側に保存。 */

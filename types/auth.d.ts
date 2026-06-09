@@ -45,9 +45,9 @@ export function loginVerify(store: {
     idToken: string;
     refreshToken: string;
     accessToken: string;
-    deviceKey: string;
-    deviceGroupKey: string;
-    devicePassword: string;
+    deviceKey: any;
+    deviceGroupKey: any;
+    devicePassword: any;
     username: any;
     lastRefresh: string;
 }>;

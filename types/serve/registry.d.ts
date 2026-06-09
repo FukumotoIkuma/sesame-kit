@@ -18,6 +18,7 @@ export function buildOpenRpcDoc(reg: any, version: any): {
     info: {
         title: string;
         version: any;
+        "x-apiVersion": string;
         "x-contractVersion": string;
         description: any;
     };
@@ -27,15 +28,18 @@ export function buildOpenRpcDoc(reg: any, version: any): {
         params: any;
         result: {
             name: string;
-            schema: {
-                description: any;
-                type: string;
-            };
+            schema: any;
         };
+        "x-stability": string;
+        "x-provenance": any;
     }[];
     "x-events": {
-        name: string;
+        name: any;
         description: any;
+        "x-stability": string;
+        "x-provenance": any;
     }[];
+    "x-event-topics": string[];
 };
+export const SUBSCRIBABLE_TOPICS: string[];
 //# sourceMappingURL=registry.d.ts.map
