@@ -594,7 +594,17 @@ export class SesameHub3 {
 
   // ---------- IR advanced (Phase C) ----------
 
-  /** Hub3 を学習モードに入れ、物理リモコンの 1 ボタンを学習して remote にキー登録。 */
+  /**
+   * Hub3 を学習モードに入れ、物理リモコンの 1 ボタンを学習して remote にキー登録。
+   *
+   * @param {string} remoteName リモコン名
+   * @param {string} keyName 登録するキー名
+   * @param {{
+   *   timeoutMs?: number,        // ボタン押下待ち timeout (default 60s)
+   *   onPrompt?: () => void,     // 学習モード突入後に呼ばれる (ユーザに「ボタン押して」と促す)
+   * }} [opts]
+   * @returns {Promise<{keyUUID: string, captured: any, saved: any}>}
+   */
   async learnIR(remoteName, keyName, { timeoutMs = 60_000, onPrompt } = {}) {
     this._ensureConnected();
     const { remote, hub3, name: rName } = this.resolveRemote(remoteName);
@@ -770,7 +780,13 @@ export class SesameHub3 {
     return this.onDeviceUpdate(deviceInfos, onUpdate);
   }
 
-  /** ロック開閉履歴を取得。`list` はデバイス指定の配列。 */
+  /**
+   * ロック開閉履歴を取得。`list` はデバイス指定の配列。
+   *
+   * @param {Array<{deviceUUID: string}>} list 履歴を取得するデバイスの配列
+   * @param {number} [pageSize] 1ページ件数 (未指定でサーバ既定)
+   * @returns {Promise<any>}
+   */
   async getDeviceHistory(list, pageSize) {
     this._ensureConnected();
     return devices.getDeviceHistory(this._ws, {

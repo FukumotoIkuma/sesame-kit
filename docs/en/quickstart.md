@@ -13,7 +13,7 @@ npm install -g sesame-kit     # global CLI: `sesame ...`
 # or without installing: npx sesame-kit ...
 ```
 
-Requires Node.js 18+.
+Requires Node.js 20+.
 
 ## 2. Sign in
 
