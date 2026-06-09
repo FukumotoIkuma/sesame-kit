@@ -170,6 +170,13 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
   http://127.0.0.1:8080/rpc
 ```
 
+`sesame rpc` can target the HTTP listener too (token read from `serve.token` automatically):
+
+```bash
+sesame rpc --http status                          # default URL http://127.0.0.1:8080
+sesame rpc --http http://host:8080 lock.unlock --params '{"name":"front"}'
+```
+
 ### Bundled clients
 
 Thin clients wrap the JSON-RPC so you can write `c.unlock("front")`. They are optional — the `curl` call above works without any client. Node: `import { SesameClient } from "sesame-kit/client"` after `npm install sesame-kit`. Python: a single file shipped with the package.

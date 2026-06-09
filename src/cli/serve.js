@@ -83,6 +83,8 @@ export function registerServeCommand(program) {
     .option("--socket <path>", t("serve.rpc.opt.socket"))
     .option("--subscribe <topics>", t("serve.rpc.opt.subscribe"))
     .option("--paths", t("serve.rpc.opt.paths"))
+    .option("--http [url]", t("serve.rpc.opt.http"))
+    .option("--token <t>", t("serve.rpc.opt.token"))
     .addHelpText("after", t("serve.rpc.help.after"))
     .action((method, opts) => cmdRpc(method, opts, program));
 }
@@ -126,12 +128,20 @@ function rpcCall(socketPath, method, params, timeoutMs = 15000) {
     sock.on("connect", () => sock.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) + "\n"));
     sock.on("data", (d) => {
       buf += d.toString();
-      const nl = buf.indexOf("\n");
-      if (nl < 0) return;
-      clearTimeout(to); sock.destroy();
-      const msg = JSON.parse(buf.slice(0, nl));
-      if (msg.error) { const e = new Error(msg.error.message); e.code = msg.error.code; return reject(e); }
-      resolve(msg.result);
+      // 1 接続につき event.ready 等の通知が応答より先に届くため、行ごとに走査し
+      // 自分のリクエスト (id:1) の応答だけを拾う。通知 (event.*) は読み飛ばす。
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        if (!line.trim()) continue;
+        let msg; try { msg = JSON.parse(line); } catch { continue; }
+        if (typeof msg.method === "string" && msg.method.startsWith("event.")) continue;
+        if (msg.id !== 1) continue;
+        clearTimeout(to); sock.destroy();
+        if (msg.error) { const e = new Error(msg.error.message); e.code = msg.error.code; return reject(e); }
+        return resolve(msg.result);
+      }
     });
     sock.on("error", (e) => {
       clearTimeout(to);
@@ -140,6 +150,34 @@ function rpcCall(socketPath, method, params, timeoutMs = 15000) {
       } else reject(e);
     });
   });
+}
+
+/** HTTP の `serve --http` へ 1 リクエスト送り result を返す。serve.token を既定トークンに使う。 */
+async function rpcCallHttp(url, token, method, params, timeoutMs = 15000) {
+  const endpoint = url.replace(/\/+$/, "") + "/rpc";
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), timeoutMs);
+  let resp;
+  try {
+    resp = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error(t("serve.rpcTimeout"));
+    throw new Error(t("serve.httpNotRunning", { url })); // 接続拒否 (未起動) 等
+  } finally { clearTimeout(to); }
+  if (resp.status === 401) throw new Error(t("serve.httpUnauthorized"));
+  const msg = await resp.json();
+  if (msg.error) { const e = new Error(msg.error.message); e.code = msg.error.code; throw e; }
+  return msg.result;
+}
+
+/** --http の URL を解決 (値省略時は既定)。 */
+function resolveHttpUrl(http) {
+  return typeof http === "string" ? http : "http://127.0.0.1:8080";
 }
 
 async function cmdRpc(method, opts, program) {
@@ -157,6 +195,11 @@ async function cmdRpc(method, opts, program) {
   // --subscribe: イベントを出し続ける (イベントの行き止まり解消)。
   if (opts.subscribe) {
     const topics = opts.subscribe.split(",").map((s) => s.trim()).filter(Boolean);
+    if (opts.http) {
+      // HTTP の購読は SSE (GET /events)。ここでは curl の SSE 例を案内する。
+      console.error(t("serve.subscribeHttpUnsupported", { url: resolveHttpUrl(opts.http), topics: topics.join(",") }));
+      process.exit(2);
+    }
     await rpcSubscribe(socketPath, topics);
     return;
   }
@@ -166,7 +209,15 @@ async function cmdRpc(method, opts, program) {
   if (opts.params) {
     try { params = JSON.parse(opts.params); } catch (e) { console.error(t("serve.badParamsJson", { message: e.message })); process.exit(2); }
   }
-  const result = await rpcCall(socketPath, m, params);
+  let result;
+  if (opts.http) {
+    const url = resolveHttpUrl(opts.http);
+    let token = opts.token || null;
+    if (!token) { try { token = readFileSync(join(dir.dir, "serve.token"), "utf8").trim(); } catch { /* 無ければ未認証で投げ 401 を案内 */ } }
+    result = await rpcCallHttp(url, token, m, params);
+  } else {
+    result = await rpcCall(socketPath, m, params);
+  }
   // 未ログイン/失効を見たら次の一手を案内 (degraded で居座る問題の出口)。
   if (m === "status" && result && result.authState && result.authState !== "ok") {
     console.error(t("serve.hint.notLoggedIn"));
