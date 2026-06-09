@@ -1,0 +1,3016 @@
+{
+  "openrpc": "1.2.6",
+  "info": {
+    "title": "sesame serve",
+    "version": "1.1.0",
+    "x-apiVersion": "1.1.0",
+    "x-contractVersion": "1.1.0",
+    "description": "Language-agnostic JSON-RPC backend for SESAME control"
+  },
+  "methods": [
+    {
+      "name": "schedule.getScheduleList",
+      "summary": "getScheduleList of schedule (auto-exposed)",
+      "params": [
+        {
+          "name": "subUUID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "schedule.cancelSchedule",
+      "summary": "cancelSchedule of schedule (auto-exposed)",
+      "params": [
+        {
+          "name": "subUUID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scheduleId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.getEmployees",
+      "summary": "getEmployees of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.getCurrentUserInfo",
+      "summary": "getCurrentUserInfo of org (auto-exposed)",
+      "params": [
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.addEmployees",
+      "summary": "addEmployees of org (auto-exposed)",
+      "params": [
+        {
+          "name": "items",
+          "required": true,
+          "description": "object[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.updateEmployee",
+      "summary": "updateEmployee of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "data",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.removeEmployees",
+      "summary": "removeEmployees of org (auto-exposed)",
+      "params": [
+        {
+          "name": "items",
+          "required": true,
+          "description": "object[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.reorderEmployees",
+      "summary": "reorderEmployees of org (auto-exposed)",
+      "params": [
+        {
+          "name": "items",
+          "required": true,
+          "description": "{\n        friendUUID: string;\n        rank: number;\n    }[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.queryByCS",
+      "summary": "queryByCS of org (auto-exposed)",
+      "params": [
+        {
+          "name": "keyword",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.confirmQueryByCS",
+      "summary": "confirmQueryByCS of org (auto-exposed)",
+      "params": [
+        {
+          "name": "email",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.getEmployeeGroups",
+      "summary": "getEmployeeGroups of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.addEmployeeGroup",
+      "summary": "addEmployeeGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "item",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.updateEmployeeGroup",
+      "summary": "updateEmployeeGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "item",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.removeEmployeeGroups",
+      "summary": "removeEmployeeGroups of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "gids",
+          "required": true,
+          "description": "any[]",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.getEmployeeGroupBindDeviceGroup",
+      "summary": "getEmployeeGroupBindDeviceGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "gid",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.addEmployeeInGroup",
+      "summary": "addEmployeeInGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "gid",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "uuids",
+          "required": true,
+          "description": "any[]",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "items",
+          "required": true,
+          "description": "any[]",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.removeEmployeeInGroup",
+      "summary": "removeEmployeeInGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "gid",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "uuids",
+          "required": true,
+          "description": "any[]",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "items",
+          "required": true,
+          "description": "{\n        subUUID: string;\n    }[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.removeEmployeeGroupBindDeviceGroup",
+      "summary": "removeEmployeeGroupBindDeviceGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "data",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.getTags",
+      "summary": "getTags of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.postTag",
+      "summary": "postTag of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "data",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.removeTag",
+      "summary": "removeTag of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "data",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.getDeviceGroups",
+      "summary": "getDeviceGroups of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.addDeviceGroup",
+      "summary": "addDeviceGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "name",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "uuids",
+          "required": true,
+          "description": "string[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.updateDeviceGroup",
+      "summary": "updateDeviceGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "item",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.removeDeviceGroups",
+      "summary": "removeDeviceGroups of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "groupIds",
+          "required": true,
+          "description": "object[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.addDeviceInGroup",
+      "summary": "addDeviceInGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "gid",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "uuids",
+          "required": true,
+          "description": "any[]",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "items",
+          "required": true,
+          "description": "any[]",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.removeDeviceInGroup",
+      "summary": "removeDeviceInGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "gid",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "uuids",
+          "required": true,
+          "description": "any[]",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "items",
+          "required": true,
+          "description": "{\n        deviceUUID: string;\n        secretKey: string;\n    }[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.getDeviceGroupBindUserGroup",
+      "summary": "getDeviceGroupBindUserGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "gid",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.removeDeviceGroupBindUserGroup",
+      "summary": "removeDeviceGroupBindUserGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "data",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.shareDeviceKeysToEmployees",
+      "summary": "shareDeviceKeysToEmployees of org (auto-exposed)",
+      "params": [
+        {
+          "name": "items",
+          "required": true,
+          "description": "object[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.shareDeviceGroupKeysToEmployeeGroup",
+      "summary": "shareDeviceGroupKeysToEmployeeGroup of org (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "item",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.getEmployeeDeviceKeys",
+      "summary": "getEmployeeDeviceKeys of org (auto-exposed)",
+      "params": [
+        {
+          "name": "subUUID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.removeEmployeeDeviceKey",
+      "summary": "removeEmployeeDeviceKey of org (auto-exposed)",
+      "params": [
+        {
+          "name": "data",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.updateGuestKeyTag",
+      "summary": "updateGuestKeyTag of org (auto-exposed)",
+      "params": [
+        {
+          "name": "data",
+          "required": true,
+          "description": "{\n        deviceUUID: string;\n        guestKeyId: string;\n        keyName: string;\n    }",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.generateGuestQR",
+      "summary": "generateGuestQR of org (auto-exposed)",
+      "params": [
+        {
+          "name": "data",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "org.getDeviceEmployeeKeys",
+      "summary": "getDeviceEmployeeKeys of org (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "company.getCompanies",
+      "summary": "getCompanies of company (auto-exposed)",
+      "params": [
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "company.updateCompanyName",
+      "summary": "updateCompanyName of company (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "name",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "company.addCompany",
+      "summary": "addCompany of company (auto-exposed)",
+      "params": [
+        {
+          "name": "name",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "employeeEmail",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "subUUID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "company.getPaymentConfig",
+      "summary": "getPaymentConfig of company (auto-exposed)",
+      "params": [
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.getCards",
+      "summary": "getCards of access (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceUUIDs",
+          "required": true,
+          "description": "string[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.getPasscodes",
+      "summary": "getPasscodes of access (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceUUIDs",
+          "required": true,
+          "description": "string[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.postCards",
+      "summary": "postCards of access (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "list",
+          "required": true,
+          "description": "object[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.postPasscodes",
+      "summary": "postPasscodes of access (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "list",
+          "required": true,
+          "description": "object[]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.delCards",
+      "summary": "delCards of access (auto-exposed)",
+      "params": [
+        {
+          "name": "items",
+          "required": true,
+          "description": "Array<{\n        deviceID: string;\n        cardID: string;\n    }>",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.delPasscodes",
+      "summary": "delPasscodes of access (auto-exposed)",
+      "params": [
+        {
+          "name": "items",
+          "required": true,
+          "description": "Array<{\n        deviceID: string;\n        passwordID: string;\n    }>",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.clearCards",
+      "summary": "clearCards of access (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.clearPasscodes",
+      "summary": "clearPasscodes of access (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.updateCardName",
+      "summary": "updateCardName of access (auto-exposed)",
+      "params": [
+        {
+          "name": "item",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.updatePasscodeName",
+      "summary": "updatePasscodeName of access (auto-exposed)",
+      "params": [
+        {
+          "name": "item",
+          "required": true,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.updateCardOwner",
+      "summary": "updateCardOwner of access (auto-exposed)",
+      "params": [
+        {
+          "name": "cardID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ownerSubUUID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.sendIotCmd",
+      "summary": "sendIotCmd of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "topic",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "payload",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "op",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.subscribeIotResponse",
+      "summary": "subscribeIotResponse of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "(params)",
+          "required": false,
+          "description": "pass the biz3 op params as-is",
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.sendIotCmdAwait",
+      "summary": "sendIotCmdAwait of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "topic",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "payload",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cmd",
+          "required": true,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "deviceId",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.setHub3LedDuty",
+      "summary": "setHub3LedDuty of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hub3Id",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "op",
+          "required": true,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "duty",
+          "required": true,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.hub3RelaySwitch",
+      "summary": "hub3RelaySwitch of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hub3Id",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "op",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.addSesameToHub3",
+      "summary": "addSesameToHub3 of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "hub3Id",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sesameId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmSecKa",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "nickName",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceModel",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.removeSesameFromHub3",
+      "summary": "removeSesameFromHub3 of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "(params)",
+          "required": false,
+          "description": "pass the biz3 op params as-is",
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.startFirmwareUpdate",
+      "summary": "startFirmwareUpdate of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hub3Id",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.clearHub3WifiSsid",
+      "summary": "clearHub3WifiSsid of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hub3Id",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.getMatterPairingCode",
+      "summary": "getMatterPairingCode of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hub3Id",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "iot.openMatterPairingWindow",
+      "summary": "openMatterPairingWindow of iot (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hub3Id",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "presetir.sendIR",
+      "summary": "sendIR of presetir (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "command",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irType",
+          "required": true,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irDeviceUUID",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "operation",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "presetir.emitAir",
+      "summary": "emitAir of presetir (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "code",
+          "required": true,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "irDeviceUUID",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "power",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "temperature",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "mode",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "fanSpeed",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "windDirection",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "autoSwing",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "keyType",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "presetir.emitButton",
+      "summary": "emitButton of presetir (auto-exposed)",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "code",
+          "required": true,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "irType",
+          "required": true,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "buttonType",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irDeviceUUID",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "status",
+      "summary": "daemon status (connection/auth/user/contract version)",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ connected, authState, subUUID, apiVersion, contractVersion }",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "local"
+    },
+    {
+      "name": "account.whoami",
+      "summary": "logged-in user info (biz3GetLoginUser)",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "customerInfo etc.",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "lock.lock",
+      "summary": "lock",
+      "params": [
+        {
+          "name": "name",
+          "required": false,
+          "description": "lock name in config (not needed when deviceUUID is given)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "deviceUUID to specify directly",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": false,
+          "description": "32-hex shared key when deviceUUID is given",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "state push",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "lock.unlock",
+      "summary": "unlock",
+      "params": [
+        {
+          "name": "name",
+          "required": false,
+          "description": "lock name in config (not needed when deviceUUID is given)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "deviceUUID to specify directly",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": false,
+          "description": "32-hex shared key when deviceUUID is given",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "state push",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "lock.toggle",
+      "summary": "toggle",
+      "params": [
+        {
+          "name": "name",
+          "required": false,
+          "description": "lock name in config (not needed when deviceUUID is given)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "deviceUUID to specify directly",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": false,
+          "description": "32-hex shared key when deviceUUID is given",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "state push",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "lock.click",
+      "summary": "Bot click",
+      "params": [
+        {
+          "name": "name",
+          "required": false,
+          "description": "lock name in config (not needed when deviceUUID is given)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "deviceUUID to specify directly",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": false,
+          "description": "32-hex shared key when deviceUUID is given",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "state push",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "lock.status",
+      "summary": "current device state (lock state/battery)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "target deviceUUID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "status",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "devices.list",
+      "summary": "all SESAME devices (includes secretKey)",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "device[]",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "device.history",
+      "summary": "open/close history",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "pageSize",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "history[]",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "device.battery",
+      "summary": "battery history",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "pageSize",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "battery[]",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "ir.send",
+      "summary": "send an IR remote key",
+      "params": [
+        {
+          "name": "remote",
+          "required": false,
+          "description": "remote name (default when omitted)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "key",
+          "required": true,
+          "description": "key name or keyUUID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "send response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.listKeys",
+      "summary": "learned keys of a remote",
+      "params": [
+        {
+          "name": "remote",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "key[]",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "events.subscribe",
+      "summary": "subscribe to events (topics: lockState/deviceUpdate). event.<topic> notifications follow",
+      "params": [
+        {
+          "name": "topics",
+          "required": true,
+          "description": "topic array to subscribe (lockState/deviceUpdate)",
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ subscribed: string[] }",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "local"
+    },
+    {
+      "name": "events.unsubscribe",
+      "summary": "unsubscribe from events",
+      "params": [
+        {
+          "name": "topics",
+          "required": true,
+          "description": "",
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ subscribed: string[] }",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "local"
+    }
+  ],
+  "x-events": [
+    {
+      "name": "event.lockState",
+      "description": "lock state change push (events.subscribe lockState)",
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "event.deviceUpdate",
+      "description": "device state update push (events.subscribe deviceUpdate)",
+      "x-stability": "stable",
+      "x-provenance": "app-core"
+    },
+    {
+      "name": "event.ready",
+      "description": "startup-complete notification (stdio framing only. once right after connect. not sent on other transports)",
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    }
+  ]
+}
