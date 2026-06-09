@@ -94,6 +94,7 @@ export default {
 
     // ---- util.js ----
     "domain.util.opFailed": "{op} failed: {detail}",
+    "domain.util.chunkTimeout": "timed out waiting for paged push response",
 
     // ---- crypto.js ----
     "domain.crypto.unknownIrType": "Unknown irType \"{value}\". Specify a number (e.g. 49152) or an alias ({aliases}).",
@@ -191,6 +192,7 @@ export default {
 
     // ---- util.js ----
     "domain.util.opFailed": "{op} failed: {detail}",
+    "domain.util.chunkTimeout": "ページング push 応答の待機がタイムアウトしました",
 
     // ---- crypto.js ----
     "domain.crypto.unknownIrType": "Unknown irType \"{value}\". 数値 (例 49152) かエイリアス ({aliases}) を指定してください。",

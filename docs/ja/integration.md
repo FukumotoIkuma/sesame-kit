@@ -109,6 +109,8 @@ sesame rpc device.history --params '{"deviceUUID":"AB12CD34...","pageSize":10}'
 
 薄いクライアントが上記をラップし、JSON を手で組み立てる代わりに `c.unlock("front")` と書けます。任意であり、セクション 2 はこれらなしでも動作します。
 
+> **`sdk/` と `clients/`** — 以下のクライアントは**手書きの低レベル**層（`clients/js`・`clients/python`）です: 依存最小・多経路対応（Unix socket / stdio / HTTP / WebSocket / gRPC）・汎用 `call()` 付き。多くのユーザには、**生成された型付き**の SDK（[`sdk/ts`](../../sdk/ts/README.md) / [`sdk/python`](../../sdk/python/README.md)）— RPC ごとに型付きメソッドが 1 つ、`schema/openrpc.json` から生成され OpenRPC 契約を HTTP 上で追従 — の方が既定として適します。[README の「どちらを使う?」セクション](../../README.ja.md)を参照してください。
+
 **Node** — `npm install sesame-kit` の後：
 
 ```js

@@ -85,6 +85,28 @@ function unionOps(caps) {
   return out;
 }
 
+// Hub3/WM2 の IR/リレー/LED は「別 API 面」(biz3OperateIoT) であって、ロック系デバイス制御
+// (`sesame <device> <action>`) の動詞ではない。制御 op 語彙からは除外する。
+const IOT_OPS = Object.freeze(["ir", "relay", "led"]);
+
+/**
+ * 全 kind の能力テーブル (CAPS) から、ロック系デバイス制御 op の語彙を **導出** する。
+ * CLI の `sesame <device> <action>` で受理する動詞や、機種別能力ゲートの対象集合は、ここ
+ * (= 能力の単一真実源) から引く。kind に新しい制御 op を足せば CLI へ自動的に波及し、
+ * cli.js 側でのハードコード二重管理 (旧 DEVICE_ACTIONS / BLE_OPS) を不要にする。
+ * 提示順は自然順 (lock→unlock→toggle→click→autolock)。未知 op は末尾に積む (将来追加への保険)。
+ */
+function deriveControlOps() {
+  const order = ["lock", "unlock", "toggle", "click", "autolock"];
+  const all = new Set();
+  for (const caps of Object.values(CAPS)) {
+    for (const o of [...caps.ble, ...caps.cloud]) if (!IOT_OPS.includes(o)) all.add(o);
+  }
+  const ordered = order.filter((o) => all.has(o));
+  for (const o of all) if (!ordered.includes(o)) ordered.push(o);
+  return Object.freeze(ordered);
+}
+
 /**
  * productType (整数) → { model, kind }。
  * 値は CHProductModel enum (CHDeivceProtocols.kt:28-252) と deviceFactory() の生成クラスに準拠。
@@ -132,6 +154,15 @@ export const PRODUCT_TYPES = Object.freeze({
 const KIND_BY_MODEL = Object.freeze(
   Object.fromEntries(Object.values(PRODUCT_TYPES).map((v) => [v.model, v.kind])),
 );
+
+/**
+ * ロック系デバイス制御 op の語彙 (CAPS から導出した単一真実源)。
+ * 現状 = ["lock", "unlock", "toggle", "click", "autolock"]。
+ * Hub3/WM2 の ir/relay/led は含まない (別 API 面)。"status" は制御 op ではなく状態取得なので含まない。
+ * CLI の `sesame <device> <action>` 受理動詞・機種別能力ゲートはこれを参照し、二重定義を排する。
+ * @type {readonly string[]}
+ */
+export const CONTROL_OPS = deriveControlOps();
 
 /**
  * model 文字列から kind を返す。

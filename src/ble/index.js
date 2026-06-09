@@ -37,7 +37,7 @@ export { RESULT as SESAME_RESULT_CODES, resultName } from "./protocol.js";
 export { NobleTransport, createBleTransport, advToDeviceUUID, parseAdvertisement, scanSesames, listNearbyDevices, peripheralToDiscovery } from "./transport.js";
 export * as protocol from "./protocol.js";
 export * as devicemodel from "./devicemodel.js";
-export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, KIND, PRODUCT_TYPES } from "./devicemodel.js";
+export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, CONTROL_OPS, KIND, PRODUCT_TYPES } from "./devicemodel.js";
 
 // 生体・アクセス制御デバイス (Touch/Touch Pro/Face/Palm) の BLE 登録。BiometricCommands は
 // SesameBle.biometric ゲッタ経由でも露出するが、純関数のペイロード生成器/publish ハンドラを

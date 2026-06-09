@@ -30,7 +30,7 @@
 //   passcode は op が 'getPasscodes' / 'pubPasscodeLinkedIDs' になる (同型)。
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
-import { assertSuccess } from "./util.js";
+import { assertSuccess, subscribeChunks, timeoutError } from "./util.js";
 import { t } from "./i18n.js";
 import { generateUUID } from "./crypto.js";
 
@@ -75,46 +75,36 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs 
   }
   const deviceIds = deviceUUIDs.join(","); // biz3: devices.map(d=>d.deviceUUID).join(',') (54)
 
-  return new Promise((resolve, reject) => {
-    /** @type {Record<string, object[]>} deviceUUID → list (ページング累積) */
-    const byDevice = {};
-    let done = false;
-
-    const finish = () => {
-      if (done) return;
-      done = true;
-      clearTimeout(to);
-      unsubPub();
-      unsubDone();
-      resolve({ byDevice, items: aggregate(byDevice, idKey) });
-    };
-
-    const to = setTimeout(() => {
-      if (done) return;
-      done = true;
-      unsubPub();
-      unsubDone();
-      reject(new Error(t("access.err.opTimeout", { op })));
-    }, timeoutMs);
-
-    // (2) データ本体 push の集約 (useManageAuthData.js:116-131)。
-    const unsubPub = client.subscribe(`${ACTION}:${pubOp}`, (msg) => {
-      const data = msg?.data;
-      if (!data) return;
-      const { deviceUUID, page, list = [] } = data;
-      if (!deviceUUID) return;
-      const current = byDevice[deviceUUID] || [];
-      // page===1 なら置換、それ以外は累積 (biz3:126)。
-      byDevice[deviceUUID] = page === 1 ? [...list] : [...current, ...list];
-    });
-
-    // (3) 完了通知 (useManageAuthData.js:180-185)。data 本体は無い。
-    const unsubDone = client.subscribe(`${ACTION}:${op}`, () => {
-      finish();
-    });
-
+  /** @type {Record<string, object[]>} deviceUUID → list (ページング累積) */
+  const byDevice = {};
+  // 「(1) 取得 send → (2) pub データ push を集約 → (3) 完了通知 op で確定」の 2 購読モデル。
+  // ライフサイクル (Promise/cleanup/timeout/二重解決) は util.subscribeChunks に委譲する。
+  return subscribeChunks(client, {
     // (1) 取得リクエスト送信 (useManageAuthData.js:55-62)。obj.devices にカンマ連結文字列。
-    client.send({ action: ACTION, obj: { devices: deviceIds }, op });
+    sendFrame: { action: ACTION, obj: { devices: deviceIds }, op },
+    timeoutMs,
+    onTimeout: () => timeoutError(t("access.err.opTimeout", { op })),
+    result: () => ({ byDevice, items: aggregate(byDevice, idKey) }),
+    subscriptions: [
+      // (2) データ本体 push の集約 (useManageAuthData.js:116-131)。完了はさせない。
+      {
+        key: `${ACTION}:${pubOp}`,
+        onMessage: (msg) => {
+          const data = msg?.data;
+          if (!data) return;
+          const { deviceUUID, page, list = [] } = data;
+          if (!deviceUUID) return;
+          const current = byDevice[deviceUUID] || [];
+          // page===1 なら置換、それ以外は累積 (biz3:126)。
+          byDevice[deviceUUID] = page === 1 ? [...list] : [...current, ...list];
+        },
+      },
+      // (3) 完了通知 (useManageAuthData.js:180-185)。data 本体は無い → ここで確定。
+      {
+        key: `${ACTION}:${op}`,
+        onMessage: (_msg, finish) => { finish(); },
+      },
+    ],
   });
 }
 

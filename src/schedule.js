@@ -21,6 +21,7 @@
 //     乗せれば transport の `${action}:${op}` キーで一致する。
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
+import { badRequest, rejected } from "./util.js";
 import { t } from "./i18n.js";
 
 // action 文字列は vendor (biz3 messageConstants) から引く (手書きしない)。
@@ -53,7 +54,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  */
 export async function getScheduleList(client, { subUUID, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   // biz3: subUUID が falsy なら送信自体を中止 (useManageSchedule.js:14)。
-  if (!subUUID) throw new Error(t("schedule.err.subUUIDRequired"));
+  if (!subUUID) throw badRequest("schedule.err.subUUIDRequired");
 
   // フィールド順は原典 (useManageSchedule.js:15-19) のリテラル順 action, userId, op に合わせる。
   const frame = {
@@ -63,7 +64,7 @@ export async function getScheduleList(client, { subUUID, timeoutMs = DEFAULT_TIM
   };
   const resp = await client.request(frame, timeoutMs);
   if (resp && resp.success === false) {
-    throw new Error(t("schedule.err.getScheduleListFailed", { message: resp.message || JSON.stringify(resp) }));
+    throw rejected(t("schedule.err.getScheduleListFailed", { message: resp.message || JSON.stringify(resp) }), { upstreamCode: resp?.code ?? null });
   }
   // 応答 data は配列直返し (useManageSchedule.js:34-35)。欠落時は空配列。
   return Array.isArray(resp?.data) ? resp.data : [];
@@ -89,8 +90,8 @@ export async function getScheduleList(client, { subUUID, timeoutMs = DEFAULT_TIM
  */
 export async function cancelSchedule(client, { subUUID, scheduleId, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   // biz3: subUUID が falsy なら送信中止 (useManageSchedule.js:53)。
-  if (!subUUID) throw new Error(t("schedule.err.subUUIDRequired"));
-  if (!scheduleId) throw new Error(t("schedule.err.scheduleIdRequired"));
+  if (!subUUID) throw badRequest("schedule.err.subUUIDRequired");
+  if (!scheduleId) throw badRequest("schedule.err.scheduleIdRequired");
 
   const frame = {
     action: ACT_SCHEDULE,
@@ -100,7 +101,7 @@ export async function cancelSchedule(client, { subUUID, scheduleId, timeoutMs = 
   };
   const resp = await client.request(frame, timeoutMs);
   if (resp && resp.success === false) {
-    throw new Error(t("schedule.err.cancelScheduleFailed", { message: resp.message || JSON.stringify(resp) }));
+    throw rejected(t("schedule.err.cancelScheduleFailed", { message: resp.message || JSON.stringify(resp) }), { upstreamCode: resp?.code ?? null });
   }
   return resp;
 }

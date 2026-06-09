@@ -46,9 +46,22 @@ promise:
 3. **We need upstream-drift detection.** Because the true parent is outside our
    control, "schema ↔ impl" drift checking is not enough; we also need
    "vendor-behavior ↔ impl" conformance monitoring, or the facade silently starts
-   lying. Implemented as `scripts/canary-upstream.mjs` — an opt-in, read-only live
-   canary (not CI; needs creds) that asserts stable-contract fields are present in
-   real vendor responses and exits non-zero on drift.
+   lying. Implemented as `scripts/canary-upstream.mjs`, which has two modes:
+   - **live** (`node scripts/canary-upstream.mjs`) — opt-in, read-only, **needs
+     creds + network**. Calls stable read-only ops against the real cloud and
+     asserts stable-contract fields are present in the live responses. Exits
+     non-zero on drift. Run manually or on a schedule; **not** in CI (no creds).
+   - **offline replay** (`node scripts/canary-upstream.mjs --replay`) — **runs in
+     CI, no creds.** Validates recorded vendor-response samples in
+     `tests/fixtures/upstream/*.json` against the **same** stable schemas
+     (`src/serve/result-schemas.js`) the live canary asserts against, and exits
+     non-zero on mismatch. This catches the "someone loosened a stable schema so it
+     no longer matches a real vendor response" class of drift without live access.
+     Fixtures are synthetic-but-schema-valid samples; refresh them from a live run
+     when the vendor genuinely changes a shape (see the fixtures README and the
+     header of `scripts/canary-upstream.mjs`). Wired as the `upstream-canary-replay`
+     job in `.github/workflows/ci.yml`; the replay path is also covered by
+     `tests/serve/upstream-canary-replay.test.js`.
 
 ### Provenance (first-class)
 
@@ -170,12 +183,16 @@ JSON-RPC 2.0 errors carry a structured, machine-readable `data.kind`:
 
 Tracked here so the stable tier is honest when it freezes:
 
-1. **Domain errors collapse to `internal`.** *(addressed for the stable lock path
-   in 1.1.0)* — `src/errors.js` (`SesameError` + machine `code`) is mapped at the
-   serve boundary to `kind` + `data.retryable`; `lock.*` and the lock-resolution
-   path now emit `rejected`/`connection_lost`/`timeout`/`bad_params` instead of
-   `internal`. **Remaining:** experimental namespace ops (`org/iot/...`) still
-   throw plain `Error` → `internal`; convert each before it enters `stable`.
+1. **Domain errors collapse to `internal`.** *(addressed — stable lock path in
+   1.1.0, remaining namespaces since)* — `src/errors.js` (`SesameError` + machine
+   `code`) is mapped at the serve boundary to `kind` + `data.retryable`; `lock.*`
+   and the lock-resolution path emit `rejected`/`connection_lost`/`timeout`/
+   `bad_params` instead of `internal`. The experimental namespace ops
+   (`org`/`iot`/`company`/`access`/`devices`/`schedule`/`presetir`/`sharekey`/
+   `account`/`ir`) now also throw `SesameError` via the shared `badRequest` /
+   `rejected` / `timeout` helpers (`src/util.js`), so caller-input validation maps
+   to `bad_params`, explicit upstream failures to `rejected` (with
+   `data.upstreamCode`), and paged-push waits to `timeout` — no longer `internal`.
 2. **`event.ready`** is advertised in `rpc.discover` but never emitted — either
    emit it or drop it from the contract.
 3. **`iot.subscribeIotResponse` / `iot.removeSesameFromHub3`** have no extracted
@@ -194,6 +211,7 @@ Tracked here so the stable tier is honest when it freezes:
 - generated SDKs exist for at least two languages (TS, Python);
 - a CI gate guarantees the published schema and the implementation never diverge
   (**schema ↔ impl**); and
-- an **upstream-conformance** check (vendor-behavior ↔ impl, live canary or replay)
-  exists for stable methods, so vendor drift is detected rather than silently
-  breaking the facade.
+- an **upstream-conformance** check (vendor-behavior ↔ impl) exists for stable
+  methods, so vendor drift is detected rather than silently breaking the facade.
+  Both modes exist today: a live canary (opt-in, needs creds) and an offline
+  replay that runs in CI against recorded fixtures (`canary-upstream.mjs --replay`).

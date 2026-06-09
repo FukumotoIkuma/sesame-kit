@@ -1,0 +1,5 @@
+{
+  "method": "lock.status",
+  "note": "synthetic — null snapshot (no device matched). lock.status is nullable(DEVICE); the live canary skips this case but the schema must accept null.",
+  "sample": null
+}

@@ -16,7 +16,7 @@
 //     (biz3utils.js:121)。owner(0)/manager(1) は deviceKey.secretKey をそのまま使う。
 
 import { Buffer } from "node:buffer";
-import { t } from "./i18n.js";
+import { badRequest } from "./util.js";
 import { productTypeFromModelName } from "./crypto.js";
 import { modelNameByProductType } from "../vendor/biz3/constants/sesameDeviceModel.js";
 
@@ -38,11 +38,11 @@ function isSesameOs3(productType) {
  * @returns {string} `ssm://UI?t=sk&sk=<base64>&l=<lv>&n=<urlenc>`
  */
 export function buildShareKeyUrl(deviceKey, { keyLevel, guestKeyId, name } = {}) {
-  if (!deviceKey) throw new Error("deviceKey required");
+  if (!deviceKey) throw badRequest("deviceKey required");
 
   const productType = productTypeFromModelName(deviceKey.deviceModel);
   if (productType == null) {
-    throw new Error(t("org.sharekey.unknownDeviceModel", { model: JSON.stringify(deviceKey.deviceModel) }));
+    throw badRequest("org.sharekey.unknownDeviceModel", { model: JSON.stringify(deviceKey.deviceModel) });
   }
   // biz3: parseInt(model,10).toString(16).padStart(2,'0')
   const deviceModelHex = productType.toString(16).padStart(2, "0");
@@ -58,7 +58,7 @@ export function buildShareKeyUrl(deviceKey, { keyLevel, guestKeyId, name } = {})
     deviceUUID: deviceKey.deviceUUID,
   };
   for (const [k, v] of Object.entries(required)) {
-    if (!v) throw new Error(t("org.sharekey.fieldRequired", { field: k }));
+    if (!v) throw badRequest("org.sharekey.fieldRequired", { field: k });
   }
 
   const keydata =
@@ -89,12 +89,12 @@ export function buildShareKeyUrl(deviceKey, { keyLevel, guestKeyId, name } = {})
  *           deviceModel:string|null, deviceName:string|null, deviceUUID:string}}
  */
 export function parseShareKeyUrl(url) {
-  if (!url) throw new Error("url required");
+  if (!url) throw badRequest("url required");
   const qIdx = String(url).indexOf("?");
   const params = new URLSearchParams(qIdx >= 0 ? String(url).slice(qIdx + 1) : String(url));
 
   const skRaw = params.get("sk");
-  if (!skRaw) throw new Error("sk param not found in url");
+  if (!skRaw) throw badRequest("sk param not found in url");
   // base64 中の '+' が URL 上で空白に化けるケースに対応 (biz3utils.js:173)。
   const sk = skRaw.replace(/ /g, "+");
   // biz3 は Buffer.from(Buffer.from(sk,'base64'),'hex') と二重化しているが、第1引数が Buffer の

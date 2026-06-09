@@ -50,6 +50,7 @@ export class SesameHub3 {
     _pendingCleanups: Set<any>;
     /** WS 再接続 (初回以外の OPEN) で呼ぶコールバック集合。購読者の再 subscribe 用。 */
     _reconnectCbs: Set<any>;
+    _lock: LockManager;
     /**
      * WS 再接続時に呼ばれるコールバックを登録する。戻り値で解除。
      * デーモン等、再接続後にサーバ購読 (subscribe frame) を張り直したい用途向け。
@@ -219,11 +220,6 @@ export class SesameHub3 {
         name: any;
         lock: any;
     };
-    _lockParams(name: any): {
-        deviceId: any;
-        secretKey: any;
-        subUUID: any;
-    };
     /**
      * ロック施錠 (name-based, cmd=82)。config を介さない版は {@link SesameHub3#lockDevice}。
      * @param {string|null} [name] ロック名 (null で default.lock)
@@ -310,7 +306,7 @@ export class SesameHub3 {
     }): Promise<any>;
     _resolveHub3(name: any): any;
     /** 個人ユーザのデバイス一覧 (会社 vs 個人で別 op)。 */
-    listUserDevices(): Promise<any>;
+    listUserDevices(): Promise<any[]>;
     getDeviceStatus(deviceUUID: any): Promise<any>;
     /**
      * 読み取った複数 IC カードをクラウド DB へ一括登録する (postCards への委譲)。
@@ -360,7 +356,7 @@ export class SesameHub3 {
         deviceUUID: any;
         timestampSecond: any;
     }): Promise<any>;
-    listFirmware(): Promise<any>;
+    listFirmware(): Promise<any[]>;
     /** WebAPI proxy 経由で REST API を叩く。apiKeyId は config 側に保存。 */
     invokeWebAPI({ func, query, body, apiKeyId }: {
         func: any;
@@ -504,4 +500,5 @@ export type TokenStore = {
 };
 import { ConfigStore } from "./config.js";
 import { Hub3WsClient } from "./transport.js";
+import { LockManager } from "./lock-manager.js";
 //# sourceMappingURL=client.d.ts.map

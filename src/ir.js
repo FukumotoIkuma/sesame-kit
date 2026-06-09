@@ -36,7 +36,7 @@
 
 import { generateUUID } from "./crypto.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
-import { assertSuccess } from "./util.js";
+import { assertSuccess, rejected, timeoutError } from "./util.js";
 import { t } from "./i18n.js";
 
 const ACTION = ACTION_TYPES.BIZ3_IR_REMOTE; // "biz3IRRemote" (vendor 由来)
@@ -204,7 +204,7 @@ export async function subscribeIRData(client, { deviceId, companyID }) {
     companyID,
   };
   const ack = await client.request(ackFrame, DEFAULT_TIMEOUT_MS);
-  if (!ack.success) throw new Error(t("domain.ir.subscribeIRDataFailed", { detail: ack.message || JSON.stringify(ack) }));
+  if (!ack.success) throw rejected(t("domain.ir.subscribeIRDataFailed", { detail: ack.message || JSON.stringify(ack) }), { upstreamCode: ack?.code ?? null });
 
   const listeners = new Set();
   const unsub = client.subscribe(`${ACTION}:subscribeIRDataRsp`, (msg) => {
@@ -234,7 +234,7 @@ export async function subscribeIRMode(client, { deviceId, companyID }) {
     { action: ACTION, op: "subscribeIRMode", topic, deviceId, companyID },
     DEFAULT_TIMEOUT_MS,
   );
-  if (!ack.success) throw new Error(t("domain.ir.subscribeIRModeFailed", { detail: ack.message || JSON.stringify(ack) }));
+  if (!ack.success) throw rejected(t("domain.ir.subscribeIRModeFailed", { detail: ack.message || JSON.stringify(ack) }), { upstreamCode: ack?.code ?? null });
   const listeners = new Set();
   const unsub = client.subscribe(`${ACTION}:subscribeIRModeRsp`, (msg) => {
     if (msg?.deviceId && msg.deviceId !== deviceId) return;
@@ -314,7 +314,7 @@ export async function learnIRKey(client, p) {
   try {
     if (p.onPrompt) try { p.onPrompt(); } catch { /* ignore */ }
     waveform = await new Promise((resolve, reject) => {
-      const to = setTimeout(() => reject(new Error(t("domain.ir.learnTimeout"))), timeoutMs);
+      const to = setTimeout(() => reject(timeoutError(t("domain.ir.learnTimeout"))), timeoutMs);
       sub.onData((msg) => {
         clearTimeout(to);
         resolve(msg?.data?.data); // biz3: response.data.data が生波形

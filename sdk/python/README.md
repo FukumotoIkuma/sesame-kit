@@ -93,8 +93,13 @@ client.stream_events(["lockState", "deviceUpdate"], on_event)
 `stream_events` reads SSE `GET /events`. The callback receives `event.ready`
 first, then your subscribed `event.<topic>` notifications.
 
-> This is the **generated, typed** client. A separate hand-written thin client
-> (different, incompatible API — same `sesame_client`/`SesameClient` name) ships
-> at `clients/python/sesame_client.py`; see the disambiguation note at the top
-> and the integration guide ([`docs/en/integration.md`](../../docs/en/integration.md)
-> §4). Calls go to `POST {base_url}/rpc`; events to `GET {base_url}/events` (SSE).
+> This is the **generated, typed** SDK and is recommended for most users. A
+> separate **hand-written, low-level** thin client (multi-transport: Unix socket /
+> stdio / HTTP / WebSocket; a different, incompatible API despite sharing the
+> `sesame_client` / `SesameClient` name) ships at
+> [`clients/python/`](../../clients/python/) — use it for thin / multi-transport /
+> custom integrations. See the
+> [repository README](../../README.md#which-should-i-use--sdk-vs-clients) for the
+> full "which should I use?" guidance and the integration guide
+> ([`docs/en/integration.md`](../../docs/en/integration.md) §4).
+> Calls go to `POST {base_url}/rpc`; events to `GET {base_url}/events` (SSE).

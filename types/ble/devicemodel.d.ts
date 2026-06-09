@@ -224,4 +224,12 @@ export const PRODUCT_TYPES: Readonly<{
         kind: "hub3";
     };
 }>;
+/**
+ * ロック系デバイス制御 op の語彙 (CAPS から導出した単一真実源)。
+ * 現状 = ["lock", "unlock", "toggle", "click", "autolock"]。
+ * Hub3/WM2 の ir/relay/led は含まない (別 API 面)。"status" は制御 op ではなく状態取得なので含まない。
+ * CLI の `sesame <device> <action>` 受理動詞・機種別能力ゲートはこれを参照し、二重定義を排する。
+ * @type {readonly string[]}
+ */
+export const CONTROL_OPS: readonly string[];
 //# sourceMappingURL=devicemodel.d.ts.map

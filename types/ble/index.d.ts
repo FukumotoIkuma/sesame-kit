@@ -538,7 +538,7 @@ import { Hub3Commands } from "./hub3.js";
 export { SesameBleSession, BleResultError } from "./session.js";
 export { RESULT as SESAME_RESULT_CODES, resultName } from "./protocol.js";
 export { NobleTransport, createBleTransport, advToDeviceUUID, parseAdvertisement, scanSesames, listNearbyDevices, peripheralToDiscovery } from "./transport.js";
-export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, KIND, PRODUCT_TYPES } from "./devicemodel.js";
+export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, CONTROL_OPS, KIND, PRODUCT_TYPES } from "./devicemodel.js";
 export { BiometricCommands, handleBiometricPublish, parseTouchCard, parseTouchFace, parseRemoteNanoTrigger, remoteNanoTriggerDelayData, radarSensitivityData, createEnrollCollector } from "./biometric.js";
 export { Bot2Commands, BOT_ACTION_TYPE, clickItemCode, bot2ActionToBytes, scriptToBytes, parseCurrentScript, parseScriptNameList } from "./bot2.js";
 export { WifiModule2, WM2_GATT, WM2_ACTION, scanWifiSSIDData, setWifiSSIDData, setWifiPasswordData, connectWifiData, insertSesamesData, removeSesameData, networkStatusData, parseScanWifiSSID, parseWifiSSIDPublish, parseWifiPasswordPublish, parseNetworkStatus, parseSesameKeys, parseWM2Publish } from "./wm2.js";

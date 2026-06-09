@@ -1,6 +1,17 @@
 // stable メソッドの結果スキーマ (生成 SDK の型付き return 用)。
 //
-// 形は参照実装 (references_web / _sesame_sdk_ref) のトレースで確認した範囲だけを型にする。
+// ★ これは「結果の形」の**単一真実源**。配線: registry.js が OpenRPC の result.schema に載せ
+//   (schema/openrpc.json) → gen-sdk-ts / gen-sdk-py が型付き return を生成、という 1 経路で
+//   流れる。openrpc.json は CI でドリフトゲートされるため、ここを変えれば SDK/契約まで一貫追従する。
+//
+// ★ なぜ手書きか (生成しないのか): 結果の形は上流 (biz3 クラウド) の応答 shape であって、本 kit の
+//   JS ソース/JSDoc からは導出できない (ドメイン関数は vendor の `resp.data` をそのまま返す)。
+//   よって参照実装 (references_web / _sesame_sdk_ref) のトレースで確認した範囲だけを手で型にする。
+//   この「観測 shape ↔ スキーマ」の一致は **conformance テスト** で守る:
+//   tests/serve/upstream-canary-replay.test.js が記録済み応答 (tests/fixtures/upstream/*.json) を
+//   本スキーマで検証する (scripts/canary-upstream.mjs --replay と同じロジック・creds 不要・CI 常時)。
+//   live 版 canary (要 creds) は実上流の応答も同じく検証する。
+//
 // 中身が未確定のサブオブジェクト (stateInfo / quotas / data / lastEvaluatedKey) は bare
 // { type: "object" } のまま = SDK では unknown/Any にして「推測しない」。
 // 確信度: status/events = daemon 自前で確実 / devices.list・history・battery・whoami・
@@ -56,7 +67,9 @@ export const RESULT_SCHEMAS = Object.freeze({
       { ts: NUM, light: NUM, heavy: NUM, lightPercentage: NUM, heavyPercentage: NUM },
       ["ts"],
     )),
-    lastEvaluatedKey: nullable(OBJ), // opaque, DynamoDB ページ終端では null
+    // DynamoDB のページングカーソル。最終ページでは null になる (getBatteryRecord も
+    // `{records:[], lastEvaluatedKey:null}` を返す) ため null 許容。中身は opaque。
+    lastEvaluatedKey: nullable(OBJ),
   }, ["records"]),
 
   // lock.status は vendor トレース確認済 (useManageDevice.js:84 が data[0]||null を消費) →

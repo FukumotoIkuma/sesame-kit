@@ -1,0 +1,24 @@
+{
+  "method": "account.whoami",
+  "note": "synthetic — vendor customerInfo (verified-live shape). quotas is opaque/unverified.",
+  "sample": {
+    "customerInfo": {
+      "companyID": "company-0001",
+      "subUUID": "00000000-0000-4000-8000-000000000001",
+      "subscriptionId": "sub-0001",
+      "name": "Example Org",
+      "mainEmail": "owner@example.com",
+      "employeeEmail": "owner@example.com",
+      "employeeName": "Example Owner",
+      "access": ["admin"],
+      "tag": ["hq"],
+      "isAnonymous": false,
+      "isRootUser": true,
+      "isSesameApp": false
+    },
+    "quotas": {
+      "devices": 100,
+      "members": 50
+    }
+  }
+}

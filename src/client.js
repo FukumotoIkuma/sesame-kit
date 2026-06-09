@@ -32,8 +32,7 @@ import { ConfigStore } from "./config.js";
 import { FileTokenStore } from "./tokens.js";
 import { getValidIdToken, jwtSub } from "./auth.js";
 import { configPaths } from "./paths.js";
-import { lockLock, lockUnlock, lockToggle, botClick, triggerLock, setAutolock } from "./lock.js";
-import { CMD, cmacTime, uuidToHistoryBase64 } from "./crypto.js";
+import { LockManager } from "./lock-manager.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import * as ir from "./ir.js";
 import * as devices from "./devices.js";
@@ -45,7 +44,6 @@ import * as access from "./access.js";
 import * as iot from "./iot.js";
 import * as presetir from "./presetir.js";
 import { t } from "./i18n.js";
-import { SesameError, ERR } from "./errors.js";
 
 const DEFAULT_CONFIG = {
   companyID: "ch_CandyhouseMobile",
@@ -143,6 +141,14 @@ export class SesameHub3 {
     this._pendingCleanups = new Set();
     /** WS 再接続 (初回以外の OPEN) で呼ぶコールバック集合。購読者の再 subscribe 用。 */
     this._reconnectCbs = new Set();
+    // ロック制御の関心事は LockManager に集約 (client.js の god object 化回避)。
+    // ws/subUUID は connect 前後で変わるためアクセサで毎回最新を読ませる。
+    this._lock = new LockManager({
+      getWs: () => this._ws,
+      getConfig: () => this._config,
+      getSubUUID: () => this._subUUID,
+      ensureConnected: () => this._ensureConnected(),
+    });
   }
 
   /**
@@ -506,29 +512,14 @@ export class SesameHub3 {
 
   // ---------- lock ----------
 
+  // lock 制御の実体は LockManager (src/lock-manager.js) に集約。以下は後方互換の薄い委譲。
+
   /**
    * lock 設定を name から解決。name 省略時は default.lock、
    * 無ければ locks が 1 つだけならそれ。
    */
   resolveLock(name) {
-    const cfg = this._config;
-    const locks = cfg.locks || {};
-    const names = Object.keys(locks);
-    const chosen = name || cfg.default?.lock || (names.length === 1 ? names[0] : null);
-    if (!chosen) {
-      throw new SesameError(t("domain.client.noLockNoDefault", { names: names.join(", ") || "(none)" }), { code: ERR.BAD_REQUEST });
-    }
-    const lock = locks[chosen];
-    if (!lock) throw new SesameError(t("domain.client.unknownLock", { name: chosen, names: names.join(", ") || "(none)" }), { code: ERR.BAD_REQUEST });
-    return { name: chosen, lock };
-  }
-
-  _lockParams(name) {
-    if (!this._subUUID) throw new SesameError(t("domain.client.subUUIDNotAvailableConnect"), { code: ERR.NOT_CONNECTED, retryable: true });
-    const { lock } = this.resolveLock(name);
-    if (!lock.deviceUUID) throw new SesameError(t("domain.client.lockMissingDeviceUUID", { name: name || "(default)" }), { code: ERR.BAD_REQUEST });
-    if (!lock.secretKey) throw new SesameError(t("domain.client.lockMissingSecretKey", { name: name || "(default)" }), { code: ERR.BAD_REQUEST });
-    return { deviceId: lock.deviceUUID, secretKey: lock.secretKey, subUUID: this._subUUID };
+    return this._lock.resolveLock(name);
   }
 
   /**
@@ -537,8 +528,7 @@ export class SesameHub3 {
    * @returns {Promise<object>} pubDeviceStateChange の応答
    */
   async lock(name) {
-    this._ensureConnected();
-    return lockLock(this._ws, this._lockParams(name));
+    return this._lock.lock(name);
   }
 
   /**
@@ -547,8 +537,7 @@ export class SesameHub3 {
    * @returns {Promise<object>} pubDeviceStateChange の応答
    */
   async unlock(name) {
-    this._ensureConnected();
-    return lockUnlock(this._ws, this._lockParams(name));
+    return this._lock.unlock(name);
   }
 
   /**
@@ -557,8 +546,7 @@ export class SesameHub3 {
    * @returns {Promise<object>}
    */
   async toggle(name) {
-    this._ensureConnected();
-    return lockToggle(this._ws, this._lockParams(name));
+    return this._lock.toggle(name);
   }
 
   /**
@@ -568,8 +556,7 @@ export class SesameHub3 {
    * @returns {Promise<object>}
    */
   async botClick(name) {
-    this._ensureConnected();
-    return botClick(this._ws, this._lockParams(name));
+    return this._lock.botClick(name);
   }
 
   /**
@@ -585,8 +572,7 @@ export class SesameHub3 {
 
   /** 任意 cmd 直指定 (上級用)。 */
   async triggerLockRaw(name, cmd) {
-    this._ensureConnected();
-    return triggerLock(this._ws, { ...this._lockParams(name), cmd });
+    return this._lock.triggerRaw(name, cmd);
   }
 
   /**
@@ -601,9 +587,7 @@ export class SesameHub3 {
    * @returns {Promise<{ack:any, cmd:number, seconds:number}>}
    */
   async setAutolock(name, seconds, timeoutMs) {
-    this._ensureConnected();
-    const { deviceId, secretKey } = this._lockParams(name); // subUUID は autolock では未使用
-    return setAutolock(this._ws, { deviceId, secretKey, seconds, timeoutMs });
+    return this._lock.setAutolock(name, seconds, timeoutMs);
   }
 
   get subUUID() { return this._subUUID; }
@@ -855,15 +839,7 @@ export class SesameHub3 {
    * @returns {Promise<object>} pubDeviceStateChange の応答
    */
   async triggerLockDevice({ deviceUUID, secretKey, cmd, timeoutMs }) {
-    this._ensureConnected();
-    if (!this._subUUID) throw new Error(t("domain.client.subUUIDNotAvailable"));
-    return triggerLock(this._ws, {
-      deviceId: deviceUUID,
-      secretKey,
-      subUUID: this._subUUID,
-      cmd,
-      timeoutMs,
-    });
+    return this._lock.triggerDevice({ deviceUUID, secretKey, cmd, timeoutMs });
   }
 
   /**
@@ -871,25 +847,25 @@ export class SesameHub3 {
    * @param {{deviceUUID:string, secretKey:string, timeoutMs?:number}} p
    * @returns {Promise<object>} pubDeviceStateChange の応答
    */
-  unlockDevice(p)   { return this.triggerLockDevice({ ...p, cmd: CMD.UNLOCK }); }
+  unlockDevice(p)   { return this._lock.unlockDevice(p); }
   /**
    * 直接 施錠 (config を介さない, cmd=82)。
    * @param {{deviceUUID:string, secretKey:string, timeoutMs?:number}} p
    * @returns {Promise<object>}
    */
-  lockDevice(p)     { return this.triggerLockDevice({ ...p, cmd: CMD.LOCK }); }
+  lockDevice(p)     { return this._lock.lockDevice(p); }
   /**
    * 直接 トグル (config を介さない, cmd=88)。
    * @param {{deviceUUID:string, secretKey:string, timeoutMs?:number}} p
    * @returns {Promise<object>}
    */
-  toggleDevice(p)   { return this.triggerLockDevice({ ...p, cmd: CMD.TOGGLE }); }
+  toggleDevice(p)   { return this._lock.toggleDevice(p); }
   /**
    * 直接 Bot クリック (config を介さない, cmd=89)。
    * @param {{deviceUUID:string, secretKey:string, timeoutMs?:number}} p
    * @returns {Promise<object>}
    */
-  botClickDevice(p) { return this.triggerLockDevice({ ...p, cmd: CMD.CLICK }); }
+  botClickDevice(p) { return this._lock.botClickDevice(p); }
 
   /**
    * 直接 IR 発射 (config を介さない)。

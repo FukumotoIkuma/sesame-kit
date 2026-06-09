@@ -177,9 +177,18 @@ sesame rpc --http status                          # default URL http://127.0.0.1
 sesame rpc --http http://host:8080 lock.unlock --params '{"name":"front"}'
 ```
 
+### Which should I use? — `sdk/` vs `clients/`
+
+Two client layers ship in this repo and they serve different needs:
+
+- **`sdk/` — generated, typed, contract SDK (recommended for most users).** [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) and [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py) are **generated** from [`schema/openrpc.json`](./schema/openrpc.json) (`npm run build:sdk`), with one typed method per RPC (`client.lock.unlock({ name })`), typed params/results, and `SesameRpcError` (`kind` / `retryable`). They track the published OpenRPC contract — a CI drift gate keeps them in lockstep — and talk to the `sesame serve` JSON-RPC daemon over HTTP (+ SSE for events). **Do not hand-edit the generated `sesame-client.ts` / `sesame_client.py`** — change the schema and regenerate.
+- **`clients/` — hand-written, low-level transport clients (advanced / custom integrations).** [`clients/js/sesame-client.mjs`](./clients/js/sesame-client.mjs) and [`clients/python/sesame_client.py`](./clients/python/sesame_client.py) are the **薄い公式クライアント** ("thin official clients"): hand-written, minimal-dependency, with a generic `c.call("<method>", …)` plus a few conveniences (`c.unlock(…)`). They support **every framing** (Unix socket / stdio / HTTP / WebSocket / gRPC), not just HTTP, which makes them a good fit for embedded (stdio child process), local-daemon, or full-duplex (WS) integrations. They are **not generated** from the schema, so they are not statically typed against it.
+
+In short: reach for **`sdk/`** for a typed, contract-tracked client over HTTP; reach for **`clients/`** when you need a thin, multi-transport client or a generic `call()` escape hatch. The `clients/` layer is what `sesame-kit/client` (`package.json` `exports`) points at.
+
 ### Bundled clients
 
-Thin clients wrap the JSON-RPC so you can write `c.unlock("front")`. They are optional — the `curl` call above works without any client. Node: `import { SesameClient } from "sesame-kit/client"` after `npm install sesame-kit`. Python: a single file shipped with the package.
+Thin clients (the `clients/` layer above) wrap the JSON-RPC so you can write `c.unlock("front")`. They are optional — the `curl` call above works without any client. Node: `import { SesameClient } from "sesame-kit/client"` after `npm install sesame-kit`. Python: a single file shipped with the package.
 
 ```js
 import { SesameClient } from "sesame-kit/client";   // after: npm install sesame-kit
