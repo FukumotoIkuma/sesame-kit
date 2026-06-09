@@ -31,6 +31,7 @@ import {
   loginVerify,
   logout,
 } from "./auth.js";
+import { SesameError, ERR } from "./errors.js";
 import { isInteractive, selectFromList, promptText, confirm as confirmPrompt } from "./prompts.js";
 import { parseIrType, DEFAULT_IR_TYPE } from "./crypto.js";
 import { registerScheduleCommands } from "./cli/schedule.js";
@@ -300,7 +301,9 @@ async function bootstrapAfterLogin(program, { quiet = false } = {}) {
     });
   } catch (e) {
     summary.errors.push(`connect: ${e.message}`);
-    const authExpired = /refresh token|unauthor|not authenticated|token/i.test(e.message || "");
+    // 認証失効は構造化エラーで判定 (getValidIdToken が SesameError(UNAUTHENTICATED) を投げる)。
+    // message 文字列マッチ (/token/i 等の誤爆) を排除。
+    const authExpired = e instanceof SesameError && e.code === ERR.UNAUTHENTICATED;
     summary.authExpired = authExpired;
     if (authExpired) log(t("cli.bootAuthExpired", { message: e.message }));
     else log(t("cli.bootConnectFail", { message: e.message }));

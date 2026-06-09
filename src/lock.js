@@ -69,9 +69,10 @@ function dispatchTrigger(client, { cmd, sign, history, deviceId, timeoutMs = DEF
       succeed(msg);
     });
 
-    // (副) 状態 push。data.deviceUUID 一致のときのみ解決 (来ない環境では無視される)。
+    // (副) 状態 push。pubDeviceStateChange の本体は data.deviceUUID (vendor 確認:
+    // useIotCtrl.js:20-21)。一致のときのみ解決 (来ない環境では無視される)。単一フィールドのみ。
     const unsubState = client.subscribe(STATE_EVENT_KEY, (msg) => {
-      const incoming = normalizeUuid(msg?.data?.deviceUUID || msg.deviceUUID || msg.device_id);
+      const incoming = normalizeUuid(msg?.data?.deviceUUID);
       if (incoming && incoming !== target) return;
       succeed(msg);
     });

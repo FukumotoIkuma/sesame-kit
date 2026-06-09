@@ -898,10 +898,10 @@ export class SesameHub3 {
     this._ensureConnected();
     const target = normalizeUuid(deviceUUID);
     return this._ws.subscribe(STATE_CHANGE_KEY, (msg) => {
-      // biz3 の pubDeviceStateChange 本体は data.deviceUUID (useManageDevice.js:147)
-      const incoming = normalizeUuid(
-        msg?.data?.deviceUUID || msg.deviceUUID || msg.deviceId || msg.device_id || msg?.data?.deviceId,
-      );
+      // pubDeviceStateChange の本体は message.data、識別は data.deviceUUID
+      // (vendor 確認: useIotCtrl.js:20-21 が updateDeviceState(message.data)、
+      //  useManageDevice.js:147 が updatedDevice.deviceUUID)。単一フィールドのみ。
+      const incoming = normalizeUuid(msg?.data?.deviceUUID);
       if (incoming !== target) return;
       try { fn(msg); } catch { /* ignore */ }
     });
@@ -924,8 +924,8 @@ export class SesameHub3 {
     await ir.setIRMode(this._ws, { deviceId: h.deviceId, mode: ir.MODE.REGISTER, companyID });
     const sub = await ir.subscribeIRData(this._ws, { deviceId: h.deviceId, companyID });
     const off = sub.onData((msg) => {
-      // biz3: 生波形は response.data.data (learn/index.js:219)
-      try { fn(msg?.data?.data ?? msg?.data ?? msg); } catch { /* ignore */ }
+      // 学習波形は response.data.data (vendor 確認: learn/index.js:219,227)。単一パスのみ。
+      try { fn(msg?.data?.data); } catch { /* ユーザ callback の例外は購読を壊さない */ }
     });
     let cleaned = false;
     const cleanup = async () => {
