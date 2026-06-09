@@ -1,9 +1,8 @@
 // 公開ライブラリエントリ。
 //
 // パッケージ名は "sesame-kit" (package.json の "name")。
-// 注: このパッケージは `"private": true` のため npm publish されていません。
-//     他プロジェクトから使うには `npm link sesame-kit` か
-//     `npm install /path/to/sesame-kit` で取り込んでください。
+// npm package として publish できる公開面は package.json の exports/files を単一の契約にする。
+// ローカル開発中は `npm link sesame-kit` か `npm install /path/to/sesame-kit` でも利用できる。
 //
 // 高レベル:
 //   import { SesameHub3 } from "sesame-kit";
@@ -36,6 +35,7 @@ export * as company from "./company.js";
 export * as access from "./access.js";
 export * as iot from "./iot.js";
 export * as presetir from "./presetir.js";
+export * as payment from "./payment.js";
 export * as sharekey from "./sharekey.js";
 export * as lock from "./lock.js";
 // BLE 直接制御 (クラウド非経由)。SesameBle.use({secretKey, deviceUUID}, fn) で利用。

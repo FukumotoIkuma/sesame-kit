@@ -1,3 +1,12 @@
+/**
+ * config オブジェクトを実行時 shape に正規化する。
+ * ConfigStore.load() を通らない embedded 利用でも、保存正準形 `devices` から
+ * 互換 view の `locks` / `hub3s` を必ず再投影する。
+ *
+ * @param {object} raw
+ * @returns {object}
+ */
+export function normalizeConfig(raw?: object): object;
 /** ロック系 model か (biz3 lockModelDevices と完全一致, gUtils.js:279-294)。 */
 export function isLockModel(model: any): boolean;
 /** Hub3 系 model か (hub_3 / hub_3_lte)。 */

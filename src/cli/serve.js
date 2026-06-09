@@ -1,5 +1,5 @@
 // `sesame serve` — 常駐 JSON-RPC バックエンド。
-// 全機能 (lock/ir/iot/org/company/access/schedule/presetir + イベント) を、
+// Cloud/Biz3 RPC と登録済み BLE op (ble.invoke / ble.os2.invoke)、イベントを、
 // stdio / Unix socket / HTTP(+SSE) / WebSocket / gRPC のどれからでも他言語に公開する。
 //
 // 認証はデーモンに載せない (CLI 専用)。デーモンは既存トークン前提で起動し、

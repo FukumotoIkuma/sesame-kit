@@ -55,7 +55,7 @@ function emptyConfig() {
 // 永続化する正準キー (locks/hub3s は派生 view なので保存しない)。
 // これは意図的なハードホワイトリスト: ここに無いトップレベルキーは save() で落とす。
 // 将来フィールドを足すときはこの配列にも必ず追加すること (追加し忘れると黙って消える)。
-const PERSISTED_KEYS = ["companyID", "wsUrl", "lang", "uiLang", "default", "devices", "remotes", "apiKeyId"];
+const PERSISTED_KEYS = ["companyID", "wsUrl", "lang", "uiLang", "default", "devices", "remotes", "apiKeyId", "biometricsBaseUrl"];
 
 // device レコードのうち config ローカルにだけ存在する注釈キー (サーバ応答には無い)。
 // sync 更新時にサーバ由来フィールドで丸ごと置き換えても、これらは引き継ぐ。
@@ -68,6 +68,57 @@ function lockView(rec) {
 /** device レコードから hub3 view 用エントリ (旧 shape: deviceId/name + model/secretKey も保持)。 */
 function hub3View(rec, name) {
   return { deviceId: rec.deviceUUID, name: rec.deviceName || name, model: rec.deviceModel || "hub_3", secretKey: rec.secretKey || null };
+}
+
+/**
+ * config オブジェクトを実行時 shape に正規化する。
+ * ConfigStore.load() を通らない embedded 利用でも、保存正準形 `devices` から
+ * 互換 view の `locks` / `hub3s` を必ず再投影する。
+ *
+ * @param {object} raw
+ * @returns {object}
+ */
+export function normalizeConfig(raw = {}) {
+  const cfg = { ...emptyConfig(), ...(raw || {}) };
+  if (!cfg.default) cfg.default = { remote: null, lock: null };
+  if (cfg.default.remote === undefined) cfg.default.remote = null;
+  if (cfg.default.lock === undefined) cfg.default.lock = null;
+  if (!cfg.devices) cfg.devices = {};
+  if (!cfg.remotes) cfg.remotes = {};
+  if (cfg.wsUrl === LEGACY_WS_URL) cfg.wsUrl = DEFAULT_WS_URL;
+  const hasDevice = (uuid) => Object.values(cfg.devices || {}).some((r) => normalizeUuid(r?.deviceUUID) === normalizeUuid(uuid));
+  for (const [name, lock] of Object.entries(raw?.locks || {})) {
+    if (!lock?.deviceUUID || hasDevice(lock.deviceUUID)) continue;
+    const { model, alias, ...rest } = lock;
+    cfg.devices[name] = {
+      ...rest,
+      deviceUUID: lock.deviceUUID,
+      secretKey: lock.secretKey,
+      deviceModel: lock.deviceModel ?? model ?? null,
+      deviceName: lock.deviceName ?? alias ?? null,
+      category: "lock",
+    };
+  }
+  for (const [name, hub3] of Object.entries(raw?.hub3s || {})) {
+    const deviceUUID = hub3?.deviceUUID || hub3?.deviceId;
+    if (!deviceUUID || hasDevice(deviceUUID)) continue;
+    cfg.devices[name] = {
+      ...hub3,
+      deviceUUID,
+      secretKey: hub3.secretKey || null,
+      deviceModel: hub3.deviceModel || hub3.model || "hub_3",
+      deviceName: hub3.deviceName || hub3.name || name,
+      category: "hub3",
+    };
+  }
+  cfg.locks = {};
+  cfg.hub3s = {};
+  for (const [name, rec] of Object.entries(cfg.devices || {})) {
+    const cat = effectiveCategory(rec);
+    if (cat === "lock") cfg.locks[name] = lockView(rec);
+    else if (cat === "hub3") cfg.hub3s[name] = hub3View(rec, name);
+  }
+  return cfg;
 }
 
 export class ConfigStore {
@@ -95,20 +146,12 @@ export class ConfigStore {
       return this.data;
     }
     const raw = JSON.parse(readFileSync(this.configPath, "utf8"));
-    // デフォルト値で穴埋め
-    this.data = { ...emptyConfig(), ...raw };
-    if (!this.data.default) this.data.default = { remote: null, lock: null };
-    if (this.data.default.lock === undefined) this.data.default.lock = null;
-    if (!this.data.devices) this.data.devices = {};
-    if (!this.data.remotes) this.data.remotes = {};
-
     // 安全ガード: /production は接続経路として絶対に使わせない。どこから入った値でも
     // (古い既定・手書き) /public へ強制し、ファイルからも物理的に消す。後方互換ではなく
     // 「禁止エンドポイントを焼き付けさせない」防御。
     let forced = false;
-    if (this.data.wsUrl === LEGACY_WS_URL) { this.data.wsUrl = DEFAULT_WS_URL; forced = true; }
-
-    this._reproject(); // devices から locks/hub3s の派生 view を作る
+    if (raw.wsUrl === LEGACY_WS_URL) forced = true;
+    this.data = normalizeConfig(raw);
     if (forced) { try { this.save(); } catch { /* 読み取り専用環境では in-memory のみ */ } }
     return this.data;
   }

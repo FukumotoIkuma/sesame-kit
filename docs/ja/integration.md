@@ -4,7 +4,7 @@
 
 > [English](../en/integration.md) · [ドキュメント目次](./index.md)
 
-`sesame serve` は常駐する JSON-RPC 2.0 デーモンです。一度サインインするとクラウド接続を維持し続け、操作の実行とイベントの配信を繰り返します。すべての機能を任意の言語から呼び出せます。
+`sesame serve` は常駐する JSON-RPC 2.0 デーモンです。一度サインインするとクラウド接続を維持し続け、操作の実行とイベントの配信を繰り返します。クラウド / Biz3 機能は型付き RPC として公開し、登録済み BLE 操作は `ble.invoke` / `ble.os2.invoke` から呼べます。
 
 ## 1. サインインしてデーモンを起動
 
@@ -151,7 +151,7 @@ c.subscribe(["lockState"], lambda topic, payload: print(topic, payload))
 
 ## 経路（フレーミング）
 
-同じメソッドが 5 つの経路で利用できます。ネットワークアクセスには HTTP/WS/gRPC を、ローカルマシンには Unix ソケットまたは stdio を使います。
+同じ RPC カタログが 5 つの経路で利用できます。ネットワークアクセスには HTTP/WS/gRPC を、ローカルマシンには Unix ソケットまたは stdio を使います。イベント配信は各 transport 固有の形を保ちます。
 
 | フレーミング | 用途 | イベント | 認証 |
 |---|---|---|---|

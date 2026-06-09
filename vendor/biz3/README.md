@@ -31,7 +31,7 @@ cp <biz3>/src/constants/{sesameDeviceModel,messageConstants,cmdCode}.js vendor/b
   バグるため、手書き保持が結果的に正しい。
 - **lockModelDevices** (`gUtils.js`): gConfig 等に依存するため import 不可。
   `src/config.js` の `LOCK_MODELS` に biz3 の14機種をコメント付きで手書き保持。
-- **wsUrl** (`env_config.js`): biz3 は `/public` だが元実装が実機で疎通したのは
-  `/production`。対立があり直接採用しないため取り込まない (config.js のコメント参照)。
+- **wsUrl** (`env_config.js`): biz3 現行ソースは `/public`。旧実装で混入した
+  `/production` は config 読み込み時に `/public` へ移行する (config.js のコメント参照)。
 
 ライセンスは CANDY HOUSE MIT (リポルートの `LICENSE.biz3`)。

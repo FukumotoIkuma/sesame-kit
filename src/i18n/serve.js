@@ -134,7 +134,7 @@ Examples:
     "serve.openrpc.description": "Language-agnostic JSON-RPC backend for SESAME control",
     "serve.event.lockState": "lock state change push (events.subscribe lockState)",
     "serve.event.deviceUpdate": "device state update push (events.subscribe deviceUpdate)",
-    "serve.event.ready": "startup-complete notification (stdio framing only. once right after connect. not sent on other transports)",
+    "serve.event.ready": "connection-ready notification sent once on every persistent connection (stdio/socket/ws/SSE/gRPC Subscribe)",
 
     // ---- serve/framing/http.js ----
     "serve.http.usage": `sesame serve is running (JSON-RPC 2.0).
@@ -171,7 +171,7 @@ Watch events (SSE):
   ja: {
     // ---- cli/serve.js ----
     "serve.invalidPort": "invalid port: {v}",
-    "serve.cmd.desc": "常駐 JSON-RPC バックエンド (stdio/UDS/HTTP/WS/gRPC で全機能を他言語へ公開)",
+    "serve.cmd.desc": "常駐 JSON-RPC バックエンド (stdio/UDS/HTTP/WS/gRPC で cloud/Biz3 RPC と BLE op を他言語へ公開)",
     "serve.opt.stdio": "stdin/stdout で NDJSON JSON-RPC (埋め込み: 親が子プロセスとして spawn)",
     "serve.opt.socket": "Unix domain socket (省略時 ~/.config/sesame-kit/sesame.sock)",
     "serve.opt.noSocket": "UDS を無効化",
@@ -301,7 +301,7 @@ Watch events (SSE):
     "serve.openrpc.description": "SESAME 制御の言語非依存 JSON-RPC バックエンド",
     "serve.event.lockState": "ロック状態変化 push (events.subscribe lockState)",
     "serve.event.deviceUpdate": "デバイス状態更新 push (events.subscribe deviceUpdate)",
-    "serve.event.ready": "起動完了通知 (stdio framing のみ。接続直後に 1 回。他経路では飛ばない)",
+    "serve.event.ready": "全 persistent connection (stdio/socket/ws/SSE/gRPC Subscribe) で接続直後に 1 回送る ready 通知",
 
     // ---- serve/framing/http.js ----
     "serve.http.usage": `sesame serve is running (JSON-RPC 2.0).

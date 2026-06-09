@@ -22,12 +22,14 @@ sesame front autolock 0          # disable
 
 Without `--ble-only`, the route (cloud / BLE) is chosen automatically; `--cloud-only` pins it to the cloud.
 
-### `sesame ble` — read-only BLE commands
+### `sesame ble` — BLE utility commands
 
-A small **read-only** slice of the BLE surface is also exposed as the `ble` command group, so you can inspect a device without writing any code:
+The `ble` command group exposes keyless discovery, factory registration, and read-focused inspection commands:
 
 ```bash
 sesame ble scan [--timeout <ms>]         # keyless nearby scan (listNearbyDevices; no secretKey)
+sesame ble register <uuid> --model sesame_5 --save front
+sesame ble os2-register <uuid> --model sesame_3
 sesame ble cards <device>                # list enrolled NFC cards (Touch / Touch Pro)
 sesame ble passcodes <device>            # list enrolled keypad passcodes (Touch / Touch Pro)
 sesame ble fingers <device>              # list enrolled fingerprints (Touch Pro / Bike3)
@@ -39,7 +41,7 @@ sesame ble script <device> [--index <n>] # list Bot2/Bot3 script names + the cur
 
 `<device>` is a config lock name or a deviceUUID; the connect-based subcommands accept `--secret <hex>` / `--model <model>` (to target a device not in your config locks) and `--timeout <ms>` (publish collection timeout, default 8000). `scan` is keyless.
 
-Everything else on this page — biometric/access-control **enrollment** (add/delete/rename, mode-set), Bike3 fingerprint delete/rename/mode-set, Bot2 script select/write/run-by-index, WM2 / Hub3 provisioning, BLE OTA, pairing/registration, factory `reset`, and the OS2 facade — remains **library-only** (no CLI command). The `sesame ble` read commands use the same code paths as the library reads below and are unit-tested but **not yet confirmed against real hardware**.
+Everything else on this page — biometric/access-control **enrollment** (add/delete/rename, mode-set), Bike3 fingerprint delete/rename/mode-set, Bot2 script select/write/run-by-index, WM2 / Hub3 provisioning, BLE OTA, factory `reset`, and the OS2 facade — has no dedicated CLI command, but registered operations are reachable from Node and through `sesame serve` with `ble.invoke` / `ble.os2.invoke` using the same method names. Binary JSON-RPC arguments may be sent as `{"type":"Buffer","data":[...]}` or `{"$buffer":"...","encoding":"hex"}`. Pairing/registration is also available through `sesame ble register`, `sesame ble os2-register`, `ble.register`, and `ble.os2.register`. The `sesame ble` commands, BLE RPC, and library calls share the same code paths and are unit-tested but **not yet confirmed against real hardware**.
 
 ## Capabilities by device type (follows the official SesameSDK)
 
@@ -344,6 +346,13 @@ OS2 `mechSetting` writes mirror the SDK 1:1: `configureLockPosition(lockDeg, unl
 ### New pairing / registration (factory-reset devices)
 
 A factory-reset (unregistered) device can be paired directly over BLE — the facade runs the ECDH register handshake and hands you the `secretKey` to save. `SesameBle.registerOnce()` does scan → connect → register → close (OS3); `SesameOS2Ble.registerOnce()` is the OS2 equivalent (it takes a `registerServer` callback for the OS2 server-register step).
+
+```bash
+sesame ble register <uuid-from-scan> --model sesame_5 --save front
+sesame ble os2-register <uuid-from-scan> --model sesame_3 --json
+```
+
+The same flows are available from `sesame serve` as `ble.register` and `ble.os2.register`.
 
 ```js
 import { SesameBle } from "sesame-kit";

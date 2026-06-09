@@ -44,6 +44,46 @@
       "types": "./types/devices.d.ts",
       "default": "./src/devices.js"
     },
+    "./account": {
+      "types": "./types/account.d.ts",
+      "default": "./src/account.js"
+    },
+    "./schedule": {
+      "types": "./types/schedule.d.ts",
+      "default": "./src/schedule.js"
+    },
+    "./org": {
+      "types": "./types/org.d.ts",
+      "default": "./src/org.js"
+    },
+    "./company": {
+      "types": "./types/company.d.ts",
+      "default": "./src/company.js"
+    },
+    "./payment": {
+      "types": "./types/payment.d.ts",
+      "default": "./src/payment.js"
+    },
+    "./access": {
+      "types": "./types/access.d.ts",
+      "default": "./src/access.js"
+    },
+    "./iot": {
+      "types": "./types/iot.d.ts",
+      "default": "./src/iot.js"
+    },
+    "./presetir": {
+      "types": "./types/presetir.d.ts",
+      "default": "./src/presetir.js"
+    },
+    "./sharekey": {
+      "types": "./types/sharekey.d.ts",
+      "default": "./src/sharekey.js"
+    },
+    "./itemcodes": {
+      "types": "./types/itemcodes.d.ts",
+      "default": "./src/itemcodes.js"
+    },
     "./ble": {
       "types": "./types/ble/index.d.ts",
       "default": "./src/ble/index.js"
@@ -55,6 +95,15 @@
     "./client": {
       "types": "./clients/js/sesame-client.d.ts",
       "default": "./clients/js/sesame-client.mjs"
+    },
+    "./sdk/ts/sesame-client": {
+      "default": "./sdk/ts/sesame-client.ts"
+    },
+    "./sdk/python/sesame_client.py": {
+      "default": "./sdk/python/sesame_client.py"
+    },
+    "./schema/openrpc.json": {
+      "default": "./schema/openrpc.json"
     }
   },
   "bin": {
@@ -66,6 +115,9 @@
     "types/",
     "vendor/",
     "clients/",
+    "schema/",
+    "sdk/",
+    "scripts/",
     "docs/",
     "README.md",
     "README.ja.md",
@@ -95,7 +147,7 @@
     "test:unit": "vitest run --project unit",
     "test:e2e": "vitest run --project e2e",
     "test:watch": "vitest",
-    "build:types": "tsc -p tsconfig.json",
+    "build:types": "tsc -p tsconfig.json && node scripts/strip-private-decls.mjs",
     "build:rpc-schema": "node scripts/gen-rpc-schema.mjs",
     "build:grpc-proto": "node scripts/gen-grpc-proto.mjs",
     "build:openrpc": "node scripts/gen-openrpc.mjs",
@@ -104,8 +156,8 @@
     "build:sdk": "node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
     "typecheck:sdk": "tsc -p sdk/ts/tsconfig.json",
     "check:sdk:py": "python3 -m py_compile sdk/python/sesame_client.py",
-    "build": "tsc -p tsconfig.json && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs && node scripts/gen-openrpc.mjs && node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
-    "prepack": "tsc -p tsconfig.json && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs",
+    "build": "npm run build:types && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs && node scripts/gen-openrpc.mjs && node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
+    "prepack": "npm run build",
     "release": "bash scripts/release.sh"
   },
   "dependencies": {

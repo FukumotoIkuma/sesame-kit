@@ -18,6 +18,7 @@ import {
   enrolledToCardList,
   syncEnrolledCards,
   syncEnrolledPasscodes,
+  makeBiometricsTransport,
 } from "../../src/access.js";
 
 // ---------- request 系 mock client ----------
@@ -74,6 +75,43 @@ function pushClient() {
 }
 
 const ACTION = "biz3ManageAccessCtlAuthData";
+
+describe("makeBiometricsTransport", () => {
+  it("normalizes trailing slashes without regex backtracking and sends the authenticated biometrics request", async () => {
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push({ url, init });
+      return { status: 200, text: async () => JSON.stringify({ ok: true }) };
+    };
+    const trailing = "/".repeat(5000);
+    const transport = makeBiometricsTransport({
+      baseUrl: `https://api.example.test/root${trailing}`,
+      bearerToken: "id-token",
+      fetchImpl,
+    });
+
+    const res = await transport({ method: "POST", path: "/device/v1/biometrics", body: { op: "x" } });
+
+    expect(res).toEqual({ status: 200, text: "{\"ok\":true}", json: { ok: true } });
+    expect(calls[0].url).toBe("https://api.example.test/root/device/v1/biometrics");
+    expect(calls[0].init.headers.authorization).toBe("Bearer id-token");
+    expect(calls[0].init.body).toBe("{\"op\":\"x\"}");
+  });
+
+  it("rejects non-HTTPS and credential-bearing biometrics base URLs", () => {
+    expect(() => makeBiometricsTransport({ baseUrl: "http://api.example.test", bearerToken: "t", fetchImpl: () => {} }))
+      .toThrow(/HTTPS/);
+    expect(() => makeBiometricsTransport({ baseUrl: "https://user:pass@api.example.test", bearerToken: "t", fetchImpl: () => {} }))
+      .toThrow(/baseUrl/);
+    expect(() => makeBiometricsTransport({ baseUrl: "https://api.example.test/path?x=1", bearerToken: "t", fetchImpl: () => {} }))
+      .toThrow(/baseUrl/);
+  });
+
+  it("requires an explicit authorization source", () => {
+    expect(() => makeBiometricsTransport({ baseUrl: "https://api.example.test", fetchImpl: () => {} }))
+      .toThrow(/authorization/);
+  });
+});
 
 describe("getCards", () => {
   it("送信フレームは obj.devices にカンマ連結文字列 / op:getCards", async () => {
@@ -396,7 +434,13 @@ describe("syncEnrolledPasscodes", () => {
     await syncEnrolledPasscodes(c, { deviceUUID: "dev1", records: [{ cardID: "0102", cardName: "70", cardType: 0 }] });
     expect(c.sent[0].op).toBe("postPasscodes");
     expect(c.sent[0].deviceUUID).toBe("dev1");
-    expect(c.sent[0].list[0]).toMatchObject({ cardID: "0102", name: "70", cardType: 0 });
+    expect(c.sent[0].list[0]).toMatchObject({
+      passwordID: "0102",
+      keyBoardPassCode: "0102",
+      name: "70",
+      type: 0,
+    });
+    expect(c.sent[0].list[0].keyBoardPassCodeNameUUID).toMatch(UUID_V4);
   });
 
   it("空 records なら null", async () => {

@@ -1,4 +1,27 @@
 /**
+ * Kotlin SDK の CHAPIClient#biometricsOperation と同じ POST /device/v1/biometrics transport。
+ * 認証ヘッダは呼び出し側が明示的に渡す。実 API Gateway が IAM SigV4 のみを要求する環境では、
+ * 呼び出し側が互換 transport を注入する。
+ *
+ * @param {{baseUrl:string, authorization?:string, bearerToken?:string, authorizationProvider?:Function, fetchImpl?:Function}} opts
+ * @returns {(req:{method:string,path:string,body?:object})=>Promise<{status:number,text:string,json:any}>}
+ */
+export function makeBiometricsTransport({ baseUrl, authorization, bearerToken, authorizationProvider, fetchImpl, }?: {
+    baseUrl: string;
+    authorization?: string;
+    bearerToken?: string;
+    authorizationProvider?: Function;
+    fetchImpl?: Function;
+}): (req: {
+    method: string;
+    path: string;
+    body?: object;
+}) => Promise<{
+    status: number;
+    text: string;
+    json: any;
+}>;
+/**
  * 対象デバイスの NFC カード一覧を取得する。
  * 応答は op='pubCardLinkedIDs' の async push で deviceUUID/page ごとに届くため、
  * 内部で集約してから完了通知 or timeout で確定する (useManageAuthData.js:50-191)。
@@ -193,6 +216,58 @@ export function updateCardOwner(client: import("./transport.js").Hub3WsClient, {
     timeoutMs?: number;
 }): Promise<object | null>;
 /**
+ * Kotlin SDK CHDataSynchronizeCapable.postAuthenticationData と同じ REST 操作。
+ * body = { op: `${operation}_post`, deviceID, items } を POST /device/v1/biometrics へ送る。
+ *
+ * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
+ * @param {{operation:string, deviceID:string, items:object[], transport?:Function, baseUrl?:string,
+ *          authorization?:string, bearerToken?:string, authorizationProvider?:Function,
+ *          fetchImpl?:Function}} params
+ * @returns {Promise<object[]|object>} SDK と同じく response.data.items があればそれを返し、無ければ応答全体
+ */
+export function postAuthenticationData(_client: import("./transport.js").Hub3WsClient | null, params: {
+    operation: string;
+    deviceID: string;
+    items: object[];
+    transport?: Function;
+    baseUrl?: string;
+    authorization?: string;
+    bearerToken?: string;
+    authorizationProvider?: Function;
+    fetchImpl?: Function;
+}): Promise<object[] | object>;
+/**
+ * Kotlin SDK CHDataSynchronizeCapable.putAuthenticationData と同じ REST 操作。
+ * body = { op: `${operation}_put`, deviceID, items }。
+ */
+export function putAuthenticationData(_client: any, params: any): Promise<any>;
+/**
+ * Kotlin SDK CHDataSynchronizeCapable.deleteAuthenticationData と同じ REST 操作。
+ * body = { op: `${operation}_delete`, deviceID, items }。
+ */
+export function deleteAuthenticationData(_client: any, params: any): Promise<any>;
+/**
+ * Kotlin SDK CHDataSynchronizeCapable.updateAuthenticationName と同じ REST 操作。
+ * CHAuthenticationNameRequest.* が作る request object をそのまま POST /device/v1/biometrics へ送る。
+ * 便利指定として `kind` を渡すと SDK companion の既定 op を補完する。
+ *
+ * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
+ * @param {{request?:object, kind?:'card'|'face'|'fingerPrint'|'palm'|'passcode', transport?:Function,
+ *          baseUrl?:string, authorization?:string, bearerToken?:string,
+ *          authorizationProvider?:Function, fetchImpl?:Function, [key:string]:any}} params
+ */
+export function updateAuthenticationName(_client: import("./transport.js").Hub3WsClient | null, params: {
+    request?: object;
+    kind?: "card" | "face" | "fingerPrint" | "palm" | "passcode";
+    transport?: Function;
+    baseUrl?: string;
+    authorization?: string;
+    bearerToken?: string;
+    authorizationProvider?: Function;
+    fetchImpl?: Function;
+    [key: string]: any;
+}): Promise<any>;
+/**
  * createEnrollCollector の records ({cardID, cardName, cardType}) を postCards/postPasscodes の
  * list 要素 ({ cardID, name, cardType, nameUUID }) へ写像する純関数。
  *
@@ -213,6 +288,29 @@ export function enrolledToCardList(records: Array<{
     name: string;
     cardType: number;
     nameUUID: string;
+}>;
+/**
+ * enroll records を postPasscodes 用 list に写像する。
+ * 参照元 UI は passcode identity に `passwordID` を使い、名前更新では
+ * `keyBoardPassCode` / `keyBoardPassCodeNameUUID` を使う。カード形状は流用しない。
+ *
+ * @param {Array<{cardID?:string,passwordID?:string,cardName?:string,name?:string,cardType?:number,type?:number}>} records
+ * @returns {Array<{passwordID:string,keyBoardPassCode:string,name:string,nameUUID:string,keyBoardPassCodeNameUUID:string,type:number}>}
+ */
+export function enrolledToPasscodeList(records: Array<{
+    cardID?: string;
+    passwordID?: string;
+    cardName?: string;
+    name?: string;
+    cardType?: number;
+    type?: number;
+}>): Array<{
+    passwordID: string;
+    keyBoardPassCode: string;
+    name: string;
+    nameUUID: string;
+    keyBoardPassCodeNameUUID: string;
+    type: number;
 }>;
 /**
  * BLE で実機登録 (タップ) されたカードの集約結果を DB へ同期する (postCards への委譲)。

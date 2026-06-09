@@ -55,7 +55,7 @@ The protocol layer (`src/ble/protocol.js`: CMAC session key / AES-CCM / segments
 
 ## `sesame serve` language-agnostic backend
 
-With 1 core + 5 framings, the full feature set is uniformly exposed on a single resident `SesameHub3`. See the README's [language-agnostic backend](../../README.md#language-agnostic-backend-sesame-serve) for details.
+With 1 core + 5 framings, cloud/Biz3 RPC plus registered BLE operations are exposed from a single resident `SesameHub3`. See the README's [language-agnostic backend](../../README.md#language-agnostic-backend-sesame-serve) for details.
 
 - **Core**: `src/serve/jsonrpc.js` (JSON-RPC 2.0, transport-independent) + `registry.js` (auto-exposes methods from `NAMESPACE_OPS` + OpenRPC) + `daemon.js` (serialization / unified subscription / backpressure / shutdown).
 - **Framing**: stdio / socket(UDS) / http(+SSE) / ws / grpc + token under `framing/`.

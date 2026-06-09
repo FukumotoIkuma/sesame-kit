@@ -29,64 +29,7 @@ export class SesameBleSession {
         debug?: boolean;
         defaultTimeoutMs?: number;
     });
-    _transport: BleTransport;
-    _secretKey: Buffer<ArrayBufferLike>;
-    _debug: boolean;
-    _defaultTimeoutMs: number;
-    _asm: SegmentAssembler;
-    _token: Buffer<any>;
-    _key: Buffer<ArrayBufferLike> | Buffer<ArrayBuffer> | (string & Buffer<ArrayBufferLike>);
-    _encCount: number;
-    _decCount: number;
-    _loggedIn: boolean;
-    _readyToRegister: boolean;
-    _readyWaiter: {
-        resolve: (value: any) => void;
-        reject: (reason?: any) => void;
-        timer: NodeJS.Timeout;
-    };
-    _registerWaiter: {
-        resolve: (value: any) => void;
-        reject: (reason?: any) => void;
-        timer: NodeJS.Timeout;
-    };
     /** @type {Map<number, Array<{resolve:Function, reject:Function, timer:any}>>} item → FIFO */
-    _pending: Map<number, Array<{
-        resolve: Function;
-        reject: Function;
-        timer: any;
-    }>>;
-    _statusListeners: Set<any>;
-    _publishListeners: Set<any>;
-    _lastStatus: {
-        state: string;
-        isInLockRange: boolean;
-        target: number | null;
-        position: number | null;
-        isStop: boolean;
-        isCritical: boolean;
-        isBatteryCritical: boolean;
-        batteryRaw: number;
-        flags: number;
-    } | {
-        data: Buffer;
-        position: number;
-        target: number;
-        isInLockRange: boolean;
-        isInUnlockRange: boolean;
-        isStop: null;
-        isCritical: null;
-        isBatteryCritical: boolean;
-        batteryRaw: number | null;
-    };
-    _lastMechSetting: any;
-    _lastOpsSetting: any;
-    _loginWaiter: {
-        resolve: (value: any) => void;
-        reject: (reason?: any) => void;
-        timer: NodeJS.Timeout;
-    };
-    _signLogin: (tokenHex: string) => Promise<string>;
     _log(...a: any[]): void;
     /**
      * connect()/register() 再入ガード。既に login 済み、または connect/register ハンドシェイク

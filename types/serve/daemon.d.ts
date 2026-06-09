@@ -10,59 +10,16 @@ export class Daemon {
     });
     hub: any;
     version: string;
-    _debug: boolean;
     authState: string;
-    _registry: Map<string, {
-        summary: string;
-        params: any[];
-        result: string;
-        handler: Function;
-        namespace?: string;
-    }>;
-    _openrpc: {
-        openrpc: string;
-        info: {
-            title: string;
-            version: any;
-            "x-apiVersion": string;
-            "x-contractVersion": string;
-            description: any;
-        };
-        methods: {
-            name: any;
-            summary: any;
-            params: any;
-            result: {
-                name: string;
-                schema: any;
-            };
-            "x-stability": string;
-            "x-provenance": any;
-        }[];
-        "x-events": {
-            name: any;
-            description: any;
-            "x-stability": string;
-            "x-provenance": any;
-        }[];
-        "x-event-topics": string[];
-    };
     /** @type {Map<string, Promise<any>>} メソッド名→直列化チェーン末尾 */
-    _locks: Map<string, Promise<any>>;
     /** @type {Map<object, Set<string>>} Connection→購読 topic */
-    _subs: Map<object, Set<string>>;
     /** hub 状態 push の単一購読の unsubscribe (張っている時のみ非 null) */
-    _stateUnsub: any;
-    _stopped: boolean;
-    _shuttingDown: boolean;
-    _retryTimer: NodeJS.Timeout;
     _log(...a: any[]): void;
     start(): void;
     _connectLoop(): Promise<void>;
     _hasStoredTokens(): boolean;
     /** キャンセル可能な sleep。shutdown 時に即 resolve してループを抜けさせる。 */
     _sleep(ms: any): Promise<any>;
-    _retryResolve: (value: any) => void;
     addConnection(conn: any): void;
     removeConnection(conn: any): void;
     /** 1 メッセージを処理して応答オブジェクト (通知なら null) を返す。push はしない (HTTP POST 用)。 */

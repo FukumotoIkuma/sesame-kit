@@ -7,6 +7,19 @@ export * as hub3 from "./hub3.js";
 export * as dfu from "./dfu.js";
 export * as os2 from "./os2/index.js";
 /**
+ * @typedef {object} SesameBleOptions
+ * @property {string|Buffer} [secretKey] 32hex のロック共通鍵。register モードでは不要。
+ * @property {string} [deviceUUID] 対象識別 (advertise 照合)。
+ * @property {string} [address] BLE アドレスで識別する代替。
+ * @property {string|null} [model] deviceModel (例 "sesame_5" / "bot_2")。
+ * @property {boolean} [registerMode] true で工場出荷デバイスの register() 用。
+ * @property {boolean} [needAuthFromServer] server 認証が要るデバイスで signGuestKey login を使う。
+ * @property {Function|null} [registerTransport] makeRegisterTransport の戻り。
+ * @property {boolean} [debug]
+ * @property {number} [scanTimeoutMs]
+ * @property {object} [transport] 独自 BLE transport。
+ */
+/**
  * 登録済み SESAME を BLE で直接操作する高レベルファサード。
  */
 export class SesameBle {
@@ -112,59 +125,11 @@ export class SesameBle {
         debug?: boolean;
     }): SesameBle;
     /**
-     * @param {{
-     *   secretKey?: string|Buffer,  // 32hex のロック共通鍵 (cloud の `sesame devices` で取得済み)。
-     *                               //   register モードでは不要 (工場出荷デバイスは鍵が未確定)。
-     *   deviceUUID?: string,        // 対象識別 (advertise 照合)。複数 SESAME が近接する環境で必須
-     *   address?: string,           // BLE アドレスで識別する代替
-     *   registerMode?: boolean,     // true で工場出荷デバイスの register() 用 (secretKey 不要・session を鍵無しで構築)
-     *   needAuthFromServer?: boolean, // 登録済みだが server 認証が要るデバイス (ゲスト鍵等) で connect 時に signGuestKey login
-     *   registerTransport?: Function, // makeRegisterTransport の戻り (needAuthFromServer の signGuestKey / register に使用)
-     *   debug?: boolean,
-     *   transport?: object,         // 独自トランスポート (省略時 noble)
-     * }} opts
+     * @param {SesameBleOptions} [opts]
      */
-    constructor({ secretKey, deviceUUID, address, model, registerMode, needAuthFromServer, registerTransport, debug, scanTimeoutMs, transport }?: {
-        secretKey?: string | Buffer;
-    });
-    _transport: any;
-    _session: SesameBleSession;
-    _model: any;
-    _caps: {
-        kind: string;
-        os: number;
-        cloud: string[];
-        ble: string[];
-        ops: string[];
-        mechKind: string | null;
-        bleSupported: boolean;
-        biometric: boolean;
-        wifiProvisioning: boolean;
-        hubProvisioning: boolean;
-        script: boolean;
-        fingerprint: boolean;
-        label: string;
-    };
-    _deviceUUID: any;
-    _registerMode: any;
-    _secretKey: string | Buffer<ArrayBufferLike>;
-    _needAuthFromServer: boolean;
-    _registerTransport: any;
-    _debug: any;
-    _biometric: BiometricCommands;
-    _bot2: Bot2Commands;
-    _wifi: WifiModule2;
-    _hub3: Hub3Commands;
-    _fingerPrint: {
-        fingerPrints: any;
-        fingerPrintDelete: any;
-        fingerPrintChange: any;
-        fingerPrintModeGet: any;
-        fingerPrintModeSet: any;
-        registerDelegate: any;
-    };
+    constructor(opts?: SesameBleOptions);
     /** デバイスの model 文字列 (例 "sesame_5" / "bot_2")。未指定なら null。 */
-    get model(): any;
+    get model(): string;
     /** 型ごとの能力 { kind, os, ops, mechKind, bleSupported, label }。 */
     get capabilities(): {
         kind: string;
@@ -530,6 +495,42 @@ export class SesameBle {
         payload: Buffer;
     }>;
 }
+export type SesameBleOptions = {
+    /**
+     * 32hex のロック共通鍵。register モードでは不要。
+     */
+    secretKey?: string | Buffer;
+    /**
+     * 対象識別 (advertise 照合)。
+     */
+    deviceUUID?: string;
+    /**
+     * BLE アドレスで識別する代替。
+     */
+    address?: string;
+    /**
+     * deviceModel (例 "sesame_5" / "bot_2")。
+     */
+    model?: string | null;
+    /**
+     * true で工場出荷デバイスの register() 用。
+     */
+    registerMode?: boolean;
+    /**
+     * server 認証が要るデバイスで signGuestKey login を使う。
+     */
+    needAuthFromServer?: boolean;
+    /**
+     * makeRegisterTransport の戻り。
+     */
+    registerTransport?: Function | null;
+    debug?: boolean;
+    scanTimeoutMs?: number;
+    /**
+     * 独自 BLE transport。
+     */
+    transport?: object;
+};
 import { Buffer } from "node:buffer";
 import { BiometricCommands } from "./biometric.js";
 import { Bot2Commands } from "./bot2.js";
@@ -539,7 +540,7 @@ export { SesameBleSession, BleResultError } from "./session.js";
 export { RESULT as SESAME_RESULT_CODES, resultName } from "./protocol.js";
 export { NobleTransport, createBleTransport, advToDeviceUUID, parseAdvertisement, scanSesames, listNearbyDevices, peripheralToDiscovery } from "./transport.js";
 export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, CONTROL_OPS, KIND, PRODUCT_TYPES } from "./devicemodel.js";
-export { BiometricCommands, handleBiometricPublish, parseTouchCard, parseTouchFace, parseRemoteNanoTrigger, remoteNanoTriggerDelayData, radarSensitivityData, createEnrollCollector } from "./biometric.js";
+export { BiometricCommands, handleBiometricPublish, parseTouchCard, parseTouchFace, parseRemoteNanoTrigger, remoteNanoTriggerDelayData, radarSensitivityData, insertSesameData as biometricInsertSesameData, removeSesameData as biometricRemoveSesameData, createEnrollCollector } from "./biometric.js";
 export { Bot2Commands, BOT_ACTION_TYPE, clickItemCode, bot2ActionToBytes, scriptToBytes, parseCurrentScript, parseScriptNameList } from "./bot2.js";
 export { WifiModule2, WM2_GATT, WM2_ACTION, scanWifiSSIDData, setWifiSSIDData, setWifiPasswordData, connectWifiData, insertSesamesData, removeSesameData, networkStatusData, parseScanWifiSSID, parseWifiSSIDPublish, parseWifiPasswordPublish, parseNetworkStatus, parseSesameKeys, parseWM2Publish } from "./wm2.js";
 export { Hub3Commands, parseHub3Publish, parseNetworkType, parseMechSetting as parseHub3MechSetting, parseScanWifiSSID as parseHub3ScanWifiSSID, parseSesameKeys as parseHub3SesameKeys, networkTypeData } from "./hub3.js";

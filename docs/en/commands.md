@@ -190,6 +190,14 @@ sesame company rename "新社名"      # rename the preferred company
 sesame company add "新会社"         # register a new company
 sesame company payment             # get billing settings
 
+# Payment / Stripe-side Biz3 ops
+sesame payment methods             # list payment methods
+sesame payment client-secret       # SetupIntent client secret (for Stripe.js confirmSetup)
+sesame payment default <pm_id> --yes
+sesame payment remove <payment_id> --yes
+sesame payment level <encoded_level> --upgrade --yes
+sesame payment dev-api [--update --yes]
+
 # Org
 sesame org employee ls             # list employees
 sesame org employee search <kw>    # cross-CS user search
@@ -230,7 +238,7 @@ sesame iot firmware-update --device <uuid> --secret <hex> --wait 60
 sesame iot matter-code --device <uuid> --secret <hex>   # Matter pairing code
 ```
 
-> `relay` is fire-and-forget: the Hub3 sends no acknowledgement, so a successful send is not a confirmed switch. The `off` opcode mapping is unverified against the official source and may behave differently on real hardware.
+> `relay` is fire-and-forget: the Hub3 sends no acknowledgement, so a successful send is not a confirmed switch. The confirmed biz3 operation is `toggle` (`on` is kept as a compatibility alias for the same toggle op); there is no separate `off` command.
 
 ---
 
@@ -244,8 +252,7 @@ sesame preset-ir button --device <hub3uuid> --code <n> --button power --irtype 8
 sesame preset-ir send --device <hub3uuid> --command <hex> --irtype 49152   # emit raw hex
 ```
 
-> Preset command generation (biz3's HXDCommandProcessor) is not yet ported, so preset emit does not currently work.
-> Use a self-learned remote (`sesame ir learn`) instead ([known limitations](../../README.md#known-limitations)).
+`air` and `button` generate the 16-byte HXD command locally (ported from biz3's `HXDCommandProcessor`) and emit it through the same `remoteEmit` frame as learned IR. `send` is the low-level path when you already have the HEX command.
 
 ---
 
@@ -266,12 +273,14 @@ sesame front autolock 30         # autolock (BLE required. Actually takes effect
 sesame front autolock 0          # disable
 ```
 
-### `sesame ble` — direct BLE read-only ops
+### `sesame ble` — direct BLE utility ops
 
-The `ble` command group exposes the **read-only** subset of the BLE surface directly (keyless scan, biometric/script list reads, enroll-mode get). The rest of the BLE feature set (enrollment, provisioning, firmware, pairing, reset, the OS2 facade) remains library-only — see [ble.md](./ble.md).
+The `ble` command group exposes keyless scan, factory registration, and read-focused BLE inspection directly. Write/provisioning/firmware operations with no dedicated CLI command are reachable from Node and from `sesame serve` via `ble.invoke` / `ble.os2.invoke`. See [ble.md](./ble.md).
 
 ```bash
 sesame ble scan [--timeout <ms>]         # keyless nearby scan (no secretKey needed)
+sesame ble register <uuid> [--model <model>] [--save <name>]
+sesame ble os2-register <uuid> [--model <model>]
 sesame ble cards <device>                # list enrolled NFC cards (Touch / Touch Pro)
 sesame ble passcodes <device>            # list enrolled keypad passcodes (Touch / Touch Pro)
 sesame ble fingers <device>              # list enrolled fingerprints (Touch Pro / Bike3)
@@ -283,7 +292,7 @@ sesame ble script <device> [--index <n>] # list Bot2/Bot3 script names + the cur
 
 `<device>` is a config lock name or a deviceUUID. On the connect-based subcommands (everything except `scan`), `--secret <hex>` and `--model <model>` let you target a device that is not in your config locks, and `--timeout <ms>` sets the publish collection timeout (default 8000). `scan` is keyless and needs neither.
 
-> These commands are the same BLE code paths as the library reads and are unit-tested but **not yet confirmed against real hardware**. They are read-only: enrollment / mode-set / script select / write / run remain library-only.
+> These commands are the same BLE code paths as the library/RPC surface and are unit-tested but **not yet confirmed against real hardware**. The list/mode/script commands are read-only; enrollment / mode-set / script select / write / run are available through Node or the generic BLE RPC path.
 
 > **BLE errors are given meaning via `SesameResultCode`** — when a device returns a non-zero result, the library throws
 > `BleResultError` (`.resultCode` / `.resultName`). `resultName` matches the official SesameSDK's
@@ -301,8 +310,8 @@ The operation set differs by device type. The SDK defines capabilities asymmetri
 | Lock `sesame_5`/`_pro`/`sesame_6`/`_pro`/`_us`/`miwa` | `lock` `unlock` `toggle` `autolock` `status` | locked/unlocked + position |
 | Bot `bot_2`/`bot_3` | `click` `status` | locked/unlocked (no position) |
 | Bike `bike_2`/`bike_3` | `unlock` `status` | locked/unlocked (no position) |
-| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (no BLE lock op) — biometric/enroll-mode **reads** are on the CLI via `sesame ble cards/passcodes/fingers/faces/palms/mode`; enrollment (write) and Wi-Fi provisioning stay **library-only** (`SesameBle#biometric` / `#wifi`, see [ble.md](./ble.md)) | — |
-| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | BLE supported via the **library** (`SesameOS2Ble`, separate protocol); the CLI route is cloud-only for OS2 | locked/unlocked/moved + position |
+| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (no BLE lock op) — biometric/enroll-mode **reads** are on the CLI via `sesame ble cards/passcodes/fingers/faces/palms/mode`; enrollment writes and Wi-Fi/Hub3 provisioning are available via Node or `ble.invoke` (`SesameBle#biometric` / `#wifi` / `#hub3`, see [ble.md](./ble.md)) | — |
+| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | BLE supported via **Node and `ble.os2.invoke`** (`SesameOS2Ble`, separate protocol); the dedicated CLI route is cloud-only for OS2 | locked/unlocked/moved + position |
 
 > "locked/unlocked" is only the **two values** based on the presence of `isInLockRange` in OS3. OS3 has no intermediate (moved) state
 > (only OS2 devices such as Sesame2/3/4 have moved). For the BLE implementation design, see [architecture.md](./architecture.md).
@@ -318,7 +327,7 @@ await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
 });
 ```
 
-> The **CLI** drives OS3 lock/Bot/Bike control, plus the read-only BLE ops under `sesame ble` (keyless scan, biometric/script list reads, enroll-mode get). The **library** additionally covers OS2 devices (`SesameOS2Ble`), new pairing/registration (`SesameBle.registerOnce()` / `SesameOS2Ble.registerOnce()`), biometric/access-control enrollment (write), WifiModule2 provisioning, and BLE OTA — all ported from the SesameSDK but partly unverified against real hardware. See [ble.md](./ble.md) and the README's [Known limitations](../../README.md#known-limitations).
+> The **CLI** drives OS3 lock/Bot/Bike control, plus `sesame ble` scan, factory registration, biometric/script list reads, and enroll-mode get. The **library/RPC** surface additionally covers OS2 control (`SesameOS2Ble` / `ble.os2.invoke`), biometric/access-control enrollment writes, WifiModule2/Hub3 provisioning, and BLE OTA — all ported from the SesameSDK but partly unverified against real hardware. See [ble.md](./ble.md) and the README's [Known limitations](../../README.md#known-limitations).
 
 ---
 

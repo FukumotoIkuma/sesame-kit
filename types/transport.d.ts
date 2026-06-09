@@ -56,7 +56,6 @@ export class Hub3WsClient {
     idToken: any;
     onTokenRefreshNeeded: any;
     onReopen: any;
-    _everConnected: boolean;
     /** @type {import("ws").WebSocket | null} */
     ws: any | null;
     status: "disconnected";
@@ -72,15 +71,11 @@ export class Hub3WsClient {
     closedByUser: boolean;
     lastActiveTime: number;
     lastTickTime: number;
-    _refreshedThisCycle: boolean;
     keepaliveTimer: NodeJS.Timeout;
     pongTimer: NodeJS.Timeout;
     connectTimer: any;
     reconnectTimer: any;
     sleepDetectorTimer: NodeJS.Timeout;
-    _connectPromise: Promise<any>;
-    _initialConnectResolve: (value: any) => void;
-    _initialConnectReject: (reason?: any) => void;
     log(...args: any[]): void;
     /**
      * WS 接続を確立。失敗時は reject。成功後の切断は auto-reconnect される。

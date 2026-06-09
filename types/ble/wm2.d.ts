@@ -192,11 +192,6 @@ export class WifiModule2 {
         companyId?: string;
         deviceUUID?: string;
     });
-    _session: import("./session.js").SesameBleSession;
-    _companyId: string;
-    _deviceUUID: string;
-    _publishListeners: Set<any>;
-    _off: () => boolean;
     /** WM2 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。 */
     onPublish(fn: any): () => boolean;
     /** 購読解除 (session の publish 中継を外す)。 */

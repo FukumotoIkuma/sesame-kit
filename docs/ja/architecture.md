@@ -79,7 +79,7 @@ autolock を BLE 直送します。よって autolock は BLE の `sesame autolo
 
 ## `sesame serve` 言語非依存バックエンド
 
-1 コア + 5 フレーミングで、単一常駐 `SesameHub3` に全機能を一様公開します。詳細は README の
+1 コア + 5 フレーミングで、単一常駐 `SesameHub3` に cloud/Biz3 RPC と登録済み BLE op を一様公開します。詳細は README の
 [言語非依存バックエンド](../../README.ja.md#言語非依存バックエンド-sesame-serve) を参照。
 
 - **コア**: `src/serve/jsonrpc.js`（JSON-RPC 2.0、transport 非依存）+ `registry.js`（`NAMESPACE_OPS` から

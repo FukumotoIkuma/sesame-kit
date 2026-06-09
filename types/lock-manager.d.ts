@@ -13,10 +13,6 @@ export class LockManager {
         getSubUUID: () => (string | null);
         ensureConnected: () => void;
     });
-    _getWs: () => (import("./transport.js").Hub3WsClient | null);
-    _getConfig: () => object;
-    _getSubUUID: () => (string | null);
-    _ensureConnected: () => void;
     /**
      * lock 設定を name から解決。name 省略時は default.lock、
      * 無ければ locks が 1 つだけならそれ。

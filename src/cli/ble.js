@@ -1,12 +1,12 @@
-// `sesame ble …` コマンド群 — BLE 直結の **読み取り系** (鍵不要の近接スキャン +
-// 生体/アクセス制御デバイスの登録済み一覧 + Bot2/Bot3 スクリプト読み出し)。
+// `sesame ble …` コマンド群 — BLE 直結の補助操作 (鍵不要の近接スキャン +
+// 初期登録 + 生体/アクセス制御デバイスの登録済み一覧 + Bot2/Bot3 スクリプト読み出し)。
 //
 // 本体ロジックは src/ble/* (SesameBle facade / BiometricCommands / Bot2Commands)。
 // ここは commander への配線・対象解決・入出力整形のみを担う。
 //
 // 設計方針:
-//   - **読み取り専用**。enroll(登録)/delete/mode-set など状態を変える BLE op はここでは扱わない
-//     (それらは実機未検証・一部破壊的なため library-only のまま据え置く)。
+//   - 通常の状態変更 (enroll/delete/mode-set 等) は専用 CLI にせず、Node API と
+//     serve の ble.invoke / ble.os2.invoke に集約する。初期登録だけは鍵取得の入口なので CLI に持つ。
 //   - scan は鍵不要 (advertise のみ)。それ以外は config(locks) の secretKey で BLE login する。
 //   - biometric の一覧は GET 要求 → デバイスが publish (START → NOTIFY×N → END) を返す設計なので、
 //     registerDelegate で収集し END (または timeout) で確定する。
@@ -18,7 +18,7 @@
 // BLE は hub を使わないので withHub は通らず、config は ctx.loadCtx().configStore から引く。
 
 import { t } from "../i18n.js";
-import { SesameBle, capabilitiesForModel } from "../ble/index.js";
+import { SesameBle, SesameOS2Ble, createBleTransport, capabilitiesForModel } from "../ble/index.js";
 
 // 生体タイプ別の「GET メソッド名」と「収集に使う delegate コールバック名」。
 // recv が (device,id,name,type) を返すか単一オブジェクトを返すかで record 化を変える。
@@ -61,6 +61,29 @@ export function registerBleCommands(program, ctx) {
     .option("--timeout <ms>", t("ble.cli.opt.scanTimeout"), "5000")
     .action((options) => cmdScan(ctx, options));
 
+  // ---- ble register / os2-register ----
+  // 工場出荷デバイスを直接 BLE 登録する。OS3 は secretKey を得たらそのまま config 保存も可能。
+  ble
+    .command("register <deviceUUID>")
+    .description(t("ble.cli.register.desc"))
+    .option("--address <address>", t("ble.cli.opt.address"))
+    .option("--model <model>", t("ble.cli.opt.model"))
+    .option("--product-type <type>", t("ble.cli.opt.productType"))
+    .option("--timeout <ms>", t("ble.cli.opt.scanTimeout"), "8000")
+    .option("--save <name>", t("ble.cli.register.opt.save"))
+    .action((deviceUUID, options) => cmdRegister(ctx, deviceUUID, options));
+
+  ble
+    .command("os2-register <deviceUUID>")
+    .description(t("ble.cli.os2Register.desc"))
+    .option("--address <address>", t("ble.cli.opt.address"))
+    .option("--model <model>", t("ble.cli.opt.model"))
+    .option("--product-type <type>", t("ble.cli.opt.productType"))
+    .option("--timeout <ms>", t("ble.cli.opt.scanTimeout"), "8000")
+    .option("--ak <hex>", t("ble.cli.os2Register.opt.ak"))
+    .option("--no-local-server-auth", t("ble.cli.os2Register.opt.noLocalServerAuth"))
+    .action((deviceUUID, options) => cmdOS2Register(ctx, deviceUUID, options));
+
   // ---- ble cards|passcodes|fingers|faces|palms <device> ----
   // 生体/アクセス制御デバイスの登録済み一覧を BLE 経由で取得する (読み取り専用)。
   const LIST_CMDS = [
@@ -102,6 +125,63 @@ async function cmdScan(ctx, options) {
       console.log(`  ${d.deviceUUID}\t${d.model || "?"}\t${reg}\t${rssi}`);
     }
   }, { ok: true, count: found.length, devices: found.map(scrubDiscovery) });
+}
+
+async function cmdRegister(ctx, deviceUUID, options) {
+  const { opts, configStore } = ctx.loadCtx();
+  const timeoutMs = Number(options.timeout) || 8000;
+  const model = options.model || null;
+  const result = await SesameBle.registerOnce({
+    deviceUUID,
+    address: options.address,
+    model,
+    productType: options.productType || model || undefined,
+    scanTimeoutMs: timeoutMs,
+    debug: !!opts.debug,
+  });
+  const saveName = options.save || null;
+  if (saveName) {
+    configStore.addLock(saveName, {
+      deviceUUID: result.deviceUUID,
+      secretKey: result.secretKey,
+      model: model || String(result.productType || "") || null,
+      alias: saveName,
+    });
+  }
+  ctx.out(opts.json, () => {
+    console.log(t(saveName ? "ble.cli.register.saved" : "ble.cli.register.done", {
+      deviceUUID: result.deviceUUID,
+      name: saveName || "",
+    }));
+    console.log(`secretKey=${result.secretKey}`);
+  }, { ok: true, saved: !!saveName, name: saveName, result });
+}
+
+async function cmdOS2Register(ctx, deviceUUID, options) {
+  const { opts } = ctx.loadCtx();
+  const timeoutMs = Number(options.timeout) || 8000;
+  const model = options.model || null;
+  const transport = createBleTransport({
+    deviceUUID,
+    address: options.address,
+    scanTimeoutMs: timeoutMs,
+    debug: !!opts.debug,
+  });
+  const result = await SesameOS2Ble.registerOnce({
+    transport,
+    deviceUUID,
+    model,
+    productType: options.productType || model || undefined,
+    localServerAuth: options.localServerAuth !== false,
+    debug: !!opts.debug,
+    ak: options.ak ? parseHexOption(ctx, options.ak, "ak") : undefined,
+  });
+  ctx.out(opts.json, () => {
+    console.log(t("ble.cli.os2Register.done", { deviceUUID: result.deviceUUID }));
+    console.log(`secretKey=${result.secretKey}`);
+    console.log(`ownerKey=${result.ownerKey}`);
+    console.log(`sesamePublicKey=${result.sesamePublicKey}`);
+  }, { ok: true, result });
 }
 
 async function cmdBiometricList(ctx, type, device, options) {
@@ -252,6 +332,15 @@ function bufToText(v) {
   if (v == null) return "";
   if (typeof v === "string") return v;
   try { return Buffer.from(v).toString("utf8").replace(/\0+$/, ""); } catch { return String(v); }
+}
+
+function parseHexOption(ctx, value, name) {
+  const hex = String(value || "");
+  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) {
+    ctx.die(t("ble.cli.badHex", { name }), 2);
+    return undefined;
+  }
+  return Buffer.from(hex, "hex");
 }
 
 /** scan 結果から JSON に載せられない peripheral ハンドルを除く。 */

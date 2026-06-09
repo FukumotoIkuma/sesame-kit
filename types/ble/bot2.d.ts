@@ -107,8 +107,6 @@ export class Bot2Commands {
      * @param {(...args:any[])=>void} [historyTagBLE] 履歴タグ生成器 (protocol.historyTagBLE を注入)
      */
     constructor(session: import("./session.js").SesameBleSession, historyTagBLE?: (...args: any[]) => void);
-    _session: import("./session.js").SesameBleSession;
-    _historyTagBLE: (...args: any[]) => void;
     scripts: {
         curIdx: number;
         eventLength: number;

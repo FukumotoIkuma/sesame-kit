@@ -77,8 +77,8 @@ export function registerIotCommands(program, ctx) {
       }),
     );
 
-  // ---- iot relay <on|off> ----
-  // LTE リレー開閉 (cmdCode=208)。応答 push 未確認のため fire-and-forget (送信のみ)。
+  // ---- iot relay <toggle|on> ----
+  // LTE リレー切替 (cmdCode=208)。biz3 は op=0x01 の単純 toggle のみ確認済み。
   withDeviceOpts(
     iot.command("relay <state>")
       .description(t("iot.relay.desc"))
@@ -86,19 +86,17 @@ export function registerIotCommands(program, ctx) {
   ).action((state, options) =>
     ctx.withHub(async (hub, { opts }) => {
       const s = String(state).toLowerCase();
-      if (s !== "on" && s !== "off") {
+      if (s !== "toggle" && s !== "on") {
         ctx.die(t("iot.relay.badState"), 2);
         return;
       }
       const { deviceId, secretKey, hub3Id } = await resolveTarget(ctx, hub, options, {
         needSecret: true,
       });
-      // 本体 hub3RelaySwitch の op は既定 0x01 (開閉操作)。on/off の値割当は本体仕様上
-      // 未確認 (biz3: VIotSwitch は単純トグル) のため on=0x01 / off=0x00 を当てる。
-      hub.iot.hub3RelaySwitch({ deviceId, secretKey, hub3Id, op: s === "on" ? 0x01 : 0x00 });
+      hub.iot.hub3RelaySwitch({ deviceId, secretKey, hub3Id, op: 0x01 });
       ctx.out(opts.json, () => {
         console.log(t("iot.relay.sent", { state: s }));
-      }, { ok: true, sent: true, state: s, note: "fire-and-forget (応答未確認)" });
+      }, { ok: true, sent: true, state: s, op: 0x01, note: "fire-and-forget (応答未確認)" });
     }),
   );
 
