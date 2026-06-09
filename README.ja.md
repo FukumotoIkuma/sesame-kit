@@ -200,6 +200,15 @@ gRPC は型付きです。`src/serve/sesame.proto` が op ごとに型付きメ�
 (CLI と同じ境界)。HTTP / WS / gRPC は TCP のため、起動時に生成する loopback token を要求します。POSIX 専用です
 (Windows の UDS は非対象です。stdio / HTTP / WS / gRPC は動きます)。
 
+### 公開 API 契約と生成 SDK
+
+JSON-RPC のサーフェスは**バージョン管理された機械可読な契約**として公開しており、安全に上に積めます:
+
+- [`schema/openrpc.json`](./schema/openrpc.json) — 公開 OpenRPC ドキュメント（`rpc.discover` でも取得可）。各メソッド/イベントに `x-stability`（`stable` / `experimental`）と `x-provenance`、`apiVersion`（SemVer）は `status` / `rpc.discover` に。CI の drift gate で実装と常に一致。
+- [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) — そのスキーマから**生成された型付き TypeScript クライアント**（`client.lock.unlock({ name })`）。`SesameRpcError` が `kind` / `retryable` を公開。再生成は `npm run build:sdk`。
+- **安定性:** API SemVer が守るのは `stable` コア（`lock.*` / `devices.list` / `device.history`・`battery` / `status` / `account.whoami` / `events.*`）のみ。`experimental` は予告なく変わり得ます。[docs/api-stability.md](./docs/api-stability.md) 参照。
+- **エラー**は構造化: メッセージ文字列でなく `error.data.kind`（`not_authenticated` / `connection_lost` / `timeout` / `rejected` / `bad_params` …）と `error.data.retryable` で分岐。
+
 ---
 
 ## Node から使う（インプロセス）
@@ -287,6 +296,7 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 - [BLE 直接制御](./docs/ja/ble.md) — クラウド非経由で Bluetooth 操作
 - [Node ライブラリ](./docs/ja/library.md) — Node.js アプリへ埋め込み
 - [他言語からの組み込み](./docs/ja/integration.md) — `sesame serve` 経由 (Python / JS / HTTP / WS / gRPC)
+- [API 安定性 & 1.0 サーフェス](./docs/api-stability.md) — stable / experimental、エラーモデル、二境界モデル
 - [アーキテクチャ](./docs/ja/architecture.md) · [マイグレーション](./docs/ja/migration.md)
 
 ---

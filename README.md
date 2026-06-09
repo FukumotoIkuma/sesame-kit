@@ -197,6 +197,15 @@ Generate stubs from a source checkout (after `pip install grpcio-tools`): `pytho
 
 Auth boundary: interactive login is CLI-only and never runs in the daemon. A Unix socket can be used by any process of the same user (the same boundary as the CLI). HTTP / WS / gRPC are over TCP and require a loopback token generated at startup. POSIX only (Windows UDS is out of scope; stdio / HTTP / WS / gRPC work).
 
+### Published API contract & generated SDK
+
+The JSON-RPC surface is a **versioned, machine-readable contract** so you can build against it safely:
+
+- [`schema/openrpc.json`](./schema/openrpc.json) — the published OpenRPC document (also live via `rpc.discover`). Each method/event carries `x-stability` (`stable` | `experimental`) and `x-provenance`; `apiVersion` (SemVer) is in `status` and `rpc.discover`. A CI drift gate keeps it in lockstep with the implementation.
+- [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) — a **typed TypeScript client generated** from that schema (`client.lock.unlock({ name })`), with `SesameRpcError` exposing `kind` / `retryable`. Regenerate with `npm run build:sdk`.
+- **Stability:** only the `stable` core (`lock.*`, `devices.list`, `device.history`/`battery`, `status`, `account.whoami`, `events.*`) is covered by the API SemVer; `experimental` methods may change without notice. See [docs/api-stability.md](./docs/api-stability.md).
+- **Errors** are structured: branch on `error.data.kind` (`not_authenticated` / `connection_lost` / `timeout` / `rejected` / `bad_params` / …) and `error.data.retryable`, never on message text.
+
 ---
 
 ## Use from Node (in-process)
@@ -284,6 +293,7 @@ Full docs: **[docs/en/](./docs/en/index.md)** ([日本語](./docs/ja/index.md)).
 - [BLE direct control](./docs/en/ble.md) — operate over Bluetooth without the cloud
 - [Node library](./docs/en/library.md) — embed in a Node.js app
 - [Integrate from any language](./docs/en/integration.md) — via `sesame serve` (Python / JS / HTTP / WS / gRPC)
+- [API stability & 1.0 surface](./docs/api-stability.md) — stable vs experimental, error model, the two-boundary contract
 - [Architecture](./docs/en/architecture.md) · [Migration](./docs/en/migration.md)
 
 ---
