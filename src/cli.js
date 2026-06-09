@@ -126,6 +126,8 @@ function makeCtx(program) {
       }),
     /** 対話 prompt 群 */
     prompts: { selectFromList, promptText, confirm: confirmPrompt, promptLine },
+    /** makeBle(opts): SesameBle ファサード生成 (BLE enroll 等で使用。テストで差し替え可能な seam)。 */
+    makeBle: (opts) => new SesameBle(opts),
     /**
      * parseJson(raw, hint): --json 文字列を JSON.parse。失敗時は die(...,2) し undefined を返す。
      * cli/ 各モジュールで重複していた parseJsonArg を 1 本化したもの。
