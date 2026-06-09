@@ -8,10 +8,9 @@ export default {
     "iot.opt.hub3": "parent Hub3 UUID for topic (defaults to --device; self for WiFi models)",
     "iot.led.desc": "set/get Hub3 LED brightness (cmdCode=92; use --get to read)",
     "iot.led.opt.get": "read the current value (op=0x02); duty optional",
-    "iot.relay.desc": "open/close Hub3 LTE relay (cmdCode=208; on|off; fire-and-forget, response unconfirmed)",
+    "iot.relay.desc": "toggle Hub3 LTE relay (cmdCode=208; toggle|on alias; fire-and-forget, response unconfirmed)",
     "iot.relay.help": `
-⚠️ The op assignment on=0x01 / off=0x00 is unconfirmed in the biz3 source (VIotSwitch is a simple toggle).
-   off may be ignored or behave differently on real hardware; verification with device logs is required.`,
+The biz3 source confirms op=0x01 as a relay toggle. There is no confirmed separate off opcode.`,
     "iot.firmware.desc": "trigger firmware update (DFU) and show progress (cmdCode=0x03)",
     "iot.firmware.opt.wait": "seconds to keep subscribing to progress (default 120)",
     "iot.wifiClear.desc": "clear Hub3 saved WiFi settings (cmdCode=210; fire-and-forget, response unconfirmed)",
@@ -37,7 +36,7 @@ export default {
     "iot.led.dutyRange": "duty must be an integer in 0..255.",
     "iot.led.get": "LED duty: {ledDuty}",
     "iot.led.set": "OK: set LED duty = {duty} (response ledDuty={ledDuty})",
-    "iot.relay.badState": "state must be on|off.",
+    "iot.relay.badState": "state must be toggle (or on as a compatibility alias).",
     "iot.relay.sent": "OK: relay {state} sent (fire-and-forget; response push unconfirmed)",
     "iot.firmware.progress": "  progress={progress}{versionSuffix}",
     "iot.firmware.versionSuffix": "  versionTag={versionTag} (done)",
@@ -96,10 +95,9 @@ export default {
     "iot.opt.hub3": "topic 用の親 Hub3 UUID (省略時は --device を流用。WiFi モデルは自身)",
     "iot.led.desc": "Hub3 本体 LED の調光 set/get (cmdCode=92。--get で取得)",
     "iot.led.opt.get": "現在値を取得 (op=0x02)。duty 省略可",
-    "iot.relay.desc": "Hub3 LTE リレー開閉 (cmdCode=208。on|off。応答未確認の fire-and-forget)",
+    "iot.relay.desc": "Hub3 LTE リレー切替 (cmdCode=208。toggle|on alias。応答未確認の fire-and-forget)",
     "iot.relay.help": `
-⚠️ on=0x01 / off=0x00 の op 割当は biz3 ソース上で未確認 (VIotSwitch は単純トグル)。
-   off が実機で無視される/別挙動になる可能性があり、実機ログでの確認が必要。`,
+biz3 ソースで確認できるのは op=0x01 のリレー切替です。独立した off opcode は確認できていません。`,
     "iot.firmware.desc": "ファームウェア更新 (DFU) をトリガし進捗を表示 (cmdCode=0x03)",
     "iot.firmware.opt.wait": "進捗購読を継続する秒数 (既定 120)",
     "iot.wifiClear.desc": "Hub3 の保存 WiFi 設定をクリア (cmdCode=210。応答未確認の fire-and-forget)",
@@ -125,7 +123,7 @@ export default {
     "iot.led.dutyRange": "duty は 0..255 の整数で指定してください。",
     "iot.led.get": "LED duty: {ledDuty}",
     "iot.led.set": "OK: set LED duty = {duty} (応答 ledDuty={ledDuty})",
-    "iot.relay.badState": "state は on|off で指定してください。",
+    "iot.relay.badState": "state は toggle を指定してください (on は互換 alias)。",
     "iot.relay.sent": "OK: relay {state} を送信 (fire-and-forget。応答 push は未確認)",
     "iot.firmware.progress": "  progress={progress}{versionSuffix}",
     "iot.firmware.versionSuffix": "  versionTag={versionTag} (完了)",

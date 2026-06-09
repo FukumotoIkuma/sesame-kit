@@ -207,6 +207,42 @@
     "method": "company.getPaymentConfig",
     "jsonFields": []
   },
+  "PaymentGetPaymentMethods": {
+    "method": "payment.getPaymentMethods",
+    "jsonFields": [
+      "params"
+    ]
+  },
+  "PaymentGetClientSecret": {
+    "method": "payment.getClientSecret",
+    "jsonFields": [
+      "params"
+    ]
+  },
+  "PaymentChangeDefaultPayment": {
+    "method": "payment.changeDefaultPayment",
+    "jsonFields": [
+      "params"
+    ]
+  },
+  "PaymentRemovePayment": {
+    "method": "payment.removePayment",
+    "jsonFields": [
+      "params"
+    ]
+  },
+  "PaymentPayUpdateLevel": {
+    "method": "payment.payUpdateLevel",
+    "jsonFields": [
+      "params"
+    ]
+  },
+  "PaymentGetDevApiInfo": {
+    "method": "payment.getDevApiInfo",
+    "jsonFields": [
+      "params"
+    ]
+  },
   "AccessGetCards": {
     "method": "access.getCards",
     "jsonFields": []
@@ -339,12 +375,20 @@
     "method": "lock.click",
     "jsonFields": []
   },
+  "LockSetAutolock": {
+    "method": "lock.setAutolock",
+    "jsonFields": []
+  },
   "LockStatus": {
     "method": "lock.status",
     "jsonFields": []
   },
   "DevicesList": {
     "method": "devices.list",
+    "jsonFields": []
+  },
+  "DevicesUserList": {
+    "method": "devices.userList",
     "jsonFields": []
   },
   "AccessRegisterCards": {
@@ -369,12 +413,36 @@
     "method": "device.hideBattery",
     "jsonFields": []
   },
+  "DeviceRename": {
+    "method": "device.rename",
+    "jsonFields": []
+  },
+  "DeviceDelete": {
+    "method": "device.delete",
+    "jsonFields": []
+  },
+  "FirmwareList": {
+    "method": "firmware.list",
+    "jsonFields": []
+  },
   "WebapiInvoke": {
     "method": "webapi.invoke",
     "jsonFields": [
       "query",
       "body"
     ]
+  },
+  "WebapiDeviceState": {
+    "method": "webapi.deviceState",
+    "jsonFields": []
+  },
+  "WebapiDeviceHistory": {
+    "method": "webapi.deviceHistory",
+    "jsonFields": []
+  },
+  "WebapiSendCmd": {
+    "method": "webapi.sendCmd",
+    "jsonFields": []
   },
   "IrSend": {
     "method": "ir.send",
@@ -383,6 +451,98 @@
   "IrListKeys": {
     "method": "ir.listKeys",
     "jsonFields": []
+  },
+  "IrLearn": {
+    "method": "ir.learn",
+    "jsonFields": []
+  },
+  "IrListRemotes": {
+    "method": "ir.listRemotes",
+    "jsonFields": []
+  },
+  "IrSearchRemotes": {
+    "method": "ir.searchRemotes",
+    "jsonFields": []
+  },
+  "IrAddRemote": {
+    "method": "ir.addRemote",
+    "jsonFields": [
+      "remote"
+    ]
+  },
+  "IrDeleteRemote": {
+    "method": "ir.deleteRemote",
+    "jsonFields": []
+  },
+  "IrRenameRemote": {
+    "method": "ir.renameRemote",
+    "jsonFields": []
+  },
+  "IrDeleteKey": {
+    "method": "ir.deleteKey",
+    "jsonFields": []
+  },
+  "IrRenameKey": {
+    "method": "ir.renameKey",
+    "jsonFields": []
+  },
+  "IrGetMode": {
+    "method": "ir.getMode",
+    "jsonFields": []
+  },
+  "IrSetMode": {
+    "method": "ir.setMode",
+    "jsonFields": []
+  },
+  "IrMatchRemote": {
+    "method": "ir.matchRemote",
+    "jsonFields": []
+  },
+  "AccessPostAuthenticationData": {
+    "method": "access.postAuthenticationData",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "AccessPutAuthenticationData": {
+    "method": "access.putAuthenticationData",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "AccessDeleteAuthenticationData": {
+    "method": "access.deleteAuthenticationData",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "AccessUpdateAuthenticationName": {
+    "method": "access.updateAuthenticationName",
+    "jsonFields": [
+      "request"
+    ]
+  },
+  "BleInvoke": {
+    "method": "ble.invoke",
+    "jsonFields": [
+      "args"
+    ]
+  },
+  "BleRegister": {
+    "method": "ble.register",
+    "jsonFields": []
+  },
+  "BleOs2Invoke": {
+    "method": "ble.os2.invoke",
+    "jsonFields": [
+      "args"
+    ]
+  },
+  "BleOs2Register": {
+    "method": "ble.os2.register",
+    "jsonFields": [
+      "ak"
+    ]
   },
   "Discover": {
     "method": "rpc.discover",

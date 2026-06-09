@@ -2,6 +2,21 @@ export { makeLocalRegisterServer } from "../../crypto.js";
 export * as protocol from "./protocol.js";
 export { SesameOS2BleCipher } from "./cipher.js";
 /**
+ * @typedef {object} SesameOS2BleOptions
+ * @property {string|Buffer} [secretKey] 16B / 32hex ロック共通鍵。register モードでは不要。
+ * @property {string|Buffer} [keyIndex] userIdx (sesame2KeyData.keyIndex)。
+ * @property {string|Buffer} [ssmPublicKey] デバイス公開鍵 64B。
+ * @property {string} [deviceUUID]
+ * @property {string|null} [model]
+ * @property {boolean} [registerMode]
+ * @property {Function|null} [registerServer]
+ * @property {boolean} [localServerAuth]
+ * @property {boolean} [needAuthFromServer]
+ * @property {(signPayloadHex:string)=>Promise<string>} [signLogin]
+ * @property {boolean} [debug]
+ * @property {object} transport BLE transport。OS2 facade では必須。
+ */
+/**
  * 登録済み OS2 SESAME を BLE で直接操作する高レベルファサード。
  * 操作の対応関係は SDK の各 OS2 デバイスクラスに準拠:
  *   - SESAME2/3/4 : lock / unlock / toggle / autolock / history
@@ -23,43 +38,9 @@ export class SesameOS2Ble {
      */
     static registerOnce(opts?: object, fn?: (result: object) => Promise<any>): Promise<object>;
     /**
-     * @param {{
-     *   secretKey?: string|Buffer,   // 16B / 32hex ロック共通鍵 (login 必須、register モードでは不要)
-     *   keyIndex?: string|Buffer,    // userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う
-     *   ssmPublicKey?: string|Buffer,// デバイス公開鍵 64B (sesame2KeyData.sesame2PublicKey)。login の ECDH 相手
-     *   deviceUUID?: string,
-     *   model?: string,              // "sesame_2" / "sesame_3" / "sesame_4" / "ssmbot_1" / "bike_1"
-     *   registerMode?: boolean,      // 工場出荷デバイスの register() 用
-     *   registerServer?: Function,   // register() のサーバ登録コールバック (myDevicesRegisterSesame2Post 相当)
-     *   localServerAuth?: boolean,   // true で registerServer をローカル getRegisterKey から自動生成
-     *                                //   (makeLocalRegisterServer)。クラウド不要のオフライン server-auth register。
-     *                                //   registerServer 明示指定時はそちらを優先 (この自動生成は使わない)。
-     *                                //   ★UNVERIFIED: getRegisterKey の移植忠実性は未確定 (crypto.js 注記参照)。
-     *   needAuthFromServer?: boolean,// ゲスト鍵等: connect 時に signLogin でサーバ署名 sessionAuth を取得
-     *   signLogin?: (signPayloadHex:string)=>Promise<string>, // needAuthFromServer の署名コールバック
-     *   debug?: boolean,
-     *   transport: object,           // BLE トランスポート (OS3 と共通の transport.js を注入)
-     * }} opts
+     * @param {SesameOS2BleOptions} [opts]
      */
-    constructor({ secretKey, keyIndex, ssmPublicKey, deviceUUID, model, registerMode, registerServer, localServerAuth, needAuthFromServer, signLogin, debug, transport, }?: {
-        secretKey?: string | Buffer;
-        keyIndex?: string | Buffer;
-        ssmPublicKey?: string | Buffer;
-        deviceUUID?: string;
-        model?: string;
-        registerMode?: boolean;
-        registerServer?: Function;
-        localServerAuth?: boolean;
-    });
-    _transport: any;
-    _session: SesameOS2BleSession;
-    _model: string;
-    _deviceUUID: string;
-    _registerMode: boolean;
-    _registerServer: Function;
-    _needAuthFromServer: boolean;
-    _signLogin: any;
-    _debug: any;
+    constructor(opts?: SesameOS2BleOptions);
     get model(): string;
     get isConnected(): boolean;
     get lastStatus(): any;
@@ -203,8 +184,8 @@ export class SesameOS2Ble {
      * (SDK の isRegistered=true 経路、:584)。未登録時の平文経路 (:592) はこのファサードの対象外。
      *
      * ★本メソッドは **DFU 開始コマンドの送信のみ** を行う。開始後デバイスは DFU ブートローダへ
-     *   遷移し切断される想定で、本体ファーム (Nordic DFU 等の OTA バイナリ) の転送は範囲外 (未実装)。
-     *   実機での DFU 完遂は未検証。
+     *   遷移し切断される想定で、本体ファーム (Nordic DFU 等の OTA バイナリ) の転送は
+     *   別 GATT サービスを扱う外部 DFU 層の責務。実機での DFU 完遂は未検証。
      * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
     updateFirmware(): Promise<{
@@ -212,6 +193,32 @@ export class SesameOS2Ble {
         payload: Buffer;
     }>;
 }
+export type SesameOS2BleOptions = {
+    /**
+     * 16B / 32hex ロック共通鍵。register モードでは不要。
+     */
+    secretKey?: string | Buffer;
+    /**
+     * userIdx (sesame2KeyData.keyIndex)。
+     */
+    keyIndex?: string | Buffer;
+    /**
+     * デバイス公開鍵 64B。
+     */
+    ssmPublicKey?: string | Buffer;
+    deviceUUID?: string;
+    model?: string | null;
+    registerMode?: boolean;
+    registerServer?: Function | null;
+    localServerAuth?: boolean;
+    needAuthFromServer?: boolean;
+    signLogin?: (signPayloadHex: string) => Promise<string>;
+    debug?: boolean;
+    /**
+     * BLE transport。OS2 facade では必須。
+     */
+    transport: object;
+};
 import { Buffer } from "node:buffer";
 export { SesameOS2BleSession, BleResultError } from "./session.js";
 export { RESULT as SESAME_RESULT_CODES, resultName, OP, ITEM, MECH_STATE } from "./protocol.js";

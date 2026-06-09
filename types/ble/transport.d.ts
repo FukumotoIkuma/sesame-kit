@@ -168,18 +168,6 @@ export function createBleTransport(opts?: object): NobleTransport;
  */
 export class NobleTransport {
     constructor(opts?: {});
-    _opts: {};
-    _noble: any;
-    _peripheral: any;
-    _scanned: boolean;
-    _gatt: any;
-    _writeChar: any;
-    _notifyChar: any;
-    _writeChain: Promise<void>;
-    _debug: boolean;
-    _onDisconnect: (reason: any) => void;
-    _disconnected: boolean;
-    _onPeripheralDisconnect: (reason: any) => void;
     _log(...a: any[]): void;
     /**
      * @param {(packet:Buffer)=>void} onPacket notify 1 件ごとに呼ばれる

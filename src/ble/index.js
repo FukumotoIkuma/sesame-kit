@@ -45,6 +45,8 @@ export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsF
 export {
   BiometricCommands, handleBiometricPublish, parseTouchCard, parseTouchFace,
   parseRemoteNanoTrigger, remoteNanoTriggerDelayData, radarSensitivityData,
+  insertSesameData as biometricInsertSesameData,
+  removeSesameData as biometricRemoveSesameData,
   createEnrollCollector,
 } from "./biometric.js";
 export * as biometric from "./biometric.js";
@@ -103,23 +105,28 @@ function normId(u) { return String(u).replace(/-/g, "").toLowerCase(); }
 const STATUS_WAIT_MS = 4_000;
 
 /**
+ * @typedef {object} SesameBleOptions
+ * @property {string|Buffer} [secretKey] 32hex のロック共通鍵。register モードでは不要。
+ * @property {string} [deviceUUID] 対象識別 (advertise 照合)。
+ * @property {string} [address] BLE アドレスで識別する代替。
+ * @property {string|null} [model] deviceModel (例 "sesame_5" / "bot_2")。
+ * @property {boolean} [registerMode] true で工場出荷デバイスの register() 用。
+ * @property {boolean} [needAuthFromServer] server 認証が要るデバイスで signGuestKey login を使う。
+ * @property {Function|null} [registerTransport] makeRegisterTransport の戻り。
+ * @property {boolean} [debug]
+ * @property {number} [scanTimeoutMs]
+ * @property {object} [transport] 独自 BLE transport。
+ */
+
+/**
  * 登録済み SESAME を BLE で直接操作する高レベルファサード。
  */
 export class SesameBle {
   /**
-   * @param {{
-   *   secretKey?: string|Buffer,  // 32hex のロック共通鍵 (cloud の `sesame devices` で取得済み)。
-   *                               //   register モードでは不要 (工場出荷デバイスは鍵が未確定)。
-   *   deviceUUID?: string,        // 対象識別 (advertise 照合)。複数 SESAME が近接する環境で必須
-   *   address?: string,           // BLE アドレスで識別する代替
-   *   registerMode?: boolean,     // true で工場出荷デバイスの register() 用 (secretKey 不要・session を鍵無しで構築)
-   *   needAuthFromServer?: boolean, // 登録済みだが server 認証が要るデバイス (ゲスト鍵等) で connect 時に signGuestKey login
-   *   registerTransport?: Function, // makeRegisterTransport の戻り (needAuthFromServer の signGuestKey / register に使用)
-   *   debug?: boolean,
-   *   transport?: object,         // 独自トランスポート (省略時 noble)
-   * }} opts
+   * @param {SesameBleOptions} [opts]
    */
-  constructor({ secretKey, deviceUUID, address, model = null, registerMode = false, needAuthFromServer = false, registerTransport = null, debug = false, scanTimeoutMs, transport } = {}) {
+  constructor(opts = {}) {
+    const { secretKey, deviceUUID, address, model = null, registerMode = false, needAuthFromServer = false, registerTransport = null, debug = false, scanTimeoutMs, transport } = opts;
     // register モードでは secretKey は未確定 (登録ハンドシェイクで導出する) ため要求しない。
     if (!registerMode && !secretKey) throw new Error(t("ble.secretKeyRequired"));
     // WM2 は SESAME ロックとは別 GATT サービス (WM2_GATT) で discover/subscribe する。

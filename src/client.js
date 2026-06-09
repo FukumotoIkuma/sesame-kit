@@ -28,7 +28,7 @@
  */
 
 import { Hub3WsClient, sendIR, getIRCodes } from "./transport.js";
-import { ConfigStore } from "./config.js";
+import { ConfigStore, normalizeConfig } from "./config.js";
 import { FileTokenStore } from "./tokens.js";
 import { getValidIdToken, jwtSub } from "./auth.js";
 import { configPaths } from "./paths.js";
@@ -43,6 +43,8 @@ import * as company from "./company.js";
 import * as access from "./access.js";
 import * as iot from "./iot.js";
 import * as presetir from "./presetir.js";
+import * as payment from "./payment.js";
+import { setAutolock as setAutolockRaw } from "./lock.js";
 import { t } from "./i18n.js";
 
 const DEFAULT_CONFIG = {
@@ -103,7 +105,7 @@ export class SesameHub3 {
 
     const hub = (opts.tokenStore && opts.config)
       ? new SesameHub3({
-          config: { ...DEFAULT_CONFIG, ...opts.config },
+          config: opts.config,
           tokenStore: opts.tokenStore,
           configStore: opts.configStore || null,
           debug: !!opts.debug,
@@ -126,7 +128,7 @@ export class SesameHub3 {
   constructor({ config, tokenStore, configStore = null, debug = false }) {
     if (!config) throw new Error(t("domain.client.configRequired"));
     if (!tokenStore) throw new Error(t("domain.client.tokenStoreRequired"));
-    this._config = config;
+    this._config = normalizeConfig({ ...DEFAULT_CONFIG, ...config });
     this._configStore = configStore;
     this._tokenStore = tokenStore;
     this._debug = debug;
@@ -236,7 +238,7 @@ export class SesameHub3 {
   }
 
   // ---------- ドメイン namespace ----------
-  // 各機能モジュール (schedule/org/company/access/iot/presetir) は
+  // 各機能モジュール (schedule/org/company/payment/access/iot/presetir) は
   // `fn(client, params)` の純関数集。それを namespace getter で薄く委譲する
   // (client.js を God object 化させない設計)。companyID / subUUID は
   // this._config / connect 時の値を自動注入し、params で上書きできる。
@@ -275,6 +277,8 @@ export class SesameHub3 {
   get org() { return this._bindNs(org); }
   /** 会社 (biz3ManageCompany)。 */
   get company() { return this._bindNs(company); }
+  /** 支払い管理 (biz3ManagePayment)。 */
+  get payment() { return this._bindNs(payment); }
   /** 認証データ (NFC カード/パスコードの WS op)。 */
   get access() { return this._bindNs(access); }
   /** IoT cmd (biz3OperateIoT: DFU/LED/リレー/Sesame item)。 */
@@ -757,6 +761,60 @@ export class SesameHub3 {
     return access.syncEnrolledCards(this._ws, { deviceUUID, records: cards });
   }
 
+  _biometricsBaseUrl(baseUrl) {
+    const url = baseUrl || this._config.biometricsBaseUrl || this._config.registerBaseUrl;
+    if (!url) throw new Error("biometrics baseUrl required (set config.biometricsBaseUrl or pass baseUrl)");
+    return url;
+  }
+
+  _biometricsAuthorizationProvider() {
+    return async () => `Bearer ${await getValidIdToken(this._tokenStore)}`;
+  }
+
+  async postAuthenticationData({ operation, deviceID, items, baseUrl, transport } = {}) {
+    return access.postAuthenticationData(null, {
+      operation,
+      deviceID,
+      items,
+      transport,
+      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
+      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+    });
+  }
+
+  async putAuthenticationData({ operation, deviceID, items, baseUrl, transport } = {}) {
+    return access.putAuthenticationData(null, {
+      operation,
+      deviceID,
+      items,
+      transport,
+      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
+      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+    });
+  }
+
+  async deleteAuthenticationData({ operation, deviceID, items, baseUrl, transport } = {}) {
+    return access.deleteAuthenticationData(null, {
+      operation,
+      deviceID,
+      items,
+      transport,
+      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
+      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+    });
+  }
+
+  async updateAuthenticationName({ request, kind, baseUrl, transport, ...rest } = {}) {
+    return access.updateAuthenticationName(null, {
+      request,
+      kind,
+      ...rest,
+      transport,
+      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
+      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+    });
+  }
+
   async renameDevice(deviceUUID, deviceName) {
     this._ensureConnected();
     if (!this._subUUID) throw new Error(t("domain.client.subUUIDNotAvailable"));
@@ -827,6 +885,27 @@ export class SesameHub3 {
     return devices.invokeWebAPI(this._ws, { func, apiKeyId: key, query, body });
   }
 
+  async webapiDeviceState({ deviceId, apiKeyId } = {}) {
+    this._ensureConnected();
+    const key = apiKeyId || this._config.apiKeyId;
+    if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
+    return devices.webapiDeviceState(this._ws, { apiKeyId: key, deviceId });
+  }
+
+  async webapiDeviceHistory({ deviceId, page, lg, isBiz, apiKeyId } = {}) {
+    this._ensureConnected();
+    const key = apiKeyId || this._config.apiKeyId;
+    if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
+    return devices.webapiDeviceHistory(this._ws, { apiKeyId: key, deviceId, page, lg, isBiz });
+  }
+
+  async webapiSendCmd({ deviceId, cmd, sign, history, apiKeyId } = {}) {
+    this._ensureConnected();
+    const key = apiKeyId || this._config.apiKeyId;
+    if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
+    return devices.webapiSendCmd(this._ws, { apiKeyId: key, deviceId, cmd, sign, history });
+  }
+
   // ---------- config-less direct API ----------
   // 他プロジェクトに組み込むとき、name 経由の config lookup を介さず
   // deviceUUID + secretKey を直接渡して操作するための関数群。
@@ -866,6 +945,16 @@ export class SesameHub3 {
    * @returns {Promise<object>}
    */
   botClickDevice(p) { return this._lock.botClickDevice(p); }
+
+  /**
+   * 直接 autolock 設定 (config を介さない, cmd=11)。
+   * @param {{deviceUUID:string, secretKey:string, seconds:number, timeoutMs?:number}} p
+   * @returns {Promise<{ack:any, cmd:number, seconds:number}>}
+   */
+  setAutolockDevice({ deviceUUID, secretKey, seconds, timeoutMs }) {
+    this._ensureConnected();
+    return setAutolockRaw(this._ws, { deviceId: deviceUUID, secretKey, seconds, timeoutMs });
+  }
 
   /**
    * 直接 IR 発射 (config を介さない)。
@@ -931,8 +1020,8 @@ export class SesameHub3 {
    * 内部で setIRMode(REGISTER) → subscribeIRData を発行する。
    *
    * **重要**: 戻り値の async unsubscribe 関数は **必ず `await` してください**。
-   * await 忘れで親プロセスが先に終了すると、Hub3 が REGISTER モードに残ります
-   * (Review M-1)。`hub.close()` を呼んでも Hub3 側のモードは元に戻りません。
+   * `hub.close()` も pending cleanup を best-effort で実行しますが、明示的に await する方が
+   * REGISTER モード復帰の失敗を呼び出し側で扱えます。
    *
    * 戻り値: async () => Promise<void>  — subscribe 解除 + setIRMode(CONTROL) 復帰
    */

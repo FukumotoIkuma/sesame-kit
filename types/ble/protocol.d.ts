@@ -365,20 +365,32 @@ export const ITEM: Readonly<{
     DISCONNECT_REBOOT_NOW: 6;
     ENABLE_DFU: 7;
     TIME: 8;
+    BLE_CONNECTION_PARAM: 9;
+    BLE_ADV_PARAM: 10;
     AUTOLOCK: 11;
+    SERVER_ADV_KICK: 12;
+    SSMTOKEN: 13;
     INITIAL: 14;
     IRER: 15;
     TIMEPHONE: 16;
     MAGNET: 17;
     HISTORY_DELETE: 18;
+    SENSOR_INTERVAL: 19;
+    SENSOR_INTERVAL_GET: 20;
     MECH_SETTING: 80;
     MECH_STATUS: 81;
-    OPS_CONTROL: 92;
     LOCK: 82;
     UNLOCK: 83;
     MOVE_TO: 84;
+    DRIVE_DIRECTION: 85;
+    STOP: 86;
+    DETECT_DIR: 87;
     TOGGLE: 88;
     CLICK: 89;
+    DOOR_OPEN: 90;
+    DOOR_CLOSE: 91;
+    OPS_CONTROL: 92;
+    SCRIPT_SETTING: 93;
     SCRIPT_SELECT: 94;
     SCRIPT_CURRENT: 95;
     SCRIPT_NAME_LIST: 96;
@@ -392,6 +404,7 @@ export const ITEM: Readonly<{
     BOT2_ITEM_CODE_RUN_SCRIPT_7: 177;
     BOT2_ITEM_CODE_RUN_SCRIPT_8: 178;
     BOT2_ITEM_CODE_RUN_SCRIPT_9: 179;
+    ADD_HUB3: 180;
     BOT2_ITEM_CODE_EDIT_SCRIPT: 181;
     CARD_CHANGE: 107;
     CARD_DELETE: 108;
@@ -422,6 +435,16 @@ export const ITEM: Readonly<{
     PASSCODE_MODE_SET: 130;
     PASSCODE_ADD: 138;
     PASSCODE_MOVE: 142;
+    SSM_OS3_IR_MODE_SET: 143;
+    SSM_OS3_IR_CODE_CHANGE: 144;
+    SSM_OS3_IR_CODE_EMIT: 145;
+    SSM_OS3_IR_CODE_GET: 146;
+    SSM_OS3_IR_CODE_LAST: 147;
+    SSM_OS3_IR_CODE_FIRST: 148;
+    SSM_OS3_IR_CODE_DELETE: 149;
+    SSM_OS3_IR_MODE_GET: 150;
+    SSM_OS3_IR_CODE_NOTIFY: 151;
+    HUB3_MATTER_PAIRING_WINDOW: 153;
     FACE_CHANGE: 154;
     FACE_DELETE: 155;
     FACE_GET: 156;
@@ -444,12 +467,14 @@ export const ITEM: Readonly<{
     PUB_KEY_SESAME: 102;
     REMOVE_SESAME: 103;
     RESET: 104;
+    NOTIFY_LOCK_DOWN: 106;
     HUB3_ITEM_CODE_WIFI_SSID: 131;
     HUB3_ITEM_CODE_SSID_FIRST: 132;
     HUB3_ITEM_CODE_SSID_NOTIFY: 133;
     HUB3_ITEM_CODE_SSID_LAST: 134;
     HUB3_ITEM_CODE_WIFI_PASSWORD: 135;
     HUB3_UPDATE_WIFI_SSID: 136;
+    HUB3_MATTER_PAIRING_CODE: 137;
     HUB3_ITEM_CODE_RELAY_SWITCH: 208;
     HUB3_ITEM_CODE_NETWORK_TYPE: 209;
     REMOTE_NANO_SET_TRIGGER_DELAYTIME: 190;
@@ -491,7 +516,6 @@ export const RESULT: Readonly<{
  * { type, data } を返す (未完なら null)。start bit でバッファをリセット。
  */
 export class SegmentAssembler {
-    _buf: any[];
     /**
      * @param {Buffer} packet notify で届いた 1 パケット
      * @returns {{type:number, data:Buffer}|null} 完結時のみ {type, data}

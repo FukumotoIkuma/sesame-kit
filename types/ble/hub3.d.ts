@@ -116,9 +116,6 @@ export class Hub3Commands {
     constructor({ session }?: {
         session: import("./session.js").SesameBleSession;
     });
-    _session: import("./session.js").SesameBleSession;
-    _publishListeners: Set<any>;
-    _off: () => boolean;
     /** Hub3 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。 */
     onPublish(fn: any): () => boolean;
     /** 購読解除 (session の publish 中継を外す)。 */

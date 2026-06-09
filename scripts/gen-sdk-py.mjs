@@ -38,6 +38,14 @@ function pyClassName(s) {
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("");
 }
 
+function pyIdentifier(s) {
+  let out = String(s).replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!out) out = "call";
+  if (/^[0-9]/.test(out)) out = `_${out}`;
+  if (PY_KEYWORDS.has(out)) out = `${out}_`;
+  return out;
+}
+
 /** result schema → Python 戻り型。properties 付き object は TypedDict を classes に登録して
  * そのクラス名を返す (= 完全型付け)。形不明 (bare object / {}) は Any (嘘をつかない)。
  * nullable:true は `| None` を付す。`classes`: Map<className, {fields}|null(予約中)>。 */
@@ -117,11 +125,12 @@ function emitMethod(m, indent, classes) {
     ? `${indent}    """@experimental (${m["x-provenance"]}) — may change without notice."""\n`
     : "";
   const ret = methodReturnType(m.result?.schema, m.name, classes);
+  const op = pyIdentifier(m.op);
   if (mp.generic) {
-    return `${indent}def ${m.op}(self, **params: Any) -> ${ret}:\n${tag}${indent}    return self._c._call(${JSON.stringify(m.name)}, params)`;
+    return `${indent}def ${op}(self, **params: Any) -> ${ret}:\n${tag}${indent}    return self._c._call(${JSON.stringify(m.name)}, params)`;
   }
   const sig = `self, *, ${mp.sig.join(", ")}`;
-  return `${indent}def ${m.op}(${sig}) -> ${ret}:\n${tag}${indent}    return self._c._call(${JSON.stringify(m.name)}, _omit_none({${mp.dict.join(", ")}}))`;
+  return `${indent}def ${op}(${sig}) -> ${ret}:\n${tag}${indent}    return self._c._call(${JSON.stringify(m.name)}, _omit_none({${mp.dict.join(", ")}}))`;
 }
 
 /** OpenRPC spec → Python SDK ソース (決定的)。drift gate がこの純関数を再実行して比較する。 */
@@ -152,8 +161,9 @@ export function generateSdkPy(spec) {
     const mp = methodParams(m.params);
     const tag = m["x-stability"] === "experimental" ? `        """@experimental (${m["x-provenance"]})."""\n` : "";
     const ret = methodReturnType(m.result?.schema, m.name, classes);
-    if (mp.generic) return `    def ${m.op}(self, **params: Any) -> ${ret}:\n${tag}        return self._call(${JSON.stringify(m.name)}, params)`;
-    return `    def ${m.op}(self, *, ${mp.sig.join(", ")}) -> ${ret}:\n${tag}        return self._call(${JSON.stringify(m.name)}, _omit_none({${mp.dict.join(", ")}}))`;
+    const op = pyIdentifier(m.op);
+    if (mp.generic) return `    def ${op}(self, **params: Any) -> ${ret}:\n${tag}        return self._call(${JSON.stringify(m.name)}, params)`;
+    return `    def ${op}(self, *, ${mp.sig.join(", ")}) -> ${ret}:\n${tag}        return self._call(${JSON.stringify(m.name)}, _omit_none({${mp.dict.join(", ")}}))`;
   }).join("\n\n");
 
   const typedDicts = emitTypedDicts(classes);

@@ -12,6 +12,7 @@ export * as company from "./company.js";
 export * as access from "./access.js";
 export * as iot from "./iot.js";
 export * as presetir from "./presetir.js";
+export * as payment from "./payment.js";
 export * as sharekey from "./sharekey.js";
 export * as lock from "./lock.js";
 export * as ble from "./ble/index.js";

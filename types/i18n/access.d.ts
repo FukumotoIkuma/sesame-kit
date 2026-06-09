@@ -69,6 +69,13 @@ declare namespace _default {
         "access.err.passcodes.post.jsonRequired": string;
         "access.passcodes.posted": string;
         "access.err.opTimeout": string;
+        "access.err.biometricsBaseUrlRequired": string;
+        "access.err.biometricsBaseUrlInvalid": string;
+        "access.err.biometricsHttpsRequired": string;
+        "access.err.biometricsAuthorizationRequired": string;
+        "access.err.fetchRequired": string;
+        "access.err.operationRequired": string;
+        "access.err.kindRequired": string;
     };
     let ja: {
         "access.cmd.access": string;
@@ -140,6 +147,13 @@ declare namespace _default {
         "access.err.passcodes.post.jsonRequired": string;
         "access.passcodes.posted": string;
         "access.err.opTimeout": string;
+        "access.err.biometricsBaseUrlRequired": string;
+        "access.err.biometricsBaseUrlInvalid": string;
+        "access.err.biometricsHttpsRequired": string;
+        "access.err.biometricsAuthorizationRequired": string;
+        "access.err.fetchRequired": string;
+        "access.err.operationRequired": string;
+        "access.err.kindRequired": string;
     };
 }
 export default _default;

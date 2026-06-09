@@ -42,66 +42,7 @@ export class SesameOS2BleSession {
         debug?: boolean;
         defaultTimeoutMs?: number;
     });
-    _transport: BleTransport;
-    _secretKey: Buffer<ArrayBufferLike>;
-    _keyIndex: Buffer<ArrayBufferLike>;
-    _ssmPublicKey: Buffer<ArrayBufferLike>;
-    _debug: boolean;
-    _defaultTimeoutMs: number;
-    _asm: SegmentAssembler;
-    _mAppToken: NonSharedBuffer;
-    _mSesameToken: Buffer<any>;
-    _loginKeyPair: import("node:crypto").ECDH;
-    _sessionToken: Buffer<ArrayBufferLike>;
-    _cipher: SesameOS2BleCipher;
-    _loggedIn: boolean;
-    _readyToRegister: boolean;
-    _readyWaiter: {
-        resolve: (value: any) => void;
-        reject: (reason?: any) => void;
-        timer: NodeJS.Timeout;
-    };
-    _registerWaiter: {
-        resolve: (value: any) => void;
-        reject: (reason?: any) => void;
-        timer: NodeJS.Timeout;
-    };
-    _loginWaiter: {
-        resolve: (value: any) => void;
-        reject: (reason?: any) => void;
-        timer: NodeJS.Timeout;
-    };
     /** @type {Map<number, Array<{resolve:Function, reject:Function, timer:any}>>} item → FIFO */
-    _pending: Map<number, Array<{
-        resolve: Function;
-        reject: Function;
-        timer: any;
-    }>>;
-    _statusListeners: Set<any>;
-    _publishListeners: Set<any>;
-    _lastStatus: any;
-    _lastLoginResponse: {
-        systemTime: number;
-        fwVersion: number;
-        historyCnt: number;
-        mechSetting: Buffer;
-        mechStatus: object;
-    };
-    _signLogin: (signPayloadHex: string) => Promise<string>;
-    _registerServer: (req: {
-        deviceUUID: string;
-        ak: Buffer;
-        mSesameToken: Buffer;
-        ER: string;
-        productType: (string | number | undefined);
-        appPubK64: Buffer;
-        appPubK64Base64: string;
-    }) => Promise<{
-        sig1: (string | Buffer);
-        serverToken: (string | Buffer);
-        sesamePublicKey: (string | Buffer);
-    }>;
-    _regKeyPair: import("node:crypto").ECDH;
     _log(...a: any[]): void;
     _isBusy(): boolean;
     get lastStatus(): any;
