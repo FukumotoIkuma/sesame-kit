@@ -118,7 +118,7 @@
     "ws": "^8.18.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "devDependencies": {
     "ink-testing-library": "^4.0.0",

@@ -1,0 +1,37 @@
+name: Feature request / 機能リクエスト
+description: Suggest an idea or enhancement / 新機能・改善の提案
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / 解決したい課題
+      description: What are you trying to do that's hard today? / 今困っていることは？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution / 提案する解決策
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 検討した代替案
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 対象領域
+      options:
+        - CLI
+        - Node library / ライブラリ
+        - JSON-RPC / gRPC server
+        - BLE (Bluetooth)
+        - Cloud API
+        - Hub3 / IR
+        - Other / その他
+    validations:
+      required: true
