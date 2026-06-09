@@ -45,8 +45,10 @@ promise:
    exactly the *low upstream-confidence* signal that keeps a method `experimental`.
 3. **We need upstream-drift detection.** Because the true parent is outside our
    control, "schema ↔ impl" drift checking is not enough; we also need
-   "vendor-behavior ↔ impl" conformance monitoring (live canary or replay of
-   captured fixtures), or the facade silently starts lying. See issues.
+   "vendor-behavior ↔ impl" conformance monitoring, or the facade silently starts
+   lying. Implemented as `scripts/canary-upstream.mjs` — an opt-in, read-only live
+   canary (not CI; needs creds) that asserts stable-contract fields are present in
+   real vendor responses and exits non-zero on drift.
 
 ### Provenance (first-class)
 

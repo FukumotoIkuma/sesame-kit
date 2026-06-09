@@ -93,10 +93,14 @@ guarantees schema and implementation never diverge.
   `sdk/ts/tsconfig.json` (`npm run typecheck:sdk`); drift-gated by
   `tests/sdk-ts-contract.test.js` (regenerate == committed). HTTP `POST /rpc`
   transport; SSE event streaming + Python SDK are the next increments.
-- [ ] **v — Upstream-conformance gate + provenance.** Record provenance per
-  contract element; add a vendor-behavior ↔ impl check (live canary / captured
-  fixture replay) for stable methods so vendor drift is detected, not silently
-  absorbed-then-broken.
+- [x] **v — Upstream-conformance gate + provenance.** Provenance is first-class
+  (`x-provenance` since ii-a); `tests/provenance.test.js` now locks the invariant
+  that tier is *derived* from provenance (stable ⊂ {local, app-core}; experimental
+  = unverified). Upstream (vendor ↔ impl) drift — which CI can't see — is covered
+  by `scripts/canary-upstream.mjs`: an opt-in, read-only live canary that hits the
+  real cloud with stored creds and asserts the stable contract fields are present
+  in vendor responses (exit 1 on drift). Validated live: 5/5 stable checks pass.
+  Not in CI (needs creds/network); run manually or scheduled.
 
 Recommended order: i → ii-a → ii-b → iii → iv (decide *what* we promise before
 generating clients off it). **v (provenance + upstream gate)** runs alongside:
