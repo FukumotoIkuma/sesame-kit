@@ -56,7 +56,7 @@ export const RESULT_SCHEMAS = Object.freeze({
       { ts: NUM, light: NUM, heavy: NUM, lightPercentage: NUM, heavyPercentage: NUM },
       ["ts"],
     )),
-    lastEvaluatedKey: OBJ, // opaque (nullable)
+    lastEvaluatedKey: nullable(OBJ), // opaque, DynamoDB ページ終端では null
   }, ["records"]),
 
   // lock.status は vendor トレース確認済 (useManageDevice.js:84 が data[0]||null を消費) →

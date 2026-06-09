@@ -120,7 +120,7 @@ class AccountWhoamiResultCustomerInfo(TypedDict):
 
 class DeviceBatteryResult(TypedDict):
     records: list[DeviceBatteryResultRecordsItem]
-    lastEvaluatedKey: NotRequired[Any]
+    lastEvaluatedKey: NotRequired[Any | None]
 
 
 class DeviceBatteryResultRecordsItem(TypedDict):

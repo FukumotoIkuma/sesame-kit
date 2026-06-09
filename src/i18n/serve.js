@@ -32,15 +32,21 @@ Log in with the CLI beforehand: sesame login <email>`,
     "serve.rpc.opt.socket": "UDS path (default when omitted)",
     "serve.rpc.opt.subscribe": "subscribe to events (e.g. lockState,deviceUpdate). Ctrl-C to stop",
     "serve.rpc.opt.paths": "print connection info (socket / token paths) as JSON (for other-language clients)",
+    "serve.rpc.opt.http": "target an HTTP `serve --http` instead of UDS (default URL http://127.0.0.1:8080)",
+    "serve.rpc.opt.token": "Bearer token for --http (default: read from serve.token)",
     "serve.rpc.help.after": `
 Examples:
   sesame rpc                                  # list all methods and params
   sesame rpc status
   sesame rpc lock.unlock --params '{"name":"front"}'
   sesame rpc --subscribe lockState            # keep printing lock-state changes
+  sesame rpc --http status                     # talk to a running serve --http
   sesame rpc --paths                          # connection info for other languages as JSON`,
     "serve.subscribed": "[subscribed] {topics} — Ctrl-C to stop",
     "serve.notRunning": "sesame serve is not running (socket: {socketPath}). Run `sesame serve` in another terminal",
+    "serve.httpNotRunning": "cannot reach sesame serve over HTTP at {url}. Start it with `sesame serve --http`",
+    "serve.httpUnauthorized": "HTTP 401: bad or missing token. Pass --token or start `sesame serve --http` (token saved to serve.token)",
+    "serve.subscribeHttpUnsupported": "--subscribe over --http is not supported here; use SSE: curl -N -H 'Authorization: Bearer <token>' '{url}/events?topics={topics}'",
     "serve.rpcTimeout": "rpc timeout",
     "serve.badParamsJson": "Error: --params is not valid JSON: {message}",
     "serve.hint.notLoggedIn": "Hint: not logged in / token expired. Run `sesame login <email>` and restart the daemon",
@@ -193,15 +199,21 @@ Watch events (SSE):
     "serve.rpc.opt.socket": "UDS パス (省略時は既定)",
     "serve.rpc.opt.subscribe": "イベント購読 (例: lockState,deviceUpdate)。Ctrl-C で停止",
     "serve.rpc.opt.paths": "接続情報 (socket / token のパス) を JSON 出力 (他言語クライアント用)",
+    "serve.rpc.opt.http": "UDS でなく HTTP の `serve --http` に繋ぐ (既定 URL http://127.0.0.1:8080)",
+    "serve.rpc.opt.token": "--http 用の Bearer トークン (既定: serve.token から読む)",
     "serve.rpc.help.after": `
 例:
   sesame rpc                                  # 全メソッドと引数を一覧
   sesame rpc status
   sesame rpc lock.unlock --params '{"name":"front"}'
   sesame rpc --subscribe lockState            # 鍵状態の変化を表示し続ける
+  sesame rpc --http status                     # 起動中の serve --http に繋ぐ
   sesame rpc --paths                          # 他言語から繋ぐ接続情報を JSON で`,
     "serve.subscribed": "[subscribed] {topics} — Ctrl-C で停止",
     "serve.notRunning": "sesame serve が起動していません (socket: {socketPath})。別ターミナルで `sesame serve` を実行してください",
+    "serve.httpNotRunning": "HTTP {url} の sesame serve に到達できません。`sesame serve --http` で起動してください",
+    "serve.httpUnauthorized": "HTTP 401: トークンが不正/未指定です。--token を渡すか `sesame serve --http` を起動してください (token は serve.token に保存)",
+    "serve.subscribeHttpUnsupported": "--http での --subscribe は未対応です。SSE を使ってください: curl -N -H 'Authorization: Bearer <token>' '{url}/events?topics={topics}'",
     "serve.rpcTimeout": "rpc timeout",
     "serve.badParamsJson": "Error: --params が不正な JSON: {message}",
     "serve.hint.notLoggedIn": "Hint: 未ログイン/失効です。`sesame login <email>` 後にデーモンを再起動してください",

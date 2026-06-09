@@ -72,6 +72,22 @@ function mask(s) {
   return `${s.slice(0, 4)}…${s.slice(-4)} (len=${s.length})`;
 }
 
+/** config show 用に config を複製し secretKey を**ツリー全体で**マスクする (tokens と同じ扱い)。
+ *  config には devices と派生 locks の双方に鍵が入る等、複数箇所に現れるため一律で潰す。
+ *  生の鍵が要るときは `sesame devices` (意図的な全ダンプ口) を使う。 */
+function redactConfig(cfg) {
+  if (!cfg || typeof cfg !== "object") return cfg;
+  const clone = structuredClone(cfg);
+  (function walk(o) {
+    if (!o || typeof o !== "object") return;
+    for (const [k, v] of Object.entries(o)) {
+      if (k === "secretKey" && typeof v === "string") o[k] = mask(v);
+      else walk(v);
+    }
+  })(clone);
+  return clone;
+}
+
 function out(json, humanFn, jsonObj) {
   if (json) console.log(JSON.stringify(jsonObj, null, 2));
   else humanFn();
@@ -511,13 +527,14 @@ async function cmdConfigShow(_opts, program) {
         lastRefresh: tokens.lastRefresh,
       }
     : null;
+  const cfgRedacted = redactConfig(cfg); // secretKey はマスク (tokens と同様)。生鍵は `sesame devices`。
   out(opts.json, () => {
     console.log(t("cli.configDir", { dir: paths.dir }));
     console.log(t("cli.configJsonHeader"));
-    console.log(cfg ? JSON.stringify(cfg, null, 2) : t("cli.notInitialized"));
+    console.log(cfgRedacted ? JSON.stringify(cfgRedacted, null, 2) : t("cli.notInitialized"));
     console.log(t("cli.tokensJsonHeader"));
     console.log(tokensMasked ? JSON.stringify(tokensMasked, null, 2) : t("cli.notSignedIn"));
-  }, { configDir: paths.dir, config: cfg, tokens: tokensMasked });
+  }, { configDir: paths.dir, config: cfgRedacted, tokens: tokensMasked });
 }
 
 async function cmdRemoteLs(_opts, program) {
@@ -917,7 +934,8 @@ async function cmdDeviceStatus(uuid, _opts, program) {
     uuid = await pickDeviceUUID(program, hub, uuid, { message: t("cli.whichDeviceStatus") }) || uuid;
     if (!uuid) die(t("cli.deviceUuidRequired"), 2);
     const status = await hub.getDeviceStatus(uuid);
-    out(opts.json, () => console.log(JSON.stringify(status, null, 2)), { status });
+    const safe = sanitizeStatus(status); // status に secretKey は不要 — 端末/JSON に鍵を出さない
+    out(opts.json, () => console.log(fmtCloudStatus(status)), { status: safe });
   });
 }
 
@@ -950,12 +968,13 @@ async function cmdDeviceRm(uuid, options, program) {
 
 async function cmdHistory(deviceUUID, options, program) {
   await withHub(program, async (hub, { opts }) => {
-    if (!deviceUUID && canPrompt(program)) {
-      deviceUUID = await pickDeviceUUID(program, hub, null, { message: t("cli.whichDeviceHistory") });
-    }
+    // 履歴は単機取得。cloud の getHistory は空 list を「全デバイス」と解釈せず無応答=タイムアウト
+    // するため、battery と同じく未指定なら 1 台なら auto-pick / 複数 + 非対話は UUID 要求 /
+    // 複数 + 対話は選択、にフォールバックする (空 list を投げて固まる経路を断つ)。
+    deviceUUID = await pickDeviceUUID(program, hub, deviceUUID, { message: t("cli.whichDeviceHistory") }) || deviceUUID;
+    if (!deviceUUID) die(t("cli.deviceUuidRequired"), 2);
     // --delete <timestamp>: 履歴 1 エントリを非表示化 (論理削除)。timestamp は各 record の値。
     if (options.delete != null) {
-      if (!deviceUUID) die(t("cli.deviceUuidRequired"), 2);
       const timestamp = Number(options.delete);
       if (!Number.isFinite(timestamp)) { die(t("cli.historyTimestampInvalid", { value: options.delete }), 2); return; }
       await hub.hideDeviceHistory({ deviceUUID, timestamp });
@@ -963,8 +982,7 @@ async function cmdHistory(deviceUUID, options, program) {
       return;
     }
     const pageSize = options.pageSize ? Number(options.pageSize) : null;
-    const list = deviceUUID ? [{ deviceUUID }] : [];
-    const data = await hub.getDeviceHistory(list, pageSize);
+    const data = await hub.getDeviceHistory([{ deviceUUID }], pageSize);
     out(opts.json, () => console.log(JSON.stringify(data, null, 2)), { data });
   });
 }
@@ -1094,6 +1112,14 @@ async function resolveLockEntry(program, name) {
  */
 function pickTransport(op, options, model) {
   if (options.cloudOnly && options.bleOnly) { die(t("cli.cloudBleExclusive"), 2); }
+  // status は制御 op ではなく mech 状態の読み取り。capability リスト (制御 op のみ) には載らないが、
+  // 実行層は BLE (ble.status) でも cloud (getDeviceStatus) でも取得できる。mech を持つ型
+  // (mechKind != null = lock/bot) なら対応、hub/biometric/wifi は mech が無いので非対応。
+  // auto/--cloud-only は cloud を既定 (BLE 接続コスト回避)、--ble-only は BLE。
+  if (op === "status") {
+    if (!capabilitiesForModel(model).mechKind) { die(t("cli.noTransportForOp", { op }), 2); }
+    return options.bleOnly ? "ble" : "cloud";
+  }
   const allowed = transportsForOp(model, op);
   if (allowed.length === 0) { die(t("cli.noTransportForOp", { op }), 2); }
   if (options.bleOnly) {
@@ -1122,6 +1148,22 @@ function fmtMech(s) {
   // position はロック (Sesame5/6) のみ。Bot/Bike は概念がないので state だけ表示する。
   const pos = s.position == null ? "" : ` pos=${s.position}`;
   return `state=${s.state}${pos}${warn ? " " + warn : ""}`;
+}
+
+/** cloud の device-status (stateInfo) を fmtMech と揃えた 1 行に整形。 */
+function fmtCloudStatus(st) {
+  if (!st || !st.stateInfo) return t("cli.statusNotFetched");
+  const si = st.stateInfo;
+  const pos = si.position == null ? "" : ` pos=${si.position}`;
+  const batt = si.batteryPercentage == null ? "" : ` battery=${si.batteryPercentage}%`;
+  return `state=${si.CHSesame2Status ?? "?"}${pos}${batt}`;
+}
+
+/** status 出力から秘匿値 (secretKey) を落とす。status は状態読み取りで鍵は不要。 */
+function sanitizeStatus(st) {
+  if (!st || typeof st !== "object") return st;
+  const { secretKey, ...safe } = st; // eslint-disable-line no-unused-vars
+  return safe;
 }
 
 /** config の全ロック entry (deviceUUID/secretKey が揃っているもの) を返す。 */
@@ -1216,7 +1258,8 @@ async function runCloudOp(op, entry, program) {
   await withHub(program, async (hub, { opts }) => {
     if (op === "status") {
       const st = await hub.getDeviceStatus(entry.deviceUUID);
-      out(opts.json, () => console.log(`${entry.name}: ${JSON.stringify(st)}`), { ok: true, op, name: entry.name, via: "cloud", status: st });
+      const safe = sanitizeStatus(st);
+      out(opts.json, () => console.log(`${entry.name}: ${fmtCloudStatus(st)}`), { ok: true, op, name: entry.name, via: "cloud", status: safe });
       return;
     }
     // click (Bot の BLE クリック) は cloud では botClick(cmd=89) に対応。
@@ -1580,6 +1623,9 @@ function parseDotenv(content) {
 }
 
 // ---------- run ----------
+
+// テスト用 export: status 出力の純関数 (秘匿値除去 / 整形) と config マスク。
+export { fmtCloudStatus, sanitizeStatus, redactConfig };
 
 export async function run(argv = process.argv) {
   CLI_JSON = argv.includes("--json"); // die()/エラー経路用にグローバル --json を先に確定
