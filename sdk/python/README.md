@@ -18,9 +18,12 @@ only) — **vendor it**: copy `sesame_client.py` into your project and
   `client.lock.unlock(name="front")`, `client.lock.status(deviceUUID=...)`; a
   missing required arg is a **TypeError at the call site** (before any network
   I/O), enums are `Literal`.
-- **Results are `Any`** — the contract carries no result schemas yet, so treat
-  returns as dicts/lists and read fields directly. Errors are typed via
-  `SesameRpcError` (`kind` / `retryable`).
+- **Stable methods are typed** — `status()` / `lock.*` / `account.whoami` return
+  `dict[str, Any]`, `devices.list()` / `device.history()` return
+  `list[dict[str, Any]]`, etc. (Python has no inline object types, so the field
+  set lives in the docstring/schema, not the annotation — full TypedDicts are a
+  possible follow-up.) Experimental / un-traced methods return `Any`. Errors are
+  typed via `SesameRpcError` (`kind` / `retryable`).
 
 ## Usage
 

@@ -2621,7 +2621,30 @@
         "name": "result",
         "schema": {
           "description": "{ connected, authState, subUUID, apiVersion, contractVersion }",
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "connected": {
+              "type": "boolean"
+            },
+            "authState": {
+              "type": "string"
+            },
+            "subUUID": {
+              "type": "string"
+            },
+            "apiVersion": {
+              "type": "string"
+            },
+            "contractVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "connected",
+            "authState",
+            "apiVersion",
+            "contractVersion"
+          ]
         }
       },
       "x-stability": "stable",
@@ -2635,7 +2658,61 @@
         "name": "result",
         "schema": {
           "description": "customerInfo etc.",
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "customerInfo": {
+              "type": "object",
+              "properties": {
+                "companyID": {
+                  "type": "string"
+                },
+                "subUUID": {
+                  "type": "string"
+                },
+                "subscriptionId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "mainEmail": {
+                  "type": "string"
+                },
+                "employeeEmail": {
+                  "type": "string"
+                },
+                "employeeName": {
+                  "type": "string"
+                },
+                "access": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "tag": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "isAnonymous": {
+                  "type": "boolean"
+                },
+                "isRootUser": {
+                  "type": "boolean"
+                },
+                "isSesameApp": {
+                  "type": "boolean"
+                }
+              },
+              "required": []
+            },
+            "quotas": {
+              "type": "object"
+            }
+          },
+          "required": []
         }
       },
       "x-stability": "stable",
@@ -2674,7 +2751,30 @@
         "name": "result",
         "schema": {
           "description": "state push",
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "code": {
+              "type": "number"
+            },
+            "success": {
+              "type": "boolean"
+            },
+            "message": {
+              "type": "string"
+            },
+            "op": {
+              "type": "string"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action"
+          ]
         }
       },
       "x-stability": "stable",
@@ -2713,7 +2813,30 @@
         "name": "result",
         "schema": {
           "description": "state push",
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "code": {
+              "type": "number"
+            },
+            "success": {
+              "type": "boolean"
+            },
+            "message": {
+              "type": "string"
+            },
+            "op": {
+              "type": "string"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action"
+          ]
         }
       },
       "x-stability": "stable",
@@ -2752,7 +2875,30 @@
         "name": "result",
         "schema": {
           "description": "state push",
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "code": {
+              "type": "number"
+            },
+            "success": {
+              "type": "boolean"
+            },
+            "message": {
+              "type": "string"
+            },
+            "op": {
+              "type": "string"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action"
+          ]
         }
       },
       "x-stability": "stable",
@@ -2791,7 +2937,30 @@
         "name": "result",
         "schema": {
           "description": "state push",
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "code": {
+              "type": "number"
+            },
+            "success": {
+              "type": "boolean"
+            },
+            "message": {
+              "type": "string"
+            },
+            "op": {
+              "type": "string"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action"
+          ]
         }
       },
       "x-stability": "stable",
@@ -2813,8 +2982,11 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "status",
-          "type": "object"
+          "description": "device[] (resp.data; vendor uses [0])",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
         }
       },
       "x-stability": "stable",
@@ -2828,7 +3000,36 @@
         "name": "result",
         "schema": {
           "description": "device[]",
-          "type": "object"
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "deviceUUID": {
+                "type": "string"
+              },
+              "deviceName": {
+                "type": "string"
+              },
+              "deviceModel": {
+                "type": "string"
+              },
+              "secretKey": {
+                "type": "string"
+              },
+              "keyLevel": {
+                "type": "number"
+              },
+              "rank": {
+                "type": "number"
+              },
+              "stateInfo": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "deviceUUID"
+            ]
+          }
         }
       },
       "x-stability": "stable",
@@ -2859,7 +3060,40 @@
         "name": "result",
         "schema": {
           "description": "history[]",
-          "type": "object"
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "number"
+              },
+              "device_id": {
+                "type": "string"
+              },
+              "record_id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "number"
+              },
+              "history_tag": {
+                "type": "string"
+              },
+              "botHistoryMode": {
+                "type": "string"
+              },
+              "botAlias": {
+                "type": "string"
+              },
+              "botViaType": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "timestamp",
+              "type"
+            ]
+          }
         }
       },
       "x-stability": "stable",
@@ -2889,8 +3123,42 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "battery[]",
-          "type": "object"
+          "description": "{ records, lastEvaluatedKey }",
+          "type": "object",
+          "properties": {
+            "records": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "ts": {
+                    "type": "number"
+                  },
+                  "light": {
+                    "type": "number"
+                  },
+                  "heavy": {
+                    "type": "number"
+                  },
+                  "lightPercentage": {
+                    "type": "number"
+                  },
+                  "heavyPercentage": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "ts"
+                ]
+              }
+            },
+            "lastEvaluatedKey": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "records"
+          ]
         }
       },
       "x-stability": "stable",
@@ -2965,7 +3233,18 @@
         "name": "result",
         "schema": {
           "description": "{ subscribed: string[] }",
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "subscribed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "subscribed"
+          ]
         }
       },
       "x-stability": "stable",
@@ -2986,7 +3265,18 @@
         "name": "result",
         "schema": {
           "description": "{ subscribed: string[] }",
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "subscribed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "subscribed"
+          ]
         }
       },
       "x-stability": "stable",

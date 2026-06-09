@@ -14,6 +14,7 @@
 import { readFileSync } from "node:fs";
 import { RpcError, RPC, KIND, CONTRACT_VERSION } from "./jsonrpc.js";
 import { stabilityOf, provenanceOf, eventStabilityOf, eventProvenanceOf } from "./stability.js";
+import { RESULT_SCHEMAS } from "./result-schemas.js";
 import { t } from "../i18n.js";
 import * as schedule from "../schedule.js";
 import * as org from "../org.js";
@@ -99,7 +100,7 @@ function topLevelEntries() {
     "lock.click": { summary: t("serve.sum.lockClick"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("botClick") },
     "lock.status": {
       summary: t("serve.sum.lockStatus"),
-      params: [{ name: "deviceUUID", required: true, desc: t("serve.desc.targetDeviceUUID"), schema: S }], result: "status",
+      params: [{ name: "deviceUUID", required: true, desc: t("serve.desc.targetDeviceUUID"), schema: S }], result: "device[] (resp.data; vendor uses [0])",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID"]); return hub.getDeviceStatus(params.deviceUUID); },
     },
     "devices.list": {
@@ -114,7 +115,7 @@ function topLevelEntries() {
     },
     "device.battery": {
       summary: t("serve.sum.deviceBattery"),
-      params: [{ name: "deviceUUID", required: true, schema: S }, { name: "pageSize", required: false, schema: N }], result: "battery[]",
+      params: [{ name: "deviceUUID", required: true, schema: S }, { name: "pageSize", required: false, schema: N }], result: "{ records, lastEvaluatedKey }",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID"]); return hub.getDeviceBattery(params.deviceUUID, { pageSize: params.pageSize }); },
     },
     "ir.send": {
@@ -218,7 +219,14 @@ export function buildOpenRpcDoc(reg, version) {
         description: p.desc || "",
         schema: p.schema || {}, // 抽出できた型のみ。不明は {} (嘘の型を主張しない)
       })),
-      result: { name: "result", schema: { description: e.result || "", type: "object" } },
+      // result スキーマ: 形をトレース確認できた stable メソッドのみ RESULT_SCHEMAS で型を出す。
+      // 未確認は description だけの緩い object (SDK 側で unknown/Any にフォールバック)。
+      result: {
+        name: "result",
+        schema: RESULT_SCHEMAS[name]
+          ? { description: e.result || "", ...RESULT_SCHEMAS[name] }
+          : { description: e.result || "", type: "object" },
+      },
       // tier は provenance から導出。SDK/ツールは stable だけに張れる (docs/api-stability.md)。
       "x-stability": stabilityOf(name),
       "x-provenance": provenanceOf(name),

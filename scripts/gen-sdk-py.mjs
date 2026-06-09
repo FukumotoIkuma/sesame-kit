@@ -32,6 +32,20 @@ function pyType(schema) {
   }
 }
 
+/** result schema → Python 戻り型。形不明 (bare object/{}) は Any。object は dict[str, Any]
+ * (Python はインライン object 型が無いため。完全な型は TypedDict 化が要るが現状はここまで)。 */
+function pyResultType(schema) {
+  if (!schema || typeof schema !== "object") return "Any";
+  if (schema.properties) return "dict[str, Any]";
+  switch (schema.type) {
+    case "string": return "str";
+    case "number": return "float";
+    case "boolean": return "bool";
+    case "array": return `list[${pyResultType(schema.items || {})}]`;
+    default: return "Any"; // bare object / 型不明
+  }
+}
+
 /** params 配列 → {usable, sig, body}。usable=false なら **params フォールバック。 */
 function methodParams(params) {
   const real = (params || []).filter((p) => p.name && p.name !== "(params)");
@@ -53,11 +67,12 @@ function emitMethod(m, indent) {
   const tag = m["x-stability"] === "experimental"
     ? `${indent}    """@experimental (${m["x-provenance"]}) — may change without notice."""\n`
     : "";
+  const ret = pyResultType(m.result?.schema);
   if (mp.generic) {
-    return `${indent}def ${m.op}(self, **params: Any) -> Any:\n${tag}${indent}    return self._c._call(${JSON.stringify(m.name)}, params)`;
+    return `${indent}def ${m.op}(self, **params: Any) -> ${ret}:\n${tag}${indent}    return self._c._call(${JSON.stringify(m.name)}, params)`;
   }
   const sig = `self, *, ${mp.sig.join(", ")}`;
-  return `${indent}def ${m.op}(${sig}) -> Any:\n${tag}${indent}    return self._c._call(${JSON.stringify(m.name)}, _omit_none({${mp.dict.join(", ")}}))`;
+  return `${indent}def ${m.op}(${sig}) -> ${ret}:\n${tag}${indent}    return self._c._call(${JSON.stringify(m.name)}, _omit_none({${mp.dict.join(", ")}}))`;
 }
 
 /** OpenRPC spec → Python SDK ソース (決定的)。drift gate がこの純関数を再実行して比較する。 */
@@ -83,8 +98,9 @@ export function generateSdkPy(spec) {
   const rootMethods = (groups.get("") || []).map((m) => {
     const mp = methodParams(m.params);
     const tag = m["x-stability"] === "experimental" ? `        """@experimental (${m["x-provenance"]})."""\n` : "";
-    if (mp.generic) return `    def ${m.op}(self, **params: Any) -> Any:\n${tag}        return self._call(${JSON.stringify(m.name)}, params)`;
-    return `    def ${m.op}(self, *, ${mp.sig.join(", ")}) -> Any:\n${tag}        return self._call(${JSON.stringify(m.name)}, _omit_none({${mp.dict.join(", ")}}))`;
+    const ret = pyResultType(m.result?.schema);
+    if (mp.generic) return `    def ${m.op}(self, **params: Any) -> ${ret}:\n${tag}        return self._call(${JSON.stringify(m.name)}, params)`;
+    return `    def ${m.op}(self, *, ${mp.sig.join(", ")}) -> ${ret}:\n${tag}        return self._call(${JSON.stringify(m.name)}, _omit_none({${mp.dict.join(", ")}}))`;
   }).join("\n\n");
 
   const stableCount = spec.methods.filter((m) => m["x-stability"] === "stable").length;

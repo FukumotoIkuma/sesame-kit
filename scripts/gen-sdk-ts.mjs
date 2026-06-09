@@ -26,6 +26,29 @@ function tsType(schema) {
   }
 }
 
+/**
+ * result schema → TS 型。params の tsType と違い、形不明 (properties 無しの bare object や {}) は
+ * unknown にする (「object だ」と嘘をつかない)。properties があれば inline literal で型を出す。
+ */
+function tsResultType(schema) {
+  if (!schema || typeof schema !== "object") return "unknown";
+  if (schema.properties) {
+    const req = schema.required || [];
+    const fields = Object.entries(schema.properties).map(([k, v]) => {
+      const key = /^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k);
+      return `${key}${req.includes(k) ? "" : "?"}: ${tsResultType(v)}`;
+    });
+    return `{ ${fields.join("; ")} }`;
+  }
+  switch (schema.type) {
+    case "string": return schema.enum ? schema.enum.map((v) => JSON.stringify(v)).join(" | ") : "string";
+    case "number": return "number";
+    case "boolean": return "boolean";
+    case "array": return `Array<${tsResultType(schema.items || {})}>`;
+    default: return "unknown"; // bare object / 型不明 → unknown
+  }
+}
+
 /** params 配列 → インライン型リテラル (`{ a: string; b?: number }`)。空なら null。 */
 function paramsType(params) {
   if (!params || params.length === 0) return null;
@@ -57,7 +80,8 @@ function emitMethod(m, indent, field) {
   const safeOp = /^[A-Za-z_$][\w$]*$/.test(m.op) ? m.op : JSON.stringify(m.op);
   const sep = field ? " =" : ":";
   const end = field ? ";" : ",";
-  return `${tag}${indent}${safeOp}${sep} (${arg}): Promise<unknown> => this._call(${JSON.stringify(m.name)}, ${passed})${end}`;
+  const ret = tsResultType(m.result?.schema);
+  return `${tag}${indent}${safeOp}${sep} (${arg}): Promise<${ret}> => this._call(${JSON.stringify(m.name)}, ${passed}) as Promise<${ret}>${end}`;
 }
 
 const nsBlocks = [];

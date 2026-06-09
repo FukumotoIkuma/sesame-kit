@@ -39,10 +39,12 @@ try {
 
 - **Params are typed** from the schema (`client.lock.unlock({ name })`,
   `lock.status({ deviceUUID })` — a missing required field is a compile error).
-- **Results are `Promise<unknown>`** — the contract doesn't carry result schemas
-  yet, so cast/validate the return (e.g. `const st = await client.status() as
-  { connected: boolean; apiVersion: string }`). Errors are typed via
-  `SesameRpcError` (`kind` / `retryable`).
+- **Stable methods have typed results** — `await client.status()` is
+  `{ connected, authState, apiVersion, ... }` (no cast needed), `devices.list()`
+  is `Array<{ deviceUUID, deviceName?, ... }>`, etc. Sub-objects whose shape
+  isn't pinned (e.g. `stateInfo`, `quotas`) are `unknown`.
+- **Experimental / un-traced methods return `Promise<unknown>`** — cast or
+  validate those. Errors are typed via `SesameRpcError` (`kind` / `retryable`).
 
 ## Stability
 

@@ -83,7 +83,7 @@ class _Account:
     def __init__(self, c: "SesameClient") -> None:
         self._c = c
 
-    def whoami(self, **params: Any) -> Any:
+    def whoami(self, **params: Any) -> dict[str, Any]:
         return self._c._call("account.whoami", params)
 
 
@@ -112,10 +112,10 @@ class _Device:
     def __init__(self, c: "SesameClient") -> None:
         self._c = c
 
-    def battery(self, *, deviceUUID: str, pageSize: float | None = None) -> Any:
+    def battery(self, *, deviceUUID: str, pageSize: float | None = None) -> dict[str, Any]:
         return self._c._call("device.battery", _omit_none({"deviceUUID": deviceUUID, "pageSize": pageSize}))
 
-    def history(self, *, deviceUUID: str, pageSize: float | None = None) -> Any:
+    def history(self, *, deviceUUID: str, pageSize: float | None = None) -> list[dict[str, Any]]:
         return self._c._call("device.history", _omit_none({"deviceUUID": deviceUUID, "pageSize": pageSize}))
 
 
@@ -123,7 +123,7 @@ class _Devices:
     def __init__(self, c: "SesameClient") -> None:
         self._c = c
 
-    def list(self, **params: Any) -> Any:
+    def list(self, **params: Any) -> list[dict[str, Any]]:
         return self._c._call("devices.list", params)
 
 
@@ -131,10 +131,10 @@ class _Events:
     def __init__(self, c: "SesameClient") -> None:
         self._c = c
 
-    def subscribe(self, *, topics: Any) -> Any:
+    def subscribe(self, *, topics: Any) -> dict[str, Any]:
         return self._c._call("events.subscribe", _omit_none({"topics": topics}))
 
-    def unsubscribe(self, *, topics: Any) -> Any:
+    def unsubscribe(self, *, topics: Any) -> dict[str, Any]:
         return self._c._call("events.unsubscribe", _omit_none({"topics": topics}))
 
 
@@ -204,19 +204,19 @@ class _Lock:
     def __init__(self, c: "SesameClient") -> None:
         self._c = c
 
-    def click(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None) -> Any:
+    def click(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None) -> dict[str, Any]:
         return self._c._call("lock.click", _omit_none({"name": name, "deviceUUID": deviceUUID, "secretKey": secretKey}))
 
-    def lock(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None) -> Any:
+    def lock(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None) -> dict[str, Any]:
         return self._c._call("lock.lock", _omit_none({"name": name, "deviceUUID": deviceUUID, "secretKey": secretKey}))
 
-    def status(self, *, deviceUUID: str) -> Any:
+    def status(self, *, deviceUUID: str) -> list[Any]:
         return self._c._call("lock.status", _omit_none({"deviceUUID": deviceUUID}))
 
-    def toggle(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None) -> Any:
+    def toggle(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None) -> dict[str, Any]:
         return self._c._call("lock.toggle", _omit_none({"name": name, "deviceUUID": deviceUUID, "secretKey": secretKey}))
 
-    def unlock(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None) -> Any:
+    def unlock(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None) -> dict[str, Any]:
         return self._c._call("lock.unlock", _omit_none({"name": name, "deviceUUID": deviceUUID, "secretKey": secretKey}))
 
 
@@ -442,5 +442,5 @@ class SesameClient:
                     if payload:
                         on_event(json.loads(payload))
 
-    def status(self, **params: Any) -> Any:
+    def status(self, **params: Any) -> dict[str, Any]:
         return self._call("status", params)

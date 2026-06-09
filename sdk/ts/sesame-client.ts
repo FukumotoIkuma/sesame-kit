@@ -96,186 +96,186 @@ export class SesameClient {
     }
   }
 
-  status = (): Promise<unknown> => this._call("status", {});
+  status = (): Promise<{ connected: boolean; authState: string; subUUID?: string; apiVersion: string; contractVersion: string }> => this._call("status", {}) as Promise<{ connected: boolean; authState: string; subUUID?: string; apiVersion: string; contractVersion: string }>;
 
   readonly access = {
     /** @experimental unverified — may change without notice. */
-    clearCards: (params: { deviceUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("access.clearCards", params),
+    clearCards: (params: { deviceUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("access.clearCards", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    clearPasscodes: (params: { deviceUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("access.clearPasscodes", params),
+    clearPasscodes: (params: { deviceUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("access.clearPasscodes", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    delCards: (params: { items: Array<Record<string, unknown>> }): Promise<unknown> => this._call("access.delCards", params),
+    delCards: (params: { items: Array<Record<string, unknown>> }): Promise<unknown> => this._call("access.delCards", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    delPasscodes: (params: { items: Array<Record<string, unknown>> }): Promise<unknown> => this._call("access.delPasscodes", params),
+    delPasscodes: (params: { items: Array<Record<string, unknown>> }): Promise<unknown> => this._call("access.delPasscodes", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getCards: (params: { deviceUUIDs: Array<string>; timeoutMs?: number }): Promise<unknown> => this._call("access.getCards", params),
+    getCards: (params: { deviceUUIDs: Array<string>; timeoutMs?: number }): Promise<unknown> => this._call("access.getCards", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getPasscodes: (params: { deviceUUIDs: Array<string>; timeoutMs?: number }): Promise<unknown> => this._call("access.getPasscodes", params),
+    getPasscodes: (params: { deviceUUIDs: Array<string>; timeoutMs?: number }): Promise<unknown> => this._call("access.getPasscodes", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    postCards: (params: { deviceUUID: string; list: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("access.postCards", params),
+    postCards: (params: { deviceUUID: string; list: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("access.postCards", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    postPasscodes: (params: { deviceUUID: string; list: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("access.postPasscodes", params),
+    postPasscodes: (params: { deviceUUID: string; list: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("access.postPasscodes", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    updateCardName: (params: { item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("access.updateCardName", params),
+    updateCardName: (params: { item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("access.updateCardName", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    updateCardOwner: (params: { cardID: string; ownerSubUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("access.updateCardOwner", params),
+    updateCardOwner: (params: { cardID: string; ownerSubUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("access.updateCardOwner", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    updatePasscodeName: (params: { item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("access.updatePasscodeName", params),
+    updatePasscodeName: (params: { item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("access.updatePasscodeName", params) as Promise<unknown>,
   };
 
   readonly account = {
-    whoami: (): Promise<unknown> => this._call("account.whoami", {}),
+    whoami: (): Promise<{ customerInfo?: { companyID?: string; subUUID?: string; subscriptionId?: string; name?: string; mainEmail?: string; employeeEmail?: string; employeeName?: string; access?: Array<string>; tag?: Array<string>; isAnonymous?: boolean; isRootUser?: boolean; isSesameApp?: boolean }; quotas?: unknown }> => this._call("account.whoami", {}) as Promise<{ customerInfo?: { companyID?: string; subUUID?: string; subscriptionId?: string; name?: string; mainEmail?: string; employeeEmail?: string; employeeName?: string; access?: Array<string>; tag?: Array<string>; isAnonymous?: boolean; isRootUser?: boolean; isSesameApp?: boolean }; quotas?: unknown }>,
   };
 
   readonly company = {
     /** @experimental unverified — may change without notice. */
-    addCompany: (params: { name: string; employeeEmail: string; subUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("company.addCompany", params),
+    addCompany: (params: { name: string; employeeEmail: string; subUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("company.addCompany", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getCompanies: (params: { timeoutMs?: number }): Promise<unknown> => this._call("company.getCompanies", params),
+    getCompanies: (params: { timeoutMs?: number }): Promise<unknown> => this._call("company.getCompanies", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getPaymentConfig: (params: { companyID: string; timeoutMs?: number }): Promise<unknown> => this._call("company.getPaymentConfig", params),
+    getPaymentConfig: (params: { companyID: string; timeoutMs?: number }): Promise<unknown> => this._call("company.getPaymentConfig", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    updateCompanyName: (params: { companyID: string; name: string; timeoutMs?: number }): Promise<unknown> => this._call("company.updateCompanyName", params),
+    updateCompanyName: (params: { companyID: string; name: string; timeoutMs?: number }): Promise<unknown> => this._call("company.updateCompanyName", params) as Promise<unknown>,
   };
 
   readonly device = {
-    battery: (params: { deviceUUID: string; pageSize?: number }): Promise<unknown> => this._call("device.battery", params),
-    history: (params: { deviceUUID: string; pageSize?: number }): Promise<unknown> => this._call("device.history", params),
+    battery: (params: { deviceUUID: string; pageSize?: number }): Promise<{ records: Array<{ ts: number; light?: number; heavy?: number; lightPercentage?: number; heavyPercentage?: number }>; lastEvaluatedKey?: unknown }> => this._call("device.battery", params) as Promise<{ records: Array<{ ts: number; light?: number; heavy?: number; lightPercentage?: number; heavyPercentage?: number }>; lastEvaluatedKey?: unknown }>,
+    history: (params: { deviceUUID: string; pageSize?: number }): Promise<Array<{ timestamp: number; device_id?: string; record_id?: string; type: number; history_tag?: string; botHistoryMode?: string; botAlias?: string; botViaType?: number }>> => this._call("device.history", params) as Promise<Array<{ timestamp: number; device_id?: string; record_id?: string; type: number; history_tag?: string; botHistoryMode?: string; botAlias?: string; botViaType?: number }>>,
   };
 
   readonly devices = {
-    list: (): Promise<unknown> => this._call("devices.list", {}),
+    list: (): Promise<Array<{ deviceUUID: string; deviceName?: string; deviceModel?: string; secretKey?: string; keyLevel?: number; rank?: number; stateInfo?: unknown }>> => this._call("devices.list", {}) as Promise<Array<{ deviceUUID: string; deviceName?: string; deviceModel?: string; secretKey?: string; keyLevel?: number; rank?: number; stateInfo?: unknown }>>,
   };
 
   readonly events = {
-    subscribe: (params: { topics: unknown }): Promise<unknown> => this._call("events.subscribe", params),
-    unsubscribe: (params: { topics: unknown }): Promise<unknown> => this._call("events.unsubscribe", params),
+    subscribe: (params: { topics: unknown }): Promise<{ subscribed: Array<string> }> => this._call("events.subscribe", params) as Promise<{ subscribed: Array<string> }>,
+    unsubscribe: (params: { topics: unknown }): Promise<{ subscribed: Array<string> }> => this._call("events.unsubscribe", params) as Promise<{ subscribed: Array<string> }>,
   };
 
   readonly iot = {
     /** @experimental unverified — may change without notice. */
-    addSesameToHub3: (params: { hub3Id: string; secretKey: string; sesameId: string; ssmSecKa: string; nickName?: string; deviceModel: string; timeoutMs?: number }): Promise<unknown> => this._call("iot.addSesameToHub3", params),
+    addSesameToHub3: (params: { hub3Id: string; secretKey: string; sesameId: string; ssmSecKa: string; nickName?: string; deviceModel: string; timeoutMs?: number }): Promise<unknown> => this._call("iot.addSesameToHub3", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    clearHub3WifiSsid: (params: { deviceId: string; secretKey: string; hub3Id?: string }): Promise<unknown> => this._call("iot.clearHub3WifiSsid", params),
+    clearHub3WifiSsid: (params: { deviceId: string; secretKey: string; hub3Id?: string }): Promise<unknown> => this._call("iot.clearHub3WifiSsid", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getMatterPairingCode: (params: { deviceId: string; secretKey: string; hub3Id?: string; timeoutMs?: number }): Promise<unknown> => this._call("iot.getMatterPairingCode", params),
+    getMatterPairingCode: (params: { deviceId: string; secretKey: string; hub3Id?: string; timeoutMs?: number }): Promise<unknown> => this._call("iot.getMatterPairingCode", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    hub3RelaySwitch: (params: { deviceId: string; secretKey: string; hub3Id?: string; op?: number }): Promise<unknown> => this._call("iot.hub3RelaySwitch", params),
+    hub3RelaySwitch: (params: { deviceId: string; secretKey: string; hub3Id?: string; op?: number }): Promise<unknown> => this._call("iot.hub3RelaySwitch", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    openMatterPairingWindow: (params: { deviceId: string; secretKey: string; hub3Id?: string; timeoutMs?: number }): Promise<unknown> => this._call("iot.openMatterPairingWindow", params),
+    openMatterPairingWindow: (params: { deviceId: string; secretKey: string; hub3Id?: string; timeoutMs?: number }): Promise<unknown> => this._call("iot.openMatterPairingWindow", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removeSesameFromHub3: (params: Record<string, unknown>): Promise<unknown> => this._call("iot.removeSesameFromHub3", params),
+    removeSesameFromHub3: (params: Record<string, unknown>): Promise<unknown> => this._call("iot.removeSesameFromHub3", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    sendIotCmd: (params: { topic: string; payload: string; op?: string }): Promise<unknown> => this._call("iot.sendIotCmd", params),
+    sendIotCmd: (params: { topic: string; payload: string; op?: string }): Promise<unknown> => this._call("iot.sendIotCmd", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    sendIotCmdAwait: (params: { topic: string; payload: string; cmd: number; deviceId?: string; timeoutMs?: number }): Promise<unknown> => this._call("iot.sendIotCmdAwait", params),
+    sendIotCmdAwait: (params: { topic: string; payload: string; cmd: number; deviceId?: string; timeoutMs?: number }): Promise<unknown> => this._call("iot.sendIotCmdAwait", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    setHub3LedDuty: (params: { deviceId: string; secretKey: string; hub3Id?: string; op: number; duty: number; timeoutMs?: number }): Promise<unknown> => this._call("iot.setHub3LedDuty", params),
+    setHub3LedDuty: (params: { deviceId: string; secretKey: string; hub3Id?: string; op: number; duty: number; timeoutMs?: number }): Promise<unknown> => this._call("iot.setHub3LedDuty", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    startFirmwareUpdate: (params: { deviceId: string; hub3Id?: string; secretKey: string }): Promise<unknown> => this._call("iot.startFirmwareUpdate", params),
+    startFirmwareUpdate: (params: { deviceId: string; hub3Id?: string; secretKey: string }): Promise<unknown> => this._call("iot.startFirmwareUpdate", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    subscribeIotResponse: (params: Record<string, unknown>): Promise<unknown> => this._call("iot.subscribeIotResponse", params),
+    subscribeIotResponse: (params: Record<string, unknown>): Promise<unknown> => this._call("iot.subscribeIotResponse", params) as Promise<unknown>,
   };
 
   readonly ir = {
     /** @experimental unverified — may change without notice. */
-    listKeys: (params: { remote?: string }): Promise<unknown> => this._call("ir.listKeys", params),
+    listKeys: (params: { remote?: string }): Promise<unknown> => this._call("ir.listKeys", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    send: (params: { remote?: string; key: string }): Promise<unknown> => this._call("ir.send", params),
+    send: (params: { remote?: string; key: string }): Promise<unknown> => this._call("ir.send", params) as Promise<unknown>,
   };
 
   readonly lock = {
-    click: (params: { name?: string; deviceUUID?: string; secretKey?: string }): Promise<unknown> => this._call("lock.click", params),
-    lock: (params: { name?: string; deviceUUID?: string; secretKey?: string }): Promise<unknown> => this._call("lock.lock", params),
-    status: (params: { deviceUUID: string }): Promise<unknown> => this._call("lock.status", params),
-    toggle: (params: { name?: string; deviceUUID?: string; secretKey?: string }): Promise<unknown> => this._call("lock.toggle", params),
-    unlock: (params: { name?: string; deviceUUID?: string; secretKey?: string }): Promise<unknown> => this._call("lock.unlock", params),
+    click: (params: { name?: string; deviceUUID?: string; secretKey?: string }): Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }> => this._call("lock.click", params) as Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }>,
+    lock: (params: { name?: string; deviceUUID?: string; secretKey?: string }): Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }> => this._call("lock.lock", params) as Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }>,
+    status: (params: { deviceUUID: string }): Promise<Array<unknown>> => this._call("lock.status", params) as Promise<Array<unknown>>,
+    toggle: (params: { name?: string; deviceUUID?: string; secretKey?: string }): Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }> => this._call("lock.toggle", params) as Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }>,
+    unlock: (params: { name?: string; deviceUUID?: string; secretKey?: string }): Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }> => this._call("lock.unlock", params) as Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }>,
   };
 
   readonly org = {
     /** @experimental unverified — may change without notice. */
-    addDeviceGroup: (params: { companyID: string; name: string; uuids: Array<string>; timeoutMs?: number }): Promise<unknown> => this._call("org.addDeviceGroup", params),
+    addDeviceGroup: (params: { companyID: string; name: string; uuids: Array<string>; timeoutMs?: number }): Promise<unknown> => this._call("org.addDeviceGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    addDeviceInGroup: (params: { companyID: string; gid: string; uuids: Array<unknown>; items: Array<unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.addDeviceInGroup", params),
+    addDeviceInGroup: (params: { companyID: string; gid: string; uuids: Array<unknown>; items: Array<unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.addDeviceInGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    addEmployeeGroup: (params: { companyID: string; item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.addEmployeeGroup", params),
+    addEmployeeGroup: (params: { companyID: string; item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.addEmployeeGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    addEmployeeInGroup: (params: { companyID: string; gid: string; uuids: Array<unknown>; items: Array<unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.addEmployeeInGroup", params),
+    addEmployeeInGroup: (params: { companyID: string; gid: string; uuids: Array<unknown>; items: Array<unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.addEmployeeInGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    addEmployees: (params: { items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.addEmployees", params),
+    addEmployees: (params: { items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.addEmployees", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    confirmQueryByCS: (params: { email: string; timeoutMs?: number }): Promise<unknown> => this._call("org.confirmQueryByCS", params),
+    confirmQueryByCS: (params: { email: string; timeoutMs?: number }): Promise<unknown> => this._call("org.confirmQueryByCS", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    generateGuestQR: (params: { data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.generateGuestQR", params),
+    generateGuestQR: (params: { data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.generateGuestQR", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getCurrentUserInfo: (params: { timeoutMs?: number }): Promise<unknown> => this._call("org.getCurrentUserInfo", params),
+    getCurrentUserInfo: (params: { timeoutMs?: number }): Promise<unknown> => this._call("org.getCurrentUserInfo", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getDeviceEmployeeKeys: (params: { deviceUUID: string; companyID: string; limit?: number; timeoutMs?: number }): Promise<unknown> => this._call("org.getDeviceEmployeeKeys", params),
+    getDeviceEmployeeKeys: (params: { deviceUUID: string; companyID: string; limit?: number; timeoutMs?: number }): Promise<unknown> => this._call("org.getDeviceEmployeeKeys", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getDeviceGroupBindUserGroup: (params: { gid: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getDeviceGroupBindUserGroup", params),
+    getDeviceGroupBindUserGroup: (params: { gid: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getDeviceGroupBindUserGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getDeviceGroups: (params: { companyID: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getDeviceGroups", params),
+    getDeviceGroups: (params: { companyID: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getDeviceGroups", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getEmployeeDeviceKeys: (params: { subUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getEmployeeDeviceKeys", params),
+    getEmployeeDeviceKeys: (params: { subUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getEmployeeDeviceKeys", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getEmployeeGroupBindDeviceGroup: (params: { gid: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getEmployeeGroupBindDeviceGroup", params),
+    getEmployeeGroupBindDeviceGroup: (params: { gid: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getEmployeeGroupBindDeviceGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getEmployeeGroups: (params: { companyID: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getEmployeeGroups", params),
+    getEmployeeGroups: (params: { companyID: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getEmployeeGroups", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getEmployees: (params: { companyID: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getEmployees", params),
+    getEmployees: (params: { companyID: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getEmployees", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getTags: (params: { companyID: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getTags", params),
+    getTags: (params: { companyID: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getTags", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    postTag: (params: { companyID: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.postTag", params),
+    postTag: (params: { companyID: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.postTag", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    queryByCS: (params: { keyword: string; timeoutMs?: number }): Promise<unknown> => this._call("org.queryByCS", params),
+    queryByCS: (params: { keyword: string; timeoutMs?: number }): Promise<unknown> => this._call("org.queryByCS", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removeDeviceGroupBindUserGroup: (params: { companyID: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeDeviceGroupBindUserGroup", params),
+    removeDeviceGroupBindUserGroup: (params: { companyID: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeDeviceGroupBindUserGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removeDeviceGroups: (params: { companyID: string; groupIds: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeDeviceGroups", params),
+    removeDeviceGroups: (params: { companyID: string; groupIds: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeDeviceGroups", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removeDeviceInGroup: (params: { companyID: string; gid: string; uuids: Array<unknown>; items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeDeviceInGroup", params),
+    removeDeviceInGroup: (params: { companyID: string; gid: string; uuids: Array<unknown>; items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeDeviceInGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removeEmployeeDeviceKey: (params: { data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeEmployeeDeviceKey", params),
+    removeEmployeeDeviceKey: (params: { data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeEmployeeDeviceKey", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removeEmployeeGroupBindDeviceGroup: (params: { companyID: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeEmployeeGroupBindDeviceGroup", params),
+    removeEmployeeGroupBindDeviceGroup: (params: { companyID: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeEmployeeGroupBindDeviceGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removeEmployeeGroups: (params: { companyID: string; gids: Array<unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeEmployeeGroups", params),
+    removeEmployeeGroups: (params: { companyID: string; gids: Array<unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeEmployeeGroups", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removeEmployeeInGroup: (params: { companyID: string; gid: string; uuids: Array<unknown>; items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeEmployeeInGroup", params),
+    removeEmployeeInGroup: (params: { companyID: string; gid: string; uuids: Array<unknown>; items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeEmployeeInGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removeEmployees: (params: { items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeEmployees", params),
+    removeEmployees: (params: { items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeEmployees", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removeTag: (params: { companyID: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeTag", params),
+    removeTag: (params: { companyID: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeTag", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    reorderEmployees: (params: { items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.reorderEmployees", params),
+    reorderEmployees: (params: { items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.reorderEmployees", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    shareDeviceGroupKeysToEmployeeGroup: (params: { companyID: string; item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.shareDeviceGroupKeysToEmployeeGroup", params),
+    shareDeviceGroupKeysToEmployeeGroup: (params: { companyID: string; item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.shareDeviceGroupKeysToEmployeeGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    shareDeviceKeysToEmployees: (params: { items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.shareDeviceKeysToEmployees", params),
+    shareDeviceKeysToEmployees: (params: { items: Array<Record<string, unknown>>; timeoutMs?: number }): Promise<unknown> => this._call("org.shareDeviceKeysToEmployees", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    updateDeviceGroup: (params: { companyID: string; item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.updateDeviceGroup", params),
+    updateDeviceGroup: (params: { companyID: string; item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.updateDeviceGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    updateEmployee: (params: { companyID: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.updateEmployee", params),
+    updateEmployee: (params: { companyID: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.updateEmployee", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    updateEmployeeGroup: (params: { companyID: string; item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.updateEmployeeGroup", params),
+    updateEmployeeGroup: (params: { companyID: string; item: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.updateEmployeeGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    updateGuestKeyTag: (params: { data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.updateGuestKeyTag", params),
+    updateGuestKeyTag: (params: { data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.updateGuestKeyTag", params) as Promise<unknown>,
   };
 
   readonly presetir = {
     /** @experimental unverified — may change without notice. */
-    emitAir: (params: { deviceId: string; companyID: string; code: number; irDeviceUUID?: string; timeoutMs?: number; power?: boolean; temperature?: number; mode?: number; fanSpeed?: number; windDirection?: number; autoSwing?: boolean; keyType?: string }): Promise<unknown> => this._call("presetir.emitAir", params),
+    emitAir: (params: { deviceId: string; companyID: string; code: number; irDeviceUUID?: string; timeoutMs?: number; power?: boolean; temperature?: number; mode?: number; fanSpeed?: number; windDirection?: number; autoSwing?: boolean; keyType?: string }): Promise<unknown> => this._call("presetir.emitAir", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    emitButton: (params: { deviceId: string; companyID: string; code: number; irType: number; buttonType: string; irDeviceUUID?: string; timeoutMs?: number }): Promise<unknown> => this._call("presetir.emitButton", params),
+    emitButton: (params: { deviceId: string; companyID: string; code: number; irType: number; buttonType: string; irDeviceUUID?: string; timeoutMs?: number }): Promise<unknown> => this._call("presetir.emitButton", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    sendIR: (params: { deviceId: string; command: string; irType: number; companyID: string; irDeviceUUID?: string; operation?: string; timeoutMs?: number }): Promise<unknown> => this._call("presetir.sendIR", params),
+    sendIR: (params: { deviceId: string; command: string; irType: number; companyID: string; irDeviceUUID?: string; operation?: string; timeoutMs?: number }): Promise<unknown> => this._call("presetir.sendIR", params) as Promise<unknown>,
   };
 
   readonly schedule = {
     /** @experimental unverified — may change without notice. */
-    cancelSchedule: (params: { subUUID: string; scheduleId: string; timeoutMs?: number }): Promise<unknown> => this._call("schedule.cancelSchedule", params),
+    cancelSchedule: (params: { subUUID: string; scheduleId: string; timeoutMs?: number }): Promise<unknown> => this._call("schedule.cancelSchedule", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getScheduleList: (params: { subUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("schedule.getScheduleList", params),
+    getScheduleList: (params: { subUUID: string; timeoutMs?: number }): Promise<unknown> => this._call("schedule.getScheduleList", params) as Promise<unknown>,
   };
 }
