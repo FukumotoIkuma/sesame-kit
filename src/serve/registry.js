@@ -13,6 +13,7 @@
 
 import { readFileSync } from "node:fs";
 import { RpcError, RPC, KIND, CONTRACT_VERSION } from "./jsonrpc.js";
+import { stabilityOf, provenanceOf, eventStabilityOf, eventProvenanceOf } from "./stability.js";
 import { t } from "../i18n.js";
 import * as schedule from "../schedule.js";
 import * as org from "../org.js";
@@ -76,9 +77,16 @@ function topLevelEntries() {
   return {
     "status": {
       summary: t("serve.sum.status"),
-      params: [], result: "{ connected, authState, subUUID, contractVersion }",
-      // contractVersion: 消費者が major 不一致を fail-fast できるよう毎回返す。
-      handler: ({ hub, daemon }) => ({ connected: hub.connected, authState: daemon.authState, subUUID: hub.subUUID, contractVersion: CONTRACT_VERSION }),
+      params: [], result: "{ connected, authState, subUUID, apiVersion, contractVersion }",
+      // apiVersion: API サーフェスの SemVer (canonical)。消費者が major 不一致を毎回 fail-fast
+      // できるよう返す。contractVersion は後方互換のための deprecated 別名 (1.0 で削除予定)。
+      handler: ({ hub, daemon }) => ({
+        connected: hub.connected,
+        authState: daemon.authState,
+        subUUID: hub.subUUID,
+        apiVersion: CONTRACT_VERSION,
+        contractVersion: CONTRACT_VERSION,
+      }),
     },
     "account.whoami": {
       summary: t("serve.sum.whoami"),
@@ -206,22 +214,31 @@ export function buildOpenRpcDoc(reg, version) {
         schema: p.schema || {}, // 抽出できた型のみ。不明は {} (嘘の型を主張しない)
       })),
       result: { name: "result", schema: { description: e.result || "", type: "object" } },
+      // tier は provenance から導出。SDK/ツールは stable だけに張れる (docs/api-stability.md)。
+      "x-stability": stabilityOf(name),
+      "x-provenance": provenanceOf(name),
     });
   }
-  // サーバ発イベントも記述 (予約名 event.<topic>)。
+  // サーバ発イベントも記述 (予約名 event.<topic>)。event.* も stable/experimental を持つ。
+  const event = (name, description) => ({
+    name, description,
+    "x-stability": eventStabilityOf(name),
+    "x-provenance": eventProvenanceOf(name),
+  });
   return {
     openrpc: "1.2.6",
     info: {
       title: "sesame serve",
       version, // パッケージ version (無害な変更でも上がる)
-      "x-contractVersion": CONTRACT_VERSION, // 機械契約の SemVer (破壊的変更でだけ major)
+      "x-apiVersion": CONTRACT_VERSION, // API サーフェスの SemVer (canonical)
+      "x-contractVersion": CONTRACT_VERSION, // deprecated 別名 (1.0 で削除予定)
       description: t("serve.openrpc.description"),
     },
     methods,
     "x-events": [
-      { name: "event.lockState", description: t("serve.event.lockState") },
-      { name: "event.deviceUpdate", description: t("serve.event.deviceUpdate") },
-      { name: "event.ready", description: t("serve.event.ready") },
+      event("event.lockState", t("serve.event.lockState")),
+      event("event.deviceUpdate", t("serve.event.deviceUpdate")),
+      event("event.ready", t("serve.event.ready")),
     ],
   };
 }

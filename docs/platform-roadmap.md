@@ -64,9 +64,12 @@ guarantees schema and implementation never diverge.
 - [x] **i — Surface audit & tiering.** Full inventory of serve methods/events/
   params/errors; stable-vs-experimental decision. → `docs/api-stability.md`
   (branch `platform/api-surface`).
-- [ ] **ii-a — Machine-readable tiers + apiVersion.** Emit per-method
-  `x-stability` (derived from provenance) in `rpc.discover`; split `apiVersion`
-  into `status`/discover. *(low risk, unblocks SDK gen + CI gate)*
+- [x] **ii-a — Machine-readable tiers + apiVersion.** `src/serve/stability.js` is
+  the single source (provenance → tier); `rpc.discover` emits per-method/event
+  `x-stability` + `x-provenance`; `status` and discover.info expose `apiVersion`
+  (canonical; `contractVersion`/`x-contractVersion` kept as deprecated aliases).
+  Also fixed: vitest `projects` config (self-contained; `--project unit|e2e`
+  filters work, no double-count) and restored `npm test` = unit then e2e.
 - [ ] **ii-b — Error model hardening.** Replace `internal`-collapse with domain
   `kind`s (e.g. `device_offline`, `not_found`, `rejected`) + optional
   `data.retryable`, on stable methods. *(the biggest gap; contract-freezing)*
