@@ -3240,7 +3240,8 @@
               }
             },
             "lastEvaluatedKey": {
-              "type": "object"
+              "type": "object",
+              "nullable": true
             }
           },
           "required": [
