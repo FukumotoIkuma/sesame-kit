@@ -6,7 +6,7 @@
 // exit 1 する、ことを確認する。
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readdirSync, rmSync, cpSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -44,7 +44,7 @@ describe("upstream canary — offline replay", () => {
     const files = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".json"));
     expect(files.length).toBeGreaterThan(0);
     for (const f of files) {
-      const fixture = JSON.parse(execFileSync("cat", [join(FIXTURES_DIR, f)], { encoding: "utf8" }));
+      const fixture = JSON.parse(readFileSync(join(FIXTURES_DIR, f), "utf8"));
       expect(RESULT_SCHEMAS[fixture.method], `${f}: 未知の method ${fixture.method}`).toBeTruthy();
       expect("sample" in fixture, `${f}: sample 欠落`).toBe(true);
     }
@@ -53,7 +53,7 @@ describe("upstream canary — offline replay", () => {
   it("stable な read-only メソッド (status/whoami/devices/lock.status) の fixture が存在する", () => {
     const files = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".json"));
     const methods = new Set(
-      files.map((f) => JSON.parse(execFileSync("cat", [join(FIXTURES_DIR, f)], { encoding: "utf8" })).method),
+      files.map((f) => JSON.parse(readFileSync(join(FIXTURES_DIR, f), "utf8")).method),
     );
     for (const m of ["status", "account.whoami", "devices.list", "lock.status"]) {
       expect(methods.has(m), `stable method ${m} の fixture が無い`).toBe(true);
