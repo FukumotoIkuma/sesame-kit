@@ -92,7 +92,13 @@ guarantees schema and implementation never diverge.
   `@experimental` JSDoc on non-stable methods, `API_VERSION`. Type-checks under
   `sdk/ts/tsconfig.json` (`npm run typecheck:sdk`); drift-gated by
   `tests/sdk-ts-contract.test.js` (regenerate == committed). HTTP `POST /rpc`
-  transport; SSE event streaming + Python SDK are the next increments.
+  transport.
+- [x] **iv (Python SDK).** `scripts/gen-sdk-py.mjs` mirrors the TS generator →
+  `sdk/python/sesame_client.py` (zero-dep `urllib`; `client.lock.unlock(name=...)`,
+  typed keyword args from the schema, `SesameRpcError` with kind/retryable,
+  `@experimental` docstrings). `npm run build:sdk:py` / `check:sdk:py` (py_compile);
+  drift-gated by `tests/sdk-py-contract.test.js`. Satisfies the 1.0 "≥2 SDKs
+  (TS, Python)" criterion. Next increment: SSE event-streaming wrapper for both.
 - [x] **v — Upstream-conformance gate + provenance.** Provenance is first-class
   (`x-provenance` since ii-a); `tests/provenance.test.js` now locks the invariant
   that tier is *derived* from provenance (stable ⊂ {local, app-core}; experimental

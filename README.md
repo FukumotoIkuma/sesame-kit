@@ -202,7 +202,7 @@ Auth boundary: interactive login is CLI-only and never runs in the daemon. A Uni
 The JSON-RPC surface is a **versioned, machine-readable contract** so you can build against it safely:
 
 - [`schema/openrpc.json`](./schema/openrpc.json) — the published OpenRPC document (also live via `rpc.discover`). Each method/event carries `x-stability` (`stable` | `experimental`) and `x-provenance`; `apiVersion` (SemVer) is in `status` and `rpc.discover`. A CI drift gate keeps it in lockstep with the implementation.
-- [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) — a **typed TypeScript client generated** from that schema (`client.lock.unlock({ name })`), with `SesameRpcError` exposing `kind` / `retryable`. Regenerate with `npm run build:sdk`.
+- **Generated, typed SDKs** from that schema — [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) (`client.lock.unlock({ name })`) and [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py) (`client.lock.unlock(name=...)`, zero deps), both with `SesameRpcError` exposing `kind` / `retryable`. Regenerate with `npm run build:sdk`.
 - **Stability:** only the `stable` core (`lock.*`, `devices.list`, `device.history`/`battery`, `status`, `account.whoami`, `events.*`) is covered by the API SemVer; `experimental` methods may change without notice. See [docs/api-stability.md](./docs/api-stability.md).
 - **Errors** are structured: branch on `error.data.kind` (`not_authenticated` / `connection_lost` / `timeout` / `rejected` / `bad_params` / …) and `error.data.retryable`, never on message text.
 
