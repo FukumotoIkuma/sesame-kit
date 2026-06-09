@@ -56,7 +56,13 @@ export function makeLineConnection(readable, writable, opts) {
       if (line.trim()) onLine(conn, line);
     }
     // 改行が来ないまま 1 行が上限超過 → DoS とみなし切断。
-    if (inbuf.length > maxLine) conn.close();
+    // graceful end (writable.end) だと、こちらが送った未読データ (例: 接続時の event.ready) を
+    // 抱えた paused クライアントが即座に閉じないことがあるため、writable を所有する場合
+    // (socket) は強制 destroy で確実に切る。stdout 共有の stdio (closeWritable=false) は触らない。
+    if (inbuf.length > maxLine) {
+      if (closeWritable) { try { writable.destroy(); } catch { /* ignore */ } }
+      conn.close();
+    }
   }
 
   writable.on("drain", () => {

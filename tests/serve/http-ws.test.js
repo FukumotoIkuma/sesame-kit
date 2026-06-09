@@ -85,7 +85,11 @@ function wsRpc(url, msg) {
     const ws = new WebSocket(url);
     const to = setTimeout(() => { ws.close(); reject(new Error("timeout")); }, 1500);
     ws.on("open", () => ws.send(JSON.stringify(msg)));
-    ws.on("message", (d) => { clearTimeout(to); ws.close(); resolve(JSON.parse(d.toString())); });
+    ws.on("message", (d) => {
+      const m = JSON.parse(d.toString());
+      if (!("id" in m)) return; // 接続時の event.ready 等の通知はスキップ
+      clearTimeout(to); ws.close(); resolve(m);
+    });
     ws.on("close", (code) => { if (code === 1008) { clearTimeout(to); reject(new Error("unauthorized")); } });
     ws.on("error", (e) => { clearTimeout(to); reject(e); });
   });

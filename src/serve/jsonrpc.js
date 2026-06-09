@@ -19,11 +19,13 @@
  *   1.0.0: 初版 (5 framing / 79 method / event.lockState・deviceUpdate / 6 kind)
  *   1.1.0: ドメインエラーの構造化 (kind=rejected 追加 / error.data.retryable / per-method
  *          x-stability・x-provenance / status・discover の apiVersion)。すべて後方互換な追加。
+ *   1.2.0: event.ready を全永続接続 (stdio/socket/ws/SSE/gRPC Subscribe) で一律発火 /
+ *          discover に x-event-topics (購読可能 topic)。後方互換な追加。
  */
 import { t } from "../i18n.js";
 import { SesameError, ERR } from "../errors.js";
 
-export const CONTRACT_VERSION = "1.1.0";
+export const CONTRACT_VERSION = "1.2.0";
 
 /** JSON-RPC 2.0 標準エラーコード + アプリ域 (-32000)。 */
 export const RPC = Object.freeze({

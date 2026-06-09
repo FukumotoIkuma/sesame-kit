@@ -2,9 +2,9 @@
   "openrpc": "1.2.6",
   "info": {
     "title": "sesame serve",
-    "version": "1.1.0",
-    "x-apiVersion": "1.1.0",
-    "x-contractVersion": "1.1.0",
+    "version": "1.2.0",
+    "x-apiVersion": "1.2.0",
+    "x-contractVersion": "1.2.0",
     "description": "Language-agnostic JSON-RPC backend for SESAME control"
   },
   "methods": [
@@ -3009,8 +3009,12 @@
     {
       "name": "event.ready",
       "description": "startup-complete notification (stdio framing only. once right after connect. not sent on other transports)",
-      "x-stability": "experimental",
-      "x-provenance": "unverified"
+      "x-stability": "stable",
+      "x-provenance": "local"
     }
+  ],
+  "x-event-topics": [
+    "lockState",
+    "deviceUpdate"
   ]
 }

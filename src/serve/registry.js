@@ -131,9 +131,14 @@ function topLevelEntries() {
   };
 }
 
+// 購読可能なイベント topic (events.subscribe / SSE ?topics= で受け付ける値)。
+// x-events には event.ready のような購読対象でない broadcast 通知も載るため、購読可能な
+// 集合はこちらを単一の真実とし、契約 (x-event-topics) と SDK の型をここから導出する。
+export const SUBSCRIBABLE_TOPICS = ["lockState", "deviceUpdate"];
+
 /** events.subscribe / unsubscribe (daemon に委譲)。 */
 function eventEntries() {
-  const TOPICS = ["lockState", "deviceUpdate"];
+  const TOPICS = SUBSCRIBABLE_TOPICS;
   return {
     "events.subscribe": {
       summary: t("serve.sum.eventsSubscribe", { topics: TOPICS.join("/") }),
@@ -240,5 +245,8 @@ export function buildOpenRpcDoc(reg, version) {
       event("event.deviceUpdate", t("serve.event.deviceUpdate")),
       event("event.ready", t("serve.event.ready")),
     ],
+    // 購読可能 topic (events.subscribe / SSE ?topics= で受け付ける値)。event.ready のような
+    // 接続時の broadcast 通知は含まない。SDK の購読型はこれ (x-events ではなく) から導出する。
+    "x-event-topics": [...SUBSCRIBABLE_TOPICS],
   };
 }

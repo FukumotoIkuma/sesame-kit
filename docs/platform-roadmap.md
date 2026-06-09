@@ -98,7 +98,15 @@ guarantees schema and implementation never diverge.
   typed keyword args from the schema, `SesameRpcError` with kind/retryable,
   `@experimental` docstrings). `npm run build:sdk:py` / `check:sdk:py` (py_compile);
   drift-gated by `tests/sdk-py-contract.test.js`. Satisfies the 1.0 "≥2 SDKs
-  (TS, Python)" criterion. Next increment: SSE event-streaming wrapper for both.
+  (TS, Python)" criterion.
+- [x] **SSE event streaming (both SDKs) + uniform event.ready.** `streamEvents`
+  (TS) / `stream_events` (Python) read SSE `GET /events`; topic types derived from
+  a new `x-event-topics` (subscribable topics, excludes broadcast `event.ready`).
+  Filled the event.ready gap: it's now emitted on **every** persistent connection
+  (stdio/socket/ws/SSE/gRPC Subscribe) via `daemon.addConnection`, not just stdio;
+  marked stable/local. CONTRACT_VERSION → 1.2.0 (additive). Also hardened the
+  NDJSON DoS cutoff to force-destroy the socket (a flooding client with buffered
+  server data no longer lingers on a graceful half-close).
 - [x] **v — Upstream-conformance gate + provenance.** Provenance is first-class
   (`x-provenance` since ii-a); `tests/provenance.test.js` now locks the invariant
   that tier is *derived* from provenance (stable ⊂ {local, app-core}; experimental

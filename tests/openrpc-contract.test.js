@@ -36,6 +36,7 @@ function machineContract(doc) {
       "x-stability": e["x-stability"],
       "x-provenance": e["x-provenance"],
     })),
+    eventTopics: doc["x-event-topics"],
   };
 }
 

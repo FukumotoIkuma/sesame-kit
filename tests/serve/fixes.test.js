@@ -53,7 +53,8 @@ describe("fanout dedupe & param ガード", () => {
     d.addConnection(conn);
     d.subscribe(conn, ["lockState", "deviceUpdate"]);
     hub._emit({ data: { deviceUUID: "u1" } });
-    expect(sent).toHaveLength(1); // 二重配信しない
+    // 接続時の event.ready を除いた購読イベントが二重配信されないことを見る。
+    expect(sent.filter((m) => m.method !== "event.ready")).toHaveLength(1);
   });
 
   it("params が配列だと INVALID_PARAMS", async () => {

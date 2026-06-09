@@ -33,7 +33,21 @@ guarantee (see `docs/api-stability.md`). Only the `stable` surface
 (`lock.*`, `devices.list`, `device.history`/`battery`, `status`,
 `account.whoami`, `events.*`) is covered by `API_VERSION`.
 
+## Events
+
+```python
+# blocks; run in a thread if you need it non-blocking
+def on_event(frame):
+    # frame["method"] is "event.ready" (on connect) or "event.<topic>"
+    if frame["method"] == "event.lockState":
+        print("lock changed:", frame["params"])
+
+client.stream_events(["lockState", "deviceUpdate"], on_event)
+```
+
+`stream_events` reads SSE `GET /events`. The callback receives `event.ready`
+first, then your subscribed `event.<topic>` notifications.
+
 > This is the **generated, typed** client. A separate hand-written thin client
 > ships at `clients/python/sesame_client.py` (see the integration guide).
-> Calls go to `POST {base_url}/rpc` with a Bearer token; SSE event streaming is
-> not yet wrapped here.
+> Calls go to `POST {base_url}/rpc`; events to `GET {base_url}/events` (SSE).

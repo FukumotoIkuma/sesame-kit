@@ -24,8 +24,14 @@ function rpc(socketPath, obj) {
     c.on("connect", () => c.write(JSON.stringify(obj) + "\n"));
     c.on("data", (d) => {
       buf += d.toString();
-      const nl = buf.indexOf("\n");
-      if (nl >= 0) { c.destroy(); resolve(JSON.parse(buf.slice(0, nl))); }
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+        if (!line.trim()) continue;
+        const msg = JSON.parse(line);
+        if (!("id" in msg)) continue; // 接続時の event.ready 等の通知はスキップ
+        c.destroy(); resolve(msg); return;
+      }
     });
     c.on("error", reject);
     setTimeout(() => { c.destroy(); reject(new Error("timeout")); }, 2000);

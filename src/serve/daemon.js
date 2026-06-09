@@ -104,7 +104,14 @@ export class Daemon {
   }
 
   // ---- Connection 管理 ----
-  addConnection(conn) { this._subs.set(conn, new Set()); }
+  addConnection(conn) {
+    this._subs.set(conn, new Set());
+    // 永続接続にはストリーム確立を告げる event.ready を 1 本送る (stdio/socket/ws/SSE/
+    // gRPC Subscribe を一様に)。ephemeral (HTTP POST /rpc・gRPC unary) には送らない。
+    if (!conn.ephemeral) {
+      try { conn.send(makeEvent("ready", {})); } catch { /* 送信不可 (即時切断等) は無視 */ }
+    }
+  }
 
   removeConnection(conn) {
     this._subs.delete(conn);

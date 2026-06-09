@@ -33,11 +33,12 @@ const STABLE_METHODS = {
   "events.unsubscribe": "local",
 };
 
-// サーバ発イベントの provenance。event.ready は discover に広告されるが現状未発火
-// (docs の pre-1.0 issue) なので unverified=experimental 扱いで正直に示す。
+// サーバ発イベントの provenance。event.ready は daemon が全永続接続の確立時に一律発火する
+// ローカルなライフサイクル通知 (vendor 非依存)。lockState/deviceUpdate は上流由来 (app-core)。
 export const STABLE_EVENTS = {
   "event.lockState": "app-core",
   "event.deviceUpdate": "app-core",
+  "event.ready": "local",
 };
 
 function has(map, name) {
