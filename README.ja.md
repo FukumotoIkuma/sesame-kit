@@ -171,6 +171,13 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
   http://127.0.0.1:8080/rpc
 ```
 
+`sesame rpc` から HTTP リスナへ繋ぐこともできます（token は `serve.token` から自動取得）:
+
+```bash
+sesame rpc --http status                          # 既定 URL http://127.0.0.1:8080
+sesame rpc --http http://host:8080 lock.unlock --params '{"name":"front"}'
+```
+
 ### どちらを使う? — `sdk/` と `clients/`
 
 本リポジトリには 2 つのクライアント層があり、用途が異なります:

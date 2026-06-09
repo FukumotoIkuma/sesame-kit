@@ -124,7 +124,7 @@ sesame device rename <uuid> "玄関 SESAME"  # 名前変更
 sesame device rm <uuid>                  # company から削除
 
 sesame history <uuid>                    # ロック開閉履歴
-sesame history                           # 全デバイス
+sesame history                           # 対話選択 (--json では UUID 必須)
 sesame history <uuid> --delete <ts>      # 開閉履歴 1 件を timestamp で hide（ソフト削除）
 sesame battery <uuid>                    # 電池履歴 (light/heavy 電圧 + 割合)
 sesame battery <uuid> --delete <ts>      # 電池履歴 1 件を ts（秒）で hide（ソフト削除）
