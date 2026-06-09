@@ -85,8 +85,14 @@ guarantees schema and implementation never diverge.
   `tests/openrpc-contract.test.js` gates the **machine contract** (method names /
   params / result type / x-stability / x-provenance / events) of artifact ↔ impl,
   CI-blocking. Prose (summaries) is locale-dependent docs, excluded from the gate.
-- [ ] **iv — TS SDK generation PoC.** Generate the TS client from the canonical
-  OpenRPC over HTTP+WS; prove the pipeline; then Python.
+- [x] **iv — TS SDK generation (PoC).** `scripts/gen-sdk-ts.mjs` (exports
+  `generateSdk(spec)`) emits `sdk/ts/sesame-client.ts` from `schema/openrpc.json`:
+  namespaced typed methods (`client.lock.unlock({name})`), param types from the
+  schema (unknown where the schema is `{}`), `SesameRpcError` with kind/retryable,
+  `@experimental` JSDoc on non-stable methods, `API_VERSION`. Type-checks under
+  `sdk/ts/tsconfig.json` (`npm run typecheck:sdk`); drift-gated by
+  `tests/sdk-ts-contract.test.js` (regenerate == committed). HTTP `POST /rpc`
+  transport; SSE event streaming + Python SDK are the next increments.
 - [ ] **v — Upstream-conformance gate + provenance.** Record provenance per
   contract element; add a vendor-behavior ↔ impl check (live canary / captured
   fixture replay) for stable methods so vendor drift is detected, not silently
