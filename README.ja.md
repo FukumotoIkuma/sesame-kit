@@ -205,7 +205,7 @@ gRPC は型付きです。`src/serve/sesame.proto` が op ごとに型付きメ�
 JSON-RPC のサーフェスは**バージョン管理された機械可読な契約**として公開しており、安全に上に積めます:
 
 - [`schema/openrpc.json`](./schema/openrpc.json) — 公開 OpenRPC ドキュメント（`rpc.discover` でも取得可）。各メソッド/イベントに `x-stability`（`stable` / `experimental`）と `x-provenance`、`apiVersion`（SemVer）は `status` / `rpc.discover` に。CI の drift gate で実装と常に一致。
-- [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) — そのスキーマから**生成された型付き TypeScript クライアント**（`client.lock.unlock({ name })`）。`SesameRpcError` が `kind` / `retryable` を公開。再生成は `npm run build:sdk`。
+- **スキーマから生成された型付き SDK** — [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts)（`client.lock.unlock({ name })`）と [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py)（`client.lock.unlock(name=...)`、依存ゼロ）。いずれも `SesameRpcError` が `kind` / `retryable` を公開。再生成は `npm run build:sdk`。
 - **安定性:** API SemVer が守るのは `stable` コア（`lock.*` / `devices.list` / `device.history`・`battery` / `status` / `account.whoami` / `events.*`）のみ。`experimental` は予告なく変わり得ます。[docs/api-stability.md](./docs/api-stability.md) 参照。
 - **エラー**は構造化: メッセージ文字列でなく `error.data.kind`（`not_authenticated` / `connection_lost` / `timeout` / `rejected` / `bad_params` …）と `error.data.retryable` で分岐。
 

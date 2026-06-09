@@ -26,6 +26,35 @@ function tsType(schema) {
   }
 }
 
+/**
+ * result schema → TS 型。params の tsType と違い、形不明 (properties 無しの bare object や {}) は
+ * unknown にする (「object だ」と嘘をつかない)。properties があれば inline literal で型を出す。
+ */
+function tsResultType(schema) {
+  if (!schema || typeof schema !== "object") return "unknown";
+  const base = tsResultTypeBase(schema);
+  // nullable:true の result は値が null になりうる (例: lock.status が空なら null)。
+  return schema.nullable ? `${base} | null` : base;
+}
+
+function tsResultTypeBase(schema) {
+  if (schema.properties) {
+    const req = schema.required || [];
+    const fields = Object.entries(schema.properties).map(([k, v]) => {
+      const key = /^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k);
+      return `${key}${req.includes(k) ? "" : "?"}: ${tsResultType(v)}`;
+    });
+    return `{ ${fields.join("; ")} }`;
+  }
+  switch (schema.type) {
+    case "string": return schema.enum ? schema.enum.map((v) => JSON.stringify(v)).join(" | ") : "string";
+    case "number": return "number";
+    case "boolean": return "boolean";
+    case "array": return `Array<${tsResultType(schema.items || {})}>`;
+    default: return "unknown"; // bare object / 型不明 → unknown
+  }
+}
+
 /** params 配列 → インライン型リテラル (`{ a: string; b?: number }`)。空なら null。 */
 function paramsType(params) {
   if (!params || params.length === 0) return null;
@@ -57,7 +86,8 @@ function emitMethod(m, indent, field) {
   const safeOp = /^[A-Za-z_$][\w$]*$/.test(m.op) ? m.op : JSON.stringify(m.op);
   const sep = field ? " =" : ":";
   const end = field ? ";" : ",";
-  return `${tag}${indent}${safeOp}${sep} (${arg}): Promise<unknown> => this._call(${JSON.stringify(m.name)}, ${passed})${end}`;
+  const ret = tsResultType(m.result?.schema);
+  return `${tag}${indent}${safeOp}${sep} (${arg}): Promise<${ret}> => this._call(${JSON.stringify(m.name)}, ${passed}) as Promise<${ret}>${end}`;
 }
 
 const nsBlocks = [];
@@ -66,6 +96,11 @@ for (const [ns, methods] of [...groups].sort((a, b) => a[0].localeCompare(b[0]))
   nsBlocks.push(`  readonly ${ns} = {\n${methods.map((m) => emitMethod(m, "    ", false)).join("\n")}\n  };`);
 }
 const rootMethods = (groups.get("") || []).map((m) => emitMethod(m, "  ", true)).join("\n");
+
+// 購読可能 topic はスキーマの x-event-topics 由来 (event.ready 等の broadcast は含まない)。
+// 型もここから導出 = drift gate 対象。
+const eventTopics = spec["x-event-topics"] || [];
+const eventTopicType = eventTopics.length ? eventTopics.map((t) => JSON.stringify(t)).join(" | ") : "string";
 
 const stableCount = spec.methods.filter((m) => m["x-stability"] === "stable").length;
 
@@ -102,6 +137,15 @@ export class SesameRpcError extends Error {
 
 export const API_VERSION = ${JSON.stringify(spec.info["x-apiVersion"])};
 
+/** Subscribable event topics (from the schema's x-events). */
+export type SesameEventTopic = ${eventTopicType};
+
+/** A server-sent event frame: \`{ method: "event.<topic>", params }\`. */
+export interface SesameEvent {
+  method: string;
+  params: unknown;
+}
+
 export class SesameClient {
   private readonly baseUrl: string;
   private readonly token?: string;
@@ -125,6 +169,37 @@ export class SesameClient {
     const msg = (await res.json()) as { result?: unknown; error?: { code: number; message: string; data?: Record<string, unknown> } };
     if (msg.error) throw new SesameRpcError(msg.error.message, msg.error.code, msg.error.data);
     return msg.result;
+  }
+
+  /**
+   * Stream server-sent events (SSE \`GET /events\`). Calls \`onEvent\` per event;
+   * resolves when the stream ends. Abort via \`opts.signal\` (AbortController).
+   */
+  async streamEvents(
+    topics: SesameEventTopic[],
+    onEvent: (event: SesameEvent) => void,
+    opts?: { signal?: AbortSignal },
+  ): Promise<void> {
+    const headers: Record<string, string> = { accept: "text/event-stream" };
+    if (this.token) headers.authorization = \`Bearer \${this.token}\`;
+    const url = \`\${this.baseUrl}/events?topics=\${encodeURIComponent(topics.join(","))}\`;
+    const res = await this._fetch(url, { headers, signal: opts?.signal });
+    if (!res.ok || !res.body) throw new SesameRpcError(\`event stream failed (HTTP \${res.status})\`, res.status);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\\n");
+      buf = lines.pop() ?? ""; // keep the partial trailing line
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue; // ":" comments (heartbeat) ignored
+        const json = line.slice(5).trim();
+        if (json) onEvent(JSON.parse(json) as SesameEvent);
+      }
+    }
   }
 
 ${rootMethods}

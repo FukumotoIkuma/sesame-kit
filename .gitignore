@@ -17,8 +17,11 @@ _*.mjs
 promo/
 # README 用の生成 GIF は assets/demo.{en,ja}.gif を追跡する (gen-gifs.sh が出力)。
 
-# 参照用 SesameSDK (一次ソース・コミットしない)
+# 参照実装 (一次ソース・コミットしない)。配置場所と中身は REFERENCES.md を参照。
+#   _sesame_sdk_ref/ : Android SesameSDK (Kotlin。CHHub3Device.kt 等の引用元)
+#   references_web/   : biz3 web (CANDY-HOUSE/biz3。src/api/useManageDevice.js 等の引用元)
 /_sesame_sdk_ref/
+/references_web/
 
 # Python client build artifacts
 clients/python/build/

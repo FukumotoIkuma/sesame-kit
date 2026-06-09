@@ -27,7 +27,8 @@ function machineContract(doc) {
     methods: doc.methods.map((m) => ({
       name: m.name,
       params: (m.params || []).map(param),
-      resultType: m.result?.schema?.type,
+      // 結果スキーマ全体を契約に含める (型付き SDK return の drift を捕捉)。description は散文なので除く。
+      result: m.result?.schema ? { ...m.result.schema, description: undefined } : undefined,
       "x-stability": m["x-stability"],
       "x-provenance": m["x-provenance"],
     })),
@@ -36,6 +37,7 @@ function machineContract(doc) {
       "x-stability": e["x-stability"],
       "x-provenance": e["x-provenance"],
     })),
+    eventTopics: doc["x-event-topics"],
   };
 }
 

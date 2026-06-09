@@ -42,8 +42,14 @@ function socketRpc(path, obj) {
     c.on("connect", () => c.write(JSON.stringify(obj) + "\n"));
     c.on("data", (d) => {
       buf += d.toString();
-      const nl = buf.indexOf("\n");
-      if (nl >= 0) { c.destroy(); res(JSON.parse(buf.slice(0, nl))); }
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+        if (!line.trim()) continue;
+        const msg = JSON.parse(line);
+        if (!("id" in msg)) continue; // 接続時の event.ready 等の通知はスキップ
+        c.destroy(); res(msg); return;
+      }
     });
     c.on("error", rej);
     setTimeout(() => { c.destroy(); rej(new Error("socket timeout")); }, 2000);
@@ -62,7 +68,11 @@ function wsRpc(url, obj) {
   return new Promise((res, rej) => {
     const ws = new WebSocket(`${url}?token=${TOKEN}`);
     ws.on("open", () => ws.send(JSON.stringify(obj)));
-    ws.on("message", (d) => { ws.close(); res(JSON.parse(d.toString())); });
+    ws.on("message", (d) => {
+      const m = JSON.parse(d.toString());
+      if (!("id" in m)) return; // 接続時の event.ready 等の通知はスキップ
+      ws.close(); res(m);
+    });
     ws.on("error", rej);
     setTimeout(() => { try { ws.close(); } catch { /* */ } rej(new Error("ws timeout")); }, 2000);
   });
@@ -176,7 +186,7 @@ describe("5 フレーミング通し E2E (単一 Daemon に同居)", () => {
     const gmd = new grpc.Metadata(); gmd.set("authorization", `Bearer ${TOKEN}`);
     const stream = grpcCli.Subscribe({ token: TOKEN, topics: ["lockState"] }, gmd);
     const grpcEvent = new Promise((res, rej) => {
-      stream.on("data", (ev) => { res(JSON.parse(ev.json)); });
+      stream.on("data", (ev) => { if (ev.topic !== "ready") res(JSON.parse(ev.json)); }); // 接続時 ready をスキップ
       stream.on("error", rej);
       setTimeout(() => rej(new Error("grpc event timeout")), 3000);
     });

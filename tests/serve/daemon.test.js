@@ -149,8 +149,8 @@ describe("Daemon dispatch", () => {
     const ev = Object.fromEntries(doc["x-events"].map((e) => [e.name, e]));
     expect(ev["event.lockState"]["x-stability"]).toBe("stable");
     expect(ev["event.deviceUpdate"]["x-stability"]).toBe("stable");
-    // 未発火 (広告のみ) なので experimental で正直に示す
-    expect(ev["event.ready"]["x-stability"]).toBe("experimental");
+    // event.ready は全永続接続で発火する local ライフサイクル通知 → stable
+    expect(ev["event.ready"]["x-stability"]).toBe("stable");
   });
 
   it("名前空間 op は hub[ns][op](params) へ委譲", async () => {
@@ -199,12 +199,26 @@ describe("Daemon 購読 fan-out", () => {
     // c は購読しない
     expect(hub.duCount).toBe(1); // 下層購読は 1 本だけ
 
+    // addConnection が各接続へ event.ready を 1 本送るので、購読イベントだけ取り出して検証する。
+    const evs = (k) => k.sent.filter((m) => m.method !== "event.ready");
     hub._emit({ data: { deviceUUID: "u1" } });
-    expect(a.sent).toHaveLength(1);
-    expect(a.sent[0]).toMatchObject({ method: "event.lockState" });
-    expect(b.sent).toHaveLength(1);
-    expect(b.sent[0]).toMatchObject({ method: "event.deviceUpdate" });
-    expect(c.sent).toHaveLength(0);
+    expect(evs(a)).toHaveLength(1);
+    expect(evs(a)[0]).toMatchObject({ method: "event.lockState" });
+    expect(evs(b)).toHaveLength(1);
+    expect(evs(b)[0]).toMatchObject({ method: "event.deviceUpdate" });
+    expect(evs(c)).toHaveLength(0);
+  });
+
+  it("addConnection は永続接続へ event.ready を 1 本送り、ephemeral には送らない", () => {
+    const d = new Daemon({ hub: makeFakeHub() });
+    const persistent = conn();
+    const ephemeral = { id: "e", ephemeral: true, sent: [], send(o) { this.sent.push(o); }, close() {} };
+    d.addConnection(persistent);
+    d.addConnection(ephemeral);
+    expect(persistent.sent).toHaveLength(1);
+    expect(persistent.sent[0]).toMatchObject({ method: "event.ready" });
+    expect(persistent.sent[0]).not.toHaveProperty("id"); // 通知 (id 無し)
+    expect(ephemeral.sent).toHaveLength(0);
   });
 
   it("全購読解除で下層購読が畳まれる", async () => {

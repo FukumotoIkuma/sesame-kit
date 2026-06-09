@@ -154,7 +154,12 @@ describe("gRPC 型付きメソッド", () => {
     handle = await startGrpcFraming(d, { port: 0, token: TOKEN });
     client = makeClient(handle.port);
     const stream = client.Subscribe({ token: TOKEN, topics: ["lockState"] });
-    const got = new Promise((res, rej) => { stream.on("data", res); stream.on("error", rej); setTimeout(() => rej(new Error("timeout")), 1500); });
+    // 接続時に event.ready (topic="ready") が 1 本来るのでスキップし、最初の lockState を待つ。
+    const got = new Promise((res, rej) => {
+      stream.on("data", (e) => { if (e.topic !== "ready") res(e); });
+      stream.on("error", rej);
+      setTimeout(() => rej(new Error("timeout")), 1500);
+    });
     await new Promise((r) => setTimeout(r, 50));
     hub._emit({ data: { deviceUUID: "u1" } });
     const ev = await got;

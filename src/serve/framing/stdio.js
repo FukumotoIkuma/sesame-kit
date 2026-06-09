@@ -2,7 +2,6 @@
 // 単一 Connection。stdin EOF (親が死んだ) で graceful shutdown を起こす。
 
 import { makeLineConnection } from "./ndjson.js";
-import { makeEvent } from "../jsonrpc.js";
 
 /**
  * @param {import("../daemon.js").Daemon} daemon
@@ -19,10 +18,8 @@ export function startStdioFraming(daemon, { onShutdown } = {}) {
     },
     // stdout はプロセス共有なので閉じない (closeWritable=false)
   });
+  // event.ready は daemon.addConnection が全永続接続へ一律送る (stdout で準備完了を通知し、
+  // stderr を読む非通念な儀式を不要にする)。
   daemon.addConnection(conn);
-  // 準備完了を **stdout の通常チャネル** で通知する (event.ready)。stderr を読む非通念な
-  // 儀式を不要にする。早期に書かれた入力は OS パイプが buffer するので待たなくても良いが、
-  // 待ちたいクライアントはこの 1 本を見れば良い (全言語が既に demux するチャネル)。
-  conn.send(makeEvent("ready", {}));
   return { stop() { conn.close(); } };
 }

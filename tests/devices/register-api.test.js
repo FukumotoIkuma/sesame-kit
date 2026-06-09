@@ -68,8 +68,10 @@ describe("signGuestKey (CHSesameOS3.kt:474-484)", () => {
     expect(token).toBe("deadbeefcafe");
   });
 
-  it("JSON {data:<hex>} でラップされていても data を session token として解決する", async () => {
-    const transport = makeFakeTransport({ status: 200, text: '{"data":"abc123"}', json: { data: "abc123" } });
+  it("transport が body を JSON 文字列としてパースした場合は res.json(string) を採る", async () => {
+    // vendor は素の String を返す (CHAPIClient.kt:95 `: String`)。{data:...} ラップは存在しない。
+    // text が無く transport が body を JSON 文字列に decode したケースのみ res.json を使う。
+    const transport = makeFakeTransport({ status: 200, text: "", json: "abc123" });
     const token = await signGuestKey(transport, args);
     expect(token).toBe("abc123");
   });

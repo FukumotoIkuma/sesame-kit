@@ -221,9 +221,9 @@ export function sendIotCmdAwait(client, { topic, payload, cmd, deviceId, timeout
       reject(new Error(t("iot.err.cmdTimeout", { cmd, topic })));
     }, timeoutMs);
     const unsub = subscribeIotResponse(client, cmd, (msg) => {
-      // device 照合 (useOperateIoT.js:9-18: UUID || touch_id)
+      // device 照合: vendor は message.UUID || message.touch_id のみ (確認: useOperateIoT.js:9-17)。
       if (target) {
-        const incoming = normalizeUuid(msg?.UUID || msg?.touch_id || msg?.data?.UUID);
+        const incoming = normalizeUuid(msg?.UUID || msg?.touch_id);
         if (incoming && incoming !== target) return;
       }
       clearTimeout(to);
@@ -420,7 +420,7 @@ export function startFirmwareUpdate(client, p) {
     const target = normalizeUuid(deviceId);
     unsub = subscribeIotResponse(client, cmd, (msg) => {
       if (target) {
-        const incoming = normalizeUuid(msg?.UUID || msg?.data?.UUID);
+        const incoming = normalizeUuid(msg?.UUID || msg?.touch_id); // vendor: useOperateIoT.js:9-17
         if (incoming && incoming !== target) return;
       }
       try { onProgress(msg?.data ?? msg); } catch { /* ignore */ }

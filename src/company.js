@@ -123,16 +123,14 @@ export async function addCompany(client, { name, employeeEmail, subUUID, timeout
  * トップレベルに直接置く (obj ラップ無し)。companyID は priorityCompanyId
  * (get 応答由来の優先会社 ID)。
  *
- * 応答: biz3 では handleCompaniesResponse の switch に getPaymentConfig case が無く、
- * invokeCallbacks(message) (useStripeInfo.js:159) で op 単位コールバックへ委譲される。
- * よって応答 data の構造はこのファイルからは未確認 (呼び出し側 cb 依存)。
- * action='biz3ManageCompany' + op='getPaymentConfig' で返る点のみ確定。
- *
- * 未確認: 応答 data のフィールド集合 (実機検証要)。本実装は resp.data をそのまま返す。
+ * 応答: handleCompaniesResponse の switch には case が無いが invokeCallbacks(message)
+ * (useStripeInfo.js:159,331) で op 単位コールバックへ届く。応答 data の形は consumer で確定:
+ *   { config, isYear, time, total, level, nextPrice }
+ * (vendor 確認: biz/settings/index.js:91-95 setPaymentConfig({...res.data})、:60-66,120,148,280)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{companyID:string, timeoutMs?:number}} params
- * @returns {Promise<*>} 課金レベル設定 (応答 data。構造未確認)
+ * @returns {Promise<{config:any,isYear:boolean,time:any,total:any,level:any,nextPrice:any}|null>}
  */
 export async function getPaymentConfig(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!companyID) throw new Error("companyID required");

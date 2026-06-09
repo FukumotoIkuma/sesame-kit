@@ -114,17 +114,17 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
       },
       close: () => { try { call.end(); } catch { /* ignore */ } },
     };
-    daemon.addConnection(conn);
     const topics = (call.request.topics || []).filter(Boolean);
     // 不正 topic は黙殺せず INVALID_ARGUMENT でストリームを閉じる (WS/SSE と同じく拒否。
     // 黙ってハングするストリームを返すと『gRPC だけイベントが来ない』のデバッグが不能になる)。
     // daemon.subscribe 自体は検証しないので、ここで daemon.topics に対して明示検証する。
+    // addConnection の前に検証する: 通すと addConnection が event.ready を 1 本流してしまう。
     const bad = topics.filter((t) => !daemon.topics.includes(t));
     if (bad.length) {
-      daemon.removeConnection(conn);
       endStreamWithError(call, grpc.status.INVALID_ARGUMENT, t("serve.grpc.unknownTopics", { topics: bad.join(",") }));
       return;
     }
+    daemon.addConnection(conn); // ここで event.ready が 1 本流れる
     if (topics.length) daemon.subscribe(conn, topics);
     call.on("cancelled", () => daemon.removeConnection(conn));
     call.on("close", () => daemon.removeConnection(conn));

@@ -41,6 +41,7 @@ import {
   generateDeviceVerifier,
   generateEphemeralA,
 } from "./device-srp.js";
+import { SesameError, ERR } from "./errors.js";
 // i18n はエラーメッセージ文言の外出しだけに使用 (auth ロジックは不可侵)。
 // この関数内のローカル変数 `t` (= store.load()) と衝突しないよう `tr` で取り込む。
 import { t as tr } from "./i18n.js";
@@ -107,7 +108,7 @@ export function jwtSub(token) {
 export async function getValidIdToken(store, { marginSec = 60 } = {}) {
   const t = store.load();
   if (!t) {
-    throw new Error(tr("auth.noTokens"));
+    throw new SesameError(tr("auth.noTokens"), { code: ERR.UNAUTHENTICATED });
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -117,7 +118,7 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
   }
 
   if (!t.refreshToken) {
-    throw new Error("idToken expired and no refreshToken. Re-run login.");
+    throw new SesameError("idToken expired and no refreshToken. Re-run login.", { code: ERR.UNAUTHENTICATED });
   }
 
   // clientId は保存値優先、無ければ idToken の aud から復元 (bootstrap/migrate で
@@ -126,17 +127,27 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
   const authParameters = { REFRESH_TOKEN: t.refreshToken };
   if (t.deviceKey) authParameters.DEVICE_KEY = t.deviceKey;
 
-  const resp = await cognito.send(
-    new InitiateAuthCommand({
-      AuthFlow: "REFRESH_TOKEN_AUTH",
-      ClientId: clientId,
-      AuthParameters: authParameters,
-    }),
-  );
+  let resp;
+  try {
+    resp = await cognito.send(
+      new InitiateAuthCommand({
+        AuthFlow: "REFRESH_TOKEN_AUTH",
+        ClientId: clientId,
+        AuthParameters: authParameters,
+      }),
+    );
+  } catch (e) {
+    // refresh token 失効 (公式アプリで再ログイン等) は再ログインで復帰する認証エラー。
+    // 構造化して上位 (CLI 等) が message 文字列マッチ無しで分岐できるようにする。
+    if (e?.name === "NotAuthorizedException") {
+      throw new SesameError(String(e.message || e), { code: ERR.UNAUTHENTICATED, cause: e });
+    }
+    throw e;
+  }
 
   const r = resp.AuthenticationResult;
   if (!r?.IdToken) {
-    throw new Error(`Cognito refresh returned no IdToken: ${JSON.stringify(resp)}`);
+    throw new SesameError(`Cognito refresh returned no IdToken: ${JSON.stringify(resp)}`, { code: ERR.UNAUTHENTICATED });
   }
 
   t.idToken = r.IdToken;

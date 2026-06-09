@@ -1,6 +1,6 @@
 {
   "name": "sesame-kit",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Control your SESAME smart lock from your own code — even directly over Bluetooth, offline. BLE + cloud, CLI, Node library, and a JSON-RPC server for any language. Hub3 IR, device management. Unofficial.",
   "author": "Ikuma Fukumoto",
   "license": "MIT",
@@ -98,9 +98,12 @@
     "build:rpc-schema": "node scripts/gen-rpc-schema.mjs",
     "build:grpc-proto": "node scripts/gen-grpc-proto.mjs",
     "build:openrpc": "node scripts/gen-openrpc.mjs",
-    "build:sdk": "node scripts/gen-sdk-ts.mjs",
+    "build:sdk:ts": "node scripts/gen-sdk-ts.mjs",
+    "build:sdk:py": "node scripts/gen-sdk-py.mjs",
+    "build:sdk": "node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
     "typecheck:sdk": "tsc -p sdk/ts/tsconfig.json",
-    "build": "tsc -p tsconfig.json && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs && node scripts/gen-openrpc.mjs && node scripts/gen-sdk-ts.mjs",
+    "check:sdk:py": "python3 -m py_compile sdk/python/sesame_client.py",
+    "build": "tsc -p tsconfig.json && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs && node scripts/gen-openrpc.mjs && node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
     "prepack": "tsc -p tsconfig.json && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs",
     "release": "bash scripts/release.sh"
   },
