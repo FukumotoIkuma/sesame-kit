@@ -62,8 +62,54 @@ export function nodeToSchema(node) {
   return {}; // 別名/未知型は型確定せず schema 空 (嘘の型を主張しない)
 }
 
+/**
+ * 型ノードを「実体の TypeLiteral」へ解決する。
+ *
+ * 直接 `{ ... }` ならそのまま返す。`Parameters<typeof fn>[N]`
+ * (= 別 op の N 番目引数を再利用する indexed-access 型。removeSesameFromHub3 が
+ * addSesameToHub3 の引数を流用する等) は、参照先の関数宣言を同一 .d.ts 内で引いて
+ * その N 番目引数の型へ解決する。チェーンしていても再帰で辿る。
+ * 解決できない (別名/外部型) 場合は null。
+ *
+ * @param {ts.SourceFile} sf
+ * @param {ts.TypeNode|undefined} type
+ * @param {number} [depth] 循環参照の暴走防止
+ * @returns {ts.TypeLiteralNode|null}
+ */
+function resolveTypeLiteral(sf, type, depth = 0) {
+  if (!type || depth > 8) return null;
+  if (ts.isTypeLiteralNode(type)) return type;
+
+  // `X[N]` 形。X が `Parameters<typeof fn>`、N がリテラル数値のときだけ解決する。
+  if (ts.isIndexedAccessTypeNode(type)) {
+    const obj = type.objectType;
+    const idx = type.indexType;
+    if (
+      ts.isTypeReferenceNode(obj) &&
+      obj.typeName.getText(sf) === "Parameters" &&
+      obj.typeArguments?.length === 1 &&
+      ts.isTypeQueryNode(obj.typeArguments[0]) && // `typeof fn`
+      ts.isLiteralTypeNode(idx) &&
+      ts.isNumericLiteral(idx.literal)
+    ) {
+      const fnName = obj.typeArguments[0].exprName.getText(sf);
+      const argIndex = Number(idx.literal.text);
+      let resolved = null;
+      sf.forEachChild((n) => {
+        if (resolved) return;
+        if (ts.isFunctionDeclaration(n) && n.name?.text === fnName) {
+          resolved = resolveTypeLiteral(sf, n.parameters?.[argIndex]?.type, depth + 1);
+        }
+      });
+      return resolved;
+    }
+  }
+  return null;
+}
+
 /** 1 つの .d.ts から「関数名 → params(2番目引数のメンバ)」を抽出。
- *  JSON で送れない関数型メンバ (コールバック等) は除外する。 */
+ *  JSON で送れない関数型メンバ (コールバック等) は除外する。
+ *  2 番目引数が `{ ... }` でなくても `Parameters<typeof other>[1]` 形なら参照先へ解決する。 */
 function extractModule(ns) {
   const file = resolve(ROOT, "types", `${ns}.d.ts`);
   const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
@@ -71,8 +117,10 @@ function extractModule(ns) {
   sf.forEachChild((n) => {
     if (!ts.isFunctionDeclaration(n) || !n.name) return;
     const p = n.parameters?.[1];
-    if (!p || !p.type || !ts.isTypeLiteralNode(p.type)) return;
-    out[n.name.text] = p.type.members
+    if (!p || !p.type) return;
+    const lit = resolveTypeLiteral(sf, p.type);
+    if (!lit) return;
+    out[n.name.text] = lit.members
       .filter((m) => m.name && m.type)
       .filter((m) => !ts.isFunctionTypeNode(m.type)) // コールバック等は wire param でない
       .map((m) => ({

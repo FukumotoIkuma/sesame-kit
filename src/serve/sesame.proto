@@ -57,7 +57,6 @@ service Sesame {
   rpc AccessUpdatePasscodeName (AccessUpdatePasscodeNameRequest) returns (JsonRpc);
   rpc AccessUpdateCardOwner (AccessUpdateCardOwnerRequest) returns (JsonRpc);
   rpc IotSendIotCmd (IotSendIotCmdRequest) returns (JsonRpc);
-  rpc IotSubscribeIotResponse (IotSubscribeIotResponseRequest) returns (JsonRpc);
   rpc IotSendIotCmdAwait (IotSendIotCmdAwaitRequest) returns (JsonRpc);
   rpc IotSetHub3LedDuty (IotSetHub3LedDutyRequest) returns (JsonRpc);
   rpc IotHub3RelaySwitch (IotHub3RelaySwitchRequest) returns (JsonRpc);
@@ -80,6 +79,9 @@ service Sesame {
   rpc DevicesList (DevicesListRequest) returns (JsonRpc);
   rpc DeviceHistory (DeviceHistoryRequest) returns (JsonRpc);
   rpc DeviceBattery (DeviceBatteryRequest) returns (JsonRpc);
+  rpc DeviceHideHistory (DeviceHideHistoryRequest) returns (JsonRpc);
+  rpc DeviceHideBattery (DeviceHideBatteryRequest) returns (JsonRpc);
+  rpc WebapiInvoke (WebapiInvokeRequest) returns (JsonRpc);
   rpc IrSend (IrSendRequest) returns (JsonRpc);
   rpc IrListKeys (IrListKeysRequest) returns (JsonRpc);
   rpc Discover (DiscoverRequest) returns (JsonRpc);
@@ -328,9 +330,6 @@ message IotSendIotCmdRequest {
   string payload = 2;
   string op = 3;
 }
-message IotSubscribeIotResponseRequest {
-  string params = 1;
-}
 message IotSendIotCmdAwaitRequest {
   string topic = 1;
   string payload = 2;
@@ -362,7 +361,13 @@ message IotAddSesameToHub3Request {
   double timeoutMs = 7;
 }
 message IotRemoveSesameFromHub3Request {
-  string params = 1;
+  string hub3Id = 1;
+  string secretKey = 2;
+  string sesameId = 3;
+  string ssmSecKa = 4;
+  string nickName = 5;
+  string deviceModel = 6;
+  double timeoutMs = 7;
 }
 message IotStartFirmwareUpdateRequest {
   string deviceId = 1;
@@ -454,6 +459,20 @@ message DeviceHistoryRequest {
 message DeviceBatteryRequest {
   string deviceUUID = 1;
   double pageSize = 2;
+}
+message DeviceHideHistoryRequest {
+  string deviceUUID = 1;
+  double timestamp = 2;
+}
+message DeviceHideBatteryRequest {
+  string deviceUUID = 1;
+  double timestampSecond = 2;
+}
+message WebapiInvokeRequest {
+  string func = 1;
+  string query = 2;
+  string body = 3;
+  string apiKeyId = 4;
 }
 message IrSendRequest {
   string remote = 1;

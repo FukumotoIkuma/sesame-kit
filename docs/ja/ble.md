@@ -22,6 +22,25 @@ sesame front autolock 0          # disable
 
 `--ble-only` を付けない場合、経路（クラウド / BLE）は自動で選ばれます。`--cloud-only` でクラウドに固定します。
 
+### `sesame ble` — 読み取り専用 BLE コマンド
+
+BLE サーフェスの小さな**読み取り専用**スライスも `ble` コマンドグループとして公開しており、コードを書かずにデバイスを調べられます。
+
+```bash
+sesame ble scan [--timeout <ms>]         # 鍵なしの近接スキャン（listNearbyDevices・secretKey 不要）
+sesame ble cards <device>                # 登録済み NFC カード一覧（Touch / Touch Pro）
+sesame ble passcodes <device>            # 登録済みキーパッド暗証番号一覧（Touch / Touch Pro）
+sesame ble fingers <device>              # 登録済み指紋一覧（Touch Pro / Bike3）
+sesame ble faces <device>                # 登録済み顔一覧（Face）
+sesame ble palms <device>                # 登録済み掌紋一覧（Palm）
+sesame ble mode <device> <type>          # 現在の登録モードを取得（card/passcode/finger/face/palm）
+sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧 + 現在スクリプト
+```
+
+`<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドは `--secret <hex>` / `--model <model>`（config のロックに無いデバイスを対象にする）と `--timeout <ms>`（publish 収集タイムアウト・既定 8000）を受け付けます。`scan` は鍵なしです。
+
+このページのそれ以外 — 生体・アクセス制御の**登録**（追加 / 削除 / 改名・モード設定）、Bike3 指紋の削除 / 改名 / モード設定、Bot2 スクリプトの切替 / 書き込み / index 実行、WM2 / Hub3 プロビジョニング、BLE OTA、ペアリング / 登録、工場出荷 `reset`、OS2 ファサード — は**ライブラリ専用（CLI コマンドなし）**のままです。`sesame ble` の読み取りコマンドは以下のライブラリ読み出しと同じコード経路で、ユニットテスト済みですが**実機未確認**です。
+
 ## デバイス型ごとの能力（公式 SesameSDK に準拠）
 
 操作セットはデバイス型ごとに異なります。公式 SDK は能力を型ごとに非対称に定義しており、この CLI は設定の `model` からそれを再現します。サポートされない操作は拒否されます（例: Bot に対する `lock` → 「click を使う」）。

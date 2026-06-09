@@ -48,9 +48,12 @@ sesame locks ls                # list registered locks
 sesame locks set-default front
 sesame locks add               # add interactively (deviceUUID + secretKey)
 sesame locks add --name front --uuid <UUID> --secret <32hex> --model sesame_5_pro  # non-interactive / flag-based add
+sesame locks add --from-url 'ssm://UI?t=sk&sk=...'  # fill deviceUUID/secretKey/model/name from a share-key URL
 sesame locks sync-from-devices # auto-import from the result of devices
 sesame locks rm front
 ```
+
+`--from-url` parses a share-key URL (the inverse of `sesame org keys share-url`) and fills in `deviceUUID` / `secretKey` / `model` / `name`. Any explicit flag (`--uuid` / `--secret` / `--model` / `--name`) overrides the value taken from the URL.
 
 A cloud operation returns only after the synchronous ack (`biz3TriggerLocker`, `success:true`) arrives (timeout 10s).
 
@@ -120,9 +123,13 @@ sesame device rm <uuid>                  # remove from the company
 
 sesame history <uuid>                    # lock open/close history
 sesame history                           # all devices
+sesame history <uuid> --delete <ts>      # hide (soft-delete) one open/close record by its timestamp
 sesame battery <uuid>                    # battery history (light/heavy voltage + percentage)
+sesame battery <uuid> --delete <ts>      # hide (soft-delete) one battery record by its ts (seconds)
 sesame firmware                          # list firmware currently being distributed
 ```
+
+> `--delete` hides a single record instead of listing: pass the `timestamp` of the open/close entry (`history`) or the `ts` in seconds of the battery entry (`battery`).
 
 ---
 
@@ -136,6 +143,8 @@ sesame webapi webapi_ssm_shadow_get --query '{"device_id":"..."}'
 sesame webapi webapi_history_get --query '{"device_id":"...","page":0,"lg":"ja","isBiz":true}'
 sesame webapi webapi_cmd_send --body '{"device_id":"...","cmd":83,"sign":"...","history":"..."}'
 ```
+
+> The same proxy is also reachable over `sesame serve` as the `webapi.invoke` RPC method (params: `func`, `query?`, `body?`, `apiKeyId?`); it was previously CLI-only. Like the `device.hideHistory` / `device.hideBattery` soft-delete methods (the RPC counterparts of `history --delete` / `battery --delete`), it is tier `experimental`.
 
 ---
 
@@ -254,6 +263,25 @@ sesame front autolock 30         # autolock (BLE required. Actually takes effect
 sesame front autolock 0          # disable
 ```
 
+### `sesame ble` — direct BLE read-only ops
+
+The `ble` command group exposes the **read-only** subset of the BLE surface directly (keyless scan, biometric/script list reads, enroll-mode get). The rest of the BLE feature set (enrollment, provisioning, firmware, pairing, reset, the OS2 facade) remains library-only — see [ble.md](./ble.md).
+
+```bash
+sesame ble scan [--timeout <ms>]         # keyless nearby scan (no secretKey needed)
+sesame ble cards <device>                # list enrolled NFC cards (Touch / Touch Pro)
+sesame ble passcodes <device>            # list enrolled keypad passcodes (Touch / Touch Pro)
+sesame ble fingers <device>              # list enrolled fingerprints (Touch Pro / Bike3)
+sesame ble faces <device>                # list enrolled faces (Face)
+sesame ble palms <device>                # list enrolled palms (Palm)
+sesame ble mode <device> <type>          # get the current enroll mode (type: card/passcode/finger/face/palm)
+sesame ble script <device> [--index <n>] # list Bot2/Bot3 script names + the current script
+```
+
+`<device>` is a config lock name or a deviceUUID. On the connect-based subcommands (everything except `scan`), `--secret <hex>` and `--model <model>` let you target a device that is not in your config locks, and `--timeout <ms>` sets the publish collection timeout (default 8000). `scan` is keyless and needs neither.
+
+> These commands are the same BLE code paths as the library reads and are unit-tested but **not yet confirmed against real hardware**. They are read-only: enrollment / mode-set / script select / write / run remain library-only.
+
 > **BLE errors are given meaning via `SesameResultCode`** — when a device returns a non-zero result, the library throws
 > `BleResultError` (`.resultCode` / `.resultName`). `resultName` matches the official SesameSDK's
 > `SesameResultCode` (`success`/`invalidFormat`/`notSupported`/`invalidSig`/`notFound`/`unknown`/
@@ -270,7 +298,7 @@ The operation set differs by device type. The SDK defines capabilities asymmetri
 | Lock `sesame_5`/`_pro`/`sesame_6`/`_pro`/`_us`/`miwa` | `lock` `unlock` `toggle` `autolock` `status` | locked/unlocked + position |
 | Bot `bot_2`/`bot_3` | `click` `status` | locked/unlocked (no position) |
 | Bike `bike_2`/`bike_3` | `unlock` `status` | locked/unlocked (no position) |
-| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (no BLE lock op via the CLI) — biometric enroll / Wi-Fi provisioning are **library-only** (`SesameBle#biometric` / `#wifi`, see [ble.md](./ble.md)) | — |
+| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (no BLE lock op) — biometric/enroll-mode **reads** are on the CLI via `sesame ble cards/passcodes/fingers/faces/palms/mode`; enrollment (write) and Wi-Fi provisioning stay **library-only** (`SesameBle#biometric` / `#wifi`, see [ble.md](./ble.md)) | — |
 | OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | BLE supported via the **library** (`SesameOS2Ble`, separate protocol); the CLI route is cloud-only for OS2 | locked/unlocked/moved + position |
 
 > "locked/unlocked" is only the **two values** based on the presence of `isInLockRange` in OS3. OS3 has no intermediate (moved) state
@@ -287,7 +315,7 @@ await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
 });
 ```
 
-> The **CLI** drives OS3 lock/Bot/Bike control. The **library** additionally covers OS2 devices (`SesameOS2Ble`), new pairing/registration (`SesameBle.registerOnce()` / `SesameOS2Ble.registerOnce()`), biometric/access-control enrollment, WifiModule2 provisioning, and BLE OTA — all ported from the SesameSDK but partly unverified against real hardware. See [ble.md](./ble.md) and the README's [Known limitations](../../README.md#known-limitations).
+> The **CLI** drives OS3 lock/Bot/Bike control, plus the read-only BLE ops under `sesame ble` (keyless scan, biometric/script list reads, enroll-mode get). The **library** additionally covers OS2 devices (`SesameOS2Ble`), new pairing/registration (`SesameBle.registerOnce()` / `SesameOS2Ble.registerOnce()`), biometric/access-control enrollment (write), WifiModule2 provisioning, and BLE OTA — all ported from the SesameSDK but partly unverified against real hardware. See [ble.md](./ble.md) and the README's [Known limitations](../../README.md#known-limitations).
 
 ---
 

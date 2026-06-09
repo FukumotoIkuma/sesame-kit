@@ -1911,27 +1911,6 @@
       "x-provenance": "unverified"
     },
     {
-      "name": "iot.subscribeIotResponse",
-      "summary": "subscribeIotResponse of iot (auto-exposed)",
-      "params": [
-        {
-          "name": "(params)",
-          "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
-        }
-      ],
-      "result": {
-        "name": "result",
-        "schema": {
-          "description": "op response",
-          "type": "object"
-        }
-      },
-      "x-stability": "experimental",
-      "x-provenance": "unverified"
-    },
-    {
       "name": "iot.sendIotCmdAwait",
       "summary": "sendIotCmdAwait of iot (auto-exposed)",
       "params": [
@@ -2172,10 +2151,60 @@
       "summary": "removeSesameFromHub3 of iot (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "hub3Id",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sesameId",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmSecKa",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "nickName",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceModel",
+          "required": true,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -3187,6 +3216,115 @@
       },
       "x-stability": "stable",
       "x-provenance": "app-core"
+    },
+    {
+      "name": "device.hideHistory",
+      "summary": "hide (soft-delete) one open/close history entry",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "target deviceUUID",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "required": true,
+          "description": "timestamp of the history record to hide (from device.history)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ success: true }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "device.hideBattery",
+      "summary": "hide (soft-delete) one battery history entry",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "target deviceUUID",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timestampSecond",
+          "required": true,
+          "description": "ts (second) of the battery record to hide (from device.battery)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ success: true }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "webapi.invoke",
+      "summary": "call a biz3 WebAPI proxy function (apiKeyId from config when omitted)",
+      "params": [
+        {
+          "name": "func",
+          "required": true,
+          "description": "WebAPI function name",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "query",
+          "required": false,
+          "description": "query object (optional)",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "body",
+          "required": false,
+          "description": "request body object (optional)",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "apiKeyId",
+          "required": false,
+          "description": "API key id (falls back to config apiKeyId)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "any (WebAPI proxy 応答)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
     },
     {
       "name": "ir.send",

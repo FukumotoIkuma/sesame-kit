@@ -34,12 +34,14 @@ import {
 import { SesameError, ERR } from "./errors.js";
 import { isInteractive, selectFromList, promptText, confirm as confirmPrompt } from "./prompts.js";
 import { parseIrType, DEFAULT_IR_TYPE } from "./crypto.js";
+import { parseShareKeyUrl } from "./sharekey.js";
 import { registerScheduleCommands } from "./cli/schedule.js";
 import { registerCompanyCommands } from "./cli/company.js";
 import { registerOrgCommands } from "./cli/org.js";
 import { registerAccessCommands } from "./cli/access.js";
 import { registerIotCommands } from "./cli/iot.js";
 import { registerPresetIrCommands } from "./cli/presetir.js";
+import { registerBleCommands } from "./cli/ble.js";
 import { registerServeCommand } from "./cli/serve.js";
 import { SesameBle, capabilitiesForModel, transportsForOp } from "./ble/index.js";
 import { bleWasUsed } from "./ble/transport.js";
@@ -654,21 +656,36 @@ async function cmdLockAdd(opts, program) {
   const { configStore } = loadCtx(program);
   if (!configStore.exists()) die(t("cli.configNotInitialized"), 2);
 
+  // --from-url: 共有 URL (ssm://UI?t=sk&sk=...) を解析し、uuid/secret/model/name を補完する。
+  // 共有 URL を生成 (sesame org keys share-url) するだけでなく、受け取った URL/QR から
+  // ロックを取り込めるようにする (buildShareKeyUrl の対の操作)。
+  // ゲスト共有 (l=2) では sk 位置に guestKeyId が入る点に注意 (parseShareKeyUrl がそのまま返す)。
+  let parsed = null;
+  if (opts.fromUrl) {
+    try {
+      parsed = parseShareKeyUrl(opts.fromUrl);
+    } catch (e) {
+      die(t("cli.shareUrlParseFailed", { message: e.message }), 2);
+      return;
+    }
+  }
+
   // フラグ指定があれば非対話で登録 (他言語からの呼び出し/--json 用)。
-  // 不足分は TTY なら prompt で補い、非対話なら die で明示拒否する (固まらせない)。
-  const ask = async (flag, label, required) => {
+  // 優先順位: 明示フラグ > --from-url 由来の値 > prompt(TTY) > die(必須)/null(任意)。
+  const ask = async (flag, label, required, fallback) => {
     if (opts[flag] != null) return opts[flag];
+    if (fallback != null && fallback !== "") return fallback;
     if (canPrompt(program)) return await promptLine(label);
     if (required) die(t("cli.flagRequiredNonInteractive", { flag }), 2);
     return null;
   };
-  const name = await ask("name", t("cli.lockNamePrompt"), true);
+  const name = await ask("name", t("cli.lockNamePrompt"), true, parsed?.deviceName);
   if (!name) die(t("cli.nameRequired"), 2);
-  const deviceUUID = await ask("uuid", t("cli.deviceUuidPrompt"), true);
+  const deviceUUID = await ask("uuid", t("cli.deviceUuidPrompt"), true, parsed?.deviceUUID);
   if (!deviceUUID) die(t("cli.deviceUuidRequired"), 2);
-  const secretKey = await ask("secret", t("cli.secretKeyPrompt"), true);
+  const secretKey = await ask("secret", t("cli.secretKeyPrompt"), true, parsed?.secretKey);
   if (!secretKey) die(t("cli.secretKeyRequired"), 2);
-  const model = await ask("model", t("cli.modelPrompt"), false);
+  const model = await ask("model", t("cli.modelPrompt"), false, parsed?.deviceModel);
   const alias = await ask("alias", t("cli.aliasPrompt"), false);
   configStore.addLock(name, {
     deviceUUID,
@@ -934,6 +951,15 @@ async function cmdHistory(deviceUUID, options, program) {
     if (!deviceUUID && canPrompt(program)) {
       deviceUUID = await pickDeviceUUID(program, hub, null, { message: t("cli.whichDeviceHistory") });
     }
+    // --delete <timestamp>: 履歴 1 エントリを非表示化 (論理削除)。timestamp は各 record の値。
+    if (options.delete != null) {
+      if (!deviceUUID) die(t("cli.deviceUuidRequired"), 2);
+      const timestamp = Number(options.delete);
+      if (!Number.isFinite(timestamp)) { die(t("cli.historyTimestampInvalid", { value: options.delete }), 2); return; }
+      await hub.hideDeviceHistory({ deviceUUID, timestamp });
+      out(opts.json, () => console.log(t("cli.historyDeleted", { timestamp })), { ok: true, deviceUUID, timestamp, hidden: true });
+      return;
+    }
     const pageSize = options.pageSize ? Number(options.pageSize) : null;
     const list = deviceUUID ? [{ deviceUUID }] : [];
     const data = await hub.getDeviceHistory(list, pageSize);
@@ -948,6 +974,14 @@ async function cmdBattery(deviceUUID, options, program) {
       filter: (d) => /^(sesame_|wm_|ssmbot_|bot_|bike_)/.test(d.deviceModel || ""),
     }) || deviceUUID;
     if (!deviceUUID) die(t("cli.deviceUuidRequired"), 2);
+    // --delete <ts>: 電池履歴 1 エントリを非表示化 (論理削除)。ts は record.ts (秒)。
+    if (options.delete != null) {
+      const timestampSecond = Number(options.delete);
+      if (!Number.isFinite(timestampSecond)) { die(t("cli.batteryTimestampInvalid", { value: options.delete }), 2); return; }
+      await hub.hideBatteryRecord({ deviceUUID, timestampSecond });
+      out(opts.json, () => console.log(t("cli.batteryDeleted", { timestampSecond })), { ok: true, deviceUUID, timestampSecond, hidden: true });
+      return;
+    }
     const pageSize = options.pageSize ? Number(options.pageSize) : 100;
     const data = await hub.getDeviceBattery(deviceUUID, { pageSize });
     out(opts.json, () => {
@@ -1624,6 +1658,7 @@ export async function run(argv = process.argv) {
     .option("--secret <hex>", t("cli.optLockSecret"))
     .option("--model <model>", t("cli.optLockModel"))
     .option("--alias <alias>", t("cli.optLockAlias"))
+    .option("--from-url <url>", t("cli.optLockFromUrl"))
     .addHelpText("after", t("cli.helpLockAdd"))
     .action((opts) => cmdLockAdd(opts, program));
   locks.command("rm <name>").description(t("cli.descLockRm"))
@@ -1693,9 +1728,11 @@ export async function run(argv = process.argv) {
 
   program.command("history [deviceUUID]").description(t("cli.descHistory"))
     .option("--page-size <n>", t("cli.optPageSize"))
+    .option("--delete <timestamp>", t("cli.optHistoryDelete"))
     .action((uuid, opts) => cmdHistory(uuid, opts, program));
   program.command("battery [deviceUUID]").description(t("cli.descBattery"))
     .option("--page-size <n>", t("cli.optPageSize100"))
+    .option("--delete <ts>", t("cli.optBatteryDelete"))
     .action((uuid, opts) => cmdBattery(uuid, opts, program));
   program.command("firmware").description(t("cli.descFirmware"))
     .action((opts) => cmdFirmware(opts, program));
@@ -1734,6 +1771,7 @@ export async function run(argv = process.argv) {
   registerAccessCommands(program, ctx);
   registerIotCommands(program, ctx);
   registerPresetIrCommands(program, ctx);
+  registerBleCommands(program, ctx); // BLE 直結の読み取り系 (scan / 生体一覧 / Bot2 スクリプト)
   registerServeCommand(program); // 常駐 JSON-RPC バックエンド (serve は reserved に自動で入る)
 
   // デバイス主語の振り分け。先頭トークンが「既知の管理コマンド」でなければデバイス名とみなし、
