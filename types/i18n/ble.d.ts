@@ -53,6 +53,7 @@ declare namespace _default {
         "ble.bluetoothUnauthorized": string;
         "ble.bluetoothPoweredOff": string;
         "ble.bluetoothUnsupported": string;
+        "ble.nativeAbortHint": string;
         "ble.gattNotFound": string;
         "ble.notConnected": string;
         "ble.deviceNotFound": string;
@@ -160,6 +161,7 @@ declare namespace _default {
         "ble.bluetoothUnauthorized": string;
         "ble.bluetoothPoweredOff": string;
         "ble.bluetoothUnsupported": string;
+        "ble.nativeAbortHint": string;
         "ble.gattNotFound": string;
         "ble.notConnected": string;
         "ble.deviceNotFound": string;

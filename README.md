@@ -45,7 +45,7 @@ See [command reference](./docs/en/commands.md), [library usage](./docs/en/librar
 
 ## Install
 
-Requires Node.js 18+ (uses ESM and the `node:` protocol).
+Requires Node.js 20+ (matches CI; uses ESM and the `node:` protocol).
 
 ```bash
 npm install -g sesame-kit     # global CLI: `sesame ...`
@@ -297,7 +297,7 @@ Full docs: **[docs/en/](./docs/en/index.md)** ([日本語](./docs/ja/index.md)).
 
 - [Quickstart](./docs/en/quickstart.md) — install, sign in, open a lock
 - [CLI reference](./docs/en/commands.md) — every command
-- [BLE direct control](./docs/en/ble.md) — operate over Bluetooth without the cloud
+- [BLE direct control](./docs/en/ble.md) — operate over Bluetooth without the cloud (see [Requirements](./docs/en/ble.md#requirements) for Linux / Raspberry Pi setup: `libudev-dev` + `setcap`)
 - [Node library](./docs/en/library.md) — embed in a Node.js app
 - [Integrate from any language](./docs/en/integration.md) — via `sesame serve` (Python / JS / HTTP / WS / gRPC)
 - [API stability & 1.0 surface](./docs/api-stability.md) — stable vs experimental, error model, the two-boundary contract
@@ -327,6 +327,7 @@ Full docs: **[docs/en/](./docs/en/index.md)** ([日本語](./docs/ja/index.md)).
 - `triggerLock timeout`: wrong `secretKey`, Hub3 offline, or a half-open WS (recovers on auto-reconnect).
 - `learn timeout`: the Hub3 entered REGISTER mode but did not receive a waveform. Move closer or try a different button.
 - `apiKeyId required`: for `webapi` commands, set `apiKeyId` in config.json (issue one in the biz3 dev console).
+- **BLE could not initialize** (`sesame ble …` / `--ble-only`): the CLI exits with code `2` and a friendly message (`{ error, code, bleCode }` under `--json`) instead of crashing silently. `bleCode: BLE_UNAUTHORIZED` → grant the terminal Bluetooth access (macOS: System Settings → Privacy & Security → Bluetooth); `BLE_UNSUPPORTED` → no adapter / insufficient privileges (Linux / Raspberry Pi / headless — need a real adapter and `setcap cap_net_raw+eip`); `BLE_POWERED_OFF` → turn Bluetooth on. See [docs/en/ble.md](./docs/en/ble.md#troubleshooting).
 
 ## See also
 

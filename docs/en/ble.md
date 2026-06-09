@@ -71,6 +71,38 @@ This is the device-layer (SesameOS3) taxonomy and is only available over BLE; th
 - **macOS requires Bluetooth permission for the terminal** (System Settings → Privacy & Security → Bluetooth). This is an OS-level permission, unavoidable with any BLE implementation.
 - Be within Bluetooth range of the lock.
 
+### Linux / Raspberry Pi
+
+`@abandonware/noble` is a native binding (it talks to BlueZ via raw HCI sockets), so on Debian / Raspberry Pi OS it has to compile at install time and needs extra privileges at run time:
+
+- **Build prerequisites** — install the toolchain and the udev headers before `npm i @abandonware/noble`, otherwise the native build fails:
+
+  ```sh
+  sudo apt-get install -y build-essential libudev-dev
+  ```
+
+- **Run without root** — grant the Node binary the BLE capability so scanning works as a normal user (instead of running everything with `sudo`):
+
+  ```sh
+  sudo setcap cap_net_raw+eip $(eval readlink -f $(which node))
+  ```
+
+  Re-run this after upgrading Node, since the capability is attached to the specific binary.
+
+- If a Bluetooth adapter is missing, or the process lacks the capability above (common on headless / permission-less setups), the BLE backend cannot initialize — see [Troubleshooting](#troubleshooting) below.
+
+## Troubleshooting
+
+### BLE could not initialize
+
+If BLE cannot start, the CLI prints a friendly one-line message and exits with code `2` (in `--json` mode it emits `{ "error": "…", "code": 2, "bleCode": "…" }` on stderr) instead of crashing silently. (Historically `@abandonware/noble`'s native CoreBluetooth binding called `abort()` — a process-level `SIGABRT`, exit `134` — the instant it initialized without permission or an adapter, and that cannot be caught with `try`/`catch`. The CLI now probes BLE in an isolated child process first, so the in-process backend is never touched when it would abort.)
+
+The message tells you which case you hit:
+
+- **macOS — no Bluetooth permission** (`bleCode: BLE_UNAUTHORIZED`). Grant the running terminal (Terminal, iTerm, VS Code, …) Bluetooth access in **System Settings → Privacy & Security → Bluetooth**, then re-run. On macOS the CLI also opens that settings pane for you.
+- **Linux / Raspberry Pi / headless — no adapter or insufficient privileges** (`bleCode: BLE_UNSUPPORTED`). Make sure a real Bluetooth adapter is present and the process is allowed to use it — run with privileges or grant the capability (see [Linux / Raspberry Pi](#linux--raspberry-pi) above for `setcap cap_net_raw+eip`).
+- **Bluetooth turned off** (`bleCode: BLE_POWERED_OFF`). Turn Bluetooth on and retry.
+
 ## As a library
 
 ```js

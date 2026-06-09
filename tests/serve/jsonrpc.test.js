@@ -20,8 +20,17 @@ describe("classify", () => {
     expect(c.id).toBeNull();
   });
   it("params 省略時は {} 既定", () => {
-    const c = classify(JSON.stringify({ id: 2, method: "devices.list" }));
+    const c = classify(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "devices.list" }));
     expect(c.params).toEqual({});
+  });
+  it("jsonrpc 欠落は invalid (id は拾う)", () => {
+    const c = classify(JSON.stringify({ id: 5, method: "lock.status" }));
+    expect(c).toEqual({ type: "invalid", id: 5 });
+  });
+  it('jsonrpc !== "2.0" は invalid', () => {
+    const c = classify(JSON.stringify({ jsonrpc: "1.0", id: 6, method: "lock.status" }));
+    expect(c.type).toBe("invalid");
+    expect(c.id).toBe(6);
   });
   it("壊れた JSON は parse-error", () => {
     expect(classify("{not json").type).toBe("parse-error");
@@ -30,11 +39,11 @@ describe("classify", () => {
     expect(classify("[1,2]").type).toBe("batch");
   });
   it("method 欠落は invalid (id は拾う)", () => {
-    const c = classify(JSON.stringify({ id: 7 }));
+    const c = classify(JSON.stringify({ jsonrpc: "2.0", id: 7 }));
     expect(c).toEqual({ type: "invalid", id: 7 });
   });
   it("不正な id 型は null に丸める", () => {
-    const c = classify(JSON.stringify({ id: { weird: true }, method: "x" }));
+    const c = classify(JSON.stringify({ jsonrpc: "2.0", id: { weird: true }, method: "x" }));
     expect(c.id).toBeNull();
   });
 });
@@ -42,7 +51,7 @@ describe("classify", () => {
 describe("handleMessage", () => {
   it("request 成功 → result 応答", async () => {
     const res = await handleMessage(
-      JSON.stringify({ id: 1, method: "ping", params: {} }),
+      JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping", params: {} }),
       async () => ({ ok: true }),
     );
     expect(res).toEqual({ jsonrpc: "2.0", id: 1, result: { ok: true } });
@@ -50,7 +59,7 @@ describe("handleMessage", () => {
 
   it("request の handler が RpcError → error 応答 (kind 付き)", async () => {
     const res = await handleMessage(
-      JSON.stringify({ id: 2, method: "lock.unlock", params: {} }),
+      JSON.stringify({ jsonrpc: "2.0", id: 2, method: "lock.unlock", params: {} }),
       async () => { throw new RpcError("not logged in", { code: RPC.APP_ERROR, kind: KIND.NOT_AUTHENTICATED }); },
     );
     expect(res.id).toBe(2);
@@ -61,7 +70,7 @@ describe("handleMessage", () => {
   it("通知は実行されるが応答は null (エラーでも沈黙)", async () => {
     const spy = vi.fn(async () => { throw new Error("boom"); });
     const res = await handleMessage(
-      JSON.stringify({ method: "events.subscribe", params: { topic: "lockState" } }),
+      JSON.stringify({ jsonrpc: "2.0", method: "events.subscribe", params: { topic: "lockState" } }),
       spy,
     );
     expect(res).toBeNull();
@@ -81,7 +90,7 @@ describe("handleMessage", () => {
 
   it("内部例外は INTERNAL_ERROR に正規化 (stack/params を漏らさない)", async () => {
     const res = await handleMessage(
-      JSON.stringify({ id: 3, method: "x", params: { secretKey: "deadbeef" } }),
+      JSON.stringify({ jsonrpc: "2.0", id: 3, method: "x", params: { secretKey: "deadbeef" } }),
       async () => { throw new Error("kaboom"); },
     );
     expect(res.error.code).toBe(RPC.INTERNAL_ERROR);

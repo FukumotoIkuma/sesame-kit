@@ -45,7 +45,7 @@
 
 ## インストール
 
-要件は Node.js 18 以上です (ESM / `node:` プロトコルを使用)。
+要件は Node.js 20 以上です (CI と一致 / ESM・`node:` プロトコルを使用)。
 
 ```bash
 npm install -g sesame-kit     # グローバル CLI: `sesame ...`
@@ -300,7 +300,7 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 
 - [クイックスタート](./docs/ja/quickstart.md) — 導入・ログイン・解錠まで
 - [CLI リファレンス](./docs/ja/commands.md) — 全コマンド
-- [BLE 直接制御](./docs/ja/ble.md) — クラウド非経由で Bluetooth 操作
+- [BLE 直接制御](./docs/ja/ble.md) — クラウド非経由で Bluetooth 操作（Linux / Raspberry Pi のセットアップは [要件](./docs/ja/ble.md#要件) を参照: `libudev-dev` + `setcap`）
 - [Node ライブラリ](./docs/ja/library.md) — Node.js アプリへ埋め込み
 - [他言語からの組み込み](./docs/ja/integration.md) — `sesame serve` 経由 (Python / JS / HTTP / WS / gRPC)
 - [API 安定性 & 1.0 サーフェス](./docs/api-stability.md) — stable / experimental、エラーモデル、二境界モデル
@@ -329,6 +329,7 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 - `triggerLock timeout`: `secretKey` 不一致、Hub3 オフライン、または WS の半開接続 (自動再接続で復帰)。
 - `learn timeout`: Hub3 が REGISTER に入りましたが波形を受け取れませんでした。距離を縮めるか、別のボタンを試してください。
 - `apiKeyId required`: `webapi` 系は config.json に `apiKeyId` を入れます (biz3 dev console で発行)。
+- **BLE を初期化できない** (`sesame ble …` / `--ble-only`): CLI は無言クラッシュせず終了コード `2` とわかりやすいメッセージを出します (`--json` 時は `{ error, code, bleCode }`)。`bleCode: BLE_UNAUTHORIZED` → ターミナルに Bluetooth 権限を付与 (macOS: システム設定 → プライバシーとセキュリティ → Bluetooth)。`BLE_UNSUPPORTED` → アダプタ無し / 権限不足 (Linux / Raspberry Pi / ヘッドレス — 実機アダプタと `setcap cap_net_raw+eip` が必要)。`BLE_POWERED_OFF` → Bluetooth をオンにする。詳細は [docs/ja/ble.md](./docs/ja/ble.md#トラブルシュート)。
 
 ## 関連
 

@@ -67,7 +67,7 @@ ir.send                      [remote] key
 org.getEmployees             companyID
 access.registerCards         deviceUUID cards   # [experimental] 読み取った IC カードを一括登録 (クラウド DB)
 …
-80 methods.
+82 methods.
 ```
 
 この一覧から、使いたいメソッドの行を読みます。各行は `メソッド名  <必須> [任意]` の形です。例えば `device.history  deviceUUID [pageSize]` は、**`deviceUUID` が必須・`pageSize` が任意**という意味です。
@@ -126,6 +126,12 @@ await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // always
 
 **Python** — クライアントはパッケージに同梱される単一ファイルです：
 
+> **sesame-kit には Python クライアントが 2 つ同梱されており、いずれもモジュール名 `sesame_client`・クラス名 `SesameClient` を共有しますが、API は異なり互換性がありません。インストール／同梱するのはどちらか 1 つだけにしてください。**
+> - **この同梱クライアント**（`clients/python`、手書き・複数経路対応の薄いクライアント）— ファクトリコンストラクタ `SesameClient.unix()` / `.http()` / `.stdio()`、`c.unlock("front")` のような位置引数の便利メソッド、`c.call(method, **params)`。以下で説明します。
+> - **生成された型付き SDK**（`sdk/python`、HTTP 専用）— コンストラクタ `SesameClient(base_url, token=...)` と、`c.lock.unlock(name="front")` のような名前空間付きの型付き呼び出し。`.unix()` / `.http()` ファクトリや位置引数の便利メソッドはありません。[`sdk/python/README.md`](../../sdk/python/README.md) を参照。
+>
+> どちらも `from sesame_client import SesameClient` で解決されるため、以下の例は同梱クライアントでのみ動作します。生成 SDK に対して（またはその逆で）コピペすると失敗します。プロジェクトごとに 1 つを選んでください。
+
 ```bash
 pip install ./clients/python                       # from a cloned repo
 pip install "$(npm root -g)/sesame-kit/clients/python"   # from a global `npm install -g sesame-kit`
@@ -171,7 +177,11 @@ gRPC は型付きです。`src/serve/sesame.proto` には op ごとに型付き�
 ## エラー
 
 エラーは `{error:{code, message, data:{kind}}}` です。`kind` は次のいずれかです：
-`not_authenticated`（CLI でサインインしてからデーモンを再起動）/ `connection_lost`（クラウド接続が切断）/ `timeout` / `bad_params` / `not_implemented`（不明なメソッド）/ `internal`（それ以外。詳細は `message` に）。
+`not_authenticated`（CLI でサインインしてからデーモンを再起動）/ `connection_lost`（クラウド接続が切断）/ `timeout` / `bad_params` / `rejected`（上流クラウドが明示的に失敗を返した）/ `not_implemented`（不明なメソッド）/ `internal`（それ以外。詳細は `message` に）。
+
+`data` には追加フィールドが載ることがあります。`data.retryable`（boolean）は自動化向けの再試行ヒントで、一時的な kind（`timeout` / `connection_lost`）では `true`、`rejected` / `bad_params` では `false` です。`rejected` の場合、`data.upstreamCode` に上流クラウド自身の code が載ります。
+
+`not_authenticated` は型付き SDK を含む任意のクライアントから到達可能です。Python SDK は HTTP レベルの失敗（例：HTTP 401）を `kind = "not_authenticated"` の `SesameRpcError` に写像するため、トークンの失効や欠落は生の HTTP エラーではなく通常の `SesameRpcError` として現れます。
 
 ## 互換性
 

@@ -53,6 +53,7 @@
       "default": "./src/ble/os2/index.js"
     },
     "./client": {
+      "types": "./clients/js/sesame-client.d.ts",
       "default": "./clients/js/sesame-client.mjs"
     }
   },

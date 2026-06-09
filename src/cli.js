@@ -1047,6 +1047,29 @@ async function cmdWebapi(func, options, program) {
  * 優先: 位置引数/--name → default.lock → 単一なら自動 → 部分一致 → 対話選択。
  * @returns {{name:string, deviceUUID:string, secretKey:string}|null} die 済みなら null
  */
+/**
+ * 先頭トークンが「登録済みデバイス名」を指しているか (op へ回してよいか) を非破壊で判定する。
+ * resolveLockEntry の名前解決 (完全一致 + 大文字小文字無視の部分一致) を踏襲しつつ、
+ * lock 派生 view に限らず devices/hub3s の全デバイスキーを対象にする。
+ * config 不在/破損時は false (= 未知コマンド扱いに委ねる)。例外は飲み込む (ルーティングを壊さない)。
+ */
+function isKnownDevice(program, name) {
+  if (!name) return false;
+  try {
+    const { configStore } = loadCtx(program);
+    if (!configStore.exists()) return false;
+    const cfg = configStore.load();
+    const names = Object.keys(cfg.devices || {});
+    if (names.length === 0) return false;
+    if (names.includes(name)) return true; // 完全一致
+    const lower = String(name).toLowerCase();
+    // 部分一致が一意に定まるときのみデバイスとみなす (resolveLockEntry と同じ曖昧さ規則)。
+    return names.filter((n) => n.toLowerCase().includes(lower)).length >= 1;
+  } catch {
+    return false;
+  }
+}
+
 async function resolveLockEntry(program, name) {
   const { configStore } = loadCtx(program);
   if (!configStore.exists()) { die(t("cli.noConfigInitSync"), 2); return null; }
@@ -1822,22 +1845,43 @@ export async function run(argv = process.argv) {
   registerBleCommands(program, ctx); // BLE 直結の読み取り系 (scan / 生体一覧 / Bot2 スクリプト)
   registerServeCommand(program); // 常駐 JSON-RPC バックエンド (serve は reserved に自動で入る)
 
-  // デバイス主語の振り分け。先頭トークンが「既知の管理コマンド」でなければデバイス名とみなし、
-  // 隠し op コマンドへ回す (sesame <device> [action] = device.action())。
+  // デバイス主語の振り分け。先頭の「位置引数」が既知の管理コマンドでも既知デバイスでもなく、
+  // かつデバイス操作 (action) も伴わないものは、誤入力として commander に未知コマンド扱いさせる。
+  // 既知デバイス / action を伴うものだけ隠し op コマンドへ回す (sesame <device> [action])。
   const userArgs = argv.slice(2);
   const isHelp = userArgs.some((a) => a === "-h" || a === "--help");
   const isJson = userArgs.includes("--json");
-  // 先頭の非オプショントークンを探す。ただし値を取るグローバルオプション (--config-dir <path> /
-  // --lang <lang>) の**値**をデバイス名と誤認しないよう、その次トークンは読み飛ばす。
-  // (誤認すると `sesame --config-dir /x init` が device="/x" 扱いになり op へ誤ルートされる)
-  const VALUE_OPTS = new Set(["--config-dir", "--lang"]);
-  let firstTok;
+
+  // 値を取るグローバルオプション (例: --lang <lang>, --config-dir <path>) を introspection で割り出す。
+  // ハードコードせず commander の Option 定義 (.required/.optional) から導出するので、将来の追加にも追従する。
+  // --opt=value 形式は値を内包するので、後続トークンは消費しない。
+  const valueOpts = new Map(); // 正準名(--long) と短縮(-x) の両方を引く
+  for (const o of program.options) {
+    const takesValue = o.required || o.optional;
+    if (o.long) valueOpts.set(o.long, takesValue);
+    if (o.short) valueOpts.set(o.short, takesValue);
+  }
+  // オプショントークンと「値を取るオプションが消費する次トークン」を読み飛ばし、本当の位置引数だけを返す。
+  const positionals = [];
   for (let i = 0; i < userArgs.length; i++) {
     const a = userArgs[i];
-    if (a.startsWith("-")) { if (VALUE_OPTS.has(a)) i++; continue; }
-    firstTok = a; break;
+    if (a === "--") { positionals.push(...userArgs.slice(i + 1)); break; }
+    if (a.startsWith("-") && a !== "-") {
+      const eq = a.indexOf("=");
+      const flag = eq === -1 ? a : a.slice(0, eq);
+      // --opt=value は値同梱なので消費なし。値を取るオプションかつ別トークン指定なら次を値として飛ばす。
+      if (eq === -1 && valueOpts.get(flag) === true) i++;
+      continue;
+    }
+    positionals.push(a);
   }
+  const firstTok = positionals[0];
+  const secondTok = positionals[1];
+
   const reserved = new Set();
+  // commander 既定の help コマンド/フラグは program.commands に現れないため明示的に予約する
+  // (これがないと `sesame help` / `sesame help <cmd>` が op に誤誘導される)。
+  reserved.add("help");
   for (const c of program.commands) { reserved.add(c.name()); for (const a of c.aliases()) reserved.add(a); }
 
   if (!isHelp) {
@@ -1845,8 +1889,14 @@ export async function run(argv = process.argv) {
       // 引数なし: 既定はデバイス主語の対話 (全デバイスの session)。非対話/JSON はそのまま help を出す。
       if (!isJson && isInteractive()) argv = [argv[0], argv[1], "session"];
     } else if (!reserved.has(firstTok)) {
-      // 先頭が管理コマンドでない = デバイス名 → デバイス主語実行へ。
-      argv = [argv[0], argv[1], "op", ...userArgs];
+      // 先頭が管理コマンドでない場合のみ判定。既知デバイス、または有効な device action を伴うものだけ
+      // op へ回す。どちらでもない単独トークンは誤入力なので argv を書き換えず、commander に未知コマンド
+      // (+ showSuggestionAfterError の候補提示) を出させる。
+      const hasDeviceAction = secondTok != null && DEVICE_ACTIONS.has(secondTok);
+      if (hasDeviceAction || isKnownDevice(program, firstTok)) {
+        argv = [argv[0], argv[1], "op", ...userArgs];
+      }
+      // それ以外は argv 据え置き → parseAsync が commander.unknownCommand を throw する。
     }
   }
 
@@ -1899,7 +1949,13 @@ function finishCli() {
  */
 function maybeHandleBleError(err) {
   const code = err?.code;
-  if (code !== "BLE_UNAUTHORIZED" && code !== "BLE_POWERED_OFF" && code !== "BLE_NO_ADAPTER") return false;
+  if (
+    code !== "BLE_UNAUTHORIZED" &&
+    code !== "BLE_UNSUPPORTED" && // Linux/RPi/headless: アダプタ無し・権限不足 (native abort 探触のマップ先)
+    code !== "BLE_POWERED_OFF" &&
+    code !== "BLE_NO_ADAPTER"
+  )
+    return false;
   if (CLI_JSON) console.error(JSON.stringify({ error: err.message, code: 2, bleCode: code }));
   else console.error(`Error: ${err.message}`);
   if (!CLI_JSON && process.platform === "darwin" && code === "BLE_UNAUTHORIZED") {
