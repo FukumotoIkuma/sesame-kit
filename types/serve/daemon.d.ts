@@ -11,23 +11,13 @@ export class Daemon {
     /** @type {HubLike} */
     hub: HubLike;
     version: string;
-    _debug: boolean;
     /** @type {"ok"|"degraded"|"expired"} */
     authState: "ok" | "degraded" | "expired";
-    _registry: Map<string, import("./registry.js").MethodEntry>;
-    _openrpc: Record<string, unknown>;
     /** @type {Map<string, Promise<unknown>>} メソッド名→直列化チェーン末尾 */
-    _locks: Map<string, Promise<unknown>>;
     /** @type {Map<Connection, Set<string>>} Connection→購読 topic */
-    _subs: Map<Connection, Set<string>>;
     /** @type {(() => void)|null} hub 状態 push の単一購読の unsubscribe (張っている時のみ非 null) */
-    _stateUnsub: (() => void) | null;
-    _stopped: boolean;
-    _shuttingDown: boolean;
     /** @type {ReturnType<typeof setTimeout>|null} */
-    _retryTimer: ReturnType<typeof setTimeout> | null;
     /** @type {(() => void)|null} */
-    _retryResolve: (() => void) | null;
     /** @param {...unknown} a */
     _log(...a: unknown[]): void;
     start(): void;

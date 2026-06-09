@@ -413,7 +413,7 @@ function toShort(n) {
  * BLE DFU (ファームウェア更新) 開始コマンドの data。
  * SDK updateFirmware は enableDFU(7) に "01" (1B) を送る (CHSesame2Device.kt:580-599)。
  * 登録済み (login 済み) なら暗号化、未登録なら平文で送る。本実装は **開始コマンド送信まで**を
- * 担い、本体ファーム転送 (Nordic DFU 等の OTA バイナリ転送) は範囲外 (未実装/未検証)。
+ * 担い、本体ファーム転送 (Nordic DFU 等の OTA バイナリ転送) は別 GATT サービスを扱う外部 DFU 層の責務。
  * @returns {Buffer} 1B (0x01)
  */
 export function enableDfuData() {

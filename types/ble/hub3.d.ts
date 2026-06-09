@@ -110,23 +110,16 @@ export function parseHub3Publish({ itemCode, body }: {
 }): object;
 export class Hub3Commands {
     /**
-     * @param {{session?:import("./session.js").SesameBleSession}} [opts]
+     * @param {{session:import("./session.js").SesameBleSession}} opts
      *   session: SESAME 既定 GATT で接続/ログイン済み (もしくは register 済み) の SesameBleSession。
      */
     constructor({ session }?: {
-        session?: import("./session.js").SesameBleSession;
+        session: import("./session.js").SesameBleSession;
     });
-    _session: import("./session.js").SesameBleSession;
-    /** @type {Set<(parsed: ReturnType<typeof parseHub3Publish>) => void>} */
-    _publishListeners: Set<(parsed: ReturnType<typeof parseHub3Publish>) => void>;
-    /** @type {(() => void)|null} */
-    _off: (() => void) | null;
-    /**
-     * Hub3 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。
-     * @param {(parsed: ReturnType<typeof parseHub3Publish>) => void} fn
-     * @returns {() => void}
-     */
-    onPublish(fn: (parsed: ReturnType<typeof parseHub3Publish>) => void): () => void;
+    /** @type {Set<(parsed:any)=>void>} */
+    /** @type {(() => void)|null} session publish 中継の unsubscribe。 */
+    /** Hub3 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。 @param {(parsed:any)=>void} fn */
+    onPublish(fn: (parsed: any) => void): () => boolean;
     /** 購読解除 (session の publish 中継を外す)。 */
     dispose(): void;
     /**
@@ -137,18 +130,12 @@ export class Hub3Commands {
         resultCode: number;
         payload: Buffer;
     }>;
-    /**
-     * Wi-Fi SSID を設定 (CHHub3Device.kt:255-265、HUB3_UPDATE_WIFI_SSID=136)。
-     * @param {string} ssid
-     */
+    /** Wi-Fi SSID を設定 (CHHub3Device.kt:255-265、HUB3_UPDATE_WIFI_SSID=136)。 @param {string} ssid */
     setWifiSSID(ssid: string): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /**
-     * Wi-Fi パスワードを設定 (CHHub3Device.kt:246-253、HUB3_ITEM_CODE_WIFI_PASSWORD=135)。
-     * @param {string} password
-     */
+    /** Wi-Fi パスワードを設定 (CHHub3Device.kt:246-253、HUB3_ITEM_CODE_WIFI_PASSWORD=135)。 @param {string} password */
     setWifiPassword(password: string): Promise<{
         resultCode: number;
         payload: Buffer;

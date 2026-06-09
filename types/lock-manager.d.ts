@@ -13,10 +13,6 @@ export class LockManager {
         getSubUUID: () => (string | null);
         ensureConnected: () => void;
     });
-    _getWs: () => (import("./transport.js").Hub3WsClient | null);
-    _getConfig: () => import("./config.js").LoadedConfig;
-    _getSubUUID: () => (string | null);
-    _ensureConnected: () => void;
     /**
      * 接続済み WS を返す。各 lock 操作は直前に `_ensureConnected()` を呼ぶため、
      * この時点で WS は非 null。型レベルで非 null を確定させるだけのアクセサ (実行時挙動なし)。

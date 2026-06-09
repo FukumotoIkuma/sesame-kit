@@ -36,35 +36,25 @@ export class SesameHub3 {
     }, maybeFn?: (hub: SesameHub3) => Promise<any>): Promise<any>;
     /**
      * @param {{
-     *   config: ClientConfig,
+     *   config: ClientConfig | Partial<ClientConfig>,
      *   tokenStore: TokenStore,
      *   configStore?: ConfigStore | null,
      *   debug?: boolean,
      * }} args
      */
     constructor({ config, tokenStore, configStore, debug }: {
-        config: ClientConfig;
+        config: ClientConfig | Partial<ClientConfig>;
         tokenStore: TokenStore;
         configStore?: ConfigStore | null;
         debug?: boolean;
     });
-    /** @type {ClientConfig} */
-    _config: ClientConfig;
-    _configStore: ConfigStore | null;
-    _tokenStore: import("./tokens.js").TokenStore;
-    _debug: boolean;
     /** @type {Hub3WsClient | null} */
-    _ws: Hub3WsClient | null;
-    _subUUID: string | null;
     /**
      * close() 時に await したい async cleanup 関数の集合 (2nd-pass M-1)。
      * `onIRLearned` 等の戻り値 unsubscribe は呼び出し側の await 忘れで Hub3 が
      * REGISTER モードに残るリスクがあるため、ここに登録しておくと close() で確実に走る。
      */
-    _pendingCleanups: Set<any>;
     /** WS 再接続 (初回以外の OPEN) で呼ぶコールバック集合。購読者の再 subscribe 用。 */
-    _reconnectCbs: Set<any>;
-    _lock: LockManager;
     /**
      * WS 再接続時に呼ばれるコールバックを登録する。戻り値で解除。
      * デーモン等、再接続後にサーバ購読 (subscribe frame) を張り直したい用途向け。
@@ -116,6 +106,8 @@ export class SesameHub3 {
     get org(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** 会社 (biz3ManageCompany)。 */
     get company(): Record<string, (params?: Record<string, unknown>) => unknown>;
+    /** 支払い管理 (biz3ManagePayment)。 */
+    get payment(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** 認証データ (NFC カード/パスコードの WS op)。 */
     get access(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** IoT cmd (biz3OperateIoT: DFU/LED/リレー/Sesame item)。 */
@@ -405,6 +397,22 @@ export class SesameHub3 {
         cardType?: number;
     }>): Promise<object | null>;
     /**
+     * biometrics REST のベース URL を解決する。引数 > config.biometricsBaseUrl > config.registerBaseUrl。
+     * @param {string} [baseUrl]
+     * @returns {string}
+     */
+    _biometricsBaseUrl(baseUrl?: string): string;
+    /** @returns {() => Promise<string>} 都度 idToken から Bearer を発行する provider */
+    _biometricsAuthorizationProvider(): () => Promise<string>;
+    /** @param {import("./client.js").BiometricAuthBag} [args] */
+    postAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: import("./client.js").BiometricAuthBag): Promise<object | object[]>;
+    /** @param {import("./client.js").BiometricAuthBag} [args] */
+    putAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: import("./client.js").BiometricAuthBag): Promise<any>;
+    /** @param {import("./client.js").BiometricAuthBag} [args] */
+    deleteAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: import("./client.js").BiometricAuthBag): Promise<any>;
+    /** @param {import("./client.js").BiometricNameBag} [args] */
+    updateAuthenticationName({ request, kind, baseUrl, transport, ...rest }?: import("./client.js").BiometricNameBag): Promise<any>;
+    /**
      * @param {string} deviceUUID
      * @param {string} deviceName
      */
@@ -470,6 +478,27 @@ export class SesameHub3 {
         body?: object;
         apiKeyId?: string;
     }): Promise<unknown>;
+    /** @param {{ deviceId?: string, apiKeyId?: string }} [args] */
+    webapiDeviceState({ deviceId, apiKeyId }?: {
+        deviceId?: string;
+        apiKeyId?: string;
+    }): Promise<unknown>;
+    /** @param {{ deviceId?: string, page?: number, lg?: number, isBiz?: boolean, apiKeyId?: string }} [args] */
+    webapiDeviceHistory({ deviceId, page, lg, isBiz, apiKeyId }?: {
+        deviceId?: string;
+        page?: number;
+        lg?: number;
+        isBiz?: boolean;
+        apiKeyId?: string;
+    }): Promise<unknown>;
+    /** @param {{ deviceId?: string, cmd?: unknown, sign?: unknown, history?: unknown, apiKeyId?: string }} [args] */
+    webapiSendCmd({ deviceId, cmd, sign, history, apiKeyId }?: {
+        deviceId?: string;
+        cmd?: unknown;
+        sign?: unknown;
+        history?: unknown;
+        apiKeyId?: string;
+    }): Promise<unknown>;
     /**
      * 直接 lock 制御 (config を介さない, 任意 cmd)。`unlockDevice`/`lockDevice` 等の基底。
      * @param {{deviceUUID:string, secretKey:string, cmd:number, timeoutMs?:number}} p
@@ -524,6 +553,21 @@ export class SesameHub3 {
         timeoutMs?: number;
     }): Promise<object>;
     /**
+     * 直接 autolock 設定 (config を介さない, cmd=11)。
+     * @param {{deviceUUID:string, secretKey:string, seconds:number, timeoutMs?:number}} p
+     * @returns {Promise<{ack:any, cmd:number, seconds:number}>}
+     */
+    setAutolockDevice({ deviceUUID, secretKey, seconds, timeoutMs }: {
+        deviceUUID: string;
+        secretKey: string;
+        seconds: number;
+        timeoutMs?: number;
+    }): Promise<{
+        ack: any;
+        cmd: number;
+        seconds: number;
+    }>;
+    /**
      * 直接 IR 発射 (config を介さない)。
      * @param {{hub3DeviceId:string, irDeviceUUID:string, irType:number, command:string, operation?:string}} p
      *   hub3DeviceId: Hub3 UUID / irDeviceUUID: リモコン UUID / irType: 例 49152 /
@@ -566,8 +610,8 @@ export class SesameHub3 {
      * 内部で setIRMode(REGISTER) → subscribeIRData を発行する。
      *
      * **重要**: 戻り値の async unsubscribe 関数は **必ず `await` してください**。
-     * await 忘れで親プロセスが先に終了すると、Hub3 が REGISTER モードに残ります
-     * (Review M-1)。`hub.close()` を呼んでも Hub3 側のモードは元に戻りません。
+     * `hub.close()` も pending cleanup を best-effort で実行しますが、明示的に await する方が
+     * REGISTER モード復帰の失敗を呼び出し側で扱えます。
      *
      * 戻り値: async () => Promise<void>  — subscribe 解除 + setIRMode(CONTROL) 復帰
      */
@@ -608,7 +652,27 @@ export type IRKey = {
     name: string;
     keyUUID: string;
 };
+/**
+ * #18 biometric REST (post/put/deleteAuthenticationData) の公開オプション袋。
+ * baseUrl/transport は client が解決して access.* に渡すため省略可。
+ */
+export type BiometricAuthBag = {
+    operation?: string | undefined;
+    deviceID?: string | undefined;
+    items?: object[] | undefined;
+    baseUrl?: string | undefined;
+    transport?: access.BiometricsTransport | undefined;
+};
+/**
+ * updateAuthenticationName の公開オプション袋。request 直指定 or kind から組み立て。
+ * 残りのフィールド (subUUID/stpDeviceUUID/name/...) は access 側へ透過する。
+ */
+export type BiometricNameBag = Omit<import("./access.js").UpdateAuthNameParams, "transport" | "baseUrl" | "authorization" | "bearerToken" | "authorizationProvider" | "fetchImpl"> & {
+    baseUrl?: string;
+    transport?: import("./access.js").BiometricsTransport;
+};
 import { ConfigStore } from "./config.js";
 import { Hub3WsClient } from "./transport.js";
 import { LockManager } from "./lock-manager.js";
+import * as access from "./access.js";
 //# sourceMappingURL=client.d.ts.map

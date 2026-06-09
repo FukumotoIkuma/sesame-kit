@@ -10,7 +10,7 @@ export { SesameOS2BleCipher } from "./cipher.js";
  */
 /**
  * SesameOS2Ble のコンストラクタ opts。
- * @typedef {object} SesameOS2BleOpts
+ * @typedef {object} SesameOS2BleOptions
  * @property {string|Buffer} [secretKey] ロック共通鍵 (16B / 32hex)。login 必須、register モードでは不要。
  * @property {string|Buffer} [keyIndex] userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。
  * @property {string|Buffer} [ssmPublicKey] デバイス公開鍵 (64B, sesame2KeyData.sesame2PublicKey)。login の ECDH 相手。
@@ -27,33 +27,24 @@ export { SesameOS2BleCipher } from "./cipher.js";
 export class SesameOS2Ble {
     /**
      * connect → fn → close を自動で行うヘルパー。
-     * @param {SesameOS2BleOpts} opts コンストラクタ opts
+     * @param {SesameOS2BleOptions} opts コンストラクタ opts
      * @param {(lock:SesameOS2Ble)=>Promise<any>} fn
      */
-    static use(opts: SesameOS2BleOpts, fn: (lock: SesameOS2Ble) => Promise<any>): Promise<any>;
+    static use(opts: SesameOS2BleOptions, fn: (lock: SesameOS2Ble) => Promise<any>): Promise<any>;
     /**
      * 工場出荷デバイスを connect → register → close まで自動化する。
-     * @param {SesameOS2BleOpts & {productType?:(string|number), ak?:Buffer}} opts コンストラクタ opts (registerServer 必須)
+     * @param {SesameOS2BleOptions & {productType?:(string|number), ak?:Buffer}} opts コンストラクタ opts (registerServer 必須)
      * @param {(result:object)=>Promise<any>} [fn] 登録結果コールバック (鍵の保存など)
      * @returns {Promise<object>} 登録結果
      */
-    static registerOnce(opts?: SesameOS2BleOpts & {
+    static registerOnce(opts?: SesameOS2BleOptions & {
         productType?: (string | number);
         ak?: Buffer;
     }, fn?: (result: object) => Promise<any>): Promise<object>;
     /**
-     * @param {SesameOS2BleOpts} opts
+     * @param {SesameOS2BleOptions} [opts]
      */
-    constructor({ secretKey, keyIndex, ssmPublicKey, deviceUUID, model, registerMode, registerServer, localServerAuth, needAuthFromServer, signLogin, debug, transport, }?: SesameOS2BleOpts);
-    _transport: import("../session.js").BleTransport;
-    _session: SesameOS2BleSession;
-    _model: string | null;
-    _deviceUUID: string | undefined;
-    _registerMode: boolean;
-    _registerServer: Function | null;
-    _needAuthFromServer: boolean;
-    _signLogin: ((signPayloadHex: string) => Promise<string>) | null;
-    _debug: boolean;
+    constructor(opts?: SesameOS2BleOptions);
     get model(): string | null;
     get isConnected(): boolean;
     get lastStatus(): any;
@@ -199,8 +190,8 @@ export class SesameOS2Ble {
      * (SDK の isRegistered=true 経路、:584)。未登録時の平文経路 (:592) はこのファサードの対象外。
      *
      * ★本メソッドは **DFU 開始コマンドの送信のみ** を行う。開始後デバイスは DFU ブートローダへ
-     *   遷移し切断される想定で、本体ファーム (Nordic DFU 等の OTA バイナリ) の転送は範囲外 (未実装)。
-     *   実機での DFU 完遂は未検証。
+     *   遷移し切断される想定で、本体ファーム (Nordic DFU 等の OTA バイナリ) の転送は
+     *   別 GATT サービスを扱う外部 DFU 層の責務。実機での DFU 完遂は未検証。
      * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
     updateFirmware(): Promise<{
@@ -211,7 +202,7 @@ export class SesameOS2Ble {
 /**
  * SesameOS2Ble のコンストラクタ opts。
  */
-export type SesameOS2BleOpts = {
+export type SesameOS2BleOptions = {
     /**
      * ロック共通鍵 (16B / 32hex)。login 必須、register モードでは不要。
      */

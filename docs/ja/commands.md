@@ -192,6 +192,14 @@ sesame company rename "新社名"      # 優先会社の改名
 sesame company add "新会社"         # 会社を新規登録
 sesame company payment             # 課金設定取得
 
+# 支払い / Stripe 側 Biz3 op
+sesame payment methods             # 支払い方法一覧
+sesame payment client-secret       # SetupIntent client secret (Stripe.js confirmSetup 用)
+sesame payment default <pm_id> --yes
+sesame payment remove <payment_id> --yes
+sesame payment level <encoded_level> --upgrade --yes
+sesame payment dev-api [--update --yes]
+
 # 組織 (org)
 sesame org employee ls             # 社員一覧
 sesame org employee search <kw>    # CS 横断のユーザー検索
@@ -232,7 +240,7 @@ sesame iot firmware-update --device <uuid> --secret <hex> --wait 60
 sesame iot matter-code --device <uuid> --secret <hex>   # Matter ペアリングコード
 ```
 
-> `relay` は fire-and-forget で、Hub3 から応答が返りません（送信成功＝切替成功ではありません）。`off` の opcode 割当は公式ソース上で未確認で、実機では別挙動になる可能性があります。
+> `relay` は fire-and-forget で、Hub3 から応答が返りません（送信成功＝切替成功ではありません）。biz3 ソースで確認できる操作は `toggle` です（`on` は同じ toggle op への互換 alias として残しています）。独立した `off` command はありません。
 
 ---
 
@@ -246,8 +254,7 @@ sesame preset-ir button --device <hub3uuid> --code <n> --button power --irtype 8
 sesame preset-ir send --device <hub3uuid> --command <hex> --irtype 49152   # 生 hex 発射
 ```
 
-> プリセットの command 生成 (biz3 の HXDCommandProcessor) は未移植のため、プリセット発射は現状機能しません。
-> 自己学習リモコン (`sesame ir learn`) を使ってください（[既知の制限](../../README.ja.md#健全性--既知の制限)）。
+`air` / `button` は biz3 の `HXDCommandProcessor` から移植した 16 byte HXD command をローカル生成し、学習 IR と同じ `remoteEmit` frame で発射します。`send` は生成済み HEX command をそのまま発射する低レベル経路です。
 
 ---
 
@@ -269,12 +276,14 @@ sesame front autolock 30         # オートロック (BLE 必須。本当に効
 sesame front autolock 0          # 無効化
 ```
 
-### `sesame ble` — BLE 直接の読み取り専用 op
+### `sesame ble` — BLE 直接の補助 op
 
-`ble` コマンドグループは、BLE サーフェスの**読み取り専用**サブセット（鍵なしスキャン、生体 / スクリプトの一覧読み出し、登録モードの取得）を直接公開します。残りの BLE 機能（登録・プロビジョニング・ファームウェア・ペアリング・reset・OS2 ファサード）はライブラリ専用のままです — [ble.md](./ble.md) を参照してください。
+`ble` コマンドグループは、鍵なしスキャン、工場出荷デバイスの初期登録、読み取り中心の BLE 調査を直接公開します。専用 CLI コマンドの無い書き込み / プロビジョニング / ファームウェア操作は Node と `sesame serve` の `ble.invoke` / `ble.os2.invoke` から呼べます — [ble.md](./ble.md) を参照してください。
 
 ```bash
 sesame ble scan [--timeout <ms>]         # 鍵なしの近接スキャン（secretKey 不要）
+sesame ble register <uuid> [--model <model>] [--save <name>]
+sesame ble os2-register <uuid> [--model <model>]
 sesame ble cards <device>                # 登録済み NFC カード一覧（Touch / Touch Pro）
 sesame ble passcodes <device>            # 登録済みキーパッド暗証番号一覧（Touch / Touch Pro）
 sesame ble fingers <device>              # 登録済み指紋一覧（Touch Pro / Bike3）
@@ -286,7 +295,7 @@ sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧
 
 `<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドでは、`--secret <hex>` と `--model <model>` で config のロックに無いデバイスを対象にでき、`--timeout <ms>` で publish 収集のタイムアウト（既定 8000）を指定します。`scan` は鍵なしでどちらも不要です。
 
-> これらのコマンドはライブラリの読み出しと同じ BLE コード経路で、ユニットテスト済みですが**実機未確認**です。読み取り専用であり、登録 / モード設定 / スクリプトの切替 / 書き込み / 実行はライブラリ専用のままです。
+> これらのコマンドはライブラリ / RPC と同じ BLE コード経路で、ユニットテスト済みですが**実機未確認**です。list / mode / script は読み取り専用であり、生体登録 / モード設定 / スクリプト切替 / 書き込み / 実行は Node または BLE 汎用 RPC から呼べます。
 
 > **BLE エラーは `SesameResultCode` で意味づけ済み** — デバイスが非 0 の結果を返すと、ライブラリは
 > `BleResultError`（`.resultCode` / `.resultName`）を投げます。`resultName` は公式 SesameSDK の
@@ -305,8 +314,8 @@ sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧
 | ロック `sesame_5`/`_pro`/`sesame_6`/`_pro`/`_us`/`miwa` | `lock` `unlock` `toggle` `autolock` `status` | 施錠/解錠 + 位置 |
 | Bot `bot_2`/`bot_3` | `click` `status` | 施錠/解錠 (位置なし) |
 | Bike `bike_2`/`bike_3` | `unlock` `status` | 施錠/解錠 (位置なし) |
-| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (BLE 施錠操作なし) — 生体 / 登録モードの**読み出し**は `sesame ble cards/passcodes/fingers/faces/palms/mode` で CLI から可。登録（書き込み）と Wi-Fi プロビジョニングは**ライブラリ専用**（`SesameBle#biometric` / `#wifi`、[ble.md](./ble.md) 参照） | — |
-| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | **ライブラリ**で BLE 対応（`SesameOS2Ble`・別プロトコル）。CLI 経路は OS2 ではクラウドのみ | 施錠/解錠/moved + 位置 |
+| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (BLE 施錠操作なし) — 生体 / 登録モードの**読み出し**は `sesame ble cards/passcodes/fingers/faces/palms/mode` で CLI から可。登録（書き込み）と Wi-Fi/Hub3 プロビジョニングは Node または `ble.invoke` から可（`SesameBle#biometric` / `#wifi` / `#hub3`、[ble.md](./ble.md) 参照） | — |
+| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | **Node と `ble.os2.invoke`** で BLE 対応（`SesameOS2Ble`・別プロトコル）。専用 CLI 経路は OS2 ではクラウドのみ | 施錠/解錠/moved + 位置 |
 
 > 「施錠/解錠」は OS3 では `isInLockRange` の有無による **2 値**のみ。OS3 に中間状態 (moved) はありません
 > (Sesame2/3/4 等 OS2 系のみ moved を持ちます)。BLE 実装の設計は [architecture.md](./architecture.md) を参照してください。
@@ -322,7 +331,7 @@ await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
 });
 ```
 
-> **CLI** は OS3 のロック / Bot / Bike 制御に加え、`sesame ble` 配下の読み取り専用 BLE op（鍵なしスキャン、生体 / スクリプトの一覧読み出し、登録モードの取得）を扱います。**ライブラリ**ではさらに OS2 デバイス（`SesameOS2Ble`）・新規ペアリング / 登録（`SesameBle.registerOnce()` / `SesameOS2Ble.registerOnce()`）・生体 / アクセス制御の登録（書き込み）・WifiModule2 プロビジョニング・BLE OTA も扱えます（いずれも SesameSDK から移植。一部は実機未検証）。[ble.md](./ble.md) と README の [既知の制限](../../README.ja.md#既知の制限) を参照してください。
+> **CLI** は OS3 のロック / Bot / Bike 制御に加え、`sesame ble` 配下の scan、初期登録、生体 / スクリプトの一覧読み出し、登録モード取得を扱います。**ライブラリ / RPC** ではさらに OS2 制御（`SesameOS2Ble` / `ble.os2.invoke`）・生体 / アクセス制御の登録（書き込み）・WifiModule2/Hub3 プロビジョニング・BLE OTA も扱えます（いずれも SesameSDK から移植。一部は実機未検証）。[ble.md](./ble.md) と README の [既知の制限](../../README.ja.md#既知の制限) を参照してください。
 
 ---
 

@@ -45,6 +45,12 @@ service Sesame {
   rpc CompanyUpdateCompanyName (CompanyUpdateCompanyNameRequest) returns (JsonRpc);
   rpc CompanyAddCompany (CompanyAddCompanyRequest) returns (JsonRpc);
   rpc CompanyGetPaymentConfig (CompanyGetPaymentConfigRequest) returns (JsonRpc);
+  rpc PaymentGetPaymentMethods (PaymentGetPaymentMethodsRequest) returns (JsonRpc);
+  rpc PaymentGetClientSecret (PaymentGetClientSecretRequest) returns (JsonRpc);
+  rpc PaymentChangeDefaultPayment (PaymentChangeDefaultPaymentRequest) returns (JsonRpc);
+  rpc PaymentRemovePayment (PaymentRemovePaymentRequest) returns (JsonRpc);
+  rpc PaymentPayUpdateLevel (PaymentPayUpdateLevelRequest) returns (JsonRpc);
+  rpc PaymentGetDevApiInfo (PaymentGetDevApiInfoRequest) returns (JsonRpc);
   rpc AccessGetCards (AccessGetCardsRequest) returns (JsonRpc);
   rpc AccessGetPasscodes (AccessGetPasscodesRequest) returns (JsonRpc);
   rpc AccessPostCards (AccessPostCardsRequest) returns (JsonRpc);
@@ -75,16 +81,43 @@ service Sesame {
   rpc LockUnlock (LockUnlockRequest) returns (JsonRpc);
   rpc LockToggle (LockToggleRequest) returns (JsonRpc);
   rpc LockClick (LockClickRequest) returns (JsonRpc);
+  rpc LockSetAutolock (LockSetAutolockRequest) returns (JsonRpc);
   rpc LockStatus (LockStatusRequest) returns (JsonRpc);
   rpc DevicesList (DevicesListRequest) returns (JsonRpc);
+  rpc DevicesUserList (DevicesUserListRequest) returns (JsonRpc);
   rpc AccessRegisterCards (AccessRegisterCardsRequest) returns (JsonRpc);
   rpc DeviceHistory (DeviceHistoryRequest) returns (JsonRpc);
   rpc DeviceBattery (DeviceBatteryRequest) returns (JsonRpc);
   rpc DeviceHideHistory (DeviceHideHistoryRequest) returns (JsonRpc);
   rpc DeviceHideBattery (DeviceHideBatteryRequest) returns (JsonRpc);
+  rpc DeviceRename (DeviceRenameRequest) returns (JsonRpc);
+  rpc DeviceDelete (DeviceDeleteRequest) returns (JsonRpc);
+  rpc FirmwareList (FirmwareListRequest) returns (JsonRpc);
   rpc WebapiInvoke (WebapiInvokeRequest) returns (JsonRpc);
+  rpc WebapiDeviceState (WebapiDeviceStateRequest) returns (JsonRpc);
+  rpc WebapiDeviceHistory (WebapiDeviceHistoryRequest) returns (JsonRpc);
+  rpc WebapiSendCmd (WebapiSendCmdRequest) returns (JsonRpc);
   rpc IrSend (IrSendRequest) returns (JsonRpc);
   rpc IrListKeys (IrListKeysRequest) returns (JsonRpc);
+  rpc IrLearn (IrLearnRequest) returns (JsonRpc);
+  rpc IrListRemotes (IrListRemotesRequest) returns (JsonRpc);
+  rpc IrSearchRemotes (IrSearchRemotesRequest) returns (JsonRpc);
+  rpc IrAddRemote (IrAddRemoteRequest) returns (JsonRpc);
+  rpc IrDeleteRemote (IrDeleteRemoteRequest) returns (JsonRpc);
+  rpc IrRenameRemote (IrRenameRemoteRequest) returns (JsonRpc);
+  rpc IrDeleteKey (IrDeleteKeyRequest) returns (JsonRpc);
+  rpc IrRenameKey (IrRenameKeyRequest) returns (JsonRpc);
+  rpc IrGetMode (IrGetModeRequest) returns (JsonRpc);
+  rpc IrSetMode (IrSetModeRequest) returns (JsonRpc);
+  rpc IrMatchRemote (IrMatchRemoteRequest) returns (JsonRpc);
+  rpc AccessPostAuthenticationData (AccessPostAuthenticationDataRequest) returns (JsonRpc);
+  rpc AccessPutAuthenticationData (AccessPutAuthenticationDataRequest) returns (JsonRpc);
+  rpc AccessDeleteAuthenticationData (AccessDeleteAuthenticationDataRequest) returns (JsonRpc);
+  rpc AccessUpdateAuthenticationName (AccessUpdateAuthenticationNameRequest) returns (JsonRpc);
+  rpc BleInvoke (BleInvokeRequest) returns (JsonRpc);
+  rpc BleRegister (BleRegisterRequest) returns (JsonRpc);
+  rpc BleOs2Invoke (BleOs2InvokeRequest) returns (JsonRpc);
+  rpc BleOs2Register (BleOs2RegisterRequest) returns (JsonRpc);
   rpc Discover (DiscoverRequest) returns (JsonRpc);
   // イベント購読 (topics を渡し event を stream で受ける)。payload は JSON 文字列。
   rpc Subscribe (SubReq) returns (stream Event);
@@ -281,6 +314,24 @@ message CompanyGetPaymentConfigRequest {
   string companyID = 1;
   double timeoutMs = 2;
 }
+message PaymentGetPaymentMethodsRequest {
+  string params = 1;
+}
+message PaymentGetClientSecretRequest {
+  string params = 1;
+}
+message PaymentChangeDefaultPaymentRequest {
+  string params = 1;
+}
+message PaymentRemovePaymentRequest {
+  string params = 1;
+}
+message PaymentPayUpdateLevelRequest {
+  string params = 1;
+}
+message PaymentGetDevApiInfoRequest {
+  string params = 1;
+}
 message AccessGetCardsRequest {
   repeated string deviceUUIDs = 1;
   double timeoutMs = 2;
@@ -448,10 +499,19 @@ message LockClickRequest {
   string deviceUUID = 2;
   string secretKey = 3;
 }
+message LockSetAutolockRequest {
+  string name = 1;
+  string deviceUUID = 2;
+  string secretKey = 3;
+  double seconds = 4;
+  double timeoutMs = 5;
+}
 message LockStatusRequest {
   string deviceUUID = 1;
 }
 message DevicesListRequest {
+}
+message DevicesUserListRequest {
 }
 message AccessRegisterCardsRequest {
   string deviceUUID = 1;
@@ -473,11 +533,38 @@ message DeviceHideBatteryRequest {
   string deviceUUID = 1;
   double timestampSecond = 2;
 }
+message DeviceRenameRequest {
+  string deviceUUID = 1;
+  string deviceName = 2;
+}
+message DeviceDeleteRequest {
+  string deviceUUID = 1;
+}
+message FirmwareListRequest {
+}
 message WebapiInvokeRequest {
   string func = 1;
   string query = 2;
   string body = 3;
   string apiKeyId = 4;
+}
+message WebapiDeviceStateRequest {
+  string deviceId = 1;
+  string apiKeyId = 2;
+}
+message WebapiDeviceHistoryRequest {
+  string deviceId = 1;
+  double page = 2;
+  double lg = 3;
+  bool isBiz = 4;
+  string apiKeyId = 5;
+}
+message WebapiSendCmdRequest {
+  string deviceId = 1;
+  double cmd = 2;
+  string sign = 3;
+  string history = 4;
+  string apiKeyId = 5;
 }
 message IrSendRequest {
   string remote = 1;
@@ -485,6 +572,133 @@ message IrSendRequest {
 }
 message IrListKeysRequest {
   string remote = 1;
+}
+message IrLearnRequest {
+  string remote = 1;
+  string key = 2;
+  double timeoutMs = 3;
+}
+message IrListRemotesRequest {
+  double type = 1;
+  double page = 2;
+  double pageSize = 3;
+}
+message IrSearchRemotesRequest {
+  double type = 1;
+  string searchTerm = 2;
+}
+message IrAddRemoteRequest {
+  string remote = 1;
+}
+message IrDeleteRemoteRequest {
+  string remote = 1;
+}
+message IrRenameRemoteRequest {
+  string remote = 1;
+  string alias = 2;
+}
+message IrDeleteKeyRequest {
+  string remote = 1;
+  string key = 2;
+}
+message IrRenameKeyRequest {
+  string remote = 1;
+  string key = 2;
+  string newName = 3;
+}
+message IrGetModeRequest {
+  string hub3 = 1;
+}
+message IrSetModeRequest {
+  string hub3 = 1;
+  double mode = 2;
+}
+message IrMatchRemoteRequest {
+  string irData = 1;
+  double irType = 2;
+  string brandName = 3;
+}
+message AccessPostAuthenticationDataRequest {
+  string operation = 1;
+  string deviceID = 2;
+  string items = 3;
+  string baseUrl = 4;
+}
+message AccessPutAuthenticationDataRequest {
+  string operation = 1;
+  string deviceID = 2;
+  string items = 3;
+  string baseUrl = 4;
+}
+message AccessDeleteAuthenticationDataRequest {
+  string operation = 1;
+  string deviceID = 2;
+  string items = 3;
+  string baseUrl = 4;
+}
+message AccessUpdateAuthenticationNameRequest {
+  string request = 1;
+  string kind = 2;
+  string baseUrl = 3;
+  string subUUID = 4;
+  string stpDeviceUUID = 5;
+  string name = 6;
+  double timestamp = 7;
+  double type = 8;
+  double cardType = 9;
+  string nameUUID = 10;
+  string cardNameUUID = 11;
+  string faceNameUUID = 12;
+  string fingerPrintNameUUID = 13;
+  string palmNameUUID = 14;
+  string keyBoardPassCodeNameUUID = 15;
+  string cardID = 16;
+  string faceID = 17;
+  string fingerPrintID = 18;
+  string palmID = 19;
+  string keyBoardPassCode = 20;
+  string op = 21;
+}
+message BleInvokeRequest {
+  string op = 1;
+  string args = 2;
+  string deviceUUID = 3;
+  string address = 4;
+  string secretKey = 5;
+  string model = 6;
+  double scanTimeoutMs = 7;
+  bool debug = 8;
+}
+message BleRegisterRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string model = 3;
+  string productType = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  double nowMs = 7;
+}
+message BleOs2InvokeRequest {
+  string op = 1;
+  string args = 2;
+  string deviceUUID = 3;
+  string address = 4;
+  string secretKey = 5;
+  string keyIndex = 6;
+  string ssmPublicKey = 7;
+  string model = 8;
+  double scanTimeoutMs = 9;
+  bool debug = 10;
+}
+message BleOs2RegisterRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string model = 3;
+  string productType = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool localServerAuth = 7;
+  string ak = 8;
 }
 message DiscoverRequest {
 }

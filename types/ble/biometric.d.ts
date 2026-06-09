@@ -259,6 +259,35 @@ export function remoteNanoTriggerDelayData(time: number): Buffer<ArrayBuffer>;
  */
 export function radarSensitivityData(payload: Buffer): Buffer<ArrayBuffer>;
 /**
+ * insertSesame の ADD_SESAME payload を組み立てる。
+ *
+ * SDK:
+ *   - OS3 子デバイス (SS5/5Pro/Bike2): UUID(16B) ++ secretKey(16B)
+ *   - OS2 子デバイス (SS3/4/Bot1/Bike1): base64(UUID16).replace("=","")(22B)
+ *       ++ sesame2PublicKey(64B) ++ secretKey(16B)
+ *
+ * `sesame2PublicKey` を渡した場合は OS2 形、それ以外は OS3 形で送る。
+ *
+ * @param {{deviceUUID:string, secretKey:string|Buffer, sesame2PublicKey?:string|Buffer}} sesame
+ * @returns {Buffer}
+ */
+export function insertSesameData({ deviceUUID, secretKey, sesame2PublicKey }?: {
+    deviceUUID: string;
+    secretKey: string | Buffer;
+    sesame2PublicKey?: string | Buffer;
+}): Buffer;
+/**
+ * removeSesame の REMOVE_SESAME payload を組み立てる。
+ * keyType=0x04 は OS2 子鍵 (base64(UUID16).replace("=",""))、それ以外は OS3 子鍵 (UUID16)。
+ *
+ * @param {string} tag UUID/hex
+ * @param {{keyType?:number}} [opts]
+ * @returns {Buffer}
+ */
+export function removeSesameData(tag: string, { keyType }?: {
+    keyType?: number;
+}): Buffer;
+/**
  * batchAdd 1 パケットの data を組み立てる。
  *   data = dataIndex.toReverseBytes()(2B LE) ++ dataSize.toReverseBytes()(2B LE) ++ chunk
  * (CHCardCapableImpl.kt:117-122 / CHPassCodeCapableImpl.kt:73-78)。
@@ -395,7 +424,6 @@ export class BiometricCommands {
      *                         onPublish(fn)→unsubscribe を持つこと)。
      */
     constructor(session: BiometricSession);
-    _session: BiometricSession;
     /**
      * request の薄いラッパ (将来 timeout 等を一括調整できるよう一箇所に集約)。
      * @param {number} itemCode
@@ -481,6 +509,33 @@ export class BiometricCommands {
      * @param {Buffer} payload レーダーパラメータの生バイト列
      */
     setRadarSensitivity(payload: Buffer): Promise<void>;
+    /**
+     * 子 Sesame の鍵を connector デバイスへ追加する (CHDeviceConnectCapableImpl.insertSesame と 1:1)。
+     * OS3 子鍵は `{deviceUUID, secretKey}`、OS2 子鍵はそれに `sesame2PublicKey` を加えて渡す。
+     * @param {{deviceUUID:string, secretKey:string|Buffer, sesame2PublicKey?:string|Buffer}} sesame
+     * @returns {Promise<{resultCode:number, payload:Buffer}>}
+     */
+    insertSesame(sesame: {
+        deviceUUID: string;
+        secretKey: string | Buffer;
+        sesame2PublicKey?: string | Buffer;
+    }): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /**
+     * 子 Sesame の鍵を connector デバイスから削除する (CHDeviceConnectCapableImpl.removeSesame と 1:1)。
+     * PUB_KEY_SESAME の parse 結果で keyType=0x04 なら OS2、0x05 なら OS3 として payload を切り替える。
+     * @param {string} tag 削除対象 Sesame UUID
+     * @param {{keyType?:number}} [opts]
+     * @returns {Promise<{resultCode:number, payload:Buffer}>}
+     */
+    removeSesame(tag: string, opts?: {
+        keyType?: number;
+    }): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * STP 分割転送による一括登録 (cardBatchAdd / passcodeBatchAdd 共通実体)。
      * SDK CHCardCapableImpl.kt:106-160 / CHPassCodeCapableImpl.kt:52-114 を 1:1 で移植:

@@ -13,7 +13,7 @@ Pick the guide for how you want to use sesame-kit.
 - [CLI](./commands.md) — full command reference for the `sesame` CLI.
 - [BLE direct control](./ble.md) — drive locks over Bluetooth without the cloud (autolock, permissions, per-device capabilities).
 - [Node library](./library.md) — embed sesame-kit in a Node.js app (`SesameHub3.use()`, direct API, events).
-- [Integrate from any language](./integration.md) — call every feature over JSON-RPC via `sesame serve` (Python / JS / HTTP / WebSocket / gRPC).
+- [Integrate from any language](./integration.md) — call cloud/Biz3 RPC methods and registered BLE ops via `sesame serve` (Python / JS / HTTP / WebSocket / gRPC).
 
 ## Reference & design
 - [Architecture](./architecture.md) — lineage, design decisions, file layout.

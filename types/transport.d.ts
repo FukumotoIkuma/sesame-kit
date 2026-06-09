@@ -98,7 +98,6 @@ export class Hub3WsClient {
     idToken: string;
     onTokenRefreshNeeded: ((oldToken: string) => Promise<string | null>) | null;
     onReopen: (() => void) | null;
-    _everConnected: boolean;
     /** @type {WsLike | null} */
     ws: WsLike | null;
     /** @type {WsStatus} */
@@ -118,7 +117,6 @@ export class Hub3WsClient {
     closedByUser: boolean;
     lastActiveTime: number;
     lastTickTime: number;
-    _refreshedThisCycle: boolean;
     /** @type {ReturnType<typeof setInterval> | null} */
     keepaliveTimer: ReturnType<typeof setInterval> | null;
     /** @type {ReturnType<typeof setTimeout> | null} */
@@ -130,11 +128,8 @@ export class Hub3WsClient {
     /** @type {ReturnType<typeof setInterval> | null} */
     sleepDetectorTimer: ReturnType<typeof setInterval> | null;
     /** @type {Promise<void> | null} */
-    _connectPromise: Promise<void> | null;
     /** @type {(() => void) | null} */
-    _initialConnectResolve: (() => void) | null;
     /** @type {((reason?: unknown) => void) | null} */
-    _initialConnectReject: ((reason?: unknown) => void) | null;
     /** @param {...unknown} args */
     log(...args: unknown[]): void;
     /**

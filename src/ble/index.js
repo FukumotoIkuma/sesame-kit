@@ -45,6 +45,8 @@ export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsF
 export {
   BiometricCommands, handleBiometricPublish, parseTouchCard, parseTouchFace,
   parseRemoteNanoTrigger, remoteNanoTriggerDelayData, radarSensitivityData,
+  insertSesameData as biometricInsertSesameData,
+  removeSesameData as biometricRemoveSesameData,
   createEnrollCollector,
 } from "./biometric.js";
 export * as biometric from "./biometric.js";
@@ -159,7 +161,8 @@ export class SesameBle {
   /**
    * @param {SesameBleOptions} [opts]
    */
-  constructor({ secretKey, deviceUUID, address, model = null, registerMode = false, needAuthFromServer = false, registerTransport = null, debug = false, scanTimeoutMs, transport } = {}) {
+  constructor(opts = {}) {
+    const { secretKey, deviceUUID, address, model = null, registerMode = false, needAuthFromServer = false, registerTransport = null, debug = false, scanTimeoutMs, transport } = opts;
     // register モードでは secretKey は未確定 (登録ハンドシェイクで導出する) ため要求しない。
     if (!registerMode && !secretKey) throw new Error(t("ble.secretKeyRequired"));
     // WM2 は SESAME ロックとは別 GATT サービス (WM2_GATT) で discover/subscribe する。

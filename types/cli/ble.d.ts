@@ -78,6 +78,11 @@ export type BleOptions = {
     model?: string;
     timeout?: string;
     index?: string;
+    address?: string;
+    productType?: string;
+    save?: string;
+    localServerAuth?: boolean;
+    ak?: string;
 };
 /**
  * resolveBleEntry の解決結果。

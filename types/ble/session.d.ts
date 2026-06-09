@@ -36,56 +36,18 @@ export class SesameBleSession {
         debug?: boolean;
         defaultTimeoutMs?: number;
     });
-    _transport: BleTransport;
-    _secretKey: Buffer<ArrayBufferLike> | null;
-    _debug: boolean;
-    _defaultTimeoutMs: number;
-    _asm: SegmentAssembler;
     /** @type {Buffer|null} */
-    _token: Buffer | null;
     /** @type {Buffer|null} */
-    _key: Buffer | null;
-    _encCount: number;
-    _decCount: number;
-    _loggedIn: boolean;
-    _readyToRegister: boolean;
     /** @type {import("./session.js").Waiter|null} */
-    _readyWaiter: import("./session.js").Waiter | null;
     /** @type {import("./session.js").Waiter|null} */
-    _registerWaiter: import("./session.js").Waiter | null;
     /** @type {Map<number, Array<{resolve:(v:{resultCode:number, payload:Buffer})=>void, reject:(e:Error)=>void, timer:any}>>} item → FIFO */
-    _pending: Map<number, Array<{
-        resolve: (v: {
-            resultCode: number;
-            payload: Buffer;
-        }) => void;
-        reject: (e: Error) => void;
-        timer: any;
-    }>>;
     /** @type {Set<(status:any)=>void>} */
-    _statusListeners: Set<(status: any) => void>;
     /** @type {Set<(pub:{opCode:number, itemCode:number, body:Buffer})=>void>} */
-    _publishListeners: Set<(pub: {
-        opCode: number;
-        itemCode: number;
-        body: Buffer;
-    }) => void>;
     /** @type {any} */
-    _lastStatus: any;
     /** @type {{lockPosition:number, unlockPosition:number, autoLockSecond:number}|null} */
-    _lastMechSetting: {
-        lockPosition: number;
-        unlockPosition: number;
-        autoLockSecond: number;
-    } | null;
     /** @type {{opsLockSecond:number}|null} */
-    _lastOpsSetting: {
-        opsLockSecond: number;
-    } | null;
     /** @type {import("./session.js").Waiter|null} */
-    _loginWaiter: import("./session.js").Waiter | null;
     /** @type {((tokenHex:string)=>Promise<string>)|null} */
-    _signLogin: ((tokenHex: string) => Promise<string>) | null;
     /** @param {...any} a */
     _log(...a: any[]): void;
     /**

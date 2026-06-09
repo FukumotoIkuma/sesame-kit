@@ -19,12 +19,13 @@ import access from "./i18n/access.js";
 import iot from "./i18n/iot.js";
 import presetir from "./i18n/presetir.js";
 import company from "./i18n/company.js";
+import payment from "./i18n/payment.js";
 import schedule from "./i18n/schedule.js";
 import domain from "./i18n/domain.js";
 import ble from "./i18n/ble.js";
 import auth from "./i18n/auth.js";
 
-const AREAS = [session, cli, serve, org, access, iot, presetir, company, schedule, domain, ble, auth];
+const AREAS = [session, cli, serve, org, access, iot, presetir, company, payment, schedule, domain, ble, auth];
 
 /**
  * メッセージカタログ。キー → 文字列テンプレート。

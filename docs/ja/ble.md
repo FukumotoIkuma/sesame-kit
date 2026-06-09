@@ -22,12 +22,14 @@ sesame front autolock 0          # disable
 
 `--ble-only` を付けない場合、経路（クラウド / BLE）は自動で選ばれます。`--cloud-only` でクラウドに固定します。
 
-### `sesame ble` — 読み取り専用 BLE コマンド
+### `sesame ble` — BLE 補助コマンド
 
-BLE サーフェスの小さな**読み取り専用**スライスも `ble` コマンドグループとして公開しており、コードを書かずにデバイスを調べられます。
+`ble` コマンドグループは、鍵なし発見、工場出荷デバイスの初期登録、読み取り中心の調査コマンドを公開します。
 
 ```bash
 sesame ble scan [--timeout <ms>]         # 鍵なしの近接スキャン（listNearbyDevices・secretKey 不要）
+sesame ble register <uuid> --model sesame_5 --save front
+sesame ble os2-register <uuid> --model sesame_3
 sesame ble cards <device>                # 登録済み NFC カード一覧（Touch / Touch Pro）
 sesame ble passcodes <device>            # 登録済みキーパッド暗証番号一覧（Touch / Touch Pro）
 sesame ble fingers <device>              # 登録済み指紋一覧（Touch Pro / Bike3）
@@ -39,7 +41,7 @@ sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧
 
 `<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドは `--secret <hex>` / `--model <model>`（config のロックに無いデバイスを対象にする）と `--timeout <ms>`（publish 収集タイムアウト・既定 8000）を受け付けます。`scan` は鍵なしです。
 
-このページのそれ以外 — 生体・アクセス制御の**登録**（追加 / 削除 / 改名・モード設定）、Bike3 指紋の削除 / 改名 / モード設定、Bot2 スクリプトの切替 / 書き込み / index 実行、WM2 / Hub3 プロビジョニング、BLE OTA、ペアリング / 登録、工場出荷 `reset`、OS2 ファサード — は**ライブラリ専用（CLI コマンドなし）**のままです。`sesame ble` の読み取りコマンドは以下のライブラリ読み出しと同じコード経路で、ユニットテスト済みですが**実機未確認**です。
+このページのそれ以外 — 生体・アクセス制御の**登録**（追加 / 削除 / 改名・モード設定）、Bike3 指紋の削除 / 改名 / モード設定、Bot2 スクリプトの切替 / 書き込み / index 実行、WM2 / Hub3 プロビジョニング、BLE OTA、工場出荷 `reset`、OS2 ファサード — は専用 CLI コマンドを持ちませんが、登録済み操作は Node と `sesame serve` の `ble.invoke` / `ble.os2.invoke` から同じメソッド名で呼べます。JSON-RPC のバイト列引数は `{"type":"Buffer","data":[...]}` または `{"$buffer":"...","encoding":"hex"}` で渡せます。ペアリング / 登録は `sesame ble register`、`sesame ble os2-register`、`ble.register`、`ble.os2.register` からも利用できます。`sesame ble` コマンド・BLE RPC・ライブラリ呼び出しは同じコード経路で、ユニットテスト済みですが**実機未確認**です。
 
 ## デバイス型ごとの能力（公式 SesameSDK に準拠）
 
@@ -344,6 +346,13 @@ OS2 の `mechSetting` 書き込みは SDK と 1:1 です。`configureLockPositio
 ### 新規ペアリング・登録（工場出荷デバイス）
 
 工場出荷（未登録）のデバイスは BLE で直接ペアリングできます。ファサードが ECDH register ハンドシェイクを実行し、保存すべき `secretKey` を返します。`SesameBle.registerOnce()` が scan → connect → register → close を行い（OS3）、`SesameOS2Ble.registerOnce()` はその OS2 版です（OS2 サーバ登録用の `registerServer` コールバックを取ります）。
+
+```bash
+sesame ble register <scanで得たuuid> --model sesame_5 --save front
+sesame ble os2-register <scanで得たuuid> --model sesame_3 --json
+```
+
+同じフローは `sesame serve` の `ble.register` / `ble.os2.register` からも呼べます。
 
 ```js
 import { SesameBle } from "sesame-kit";

@@ -105,8 +105,6 @@ export class Bot2Commands {
      * @param {(tag?: Buffer) => Buffer} [historyTagBLE] 履歴タグ生成器 (protocol.historyTagBLE を注入)
      */
     constructor(session: import("./session.js").SesameBleSession, historyTagBLE?: (tag?: Buffer) => Buffer);
-    _session: import("./session.js").SesameBleSession;
-    _historyTagBLE: ((tag?: Buffer) => Buffer) | undefined;
     /** @type {ScriptNameList} */
     scripts: ScriptNameList;
     /**

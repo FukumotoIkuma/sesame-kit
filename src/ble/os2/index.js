@@ -44,7 +44,7 @@ const STATUS_WAIT_MS = 4_000;
  */
 /**
  * SesameOS2Ble のコンストラクタ opts。
- * @typedef {object} SesameOS2BleOpts
+ * @typedef {object} SesameOS2BleOptions
  * @property {string|Buffer} [secretKey] ロック共通鍵 (16B / 32hex)。login 必須、register モードでは不要。
  * @property {string|Buffer} [keyIndex] userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。
  * @property {string|Buffer} [ssmPublicKey] デバイス公開鍵 (64B, sesame2KeyData.sesame2PublicKey)。login の ECDH 相手。
@@ -61,13 +61,14 @@ const STATUS_WAIT_MS = 4_000;
 
 export class SesameOS2Ble {
   /**
-   * @param {SesameOS2BleOpts} opts
+   * @param {SesameOS2BleOptions} [opts]
    */
-  constructor({
+  constructor(opts = {}) {
+    const {
     secretKey, keyIndex, ssmPublicKey, deviceUUID, model = null,
     registerMode = false, registerServer = null, localServerAuth = false, needAuthFromServer = false, signLogin = null,
     debug = false, transport,
-  } = {}) {
+    } = opts;
     if (!transport) throw new Error("transport required (inject a BLE transport)");
     if (!registerMode && !secretKey && !needAuthFromServer) throw new Error("secretKey required (32hex) for OS2 login");
     this._transport = transport;
@@ -248,8 +249,8 @@ export class SesameOS2Ble {
    * (SDK の isRegistered=true 経路、:584)。未登録時の平文経路 (:592) はこのファサードの対象外。
    *
    * ★本メソッドは **DFU 開始コマンドの送信のみ** を行う。開始後デバイスは DFU ブートローダへ
-   *   遷移し切断される想定で、本体ファーム (Nordic DFU 等の OTA バイナリ) の転送は範囲外 (未実装)。
-   *   実機での DFU 完遂は未検証。
+   *   遷移し切断される想定で、本体ファーム (Nordic DFU 等の OTA バイナリ) の転送は
+   *   別 GATT サービスを扱う外部 DFU 層の責務。実機での DFU 完遂は未検証。
    * @returns {Promise<{resultCode:number, payload:Buffer}>}
    */
   updateFirmware() {
@@ -258,7 +259,7 @@ export class SesameOS2Ble {
 
   /**
    * connect → fn → close を自動で行うヘルパー。
-   * @param {SesameOS2BleOpts} opts コンストラクタ opts
+   * @param {SesameOS2BleOptions} opts コンストラクタ opts
    * @param {(lock:SesameOS2Ble)=>Promise<any>} fn
    */
   static async use(opts, fn) {
@@ -270,7 +271,7 @@ export class SesameOS2Ble {
 
   /**
    * 工場出荷デバイスを connect → register → close まで自動化する。
-   * @param {SesameOS2BleOpts & {productType?:(string|number), ak?:Buffer}} opts コンストラクタ opts (registerServer 必須)
+   * @param {SesameOS2BleOptions & {productType?:(string|number), ak?:Buffer}} opts コンストラクタ opts (registerServer 必須)
    * @param {(result:object)=>Promise<any>} [fn] 登録結果コールバック (鍵の保存など)
    * @returns {Promise<object>} 登録結果
    */

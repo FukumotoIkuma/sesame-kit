@@ -75,6 +75,13 @@ export default {
 
     // ---- src/access.js: errors ----
     "access.err.opTimeout": "{op} timeout",
+    "access.err.biometricsBaseUrlRequired": "baseUrl is required for /device/v1/biometrics",
+    "access.err.biometricsBaseUrlInvalid": "baseUrl for /device/v1/biometrics must be an absolute HTTPS URL without credentials, query, or fragment",
+    "access.err.biometricsHttpsRequired": "baseUrl for /device/v1/biometrics must use HTTPS",
+    "access.err.biometricsAuthorizationRequired": "authorization, bearerToken, or authorizationProvider is required for /device/v1/biometrics",
+    "access.err.fetchRequired": "fetch implementation is required",
+    "access.err.operationRequired": "operation is required",
+    "access.err.kindRequired": "kind is required (card|face|fingerPrint|palm|passcode) when request is omitted",
   },
   ja: {
     // ---- src/cli/access.js: descriptions / option help ----
@@ -151,5 +158,12 @@ export default {
 
     // ---- src/access.js: errors ----
     "access.err.opTimeout": "{op} timeout",
+    "access.err.biometricsBaseUrlRequired": "/device/v1/biometrics の baseUrl が必要です",
+    "access.err.biometricsBaseUrlInvalid": "/device/v1/biometrics の baseUrl は credentials/query/fragment を含まない絶対 HTTPS URL にしてください",
+    "access.err.biometricsHttpsRequired": "/device/v1/biometrics の baseUrl は HTTPS が必要です",
+    "access.err.biometricsAuthorizationRequired": "/device/v1/biometrics には authorization / bearerToken / authorizationProvider のいずれかが必要です",
+    "access.err.fetchRequired": "fetch 実装が必要です",
+    "access.err.operationRequired": "operation が必要です",
+    "access.err.kindRequired": "request 省略時は kind (card|face|fingerPrint|palm|passcode) が必要です",
   },
 };

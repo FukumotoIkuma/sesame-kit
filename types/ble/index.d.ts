@@ -145,43 +145,7 @@ export class SesameBle {
     /**
      * @param {SesameBleOptions} [opts]
      */
-    constructor({ secretKey, deviceUUID, address, model, registerMode, needAuthFromServer, registerTransport, debug, scanTimeoutMs, transport }?: SesameBleOptions);
-    _transport: import("./session.js").BleTransport;
-    _session: SesameBleSession;
-    _model: string | null;
-    _caps: {
-        kind: string;
-        os: number;
-        cloud: string[];
-        ble: string[];
-        ops: string[];
-        mechKind: string | null;
-        bleSupported: boolean;
-        biometric: boolean;
-        wifiProvisioning: boolean;
-        hubProvisioning: boolean;
-        script: boolean;
-        fingerprint: boolean;
-        label: string;
-    };
-    _deviceUUID: string | undefined;
-    _registerMode: boolean;
-    _secretKey: string | Buffer<ArrayBufferLike> | undefined;
-    _needAuthFromServer: boolean;
-    _registerTransport: import("../devices.js").RegisterTransport | null;
-    _debug: boolean;
-    _biometric: BiometricCommands | null;
-    _bot2: Bot2Commands | null;
-    _wifi: WifiModule2 | null;
-    _hub3: Hub3Commands | null;
-    _fingerPrint: {
-        fingerPrints: () => Promise<void>;
-        fingerPrintDelete: (fingerPrintID: string) => Promise<void>;
-        fingerPrintChange: (ID: string, hexName: string) => Promise<void>;
-        fingerPrintModeGet: () => Promise<number>;
-        fingerPrintModeSet: (mode: number) => Promise<void>;
-        registerDelegate: (delegate: BiometricDelegate, device?: unknown) => () => void;
-    } | null;
+    constructor(opts?: SesameBleOptions);
     /** デバイスの model 文字列 (例 "sesame_5" / "bot_2")。未指定なら null。 */
     get model(): string | null;
     /** 型ごとの能力 { kind, os, ops, mechKind, bleSupported, label }。 */
@@ -631,7 +595,7 @@ export { SesameBleSession, BleResultError } from "./session.js";
 export { RESULT as SESAME_RESULT_CODES, resultName } from "./protocol.js";
 export { NobleTransport, createBleTransport, advToDeviceUUID, parseAdvertisement, scanSesames, listNearbyDevices, peripheralToDiscovery } from "./transport.js";
 export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, CONTROL_OPS, KIND, PRODUCT_TYPES } from "./devicemodel.js";
-export { BiometricCommands, handleBiometricPublish, parseTouchCard, parseTouchFace, parseRemoteNanoTrigger, remoteNanoTriggerDelayData, radarSensitivityData, createEnrollCollector } from "./biometric.js";
+export { BiometricCommands, handleBiometricPublish, parseTouchCard, parseTouchFace, parseRemoteNanoTrigger, remoteNanoTriggerDelayData, radarSensitivityData, insertSesameData as biometricInsertSesameData, removeSesameData as biometricRemoveSesameData, createEnrollCollector } from "./biometric.js";
 export { Bot2Commands, BOT_ACTION_TYPE, clickItemCode, bot2ActionToBytes, scriptToBytes, parseCurrentScript, parseScriptNameList } from "./bot2.js";
 export { WifiModule2, WM2_GATT, WM2_ACTION, scanWifiSSIDData, setWifiSSIDData, setWifiPasswordData, connectWifiData, insertSesamesData, removeSesameData, networkStatusData, parseScanWifiSSID, parseWifiSSIDPublish, parseWifiPasswordPublish, parseNetworkStatus, parseSesameKeys, parseWM2Publish } from "./wm2.js";
 export { Hub3Commands, parseHub3Publish, parseNetworkType, parseMechSetting as parseHub3MechSetting, parseScanWifiSSID as parseHub3ScanWifiSSID, parseSesameKeys as parseHub3SesameKeys, networkTypeData } from "./hub3.js";

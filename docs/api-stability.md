@@ -85,10 +85,10 @@ provably solid**; ship breadth as **experimental** rather than over-committing.
 
 ## Transport / dependency reality (applies to all methods)
 
-- The daemon backs every RPC with **one resident cloud-WS client** (`SesameHub3`).
-  As of today **all RPC methods require the cloud WS**; `serve` exposes **no BLE
-  path**. (BLE lives in `src/ble/*` and is library-only.) Exposing BLE-backed
-  local control through `serve` is a separate, future surface.
+- The daemon backs cloud/Biz3 RPC methods with **one resident cloud-WS client**
+  (`SesameHub3`). Registered BLE operations are exposed separately through
+  `ble.invoke` / `ble.os2.invoke`, which use the daemon host Bluetooth adapter
+  and do not require cloud auth for the BLE session itself.
 - Meta methods `status` and `rpc.discover` need neither auth nor the cloud.
 - Network framings (HTTP/WS/gRPC) require the loopback bearer token; stdio and the
   Unix socket trust the same-user process.

@@ -175,29 +175,13 @@ export function createBleTransport(opts?: NobleTransportOpts): NobleTransport;
 export class NobleTransport {
     /** @param {NobleTransportOpts} [opts] */
     constructor(opts?: NobleTransportOpts);
-    _opts: NobleTransportOpts;
     /** @type {Noble|null} */
-    _noble: Noble | null;
     /** @type {NoblePeripheral|null} */
-    _peripheral: NoblePeripheral | null;
-    _scanned: boolean;
-    _gatt: Readonly<{
-        SERVICE: "fd81";
-        WRITE_CHAR: "16860002-a5ae-9856-b6d3-dbb4c676993e";
-        NOTIFY_CHAR: "16860003-a5ae-9856-b6d3-dbb4c676993e";
-    }> | Gatt;
     /** @type {NobleCharacteristic|null} */
-    _writeChar: NobleCharacteristic | null;
     /** @type {NobleCharacteristic|null} */
-    _notifyChar: NobleCharacteristic | null;
     /** @type {Promise<void>} */
-    _writeChain: Promise<void>;
-    _debug: boolean;
     /** @type {((reason:any)=>void)|null} */
-    _onDisconnect: ((reason: any) => void) | null;
-    _disconnected: boolean;
     /** @type {((reason:any)=>void)|null} */
-    _onPeripheralDisconnect: ((reason: any) => void) | null;
     /** @param {...any} a */
     _log(...a: any[]): void;
     /**

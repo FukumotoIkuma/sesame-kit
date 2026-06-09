@@ -1505,6 +1505,132 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "payment.getPaymentMethods",
+      "summary": "getPaymentMethods of payment (auto-exposed)",
+      "params": [
+        {
+          "name": "(params)",
+          "required": false,
+          "description": "pass the biz3 op params as-is",
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "payment.getClientSecret",
+      "summary": "getClientSecret of payment (auto-exposed)",
+      "params": [
+        {
+          "name": "(params)",
+          "required": false,
+          "description": "pass the biz3 op params as-is",
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "payment.changeDefaultPayment",
+      "summary": "changeDefaultPayment of payment (auto-exposed)",
+      "params": [
+        {
+          "name": "(params)",
+          "required": false,
+          "description": "pass the biz3 op params as-is",
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "payment.removePayment",
+      "summary": "removePayment of payment (auto-exposed)",
+      "params": [
+        {
+          "name": "(params)",
+          "required": false,
+          "description": "pass the biz3 op params as-is",
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "payment.payUpdateLevel",
+      "summary": "payUpdateLevel of payment (auto-exposed)",
+      "params": [
+        {
+          "name": "(params)",
+          "required": false,
+          "description": "pass the biz3 op params as-is",
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "payment.getDevApiInfo",
+      "summary": "getDevApiInfo of payment (auto-exposed)",
+      "params": [
+        {
+          "name": "(params)",
+          "required": false,
+          "description": "pass the biz3 op params as-is",
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "op response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "access.getCards",
       "summary": "getCards of access (auto-exposed)",
       "params": [
@@ -2996,6 +3122,61 @@
       "x-provenance": "app-core"
     },
     {
+      "name": "lock.setAutolock",
+      "summary": "set autolock seconds (cloud path; BLE is preferred when available)",
+      "params": [
+        {
+          "name": "name",
+          "required": false,
+          "description": "lock name in config (not needed when deviceUUID is given)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "deviceUUID to specify directly",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": false,
+          "description": "32-hex shared key when deviceUUID is given",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "seconds",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ ack, cmd, seconds }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "lock.status",
       "summary": "current device state (lock state/battery)",
       "params": [
@@ -3087,6 +3268,20 @@
       },
       "x-stability": "stable",
       "x-provenance": "app-core"
+    },
+    {
+      "name": "devices.userList",
+      "summary": "personal user device list (biz3 getUserDevice)",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "device[]",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
     },
     {
       "name": "access.registerCards",
@@ -3315,6 +3510,74 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "device.rename",
+      "summary": "rename a device",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceName",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "manageDevice ack",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "device.delete",
+      "summary": "delete a device from the company",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "deleteDevices ack",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "firmware.list",
+      "summary": "available firmware list",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "firmware[]",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "webapi.invoke",
       "summary": "call a biz3 WebAPI proxy function (apiKeyId from config when omitted)",
       "params": [
@@ -3355,6 +3618,147 @@
         "name": "result",
         "schema": {
           "description": "any (WebAPI proxy 応答)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "webapi.deviceState",
+      "summary": "WebAPI proxy: device shadow state",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "apiKeyId",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "WebAPI device state",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "webapi.deviceHistory",
+      "summary": "WebAPI proxy: device history",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "page",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "lg",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "isBiz",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "apiKeyId",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "WebAPI device history",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "webapi.sendCmd",
+      "summary": "WebAPI proxy: send a lock command",
+      "params": [
+        {
+          "name": "deviceId",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cmd",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "sign",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "history",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "apiKeyId",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "WebAPI command response",
           "type": "object"
         }
       },
@@ -3409,6 +3813,1003 @@
         "name": "result",
         "schema": {
           "description": "key[]",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.learn",
+      "summary": "learn one IR key into a configured remote",
+      "params": [
+        {
+          "name": "remote",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "key",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ keyUUID, captured, saved }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.listRemotes",
+      "summary": "list registered IR remotes by type",
+      "params": [
+        {
+          "name": "type",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "page",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "pageSize",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "remote[]",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.searchRemotes",
+      "summary": "search preset IR remotes",
+      "params": [
+        {
+          "name": "type",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "searchTerm",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "remote[]",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.addRemote",
+      "summary": "add an IR remote object on the server",
+      "params": [
+        {
+          "name": "remote",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "addIRRemote response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.deleteRemote",
+      "summary": "delete a configured IR remote on the server",
+      "params": [
+        {
+          "name": "remote",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "deleteIRRemote response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.renameRemote",
+      "summary": "rename an IR remote alias",
+      "params": [
+        {
+          "name": "remote",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "alias",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "updateRemoteAlias response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.deleteKey",
+      "summary": "delete one IR key",
+      "params": [
+        {
+          "name": "remote",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "key",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "deleteIRCode response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.renameKey",
+      "summary": "rename one IR key",
+      "params": [
+        {
+          "name": "remote",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "key",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "newName",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "updateIRCode response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.getMode",
+      "summary": "get Hub3 IR mode",
+      "params": [
+        {
+          "name": "hub3",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "mode",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.setMode",
+      "summary": "set Hub3 IR mode",
+      "params": [
+        {
+          "name": "hub3",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "setIRMode response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.matchRemote",
+      "summary": "match learned IR data against preset remotes",
+      "params": [
+        {
+          "name": "irData",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irType",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "brandName",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "matchRemote response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.postAuthenticationData",
+      "summary": "Kotlin SDK biometric credential sync: postAuthenticationData",
+      "params": [
+        {
+          "name": "operation",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "items",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "baseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "credential items or biometrics response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.putAuthenticationData",
+      "summary": "Kotlin SDK biometric credential sync: putAuthenticationData",
+      "params": [
+        {
+          "name": "operation",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "items",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "baseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "biometrics response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.deleteAuthenticationData",
+      "summary": "Kotlin SDK biometric credential sync: deleteAuthenticationData",
+      "params": [
+        {
+          "name": "operation",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "items",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "baseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "biometrics response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.updateAuthenticationName",
+      "summary": "Kotlin SDK biometric credential sync: updateAuthenticationName",
+      "params": [
+        {
+          "name": "request",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "kind",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "baseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "subUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "stpDeviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "name",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "type",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "cardType",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "nameUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cardNameUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "faceNameUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "fingerPrintNameUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "palmNameUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyBoardPassCodeNameUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cardID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "faceID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "fingerPrintID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "palmID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyBoardPassCode",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "op",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "biometrics response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.invoke",
+      "summary": "invoke a registered OS3 BLE operation through the daemon host Bluetooth adapter",
+      "params": [
+        {
+          "name": "op",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "args",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.register",
+      "summary": "register a factory-reset OS3 BLE device through the daemon host Bluetooth adapter",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "productType",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "nowMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "OS3 BLE registration result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.os2.invoke",
+      "summary": "invoke a registered OS2 BLE operation through the daemon host Bluetooth adapter",
+      "params": [
+        {
+          "name": "op",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "args",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "array"
+          }
+        },
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyIndex",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmPublicKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.os2.register",
+      "summary": "register a factory-reset OS2 BLE device through the daemon host Bluetooth adapter",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "productType",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "localServerAuth",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "ak",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "OS2 BLE registration result",
           "type": "object"
         }
       },
@@ -3495,7 +4896,7 @@
     },
     {
       "name": "event.ready",
-      "description": "startup-complete notification (stdio framing only. once right after connect. not sent on other transports)",
+      "description": "connection-ready notification sent once on every persistent connection (stdio/socket/ws/SSE/gRPC Subscribe)",
       "x-stability": "stable",
       "x-provenance": "local"
     }

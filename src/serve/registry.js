@@ -1,6 +1,7 @@
 // メソッドレジストリ — デーモンが公開する全 RPC メソッドの単一カタログ。
 //
-// 設計: 「全機能を一様に公開」。名前空間 op (org/company/access/iot/presetir/schedule) は
+// 設計: cloud/Biz3 RPC と登録済み BLE op を一様に公開。名前空間 op
+// (org/company/payment/access/iot/presetir/schedule) は
 // 各モジュールの `NAMESPACE_OPS`(公開 op の単一の真実) から **自動生成** し、
 // ハンドラは一様に `hub[ns][op](params)`。位置引数を持つ高レベル op だけ明示の薄い表で橋渡し。
 // 危険な少数 (IR learn=Hub3 グローバル mode、events 購読) は daemon に委譲する特別扱い。
@@ -11,6 +12,7 @@
 //   - conn: 呼び出し元 Connection (events/lease 用)
 //   - daemon: Daemon (購読/リース/authState 用)
 
+import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { RpcError, RPC, KIND, CONTRACT_VERSION } from "./jsonrpc.js";
 import { stabilityOf, provenanceOf, eventStabilityOf, eventProvenanceOf } from "./stability.js";
@@ -19,9 +21,11 @@ import { t } from "../i18n.js";
 import * as schedule from "../schedule.js";
 import * as org from "../org.js";
 import * as company from "../company.js";
+import * as payment from "../payment.js";
 import * as access from "../access.js";
 import * as iot from "../iot.js";
 import * as presetir from "../presetir.js";
+import { SesameBle, SesameOS2Ble, createBleTransport } from "../ble/index.js";
 
 /**
  * 常駐 hub。registry は (a) 明示メソッド (hub.lock 等) と (b) 名前空間 op の動的
@@ -64,7 +68,7 @@ try {
 } catch { /* 未生成なら空 (フォールバックの (params) になる) */ }
 
 // 自動公開する名前空間 (getter 名 → モジュール)。getter は SesameHub3 のプロパティ名と一致。
-const NS_MODULES = { schedule, org, company, access, iot, presetir };
+const NS_MODULES = { schedule, org, company, payment, access, iot, presetir };
 
 /**
  * params 必須キーの存在チェック (軽量バリデータ)。欠落は bad_params。
@@ -91,6 +95,30 @@ function asTopicList(raw) {
 }
 
 /**
+ * JSON で送られた特殊エンコード (Buffer/$buffer) を実値へ復元する。prototype 汚染キーは拒否。
+ * @param {any} value
+ * @returns {any}
+ */
+function reviveJsonArg(value) {
+  if (Array.isArray(value)) return value.map(reviveJsonArg);
+  if (!value || typeof value !== "object") return value;
+  if (value.type === "Buffer" && Array.isArray(value.data)) return Buffer.from(value.data);
+  if (typeof value.$buffer === "string") {
+    const encoding = value.encoding === "base64" ? "base64" : "hex";
+    return Buffer.from(value.$buffer, encoding);
+  }
+  /** @type {Record<string, any>} */
+  const out = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (key === "__proto__" || key === "prototype" || key === "constructor") {
+      throw new RpcError(`unsupported JSON argument key: ${key}`, { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+    }
+    out[key] = reviveJsonArg(nested);
+  }
+  return out;
+}
+
+/**
  * クラウド接続が要る op の前段ガード (未認証/未接続を明示エラーに)。
  * @param {import("./daemon.js").Daemon} daemon
  */
@@ -101,6 +129,36 @@ function requireAuth(daemon) {
   if (!daemon.hub.connected) {
     throw new RpcError(t("serve.cloudNotConnected"), { kind: KIND.CONNECTION_LOST });
   }
+}
+
+/**
+ * @param {Record<string, any>} root 走査対象のオブジェクトツリー (ble facade 等)。
+ * @param {string} path ドット区切りの op パス。
+ * @param {unknown[]} [args]
+ */
+async function invokePath(root, path, args = []) {
+  if (!path || typeof path !== "string") {
+    throw new RpcError("missing required param: op", { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+  }
+  if (path.includes("_") || path.includes("constructor") || path.includes("prototype")) {
+    throw new RpcError(`unsupported BLE op: ${path}`, { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+  }
+  const parts = path.split(".").filter(Boolean);
+  let target = root;
+  for (let i = 0; i < parts.length; i += 1) {
+    const key = parts[i];
+    const value = target?.[key];
+    if (value === undefined) {
+      throw new RpcError(`unsupported BLE op: ${path}`, { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+    }
+    if (i === parts.length - 1) {
+      if (typeof value !== "function") return value;
+      const revived = reviveJsonArg(args);
+      return value.apply(target, Array.isArray(revived) ? revived : [revived]);
+    }
+    target = typeof value === "function" ? value.call(target) : value;
+  }
+  return target;
 }
 
 /**
@@ -125,6 +183,9 @@ function topLevelEntries() {
   };
   const S = { type: "string" };
   const N = { type: "number" };
+  const B = { type: "boolean" };
+  const O = { type: "object" };
+  const A = { type: "array" };
   const lockParams = [
     { name: "name", required: false, desc: t("serve.desc.lockNameParam"), schema: S },
     { name: "deviceUUID", required: false, desc: t("serve.desc.deviceUUIDParam"), schema: S },
@@ -154,6 +215,19 @@ function topLevelEntries() {
     "lock.unlock": { summary: t("serve.sum.lockUnlock"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("unlock") },
     "lock.toggle": { summary: t("serve.sum.lockToggle"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("toggle") },
     "lock.click": { summary: t("serve.sum.lockClick"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("botClick") },
+    "lock.setAutolock": {
+      summary: "set autolock seconds (cloud path; BLE is preferred when available)",
+      params: [...lockParams, { name: "seconds", required: true, schema: N }, { name: "timeoutMs", required: false, schema: N }],
+      result: "{ ack, cmd, seconds }",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon); need(params, ["seconds"]);
+        if (params.deviceUUID) {
+          need(params, ["deviceUUID", "secretKey"]);
+          return hub.setAutolockDevice({ deviceUUID: params.deviceUUID, secretKey: params.secretKey, seconds: params.seconds, timeoutMs: params.timeoutMs });
+        }
+        return hub.setAutolock(params.name ?? null, params.seconds, params.timeoutMs);
+      },
+    },
     "lock.status": {
       summary: t("serve.sum.lockStatus"),
       params: [{ name: "deviceUUID", required: true, desc: t("serve.desc.targetDeviceUUID"), schema: S }], result: "device | null (vendor consumes data[0])",
@@ -163,6 +237,11 @@ function topLevelEntries() {
       summary: t("serve.sum.devicesList"),
       params: [], result: "device[]",
       handler: ({ hub, daemon }) => { requireAuth(daemon); return hub.listDevices(); },
+    },
+    "devices.userList": {
+      summary: "personal user device list (biz3 getUserDevice)",
+      params: [], result: "device[]",
+      handler: ({ hub, daemon }) => { requireAuth(daemon); return hub.listUserDevices(); },
     },
     // クラウド一括登録の convenience。BLE で読み取った複数カードの records を 1 回の postCards へ
     // まとめて投入する (vendor 検証済 postCards へ委譲。新 WS op は捏造しない)。experimental。
@@ -201,6 +280,26 @@ function topLevelEntries() {
       ], result: "{ success: true }",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID", "timestampSecond"]); return hub.hideBatteryRecord({ deviceUUID: params.deviceUUID, timestampSecond: params.timestampSecond }); },
     },
+    "device.rename": {
+      summary: "rename a device",
+      params: [
+        { name: "deviceUUID", required: true, schema: S },
+        { name: "deviceName", required: true, schema: S },
+      ],
+      result: "manageDevice ack",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID", "deviceName"]); return hub.renameDevice(params.deviceUUID, params.deviceName); },
+    },
+    "device.delete": {
+      summary: "delete a device from the company",
+      params: [{ name: "deviceUUID", required: true, schema: S }],
+      result: "deleteDevices ack",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID"]); return hub.deleteDevice(params.deviceUUID); },
+    },
+    "firmware.list": {
+      summary: "available firmware list",
+      params: [], result: "firmware[]",
+      handler: ({ hub, daemon }) => { requireAuth(daemon); return hub.listFirmware(); },
+    },
     "webapi.invoke": {
       summary: t("serve.sum.webapiInvoke"),
       params: [
@@ -210,6 +309,57 @@ function topLevelEntries() {
         { name: "apiKeyId", required: false, desc: t("serve.desc.webapiApiKeyId"), schema: S },
       ], result: "any (WebAPI proxy 応答)",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["func"]); return hub.invokeWebAPI({ func: params.func, query: params.query, body: params.body, apiKeyId: params.apiKeyId }); },
+    },
+    "webapi.deviceState": {
+      summary: "WebAPI proxy: device shadow state",
+      params: [
+        { name: "deviceId", required: true, schema: S },
+        { name: "apiKeyId", required: false, schema: S },
+      ],
+      result: "WebAPI device state",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceId"]); return hub.webapiDeviceState({ deviceId: params.deviceId, apiKeyId: params.apiKeyId }); },
+    },
+    "webapi.deviceHistory": {
+      summary: "WebAPI proxy: device history",
+      params: [
+        { name: "deviceId", required: true, schema: S },
+        { name: "page", required: false, schema: N },
+        { name: "lg", required: false, schema: N },
+        { name: "isBiz", required: false, schema: B },
+        { name: "apiKeyId", required: false, schema: S },
+      ],
+      result: "WebAPI device history",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon); need(params, ["deviceId"]);
+        return hub.webapiDeviceHistory({
+          deviceId: params.deviceId,
+          page: params.page,
+          lg: params.lg,
+          isBiz: params.isBiz,
+          apiKeyId: params.apiKeyId,
+        });
+      },
+    },
+    "webapi.sendCmd": {
+      summary: "WebAPI proxy: send a lock command",
+      params: [
+        { name: "deviceId", required: true, schema: S },
+        { name: "cmd", required: true, schema: N },
+        { name: "sign", required: true, schema: S },
+        { name: "history", required: true, schema: S },
+        { name: "apiKeyId", required: false, schema: S },
+      ],
+      result: "WebAPI command response",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon); need(params, ["deviceId", "cmd", "sign", "history"]);
+        return hub.webapiSendCmd({
+          deviceId: params.deviceId,
+          cmd: params.cmd,
+          sign: params.sign,
+          history: params.history,
+          apiKeyId: params.apiKeyId,
+        });
+      },
     },
     "ir.send": {
       summary: t("serve.sum.irSend"),
@@ -221,6 +371,244 @@ function topLevelEntries() {
       summary: t("serve.sum.irListKeys"),
       params: [{ name: "remote", required: false, schema: S }], result: "key[]",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); return hub.listKeys(params.remote ?? null); },
+    },
+    "ir.learn": {
+      summary: "learn one IR key into a configured remote",
+      params: [
+        { name: "remote", required: true, schema: S },
+        { name: "key", required: true, schema: S },
+        { name: "timeoutMs", required: false, schema: N },
+      ],
+      result: "{ keyUUID, captured, saved }",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote", "key"]); return hub.learnIR(params.remote, params.key, { timeoutMs: params.timeoutMs }); },
+    },
+    "ir.listRemotes": {
+      summary: "list registered IR remotes by type",
+      params: [{ name: "type", required: true, schema: N }, { name: "page", required: false, schema: N }, { name: "pageSize", required: false, schema: N }],
+      result: "remote[]",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["type"]); return hub.listIRRemotes(params.type, { page: params.page, pageSize: params.pageSize }); },
+    },
+    "ir.searchRemotes": {
+      summary: "search preset IR remotes",
+      params: [{ name: "type", required: true, schema: N }, { name: "searchTerm", required: true, schema: S }],
+      result: "remote[]",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["type", "searchTerm"]); return hub.searchPresetIRRemotes(params.type, params.searchTerm); },
+    },
+    "ir.addRemote": {
+      summary: "add an IR remote object on the server",
+      params: [{ name: "remote", required: true, schema: O }],
+      result: "addIRRemote response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote"]); return hub.addIRRemoteServer(params.remote); },
+    },
+    "ir.deleteRemote": {
+      summary: "delete a configured IR remote on the server",
+      params: [{ name: "remote", required: true, schema: S }],
+      result: "deleteIRRemote response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote"]); return hub.deleteIRRemoteServer(params.remote); },
+    },
+    "ir.renameRemote": {
+      summary: "rename an IR remote alias",
+      params: [{ name: "remote", required: true, schema: S }, { name: "alias", required: true, schema: S }],
+      result: "updateRemoteAlias response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote", "alias"]); return hub.renameIRRemote(params.remote, params.alias); },
+    },
+    "ir.deleteKey": {
+      summary: "delete one IR key",
+      params: [{ name: "remote", required: true, schema: S }, { name: "key", required: true, schema: S }],
+      result: "deleteIRCode response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote", "key"]); return hub.deleteIRKey(params.remote, params.key); },
+    },
+    "ir.renameKey": {
+      summary: "rename one IR key",
+      params: [{ name: "remote", required: true, schema: S }, { name: "key", required: true, schema: S }, { name: "newName", required: true, schema: S }],
+      result: "updateIRCode response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote", "key", "newName"]); return hub.renameIRKey(params.remote, params.key, params.newName); },
+    },
+    "ir.getMode": {
+      summary: "get Hub3 IR mode",
+      params: [{ name: "hub3", required: false, schema: S }],
+      result: "mode",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); return hub.getIRMode(params.hub3 ?? null); },
+    },
+    "ir.setMode": {
+      summary: "set Hub3 IR mode",
+      params: [{ name: "hub3", required: false, schema: S }, { name: "mode", required: true, schema: N }],
+      result: "setIRMode response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["mode"]); return hub.setIRMode(params.hub3 ?? null, params.mode); },
+    },
+    "ir.matchRemote": {
+      summary: "match learned IR data against preset remotes",
+      params: [
+        { name: "irData", required: true, schema: S },
+        { name: "irType", required: true, schema: N },
+        { name: "brandName", required: false, schema: S },
+      ],
+      result: "matchRemote response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["irData", "irType"]); return hub.matchIRRemote({ irData: params.irData, irType: params.irType, brandName: params.brandName }); },
+    },
+    "access.postAuthenticationData": {
+      summary: "Kotlin SDK biometric credential sync: postAuthenticationData",
+      params: [{ name: "operation", required: true, schema: S }, { name: "deviceID", required: true, schema: S }, { name: "items", required: true, schema: A }, { name: "baseUrl", required: false, schema: S }],
+      result: "credential items or biometrics response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["operation", "deviceID", "items"]); return hub.postAuthenticationData(params); },
+    },
+    "access.putAuthenticationData": {
+      summary: "Kotlin SDK biometric credential sync: putAuthenticationData",
+      params: [{ name: "operation", required: true, schema: S }, { name: "deviceID", required: true, schema: S }, { name: "items", required: true, schema: A }, { name: "baseUrl", required: false, schema: S }],
+      result: "biometrics response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["operation", "deviceID", "items"]); return hub.putAuthenticationData(params); },
+    },
+    "access.deleteAuthenticationData": {
+      summary: "Kotlin SDK biometric credential sync: deleteAuthenticationData",
+      params: [{ name: "operation", required: true, schema: S }, { name: "deviceID", required: true, schema: S }, { name: "items", required: true, schema: A }, { name: "baseUrl", required: false, schema: S }],
+      result: "biometrics response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["operation", "deviceID", "items"]); return hub.deleteAuthenticationData(params); },
+    },
+    "access.updateAuthenticationName": {
+      summary: "Kotlin SDK biometric credential sync: updateAuthenticationName",
+      params: [
+        { name: "request", required: false, schema: O },
+        { name: "kind", required: false, schema: S },
+        { name: "baseUrl", required: false, schema: S },
+        { name: "subUUID", required: false, schema: S },
+        { name: "stpDeviceUUID", required: false, schema: S },
+        { name: "name", required: false, schema: S },
+        { name: "timestamp", required: false, schema: N },
+        { name: "type", required: false, schema: N },
+        { name: "cardType", required: false, schema: N },
+        { name: "nameUUID", required: false, schema: S },
+        { name: "cardNameUUID", required: false, schema: S },
+        { name: "faceNameUUID", required: false, schema: S },
+        { name: "fingerPrintNameUUID", required: false, schema: S },
+        { name: "palmNameUUID", required: false, schema: S },
+        { name: "keyBoardPassCodeNameUUID", required: false, schema: S },
+        { name: "cardID", required: false, schema: S },
+        { name: "faceID", required: false, schema: S },
+        { name: "fingerPrintID", required: false, schema: S },
+        { name: "palmID", required: false, schema: S },
+        { name: "keyBoardPassCode", required: false, schema: S },
+        { name: "op", required: false, schema: S },
+      ],
+      result: "biometrics response",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); return hub.updateAuthenticationName(params); },
+    },
+    "ble.invoke": {
+      summary: "invoke a registered OS3 BLE operation through the daemon host Bluetooth adapter",
+      params: [
+        { name: "op", required: true, schema: S },
+        { name: "args", required: false, schema: A },
+        { name: "deviceUUID", required: false, schema: S },
+        { name: "address", required: false, schema: S },
+        { name: "secretKey", required: true, schema: S },
+        { name: "model", required: false, schema: S },
+        { name: "scanTimeoutMs", required: false, schema: N },
+        { name: "debug", required: false, schema: B },
+      ],
+      result: "BLE operation result",
+      handler: async ({ params }) => {
+        need(params, ["op", "secretKey"]);
+        return SesameBle.use({
+          deviceUUID: params.deviceUUID,
+          address: params.address,
+          secretKey: params.secretKey,
+          model: params.model ?? null,
+          scanTimeoutMs: params.scanTimeoutMs,
+          debug: !!params.debug,
+        }, (ble) => invokePath(ble, params.op, params.args));
+      },
+    },
+    "ble.register": {
+      summary: "register a factory-reset OS3 BLE device through the daemon host Bluetooth adapter",
+      params: [
+        { name: "deviceUUID", required: true, schema: S },
+        { name: "address", required: false, schema: S },
+        { name: "model", required: false, schema: S },
+        { name: "productType", required: false, schema: S },
+        { name: "scanTimeoutMs", required: false, schema: N },
+        { name: "debug", required: false, schema: B },
+        { name: "nowMs", required: false, schema: N },
+      ],
+      result: "OS3 BLE registration result",
+      handler: async ({ params }) => {
+        need(params, ["deviceUUID"]);
+        // model は SesameBle コンストラクタ (能力テーブル参照) へ透過する。registerOnce の
+        // 公開 opts 型には現れないが ...ctorOpts で受け渡されるため、型のみキャストで補う。
+        return SesameBle.registerOnce(/** @type {Parameters<typeof SesameBle.registerOnce>[0] & {model?:string|null}} */ ({
+          deviceUUID: params.deviceUUID,
+          address: params.address,
+          model: params.model ?? null,
+          productType: params.productType ?? params.model ?? undefined,
+          scanTimeoutMs: params.scanTimeoutMs,
+          debug: !!params.debug,
+          nowMs: params.nowMs,
+        }));
+      },
+    },
+    "ble.os2.invoke": {
+      summary: "invoke a registered OS2 BLE operation through the daemon host Bluetooth adapter",
+      params: [
+        { name: "op", required: true, schema: S },
+        { name: "args", required: false, schema: A },
+        { name: "deviceUUID", required: false, schema: S },
+        { name: "address", required: false, schema: S },
+        { name: "secretKey", required: true, schema: S },
+        { name: "keyIndex", required: true, schema: S },
+        { name: "ssmPublicKey", required: true, schema: S },
+        { name: "model", required: false, schema: S },
+        { name: "scanTimeoutMs", required: false, schema: N },
+        { name: "debug", required: false, schema: B },
+      ],
+      result: "BLE operation result",
+      handler: async ({ params }) => {
+        need(params, ["op", "secretKey", "keyIndex", "ssmPublicKey"]);
+        const transport = createBleTransport({
+          deviceUUID: params.deviceUUID,
+          address: params.address,
+          debug: !!params.debug,
+          scanTimeoutMs: params.scanTimeoutMs,
+        });
+        return SesameOS2Ble.use({
+          transport,
+          deviceUUID: params.deviceUUID,
+          secretKey: params.secretKey,
+          keyIndex: params.keyIndex,
+          ssmPublicKey: params.ssmPublicKey,
+          model: params.model ?? null,
+          debug: !!params.debug,
+        }, (ble) => invokePath(ble, params.op, params.args));
+      },
+    },
+    "ble.os2.register": {
+      summary: "register a factory-reset OS2 BLE device through the daemon host Bluetooth adapter",
+      params: [
+        { name: "deviceUUID", required: true, schema: S },
+        { name: "address", required: false, schema: S },
+        { name: "model", required: false, schema: S },
+        { name: "productType", required: false, schema: S },
+        { name: "scanTimeoutMs", required: false, schema: N },
+        { name: "debug", required: false, schema: B },
+        { name: "localServerAuth", required: false, schema: B },
+        { name: "ak", required: false, schema: O },
+      ],
+      result: "OS2 BLE registration result",
+      handler: async ({ params }) => {
+        need(params, ["deviceUUID"]);
+        const transport = createBleTransport({
+          deviceUUID: params.deviceUUID,
+          address: params.address,
+          debug: !!params.debug,
+          scanTimeoutMs: params.scanTimeoutMs,
+        });
+        return SesameOS2Ble.registerOnce({
+          transport,
+          deviceUUID: params.deviceUUID,
+          model: params.model ?? null,
+          productType: params.productType ?? params.model ?? undefined,
+          localServerAuth: params.localServerAuth !== false,
+          debug: !!params.debug,
+          ak: reviveJsonArg(params.ak),
+        });
+      },
     },
   };
 }

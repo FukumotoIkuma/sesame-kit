@@ -13,10 +13,6 @@ export class SesameOS2BleCipher {
      * @param {Buffer} sessionToken 8B (mAppToken4B ++ mSesameToken4B)。
      */
     constructor(sessionKey: Buffer, sessionToken: Buffer);
-    _key: Buffer<ArrayBufferLike>;
-    _token: Buffer<ArrayBufferLike>;
-    _encCount: bigint;
-    _decCount: bigint;
     /** 現在の送信カウンタ (テスト/デバッグ用)。 */
     get encryptCounter(): bigint;
     /** 現在の受信カウンタ (テスト/デバッグ用)。 */

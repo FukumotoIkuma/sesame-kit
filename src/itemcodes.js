@@ -17,20 +17,32 @@ export const ITEM_CODES = Object.freeze({
   DISCONNECT_REBOOT_NOW: 6, // OS2 切断+即時リブート (SesameProtocols.kt:34 disconnectRebootNow(6))
   ENABLE_DFU: 7,            // OS2 BLE DFU 開始 (SesameProtocols.kt:34 enableDFU(7))。payload "01" で開始、本体転送は別途
   TIME: 8,
+  BLE_CONNECTION_PARAM: 9,
+  BLE_ADV_PARAM: 10,
   AUTOLOCK: 11,        // payload = 2byte LE 秒数 (0=無効)。クラウド中継は ack のみで未反映 (実機検証済み) → BLE 専用扱い
+  SERVER_ADV_KICK: 12,
+  SSMTOKEN: 13,
   INITIAL: 14,
   IRER: 15,            // OS2 登録時の IR/ER 読み出し (SesameProtocols.kt:34)。READ 応答 payload の drop(16) が ER
   TIMEPHONE: 16,       // OS2 login 後の時刻同期 (SesameProtocols.kt:34 SesameItemCode.timePhone)。TIME(8) とは別物
   MAGNET: 17,
   HISTORY_DELETE: 18,
+  SENSOR_INTERVAL: 19,
+  SENSOR_INTERVAL_GET: 20,
   MECH_SETTING: 80,
   MECH_STATUS: 81,     // 状態通知 (publish)
-  OPS_CONTROL: 92,     // opSensorControl / opsSetting (SesameProtocols.kt:36 OPS_CONTROL(92u))。publish で opsSetting を載せる
   LOCK: 82,
   UNLOCK: 83,
   MOVE_TO: 84,
+  DRIVE_DIRECTION: 85,
+  STOP: 86,
+  DETECT_DIR: 87,
   TOGGLE: 88,          // 現在状態で施錠/解錠を反転 (クラウドはサーバが判定、BLE は SDK 同様クライアントが lock/unlock を選ぶ)
   CLICK: 89,           // SESAME Bot のクリック (biz3 web の呼称は BOT_CLICK)
+  DOOR_OPEN: 90,
+  DOOR_CLOSE: 91,
+  OPS_CONTROL: 92,     // opSensorControl / opsSetting (SesameProtocols.kt:36 OPS_CONTROL(92u))。publish で opsSetting を載せる
+  SCRIPT_SETTING: 93,
 
   // --- SESAME Bot2/Bot3 スクリプト機能 — 出典: SesameProtocols.kt:36,47-48 ---
   // Bot2/Bot3 は最大 10 個のスクリプト (各スクリプトは name + 最大 20 個の Bot2Action) を保持する。
@@ -50,6 +62,7 @@ export const ITEM_CODES = Object.freeze({
   BOT2_ITEM_CODE_RUN_SCRIPT_7: 177,
   BOT2_ITEM_CODE_RUN_SCRIPT_8: 178,
   BOT2_ITEM_CODE_RUN_SCRIPT_9: 179,
+  ADD_HUB3: 180,
   BOT2_ITEM_CODE_EDIT_SCRIPT: 181, // スクリプトの書き込み (sendClickScript)。送信 payload=[index 1B]+scriptBytes
 
   // --- OS3 登録デバイス (Sesame Touch / Touch Pro / Face / Palm) ---
@@ -92,6 +105,18 @@ export const ITEM_CODES = Object.freeze({
   PASSCODE_ADD: 138,
   PASSCODE_MOVE: 142,
 
+  // Hub3 IR BLE item codes — 出典: SesameProtocols.kt:41-42
+  SSM_OS3_IR_MODE_SET: 143,
+  SSM_OS3_IR_CODE_CHANGE: 144,
+  SSM_OS3_IR_CODE_EMIT: 145,
+  SSM_OS3_IR_CODE_GET: 146,
+  SSM_OS3_IR_CODE_LAST: 147,
+  SSM_OS3_IR_CODE_FIRST: 148,
+  SSM_OS3_IR_CODE_DELETE: 149,
+  SSM_OS3_IR_MODE_GET: 150,
+  SSM_OS3_IR_CODE_NOTIFY: 151,
+  HUB3_MATTER_PAIRING_WINDOW: 153,
+
   // 顔認証 (Face) — 出典: SesameProtocols.kt:43-44
   FACE_CHANGE: 154,
   FACE_DELETE: 155,
@@ -119,6 +144,7 @@ export const ITEM_CODES = Object.freeze({
   PUB_KEY_SESAME: 102,
   REMOVE_SESAME: 103,
   RESET: 104,                     // SesameProtocols.kt:36 Reset
+  NOTIFY_LOCK_DOWN: 106,
 
   // SESAME Hub3 / Hub3 LTE 固有 (Wi-Fi プロビジョニング・SSID スキャン・接続種別) — 出典: SesameProtocols.kt:40,52
   // WM2 が WM2ActionCode (別 enum) で Wi-Fi 設定を持つのに対し、Hub3 は **SesameItemCode に直接**
@@ -130,6 +156,7 @@ export const ITEM_CODES = Object.freeze({
   HUB3_ITEM_CODE_SSID_LAST: 134,      // SSID スキャン結果の末尾マーカー publish (CHHub3Device.kt:321 で no-op)
   HUB3_ITEM_CODE_WIFI_PASSWORD: 135,  // Wi-Fi パスワード設定 (送信 data = password の UTF-8 bytes)
   HUB3_UPDATE_WIFI_SSID: 136,         // Wi-Fi SSID 設定 (送信 data = ssid の UTF-8 bytes)
+  HUB3_MATTER_PAIRING_CODE: 137,
   HUB3_ITEM_CODE_RELAY_SWITCH: 208,   // リレー切替の op (IoT 経由でも使う。CHHub3Device.kt:145)
   HUB3_ITEM_CODE_NETWORK_TYPE: 209,   // 接続種別 publish: [isWifiConnected 1B][isLTEConnected 1B] (各 1=接続)
 

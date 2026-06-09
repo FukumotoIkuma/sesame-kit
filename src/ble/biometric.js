@@ -50,6 +50,18 @@ function hexToBytes(hex) {
   return Buffer.from(hex, "hex");
 }
 
+/** UUID 文字列/hex 文字列からハイフンを除去した 16B UUID を得る。
+ * @param {string} id
+ * @returns {Buffer}
+ */
+function uuidToBytes(id) {
+  const clean = String(id || "").replace(/-/g, "");
+  if (!/^[0-9a-fA-F]{32}$/.test(clean)) {
+    throw new Error(`biometric: deviceUUID must be 16B hex/UUID: ${id}`);
+  }
+  return hexToBytes(clean);
+}
+
 /**
  * Buffer → hex 文字列 (小文字)。SDK toHexString 相当。
  * @param {Buffer|Uint8Array} buf
@@ -501,6 +513,49 @@ export function radarSensitivityData(payload) {
   return Buffer.from(payload);
 }
 
+// ---- connector child Sesame keys (CHDeviceConnectCapableImpl.kt) ----
+
+/**
+ * insertSesame の ADD_SESAME payload を組み立てる。
+ *
+ * SDK:
+ *   - OS3 子デバイス (SS5/5Pro/Bike2): UUID(16B) ++ secretKey(16B)
+ *   - OS2 子デバイス (SS3/4/Bot1/Bike1): base64(UUID16).replace("=","")(22B)
+ *       ++ sesame2PublicKey(64B) ++ secretKey(16B)
+ *
+ * `sesame2PublicKey` を渡した場合は OS2 形、それ以外は OS3 形で送る。
+ *
+ * @param {{deviceUUID:string, secretKey:string|Buffer, sesame2PublicKey?:string|Buffer}} sesame
+ * @returns {Buffer}
+ */
+export function insertSesameData({ deviceUUID, secretKey, sesame2PublicKey } = /** @type {{deviceUUID:string, secretKey:string|Buffer, sesame2PublicKey?:string|Buffer}} */ ({})) {
+  const uuid = uuidToBytes(deviceUUID);
+  const sec = Buffer.isBuffer(secretKey) ? Buffer.from(secretKey) : hexToBytes(secretKey);
+  if (sec.length !== 16) throw new Error(`biometric: secretKey must be 16B / 32hex, got ${sec.length}B`);
+  if (!sesame2PublicKey) return Buffer.concat([uuid, sec]);
+
+  const pub = Buffer.isBuffer(sesame2PublicKey) ? Buffer.from(sesame2PublicKey) : hexToBytes(sesame2PublicKey);
+  if (pub.length !== 64) throw new Error(`biometric: sesame2PublicKey must be 64B / 128hex, got ${pub.length}B`);
+  const b64k = Buffer.from(uuid).toString("base64").replace(/=/g, "");
+  return Buffer.concat([Buffer.from(b64k, "utf8"), pub, sec]);
+}
+
+/**
+ * removeSesame の REMOVE_SESAME payload を組み立てる。
+ * keyType=0x04 は OS2 子鍵 (base64(UUID16).replace("=",""))、それ以外は OS3 子鍵 (UUID16)。
+ *
+ * @param {string} tag UUID/hex
+ * @param {{keyType?:number}} [opts]
+ * @returns {Buffer}
+ */
+export function removeSesameData(tag, { keyType = 0x05 } = {}) {
+  const uuid = uuidToBytes(tag);
+  if (keyType === 0x04) {
+    return Buffer.from(Buffer.from(uuid).toString("base64").replace(/=/g, ""), "utf8");
+  }
+  return uuid;
+}
+
 // ---- batchAdd の各パケット data (card / passcode 共通アルゴリズム) ----
 
 /**
@@ -936,6 +991,27 @@ export class BiometricCommands {
    * @param {Buffer} payload レーダーパラメータの生バイト列
    */
   async setRadarSensitivity(payload) { await this._req(ITEM.SSM_OS3_RADAR_PARAM_SET, radarSensitivityData(payload)); }
+
+  /**
+   * 子 Sesame の鍵を connector デバイスへ追加する (CHDeviceConnectCapableImpl.insertSesame と 1:1)。
+   * OS3 子鍵は `{deviceUUID, secretKey}`、OS2 子鍵はそれに `sesame2PublicKey` を加えて渡す。
+   * @param {{deviceUUID:string, secretKey:string|Buffer, sesame2PublicKey?:string|Buffer}} sesame
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  insertSesame(sesame) {
+    return this._req(ITEM.ADD_SESAME, insertSesameData(sesame));
+  }
+
+  /**
+   * 子 Sesame の鍵を connector デバイスから削除する (CHDeviceConnectCapableImpl.removeSesame と 1:1)。
+   * PUB_KEY_SESAME の parse 結果で keyType=0x04 なら OS2、0x05 なら OS3 として payload を切り替える。
+   * @param {string} tag 削除対象 Sesame UUID
+   * @param {{keyType?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  removeSesame(tag, opts = {}) {
+    return this._req(ITEM.REMOVE_SESAME, removeSesameData(tag, opts));
+  }
 
   /**
    * STP 分割転送による一括登録 (cardBatchAdd / passcodeBatchAdd 共通実体)。

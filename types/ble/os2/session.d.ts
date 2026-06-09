@@ -48,56 +48,21 @@ export class SesameOS2BleSession {
         debug?: boolean;
         defaultTimeoutMs?: number;
     });
-    _transport: BleTransport;
-    _secretKey: Buffer<ArrayBufferLike> | null;
-    _keyIndex: Buffer<ArrayBufferLike>;
-    _ssmPublicKey: Buffer<ArrayBufferLike> | null;
-    _debug: boolean;
-    _defaultTimeoutMs: number;
-    _asm: SegmentAssembler;
-    _mAppToken: NonSharedBuffer;
     /** @type {Buffer|null} */
-    _mSesameToken: Buffer | null;
     /** @type {import("node:crypto").ECDH|null} */
-    _loginKeyPair: import("node:crypto").ECDH | null;
     /** @type {Buffer|null} */
-    _sessionToken: Buffer | null;
     /** @type {SesameOS2BleCipher|null} */
-    _cipher: SesameOS2BleCipher | null;
-    _loggedIn: boolean;
-    _readyToRegister: boolean;
     /** @type {import("./session.js").Os2Waiter|null} */
-    _readyWaiter: import("./session.js").Os2Waiter | null;
     /** @type {import("./session.js").Os2Waiter|null} */
-    _registerWaiter: import("./session.js").Os2Waiter | null;
     /** @type {import("./session.js").Os2Waiter|null} */
-    _loginWaiter: import("./session.js").Os2Waiter | null;
     /** @type {Map<number, Array<{resolve:(v:{resultCode:number, payload:Buffer})=>void, reject:(e:Error)=>void, timer:any}>>} item → FIFO */
-    _pending: Map<number, Array<{
-        resolve: (v: {
-            resultCode: number;
-            payload: Buffer;
-        }) => void;
-        reject: (e: Error) => void;
-        timer: any;
-    }>>;
     /** @type {Set<(status:any)=>void>} */
-    _statusListeners: Set<(status: any) => void>;
     /** @type {Set<(pub:{itemCode:number, payload:Buffer})=>void>} */
-    _publishListeners: Set<(pub: {
-        itemCode: number;
-        payload: Buffer;
-    }) => void>;
     /** @type {any} */
-    _lastStatus: any;
     /** @type {ReturnType<typeof import("./protocol.js").parseLoginResponse>|null} */
-    _lastLoginResponse: ReturnType<typeof import("./protocol.js").parseLoginResponse> | null;
     /** @type {((signPayloadHex:string)=>Promise<string>)|null} */
-    _signLogin: ((signPayloadHex: string) => Promise<string>) | null;
     /** @type {Function|null} */
-    _registerServer: Function | null;
     /** @type {import("node:crypto").ECDH|null} */
-    _regKeyPair: import("node:crypto").ECDH | null;
     /** @param {...any} a */
     _log(...a: any[]): void;
     _isBusy(): boolean;

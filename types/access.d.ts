@@ -1,4 +1,13 @@
 /**
+ * Kotlin SDK の CHAPIClient#biometricsOperation と同じ POST /device/v1/biometrics transport。
+ * 認証ヘッダは呼び出し側が明示的に渡す。実 API Gateway が IAM SigV4 のみを要求する環境では、
+ * 呼び出し側が互換 transport を注入する。
+ *
+ * @param {BiometricsAuthOptions} opts
+ * @returns {BiometricsTransport}
+ */
+export function makeBiometricsTransport({ baseUrl, authorization, bearerToken, authorizationProvider, fetchImpl, }?: BiometricsAuthOptions): BiometricsTransport;
+/**
  * 対象デバイスの NFC カード一覧を取得する。
  * 応答は op='pubCardLinkedIDs' の async push で deviceUUID/page ごとに届くため、
  * 内部で集約してから完了通知 or timeout で確定する (useManageAuthData.js:50-191)。
@@ -193,6 +202,38 @@ export function updateCardOwner(client: import("./transport.js").Hub3WsClient, {
     timeoutMs?: number;
 }): Promise<object | null>;
 /**
+ * Kotlin SDK CHDataSynchronizeCapable.postAuthenticationData と同じ REST 操作。
+ * body = { op: `${operation}_post`, deviceID, items } を POST /device/v1/biometrics へ送る。
+ *
+ * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
+ * @param {AuthDataParams} params
+ * @returns {Promise<object[]|object>} SDK と同じく response.data.items があればそれを返し、無ければ応答全体
+ */
+export function postAuthenticationData(_client: import("./transport.js").Hub3WsClient | null, params: AuthDataParams): Promise<object[] | object>;
+/**
+ * Kotlin SDK CHDataSynchronizeCapable.putAuthenticationData と同じ REST 操作。
+ * body = { op: `${operation}_put`, deviceID, items }。
+ * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
+ * @param {AuthDataParams} params
+ */
+export function putAuthenticationData(_client: import("./transport.js").Hub3WsClient | null, params: AuthDataParams): Promise<any>;
+/**
+ * Kotlin SDK CHDataSynchronizeCapable.deleteAuthenticationData と同じ REST 操作。
+ * body = { op: `${operation}_delete`, deviceID, items }。
+ * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
+ * @param {AuthDataParams} params
+ */
+export function deleteAuthenticationData(_client: import("./transport.js").Hub3WsClient | null, params: AuthDataParams): Promise<any>;
+/**
+ * Kotlin SDK CHDataSynchronizeCapable.updateAuthenticationName と同じ REST 操作。
+ * CHAuthenticationNameRequest.* が作る request object をそのまま POST /device/v1/biometrics へ送る。
+ * 便利指定として `kind` を渡すと SDK companion の既定 op を補完する。
+ *
+ * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
+ * @param {UpdateAuthNameParams} params
+ */
+export function updateAuthenticationName(_client: import("./transport.js").Hub3WsClient | null, params: UpdateAuthNameParams): Promise<any>;
+/**
  * createEnrollCollector の records ({cardID, cardName, cardType}) を postCards/postPasscodes の
  * list 要素 ({ cardID, name, cardType, nameUUID }) へ写像する純関数。
  *
@@ -213,6 +254,29 @@ export function enrolledToCardList(records: Array<{
     name: string;
     cardType: number;
     nameUUID: string;
+}>;
+/**
+ * enroll records を postPasscodes 用 list に写像する。
+ * 参照元 UI は passcode identity に `passwordID` を使い、名前更新では
+ * `keyBoardPassCode` / `keyBoardPassCodeNameUUID` を使う。カード形状は流用しない。
+ *
+ * @param {Array<{cardID?:string,passwordID?:string,cardName?:string,name?:string,cardType?:number,type?:number}>} records
+ * @returns {Array<{passwordID:string,keyBoardPassCode:string,name:string,nameUUID:string,keyBoardPassCodeNameUUID:string,type:number}>}
+ */
+export function enrolledToPasscodeList(records: Array<{
+    cardID?: string;
+    passwordID?: string;
+    cardName?: string;
+    name?: string;
+    cardType?: number;
+    type?: number;
+}>): Array<{
+    passwordID: string;
+    keyBoardPassCode: string;
+    name: string;
+    nameUUID: string;
+    keyBoardPassCodeNameUUID: string;
+    type: number;
 }>;
 /**
  * BLE で実機登録 (タップ) されたカードの集約結果を DB へ同期する (postCards への委譲)。
@@ -257,4 +321,79 @@ export function syncEnrolledPasscodes(client: import("./transport.js").Hub3WsCli
     timeoutMs?: number;
 }): Promise<object | null>;
 export const NAMESPACE_OPS: string[];
+/**
+ * REST /device/v1/biometrics transport の 1 リクエスト/応答。
+ */
+export type BiometricsTransport = (req: {
+    method: string;
+    path: string;
+    body?: object;
+}) => Promise<{
+    status: number;
+    text: string;
+    json: any;
+}>;
+/**
+ * 認証情報を含む biometrics transport 構築オプション。
+ */
+export type BiometricsAuthOptions = {
+    /**
+     * 既製 transport を注入 (テスト/IAM 環境用)。
+     */
+    transport?: BiometricsTransport | undefined;
+    /**
+     * REST ルート URL (https のみ)。
+     */
+    baseUrl?: string | undefined;
+    /**
+     * 完成済み Authorization ヘッダ値。
+     */
+    authorization?: string | undefined;
+    /**
+     * Bearer トークン (ヘッダ未指定時)。
+     */
+    bearerToken?: string | undefined;
+    /**
+     * 都度 Authorization を解決する関数。
+     */
+    authorizationProvider?: (() => Promise<string>) | undefined;
+    /**
+     * fetch 実装 (テスト差し替え用)。
+     */
+    fetchImpl?: typeof fetch | undefined;
+};
+/**
+ * postAuthenticationData/putAuthenticationData/deleteAuthenticationData の params。
+ * operation/deviceID は実行時に検証 (withSuffix が欠落で throw) するため型上は optional。
+ */
+export type AuthDataParams = BiometricsAuthOptions & {
+    operation?: string;
+    deviceID?: string;
+    items?: object[];
+};
+/**
+ * updateAuthenticationName の params。request を直接渡すか kind から組み立てる。
+ */
+export type UpdateAuthNameParams = BiometricsAuthOptions & {
+    request?: object;
+    kind?: "card" | "face" | "fingerPrint" | "palm" | "passcode";
+    timestamp?: number;
+    subUUID?: string;
+    stpDeviceUUID?: string;
+    name?: string;
+    nameUUID?: string;
+    op?: string;
+    type?: number;
+    cardType?: number;
+    cardNameUUID?: string;
+    cardID?: string;
+    faceNameUUID?: string;
+    faceID?: string;
+    fingerPrintNameUUID?: string;
+    fingerPrintID?: string;
+    palmNameUUID?: string;
+    palmID?: string;
+    keyBoardPassCodeNameUUID?: string;
+    keyBoardPassCode?: string;
+};
 //# sourceMappingURL=access.d.ts.map

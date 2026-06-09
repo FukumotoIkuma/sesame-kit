@@ -320,8 +320,9 @@ export function webapiSendCmd(client, { apiKeyId, deviceId, cmd, sign, history }
 //       本 kit の既存クラウド認証は Cognito idToken (getValidIdToken) のみ。ここでは既存
 //       認証を再利用し Authorization: Bearer <idToken> を付すが、実機 API Gateway が
 //       これを受理するかは E2E 未検証。
-//   現時点で本ブロックは本番フローからは呼ばれていない (src/ble/* に初期ペアリング/登録
-//   フロー本体が未実装)。配線時に実機 OS3 register キャプチャで突き合わせること。
+//   本ブロックは SesameBle の needAuthFromServer / registerTransport 経路から任意に呼ばれる。
+//   BLE session-layer の登録ハンドシェイクは実装済みだが、この REST 認証方式そのものは
+//   実機 OS3 register キャプチャで突き合わせるまで未検証として扱う。
 //
 // 原典 (CANDY-HOUSE SesameSDK):
 //   co/candyhouse/sesame/server/CHAPIClient.kt:84-96 — エンドポイント定義:

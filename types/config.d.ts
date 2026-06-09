@@ -1,4 +1,13 @@
 /**
+ * config オブジェクトを実行時 shape に正規化する。
+ * ConfigStore.load() を通らない embedded 利用でも、保存正準形 `devices` から
+ * 互換 view の `locks` / `hub3s` を必ず再投影する。
+ *
+ * @param {Partial<ConfigData>} raw
+ * @returns {LoadedConfig}
+ */
+export function normalizeConfig(raw?: Partial<ConfigData>): LoadedConfig;
+/**
  * ロック系 model か (biz3 lockModelDevices と完全一致, gUtils.js:279-294)。
  * @param {string|null|undefined} model
  * @returns {boolean}
@@ -276,6 +285,14 @@ export type ConfigData = {
      */
     remotes: Record<string, RemoteEntry>;
     apiKeyId?: string | null | undefined;
+    /**
+     * biometrics REST base URL (PERSISTED)。
+     */
+    biometricsBaseUrl?: string | undefined;
+    /**
+     * register REST base URL (biometrics fallback)。
+     */
+    registerBaseUrl?: string | undefined;
     /**
      * devices からの派生 view (保存しない)。
      */

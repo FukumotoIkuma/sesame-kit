@@ -37,6 +37,7 @@ import { parseIrType, DEFAULT_IR_TYPE } from "./crypto.js";
 import { parseShareKeyUrl } from "./sharekey.js";
 import { registerScheduleCommands } from "./cli/schedule.js";
 import { registerCompanyCommands } from "./cli/company.js";
+import { registerPaymentCommands } from "./cli/payment.js";
 import { registerOrgCommands } from "./cli/org.js";
 import { registerAccessCommands } from "./cli/access.js";
 import { registerIotCommands } from "./cli/iot.js";
@@ -2417,6 +2418,7 @@ export async function run(argv = process.argv) {
 
   registerScheduleCommands(program, ctx);
   registerCompanyCommands(program, ctx);
+  registerPaymentCommands(program, ctx);
   registerOrgCommands(program, ctx);
   registerAccessCommands(program, ctx);
   registerIotCommands(program, ctx);
@@ -2510,5 +2512,4 @@ function maybeHandleBleError(err) {
   process.exitCode = 2;
   return true;
 }
-
 

@@ -4,7 +4,7 @@
 
 > [日本語](../ja/integration.md) · [Docs index](./index.md)
 
-`sesame serve` is a long-running JSON-RPC 2.0 daemon. It signs in once, keeps the cloud connection alive, and runs operations and pushes events repeatedly. Every feature is callable from any language.
+`sesame serve` is a long-running JSON-RPC 2.0 daemon. It signs in once, keeps the cloud connection alive, runs operations repeatedly, and pushes events. Cloud/Biz3 features are exposed as typed RPC methods; registered BLE operations are exposed through `ble.invoke` / `ble.os2.invoke`.
 
 ## 1. Sign in and start the daemon
 
@@ -151,7 +151,7 @@ c.subscribe(["lockState"], lambda topic, payload: print(topic, payload))
 
 ## Transports (framings)
 
-The same methods are available over five transports. Use HTTP/WS/gRPC for network access, the Unix socket or stdio for the local machine.
+The same RPC catalog is available over five transports. Use HTTP/WS/gRPC for network access, the Unix socket or stdio for the local machine. Event delivery remains transport-native.
 
 | Framing | Use | Events | Auth |
 |---|---|---|---|
