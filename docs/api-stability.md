@@ -8,6 +8,53 @@ against. It is the source of decisions for the developer-platform work
 Status: **pre-1.0** — the surface below is a *proposal/decision record*, not yet a
 frozen guarantee. The `stable` tier becomes binding at 1.0.
 
+## Two boundaries (our schema is the downstream parent, not the only one)
+
+A subtle but load-bearing truth: our OpenRPC is the canonical parent **for
+consumers**, but it is not the ultimate authority over **behavior**. There are two
+boundaries, with an anti-corruption layer between them:
+
+```
+vendor reality (discovered)   ──►  [ anti-corruption layer ]  ──►  our contract (designed/owned)  ──►  SDKs
+official app / biz3 cloud WS        src/<namespace>.js, client.js     OpenRPC (stable/experimental)
+(the upstream "parent" of our        translate + absorb upstream
+ implementation; not ours to fix)    change so downstream stays stable
+```
+
+- **Upstream truth = the vendor** (official app / biz3 cloud WS). This is a
+  *discovered* spec, reverse-engineered and verified — not designed by us, and it
+  can change without notice. `src/client.js` is that boundary.
+- **Downstream contract = our OpenRPC.** Owned and designed by us; stable because
+  we choose it to be.
+- The **namespace modules are the anti-corruption layer**: they map vendor WS
+  messages into our method shapes and exist precisely to *absorb upstream churn so
+  the downstream contract does not break*.
+
+The asymmetry is not a defect — it is the platform's reason to exist (consumers
+pay us to track the vendor so they don't have to). But it bounds what we can
+promise:
+
+1. **`stable` is a best-effort facade.** It is only as stable as our ability to
+   absorb upstream change. If the vendor removes a capability we cannot map, a
+   stable method may still have to break. We say so honestly rather than implying
+   an absolute guarantee.
+2. **Tier = upstream confidence, not just API maturity.** A method is
+   `stable` only when it is **(a) load-bearing in the official app** (so the vendor
+   is very unlikely to break it — e.g. lock control, state events) **and (b)
+   verified by us**. The `未確認` / "unverified" notes scattered in the source are
+   exactly the *low upstream-confidence* signal that keeps a method `experimental`.
+3. **We need upstream-drift detection.** Because the true parent is outside our
+   control, "schema ↔ impl" drift checking is not enough; we also need
+   "vendor-behavior ↔ impl" conformance monitoring (live canary or replay of
+   captured fixtures), or the facade silently starts lying. See issues.
+
+### Provenance (first-class)
+
+Each contract element should carry where its shape came from and how sure we are —
+e.g. `verified-live` / `biz3-source-ref:<path>` / `unverified`. This formalizes the
+informal `未確認` comments. **`x-stability` is derived from provenance**, so the
+confidence we hold internally and the promise we make externally stay consistent.
+
 ## Model: two tiers
 
 | Tier | Guarantee | Versioning |
@@ -34,6 +81,8 @@ provably solid**; ship breadth as **experimental** rather than over-committing.
 ## Stable 1.0 surface (core)
 
 ~15 methods + 2 events. This is the only surface the platform commits to at 1.0.
+Each qualifies under the stable test above: **load-bearing in the official app**
+(vendor unlikely to break) **and verified by us**.
 
 ### Meta
 | Method | Description |
@@ -130,7 +179,11 @@ Tracked here so the stable tier is honest when it freezes:
 
 1.0 ships when:
 - the `stable` surface above is frozen, documented, and semver-governed;
-- per-method `x-stability` is in `rpc.discover`;
+- per-method `x-stability` is in `rpc.discover`, **derived from provenance**;
 - the error model has no `internal`-collapse on stable methods;
 - generated SDKs exist for at least two languages (TS, Python);
-- a CI gate guarantees the published schema and the implementation never diverge.
+- a CI gate guarantees the published schema and the implementation never diverge
+  (**schema ↔ impl**); and
+- an **upstream-conformance** check (vendor-behavior ↔ impl, live canary or replay)
+  exists for stable methods, so vendor drift is detected rather than silently
+  breaking the facade.
