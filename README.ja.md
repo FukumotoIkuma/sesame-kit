@@ -171,6 +171,13 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
   http://127.0.0.1:8080/rpc
 ```
 
+`sesame rpc` から HTTP リスナへ繋ぐこともできます（token は `serve.token` から自動取得）:
+
+```bash
+sesame rpc --http status                          # 既定 URL http://127.0.0.1:8080
+sesame rpc --http http://host:8080 lock.unlock --params '{"name":"front"}'
+```
+
 ### 同梱クライアント
 
 JSON-RPC をラップした薄いクライアントで、`c.unlock("front")` のように書けます。任意であり、上の `curl` でもクライアント無しで動きます。Node は `npm install sesame-kit` 後に `import { SesameClient } from "sesame-kit/client"`。Python はパッケージ同梱の単一ファイルです。

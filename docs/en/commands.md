@@ -122,7 +122,7 @@ sesame device rename <uuid> "玄関 SESAME"  # rename
 sesame device rm <uuid>                  # remove from the company
 
 sesame history <uuid>                    # lock open/close history
-sesame history                           # all devices
+sesame history                           # interactive selection (or `--json` requires a UUID)
 sesame history <uuid> --delete <ts>      # hide (soft-delete) one open/close record by its timestamp
 sesame battery <uuid>                    # battery history (light/heavy voltage + percentage)
 sesame battery <uuid> --delete <ts>      # hide (soft-delete) one battery record by its ts (seconds)
