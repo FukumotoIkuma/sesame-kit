@@ -2,7 +2,7 @@
 
 # sesame-kit — SESAME smart-lock CLI & library (BLE + cloud, unofficial)
 
-[![npm](https://img.shields.io/npm/v/sesame-kit)](https://www.npmjs.com/package/sesame-kit) [![license](https://img.shields.io/npm/l/sesame-kit)](./LICENSE) [![node](https://img.shields.io/node/v/sesame-kit)](https://nodejs.org)
+[![CI](https://github.com/FukumotoIkuma/sesame-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/FukumotoIkuma/sesame-kit/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/sesame-kit)](https://www.npmjs.com/package/sesame-kit) [![license](https://img.shields.io/npm/l/sesame-kit)](./LICENSE) [![node](https://img.shields.io/node/v/sesame-kit)](https://nodejs.org)
 
 **Control your SESAME smart lock from your own code — even directly over Bluetooth, offline.** `sesame-kit` drives your existing SESAME devices over **BLE (no cloud, low latency)** and over the cloud — lock/unlock, Hub3 IR, device management, history — from a CLI, a Node library, or any language via `sesame serve` (JSON-RPC). Build SESAME into your scripts, home automation, or a Raspberry Pi.
 

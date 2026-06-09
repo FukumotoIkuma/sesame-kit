@@ -1,0 +1,90 @@
+name: Bug report / バグ報告
+description: Report a problem with sesame-kit / 不具合を報告する
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please fill in as much as you can.
+        バグ報告ありがとうございます。可能な範囲で詳しく記入してください。
+
+        ⚠️ **Do not paste tokens, secret keys, or device secrets.** トークンや秘密鍵、端末の秘密情報は貼らないでください。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened? / 何が起きましたか？
+      description: A clear description of the bug. / 不具合の内容を具体的に。
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce / 再現手順
+      description: Commands or code to reproduce. / 再現するコマンドやコードを。
+      placeholder: |
+        1. Run `sesame ...`
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: failing-test
+    attributes:
+      label: Failing test case (strongly encouraged) / 失敗するテストケース（強く推奨）
+      description: |
+        The fastest way to get a fix: paste a *failing* test that reproduces the bug
+        (e.g. a `vitest` test under `tests/`). We can run it, fix until it goes green,
+        and CI proves the fix. An AI agent can usually generate this from the repro above.
+        最速で直す方法は、バグを再現する「失敗するテスト」を貼ることです（`tests/` 配下の vitest など）。
+        こちらで実行し、緑になるまで修正でき、CIが修正を証明します。AIエージェントなら上の再現手順から生成できます。
+      render: javascript
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / 期待した挙動
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 対象領域
+      options:
+        - CLI
+        - Node library / ライブラリ
+        - JSON-RPC / gRPC server
+        - BLE (Bluetooth)
+        - Cloud API
+        - Hub3 / IR
+        - Other / その他
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: sesame-kit version / バージョン
+      placeholder: e.g. 0.6.1
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version / Node.js バージョン
+      placeholder: e.g. 20.11.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / 実行環境
+      placeholder: e.g. macOS 15, Ubuntu 24.04, Raspberry Pi OS
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / ログ
+      description: Relevant log output (redact secrets). / 関連ログ（秘密情報は伏せる）。
+      render: shell
+    validations:
+      required: false

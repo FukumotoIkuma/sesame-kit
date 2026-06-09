@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussions / 質問・議論
+    url: https://github.com/FukumotoIkuma/sesame-kit/discussions
+    about: For usage questions, ideas, and general discussion. / 使い方の質問やアイデアはこちら。
+  - name: Security vulnerability / 脆弱性報告
+    url: https://github.com/FukumotoIkuma/sesame-kit/security/advisories/new
+    about: Please report security issues privately, not as a public issue. / 脆弱性は公開Issueではなく非公開で報告してください。
