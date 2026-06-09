@@ -17,10 +17,13 @@
  * 消費者はこれを `status.contractVersion` か discover の `info["x-contractVersion"]` で読み、
  * major 不一致なら fail-fast できる。後方互換な追加は minor、説明のみは patch。
  *   1.0.0: 初版 (5 framing / 79 method / event.lockState・deviceUpdate / 6 kind)
+ *   1.1.0: ドメインエラーの構造化 (kind=rejected 追加 / error.data.retryable / per-method
+ *          x-stability・x-provenance / status・discover の apiVersion)。すべて後方互換な追加。
  */
 import { t } from "../i18n.js";
+import { SesameError, ERR } from "../errors.js";
 
-export const CONTRACT_VERSION = "1.0.0";
+export const CONTRACT_VERSION = "1.1.0";
 
 /** JSON-RPC 2.0 標準エラーコード + アプリ域 (-32000)。 */
 export const RPC = Object.freeze({
@@ -55,16 +58,30 @@ export class RpcError extends Error {
  *   connection_lost   : クラウド WS 未接続/切断
  *   timeout           : op がタイムアウト (transport の request timeout 由来)
  *   bad_params        : 引数不正/parse 不能
+ *   rejected          : 上流クラウドが明示的に失敗を返した (error.data.upstreamCode に上流 code)
  *   not_implemented   : 未知メソッド
  *   internal          : 上記以外 (ライブラリ/サーバ由来の想定外エラー。message に詳細)
+ *
+ * error.data.retryable (boolean, 任意): 自動化向けの再試行ヒント。timeout/connection_lost=true、
+ *   rejected/bad_params=false。kind で分岐しきれない「再試行可否」を 1 フラグで示す。
  */
 export const KIND = Object.freeze({
   NOT_AUTHENTICATED: "not_authenticated",
   BAD_PARAMS: "bad_params",
   TIMEOUT: "timeout",
   CONNECTION_LOST: "connection_lost",
+  REJECTED: "rejected",
   INTERNAL: "internal",
   NOT_IMPLEMENTED: "not_implemented",
+});
+
+// ライブラリの SesameError.code → JSON-RPC {kind, code} 写像 (serve は lib に依存してよい)。
+const SESAME_TO_RPC = Object.freeze({
+  [ERR.NOT_CONNECTED]: { kind: KIND.CONNECTION_LOST, code: RPC.APP_ERROR },
+  [ERR.TIMEOUT]: { kind: KIND.TIMEOUT, code: RPC.APP_ERROR },
+  [ERR.REJECTED]: { kind: KIND.REJECTED, code: RPC.APP_ERROR },
+  [ERR.BAD_REQUEST]: { kind: KIND.BAD_PARAMS, code: RPC.INVALID_PARAMS },
+  [ERR.UNAUTHENTICATED]: { kind: KIND.NOT_AUTHENTICATED, code: RPC.APP_ERROR },
 });
 
 /** 成功応答を組み立てる。 */
@@ -86,6 +103,14 @@ export function makeError(id, code, message, kind, data = null) {
 export function errorFromThrow(id, err) {
   if (err instanceof RpcError) {
     return makeError(id, err.code, err.message, err.kind, err.data);
+  }
+  // ライブラリのドメインエラー: code を kind へ写像し、retryable / 付随 data を載せる
+  // (internal 潰れを回避し、消費者が data.kind / data.retryable で分岐できるようにする)。
+  if (err instanceof SesameError) {
+    const m = SESAME_TO_RPC[err.code] || { kind: KIND.INTERNAL, code: RPC.INTERNAL_ERROR };
+    const data = { ...(err.data || {}) };
+    if (typeof err.retryable === "boolean") data.retryable = err.retryable;
+    return makeError(id, m.code, String(err.message), m.kind, Object.keys(data).length ? data : null);
   }
   // 想定外の内部エラー: メッセージは出すが stack/params は出さない。
   const message = (err && err.message) ? String(err.message) : t("serve.internalError");

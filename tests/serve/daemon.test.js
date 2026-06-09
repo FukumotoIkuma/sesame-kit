@@ -114,6 +114,45 @@ describe("Daemon dispatch", () => {
     expect(doc.info["x-contractVersion"]).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
+  it("status と discover.info が apiVersion (canonical) を返す", async () => {
+    const d = new Daemon({ hub: makeFakeHub({ connected: true }) });
+    d.authState = "ok";
+    const st = await d.invoke("status", {}, null);
+    expect(st.apiVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(st.apiVersion).toBe(st.contractVersion); // 別名は同値
+    const doc = await d.invoke("rpc.discover", {}, null);
+    expect(doc.info["x-apiVersion"]).toBe(doc.info["x-contractVersion"]);
+  });
+
+  it("discover の各 method が x-stability/x-provenance を持ち、tier が正しい", async () => {
+    const d = new Daemon({ hub: makeFakeHub() });
+    const doc = await d.invoke("rpc.discover", {}, null);
+    const byName = Object.fromEntries(doc.methods.map((m) => [m.name, m]));
+    // stable コア
+    for (const n of ["status", "lock.unlock", "devices.list", "events.subscribe"]) {
+      expect(byName[n]["x-stability"]).toBe("stable");
+      expect(byName[n]["x-provenance"]).toBeTruthy();
+    }
+    // experimental (未確認群)
+    for (const n of ["org.getEmployees", "iot.setHub3LedDuty", "ir.send"]) {
+      expect(byName[n]["x-stability"]).toBe("experimental");
+    }
+    // 全 method が tier を持つ (漏れない)
+    for (const m of doc.methods) {
+      expect(["stable", "experimental"]).toContain(m["x-stability"]);
+    }
+  });
+
+  it("x-events も x-stability を持つ (lockState は stable、ready は experimental)", async () => {
+    const d = new Daemon({ hub: makeFakeHub() });
+    const doc = await d.invoke("rpc.discover", {}, null);
+    const ev = Object.fromEntries(doc["x-events"].map((e) => [e.name, e]));
+    expect(ev["event.lockState"]["x-stability"]).toBe("stable");
+    expect(ev["event.deviceUpdate"]["x-stability"]).toBe("stable");
+    // 未発火 (広告のみ) なので experimental で正直に示す
+    expect(ev["event.ready"]["x-stability"]).toBe("experimental");
+  });
+
   it("名前空間 op は hub[ns][op](params) へ委譲", async () => {
     const hub = makeFakeHub();
     const d = new Daemon({ hub }); d.authState = "ok";

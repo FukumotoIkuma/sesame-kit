@@ -34,7 +34,13 @@ import {
   UpdateDeviceStatusCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { hostname } from "node:os";
-import { generateDeviceVerifier } from "./device-srp.js";
+import {
+  cognitoTimestamp,
+  deviceAuthSecrets,
+  devicePasswordSignature,
+  generateDeviceVerifier,
+  generateEphemeralA,
+} from "./device-srp.js";
 // i18n はエラーメッセージ文言の外出しだけに使用 (auth ロジックは不可侵)。
 // この関数内のローカル変数 `t` (= store.load()) と衝突しないよう `tr` で取り込む。
 import { t as tr } from "./i18n.js";
@@ -158,12 +164,19 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
  * @param {{savePending:Function}} store
  */
 export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT_ID } = {}) {
+  // 同じユーザーの記憶済みデバイスがあれば DEVICE_KEY を渡す (公式アプリ=Amplify と同じ)。
+  // Cognito はこれを見てコード回答後に DEVICE_SRP_AUTH を要求できる。
+  const existing = store.load?.();
+  const authParameters = { USERNAME: username };
+  if (existing?.username === username && existing?.deviceKey) {
+    authParameters.DEVICE_KEY = existing.deviceKey;
+  }
   const initiate = () =>
     cognito.send(
       new InitiateAuthCommand({
         AuthFlow: "CUSTOM_AUTH",
         ClientId: clientId,
-        AuthParameters: { USERNAME: username },
+        AuthParameters: authParameters,
       }),
     );
 
@@ -221,27 +234,41 @@ export async function loginVerify(store, code) {
     }),
   );
 
-  if (!resp.AuthenticationResult) {
+  let r = resp.AuthenticationResult;
+  let device;
+
+  if (r) {
+    // デバイストラッキングが有効な Pool では NewDeviceMetadata が返る。ConfirmDevice で
+    // デバイスを確定しないと REFRESH_TOKEN_AUTH が `Invalid Refresh Token` で落ちる
+    // (公式アプリ=Amplify は自動で ConfirmDevice する)。ここで同じ確定を行う。
+    device = await confirmDevice(r);
+  } else if (resp.ChallengeName === "DEVICE_SRP_AUTH") {
+    // 記憶済みデバイスの SRP 認証 (公式アプリ=Amplify と同じ device password チャレンジ)。
+    const ex = store.load?.() || {};
+    r = await deviceSrpAuth({
+      clientId: s.clientId,
+      username: resp.ChallengeParameters?.USERNAME || s.username,
+      deviceKey: ex.deviceKey,
+      deviceGroupKey: ex.deviceGroupKey,
+      devicePassword: ex.devicePassword,
+      session: resp.Session,
+    });
+    // DEVICE_SRP では NewDeviceMetadata は来ない。確定済みの既存デバイス情報を維持する。
+    device = ex.deviceKey && ex.deviceGroupKey
+      ? { deviceKey: ex.deviceKey, deviceGroupKey: ex.deviceGroupKey, devicePassword: ex.devicePassword }
+      : await confirmDevice(r);
+  } else if (resp.ChallengeName === "CUSTOM_CHALLENGE" && resp.Session) {
     // コード誤り/期限切れだと Cognito は新しい Session 付きで CUSTOM_CHALLENGE を再発行する
     // (既定 3 回)。古い Session は失効するので、新 Session を pending に書き戻して同じ
     // login のまま verify をやり直せるようにする (clearPending しない)。これをしないと
     // 1 文字のミスタイプで login からやり直しになる。
-    if (resp.ChallengeName === "CUSTOM_CHALLENGE" && resp.Session) {
-      store.savePending({ ...s, session: resp.Session, initiatedAt: new Date().toISOString() });
-      throw new Error(tr("auth.wrongCodeRetry"));
-    }
-    if (resp.ChallengeName) {
-      throw new Error(tr("auth.anotherChallenge", { name: resp.ChallengeName }));
-    }
+    store.savePending({ ...s, session: resp.Session, initiatedAt: new Date().toISOString() });
+    throw new Error(tr("auth.wrongCodeRetry"));
+  } else if (resp.ChallengeName) {
+    throw new Error(tr("auth.anotherChallenge", { name: resp.ChallengeName }));
+  } else {
     throw new Error(`No AuthenticationResult: ${JSON.stringify(resp)}`);
   }
-
-  const r = resp.AuthenticationResult;
-
-  // デバイストラッキングが有効な Pool では NewDeviceMetadata が返る。ConfirmDevice で
-  // デバイスを確定しないと REFRESH_TOKEN_AUTH が `Invalid Refresh Token` で落ちる
-  // (公式アプリ=Amplify は自動で ConfirmDevice する)。ここで同じ確定を行う。
-  const device = await confirmDevice(r);
 
   const tokens = {
     clientId: s.clientId,
@@ -307,6 +334,72 @@ async function confirmDevice(authResult) {
   }
 
   return { deviceKey: meta.DeviceKey, deviceGroupKey: meta.DeviceGroupKey, devicePassword };
+}
+
+/**
+ * DEVICE_SRP_AUTH → DEVICE_PASSWORD_VERIFIER の 2 段チャレンジに応答してトークンを得る。
+ * amazon-cognito-identity-js の device 認証フローをそのまま再現 (公式アプリと同じ)。
+ *
+ * @returns {Promise<object>} Cognito AuthenticationResult
+ */
+async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, devicePassword, session }) {
+  if (!deviceKey || !deviceGroupKey || !devicePassword) {
+    throw new Error("DEVICE_SRP_AUTH requested but no stored device credentials. Re-run `sesame login`.");
+  }
+
+  const { a, A } = generateEphemeralA();
+
+  // 1) SRP_A を送り、サーバから SRP_B / SALT / SECRET_BLOCK を受け取る。
+  const srp = await cognito.send(
+    new RespondToAuthChallengeCommand({
+      ClientId: clientId,
+      ChallengeName: "DEVICE_SRP_AUTH",
+      ...(session ? { Session: session } : {}),
+      ChallengeResponses: { USERNAME: username, DEVICE_KEY: deviceKey, SRP_A: A.toString(16) },
+    }),
+  );
+  if (srp.ChallengeName !== "DEVICE_PASSWORD_VERIFIER") {
+    throw new Error(`DEVICE_SRP_AUTH: unexpected challenge ${srp.ChallengeName}`);
+  }
+  const cp = srp.ChallengeParameters || {};
+
+  // 2) HKDF 鍵を導出し、device password の所持証明 (PASSWORD_CLAIM_SIGNATURE) を送る。
+  const { hkdf } = deviceAuthSecrets({
+    deviceGroupKey,
+    deviceKey,
+    devicePassword,
+    serverB: BigInt("0x" + cp.SRP_B),
+    salt: BigInt("0x" + cp.SALT),
+    a,
+    A,
+  });
+  const timestamp = cognitoTimestamp();
+  const signature = devicePasswordSignature({
+    hkdf,
+    deviceGroupKey,
+    deviceKey,
+    secretBlock: cp.SECRET_BLOCK,
+    timestamp,
+  });
+
+  const verify = await cognito.send(
+    new RespondToAuthChallengeCommand({
+      ClientId: clientId,
+      ChallengeName: "DEVICE_PASSWORD_VERIFIER",
+      Session: srp.Session,
+      ChallengeResponses: {
+        USERNAME: cp.USERNAME || username,
+        DEVICE_KEY: deviceKey,
+        PASSWORD_CLAIM_SECRET_BLOCK: cp.SECRET_BLOCK,
+        PASSWORD_CLAIM_SIGNATURE: signature,
+        TIMESTAMP: timestamp,
+      },
+    }),
+  );
+  if (!verify.AuthenticationResult?.IdToken) {
+    throw new Error(`DEVICE_PASSWORD_VERIFIER failed: ${JSON.stringify(verify)}`);
+  }
+  return verify.AuthenticationResult;
 }
 
 /**

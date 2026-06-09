@@ -9,7 +9,7 @@
 //
 // アルゴリズムは amazon-cognito-identity-js の AuthenticationHelper.generateHashDevice
 // と同一 (SRP-6a, 3072-bit group, g=2)。一次資料: AWS Amplify / amazon-cognito-identity-js。
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 
 // SRP-6a 3072-bit group prime (RFC 5054 / Cognito 共通)。g = 2。
 const N_HEX =
@@ -35,7 +35,7 @@ const G = 2n;
 
 function modPow(base, exp, mod) {
   let result = 1n;
-  base %= mod;
+  base = ((base % mod) + mod) % mod; // 負値も正規化
   while (exp > 0n) {
     if (exp & 1n) result = (result * base) % mod;
     exp >>= 1n;
@@ -85,3 +85,91 @@ export function generateDeviceVerifier(deviceGroupKey, deviceKey) {
     salt: Buffer.from(saltHex, "hex").toString("base64"),
   };
 }
+
+// ---------------------------------------------------------------------------
+// DEVICE_SRP_AUTH / DEVICE_PASSWORD_VERIFIER のクライアント実装。
+// amazon-cognito-identity-js の AuthenticationHelper をそのまま移植したもの
+// (公式アプリ=Amplify と同じ計算)。記憶済みデバイスでのデバイス認証に使う。
+// ---------------------------------------------------------------------------
+
+// k = H(N, g)。SRP-6a の乗数パラメータ。padHex(N)+padHex(g) を hex として hash。
+const K = BigInt("0x" + hexHash(padHex(N) + padHex(G)));
+
+// HKDF の info。amazon-cognito-identity-js の infoBits と同一。
+const INFO_BITS = Buffer.from("Caldera Derived Key", "utf8");
+
+const WEEK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** u = H(A, B)。SRP のスクランブリングパラメータ。 */
+function calculateU(A, B) {
+  return BigInt("0x" + hexHash(padHex(A) + padHex(B)));
+}
+
+/** HKDF(SHA-256) で 16 byte の鍵を導出。amazon の computehkdf 相当。 */
+function computeHkdf(ikm, salt) {
+  const prk = createHmac("sha256", salt).update(ikm).digest();
+  const infoBitsUpdate = Buffer.concat([INFO_BITS, Buffer.from([1])]);
+  return createHmac("sha256", prk).update(infoBitsUpdate).digest().subarray(0, 16);
+}
+
+/**
+ * クライアント秘密 a と公開値 A = g^a mod N を生成 (A != 0)。
+ * @returns {{a: bigint, A: bigint}}
+ */
+export function generateEphemeralA() {
+  let a, A;
+  do {
+    a = BigInt("0x" + randomBytes(128).toString("hex")) % N;
+    A = modPow(G, a, N);
+  } while (A % N === 0n);
+  return { a, A };
+}
+
+/**
+ * デバイスパスワード認証鍵 (HKDF 出力) を導出。amazon の getPasswordAuthenticationKey 相当。
+ * deviceGroupKey/deviceKey はサーバ verifier 生成時と同じ "{group}{key}:{password}" を成す。
+ *
+ * @returns {{hkdf: Buffer, sValue: bigint}} sValue はサーバ役シミュレーションでの検証用に返す。
+ */
+export function deviceAuthSecrets({ deviceGroupKey, deviceKey, devicePassword, serverB, salt, a, A }) {
+  const U = calculateU(A, serverB);
+  if (U === 0n) throw new Error("device SRP: U cannot be 0");
+
+  const passwordHash = sha256Hex(`${deviceGroupKey}${deviceKey}:${devicePassword}`);
+  const x = BigInt("0x" + hexHash(padHex(salt) + passwordHash));
+  const gModPowXN = modPow(G, x, N);
+  // base = (B - k * g^x) mod N (負値は modPow 側で正規化される)
+  const base = serverB - K * gModPowXN;
+  const sValue = modPow(base, a + U * x, N);
+  const hkdf = computeHkdf(
+    Buffer.from(padHex(sValue), "hex"),
+    Buffer.from(padHex(U), "hex"),
+  );
+  return { hkdf, sValue };
+}
+
+/**
+ * DEVICE_PASSWORD_VERIFIER の PASSWORD_CLAIM_SIGNATURE を計算。
+ * HMAC-SHA256(hkdf, deviceGroupKey || deviceKey || secretBlock || timestamp)。
+ */
+export function devicePasswordSignature({ hkdf, deviceGroupKey, deviceKey, secretBlock, timestamp }) {
+  const msg = Buffer.concat([
+    Buffer.from(deviceGroupKey, "utf8"),
+    Buffer.from(deviceKey, "utf8"),
+    Buffer.from(secretBlock, "base64"),
+    Buffer.from(timestamp, "utf8"),
+  ]);
+  return createHmac("sha256", hkdf).update(msg).digest("base64");
+}
+
+/** Cognito が要求する固定書式のタイムスタンプ "ddd MMM D HH:mm:ss UTC yyyy" (UTC、日は 0 詰めしない)。 */
+export function cognitoTimestamp(d = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${WEEK_DAYS[d.getUTCDay()]} ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()} ` +
+    `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC ${d.getUTCFullYear()}`;
+}
+
+// サーバ役シミュレーション (テスト専用)。実 Cognito の DEVICE_PASSWORD_VERIFIER 側計算を
+// 再現し、クライアント sValue と一致することで SRP 実装の正しさを検証する。
+export const __srpTest = { N, G, K, modPow, calculateU, padHex };
