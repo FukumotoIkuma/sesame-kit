@@ -141,7 +141,7 @@ export class SesameClient {
   };
 
   readonly device = {
-    battery: (params: { deviceUUID: string; pageSize?: number }): Promise<{ records: Array<{ ts: number; light?: number; heavy?: number; lightPercentage?: number; heavyPercentage?: number }>; lastEvaluatedKey?: unknown }> => this._call("device.battery", params) as Promise<{ records: Array<{ ts: number; light?: number; heavy?: number; lightPercentage?: number; heavyPercentage?: number }>; lastEvaluatedKey?: unknown }>,
+    battery: (params: { deviceUUID: string; pageSize?: number }): Promise<{ records: Array<{ ts: number; light?: number; heavy?: number; lightPercentage?: number; heavyPercentage?: number }>; lastEvaluatedKey?: unknown | null }> => this._call("device.battery", params) as Promise<{ records: Array<{ ts: number; light?: number; heavy?: number; lightPercentage?: number; heavyPercentage?: number }>; lastEvaluatedKey?: unknown | null }>,
     /** @experimental unverified — may change without notice. */
     hideBattery: (params: { deviceUUID: string; timestampSecond: number }): Promise<unknown> => this._call("device.hideBattery", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */

@@ -77,6 +77,7 @@ declare namespace _default {
         "domain.transport.sendIRFailed": string;
         "domain.transport.getIRCodesFailed": string;
         "domain.util.opFailed": string;
+        "domain.util.chunkTimeout": string;
         "domain.crypto.unknownIrType": string;
     };
     let ja: {
@@ -157,6 +158,7 @@ declare namespace _default {
         "domain.transport.sendIRFailed": string;
         "domain.transport.getIRCodesFailed": string;
         "domain.util.opFailed": string;
+        "domain.util.chunkTimeout": string;
         "domain.crypto.unknownIrType": string;
     };
 }

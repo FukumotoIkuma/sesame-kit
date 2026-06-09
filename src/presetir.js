@@ -31,8 +31,7 @@
 //   (biz3 の挙動を 1bit も変えない)。呼び出し側で keyMap のキー名を直接渡すこともできる。
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
-import { assertSuccess } from "./util.js";
-import { t } from "./i18n.js";
+import { assertSuccess, badRequest } from "./util.js";
 
 const ACTION = ACTION_TYPES.BIZ3_IR_REMOTE; // "biz3IRRemote" (vendor 由来)
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -444,10 +443,10 @@ export function buildNonAirCommandHex({ irType, code, buttonType }) {
  * @returns {Promise<object>} 応答メッセージ (success / data / message)
  */
 export async function sendIR(client, p) {
-  if (!p || !p.deviceId) throw new Error(t("presetir.err.deviceIdRequired"));
-  if (!p.command) throw new Error(t("presetir.err.commandRequired"));
-  if (p.irType == null) throw new Error(t("presetir.err.irTypeRequired"));
-  if (!p.companyID) throw new Error(t("presetir.err.companyIdRequired"));
+  if (!p || !p.deviceId) throw badRequest("presetir.err.deviceIdRequired");
+  if (!p.command) throw badRequest("presetir.err.commandRequired");
+  if (p.irType == null) throw badRequest("presetir.err.irTypeRequired");
+  if (!p.companyID) throw badRequest("presetir.err.companyIdRequired");
 
   const frame = {
     action: ACTION,

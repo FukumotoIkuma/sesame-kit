@@ -1,8 +1,28 @@
 // デバイス型モデル (SDK CHProductModel 移植) の単体テスト。
 import { describe, it, expect } from "vitest";
 import {
-  KIND, PRODUCT_TYPES, kindForModel, capabilitiesForModel, supportsOp,
+  KIND, PRODUCT_TYPES, kindForModel, capabilitiesForModel, supportsOp, CONTROL_OPS,
 } from "../../src/ble/devicemodel.js";
+
+describe("CONTROL_OPS (制御 op 語彙の単一真実源)", () => {
+  it("CAPS から導出され lock/unlock/toggle/click/autolock になる", () => {
+    expect(CONTROL_OPS).toEqual(["lock", "unlock", "toggle", "click", "autolock"]);
+  });
+  it("IoT 中継 op (ir/relay/led) と status は含まない", () => {
+    for (const o of ["ir", "relay", "led", "status"]) expect(CONTROL_OPS).not.toContain(o);
+  });
+  it("全 kind の各制御 op が CONTROL_OPS に含まれる (導出の網羅性)", () => {
+    for (const m of ["sesame_5", "bot_2", "bike_2", "bike_3", "sesame_2", "ssmbot_1", "bike_1"]) {
+      for (const op of capabilitiesForModel(m).ops) {
+        if (["ir", "relay", "led"].includes(op)) continue;
+        expect(CONTROL_OPS).toContain(op);
+      }
+    }
+  });
+  it("凍結されている (誤改変を防ぐ)", () => {
+    expect(Object.isFrozen(CONTROL_OPS)).toBe(true);
+  });
+});
 
 describe("kindForModel", () => {
   it("OS3 ロックは lock5", () => {

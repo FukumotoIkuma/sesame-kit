@@ -43,7 +43,7 @@ import { registerIotCommands } from "./cli/iot.js";
 import { registerPresetIrCommands } from "./cli/presetir.js";
 import { registerBleCommands } from "./cli/ble.js";
 import { registerServeCommand } from "./cli/serve.js";
-import { SesameBle, capabilitiesForModel, transportsForOp } from "./ble/index.js";
+import { SesameBle, capabilitiesForModel, transportsForOp, CONTROL_OPS } from "./ble/index.js";
 import { bleWasUsed } from "./ble/transport.js";
 import { EventEmitter } from "node:events";
 // session-ui (ink + react) は session でしか使わないので、起動コスト削減のため動的 import する。
@@ -1397,8 +1397,9 @@ async function cmdSession(names, options, program) {
   else await runner(null);
 }
 
-/** デバイスに対して可能な操作 (動詞)。型ごとの可否は能力モデルが別途ゲートする。 */
-const DEVICE_ACTIONS = new Set(["unlock", "lock", "toggle", "click", "status", "autolock"]);
+/** デバイスに対して可能な操作 (動詞)。制御 op は能力モデル (CONTROL_OPS) を単一真実源として引き、
+ *  状態取得の "status" だけ CLI 固有に足す。型ごとの可否は cmdAct の能力ゲートが別途判定する。 */
+const DEVICE_ACTIONS = new Set([...CONTROL_OPS, "status"]);
 
 /**
  * デバイス主語の実行: `sesame <device> [action] [args]`。
@@ -1432,8 +1433,8 @@ async function cmdAct(op, name, seconds, options, program) {
 
   // デバイス型ごとの能力ゲート (SDK 準拠)。model が判っていて非対応な操作は接続前に弾く。
   // 例: Bot に lock/unlock → "click を使え"、Lock に click → "toggle を使え"。
-  const BLE_OPS = new Set(["lock", "unlock", "toggle", "autolock", "click"]);
-  if (BLE_OPS.has(op) && entry.model) {
+  // ゲート対象は制御 op (CONTROL_OPS = 能力モデルの単一真実源)。"status" は全機種可なので除外。
+  if (CONTROL_OPS.includes(op) && entry.model) {
     const caps = capabilitiesForModel(entry.model);
     if (!caps.ops.includes(op)) {
       die(t("cli.modelNotSupportOp", { label: caps.label, model: entry.model, op, ops: caps.ops.join("/") || t("cli.opsNone") }), 2);

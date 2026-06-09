@@ -1,0 +1,5 @@
+{
+  "method": "devices.list",
+  "note": "synthetic — empty device list (an account with no devices). Exercises the array-of-zero path the live canary explicitly tolerates.",
+  "sample": []
+}

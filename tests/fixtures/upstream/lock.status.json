@@ -1,0 +1,17 @@
+{
+  "method": "lock.status",
+  "note": "synthetic — single device snapshot (vendor consumes data[0]; daemon getDeviceStatus returns data[0] ?? null). Same DEVICE shape as devices.list elements.",
+  "sample": {
+    "deviceUUID": "11111111-1111-4111-8111-111111111111",
+    "deviceName": "Front Door",
+    "deviceModel": "sesame_5",
+    "secretKey": "00000000000000000000000000000000",
+    "keyLevel": 0,
+    "rank": 1,
+    "stateInfo": {
+      "locked": false,
+      "position": 1024,
+      "battery": 88
+    }
+  }
+}

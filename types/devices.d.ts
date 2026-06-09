@@ -1,7 +1,7 @@
 /** 個人ユーザのデバイス一覧。companyID 不要。 */
 export function getUserDevices(client: any, { timeoutMs }?: {
     timeoutMs?: number;
-}): Promise<any>;
+}): Promise<any[]>;
 /**
  * 単機の現在状態 (ロック開閉、電池等)。biz3 では isFromApp=true 限定だが CLI でも投げてみる価値あり。
  *
@@ -84,7 +84,7 @@ export function makeBatteryRecordInvisible(client: any, { deviceUUID, timestampS
     timestampSecond: any;
 }): Promise<any>;
 /** 配信中ファームウェア一覧。 */
-export function listFirmware(client: any): Promise<any>;
+export function listFirmware(client: any): Promise<any[]>;
 /**
  * biz3InvokeWebAPIs 経由で REST WebAPI を呼ぶ。
  * func 例: 'webapi_ssm_shadow_get', 'webapi_history_get', 'webapi_cmd_send'。

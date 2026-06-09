@@ -55,3 +55,29 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  # 上流コンフォーマンス・カナリア (オフライン replay)。
+  # 記録済みの vendor 応答サンプル (tests/fixtures/upstream/*.json) を、live カナリアと同一の
+  # stable スキーマ (src/serve/result-schemas.js) で検証し、「スキーマを緩めて契約を壊す」種類の
+  # drift を creds 無しで検出する。live カナリア (実クラウド) は creds が要るため CI では回さず
+  # opt-in のまま (手動 / スケジュール: `node scripts/canary-upstream.mjs`)。詳細は
+  # docs/api-stability.md の canary 節。
+  upstream-canary-replay:
+    name: Upstream canary (offline replay)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      # 依存不要 (replay は node 標準 fs + result-schemas.js のみ) だが、将来の依存追加に備え ci する。
+      - name: Install dependencies
+        run: npm ci
+
+      # creds もネットワークも使わない。fixtures が stable スキーマに適合しなければ exit 1。
+      - name: Replay recorded upstream responses against stable schemas
+        run: node scripts/canary-upstream.mjs --replay

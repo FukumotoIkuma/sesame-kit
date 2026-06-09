@@ -171,9 +171,18 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
   http://127.0.0.1:8080/rpc
 ```
 
+### どちらを使う? — `sdk/` と `clients/`
+
+本リポジトリには 2 つのクライアント層があり、用途が異なります:
+
+- **`sdk/` — 生成された型付きの契約 SDK（多くのユーザにはこちらを推奨）。** [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) と [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py) は [`schema/openrpc.json`](./schema/openrpc.json) から**生成**されます（`npm run build:sdk`）。RPC ごとに型付きメソッドが 1 つ（`client.lock.unlock({ name })`）、param/result も型付きで、`SesameRpcError`（`kind` / `retryable`）を公開します。公開 OpenRPC 契約を追従し（CI の drift gate で常に一致）、`sesame serve` の JSON-RPC デーモンに HTTP（イベントは SSE）で接続します。**生成物 `sesame-client.ts` / `sesame_client.py` は手で編集しないでください** — スキーマを変更して再生成します。
+- **`clients/` — 手書きの低レベル経路クライアント（上級 / カスタム連携向け）。** [`clients/js/sesame-client.mjs`](./clients/js/sesame-client.mjs) と [`clients/python/sesame_client.py`](./clients/python/sesame_client.py) は**薄い公式クライアント**です: 手書き・依存最小で、汎用の `c.call("<method>", …)` に加えていくつかの便利メソッド（`c.unlock(…)`）を持ちます。HTTP だけでなく**全フレーミング**（Unix socket / stdio / HTTP / WebSocket / gRPC）に対応するため、組み込み（stdio 子プロセス）・ローカルデーモン・全二重（WS）連携に向きます。スキーマから**生成されない**ため、契約に対する静的型付けはありません。
+
+まとめ: HTTP 上で型付き・契約追従のクライアントが欲しいなら **`sdk/`**、薄い多経路クライアントや汎用 `call()` の逃げ道が欲しいなら **`clients/`**。`sesame-kit/client`（`package.json` の `exports`）が指すのはこの `clients/` 層です。
+
 ### 同梱クライアント
 
-JSON-RPC をラップした薄いクライアントで、`c.unlock("front")` のように書けます。任意であり、上の `curl` でもクライアント無しで動きます。Node は `npm install sesame-kit` 後に `import { SesameClient } from "sesame-kit/client"`。Python はパッケージ同梱の単一ファイルです。
+JSON-RPC をラップした薄いクライアント（上記の `clients/` 層）で、`c.unlock("front")` のように書けます。任意であり、上の `curl` でもクライアント無しで動きます。Node は `npm install sesame-kit` 後に `import { SesameClient } from "sesame-kit/client"`。Python はパッケージ同梱の単一ファイルです。
 
 ```js
 import { SesameClient } from "sesame-kit/client";   // npm install sesame-kit の後

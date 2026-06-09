@@ -1,0 +1,16 @@
+{
+  "method": "device.battery",
+  "note": "synthetic — final page of battery telemetry. lastEvaluatedKey is null when there are no further pages (getBatteryRecord returns { records, lastEvaluatedKey: null }). Guards the nullable(OBJ) typing of lastEvaluatedKey.",
+  "sample": {
+    "records": [
+      {
+        "ts": 1717970400000,
+        "light": 6100,
+        "heavy": 5900,
+        "lightPercentage": 94,
+        "heavyPercentage": 90
+      }
+    ],
+    "lastEvaluatedKey": null
+  }
+}

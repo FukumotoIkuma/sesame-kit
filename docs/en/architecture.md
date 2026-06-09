@@ -26,7 +26,7 @@ This implementation is a Node.js port of the **official biz3 admin web app (http
 Like the official SesameSDK, cloud and BLE **share the underlying command (itemCode) and the device capability model**; only the final send route (transport) is swapped as a leaf. This is a single design.
 
 - itemCode has one source in `src/itemcodes.js` (the cloud refers to it as `CMD` in `src/crypto.js`, BLE as `ITEM` in `src/ble/protocol.js` — different aliases for the same thing).
-- Capability is held by `src/ble/devicemodel.js` as **type × route** (each kind has a `cloud:[...]` and a `ble:[...]` op set).
+- Capability is held by `src/ble/devicemodel.js` as **type × route** (each kind has a `cloud:[...]` and a `ble:[...]` op set). The control-op vocabulary (`CONTROL_OPS`) is **derived** from this table and consumed by the CLI (`DEVICE_ACTIONS` / the capability gate), so there is no second hardcoded op list to drift.
   The **operable ops = the union of the two**, and the session's targets, operation menu, and `pickTransport` route selection are all derived from this union.
   - Example: a lock has autolock under `ble` but not `cloud` → autolock is BLE-only.
   - An OS2 lock has an empty `ble` set and lock/unlock/toggle under `cloud` → operable via cloud only.
@@ -72,9 +72,12 @@ sesame-kit/
 ├── LICENSE.biz3
 ├── bin/
 │   └── sesame.js           # CLI entry point
-├── clients/                # thin official clients that connect to sesame serve (zero dependencies)
-│   ├── python/sesame_client.py   #   UDS/stdio/HTTP + event subscription
-│   └── js/sesame-client.mjs      #   equivalent (Node 18+)
+├── sdk/                    # GENERATED typed SDKs (from schema/openrpc.json; recommended) — one method per RPC, HTTP+SSE
+│   ├── ts/sesame-client.ts       #   typed TS client (drift-gated; do not hand-edit)
+│   └── python/sesame_client.py   #   typed Python client (drift-gated; do not hand-edit)
+├── clients/                # HAND-WRITTEN thin official clients (low-level; advanced/custom integrations)
+│   ├── python/sesame_client.py   #   UDS/stdio/HTTP/WS + event subscription, generic call() (zero deps)
+│   └── js/sesame-client.mjs      #   equivalent (Node 18+); see README for sdk/ vs clients/
 ├── vendor/
 │   └── biz3/constants/     # verbatim copy of biz3's import-zero constants (single source of truth)
 └── src/
@@ -89,9 +92,11 @@ sesame-kit/
     │   ├── sesame.proto    #   gRPC typed definition (generated)
     │   └── framing/        #   stdio / socket(UDS) / http(+SSE) / ws / grpc + token
     ├── client.js           # SesameHub3 high-level class (auto-injects ops via namespace getters)
+    ├── lock-manager.js     # LockManager (lock name-resolution + control ops, delegated from client.js)
     ├── transport.js        # Hub3WsClient (reconnect/keepalive/queue/sleep)
     ├── auth.js             # Cognito CUSTOM_AUTH + REFRESH_TOKEN_AUTH + jwtSub
     ├── crypto.js           # AES-CMAC + uuid→base64 + cmd code constants
+    ├── util.js             # assertSuccess / subscribeChunks (paged-push lifecycle) / SesameError helpers
     ├── lock.js / ir.js / presetir.js / sharekey.js   # domain ops
     ├── ble/                # BLE direct control (OS-independent core + swappable transport)
     │   ├── protocol.js     #   pure JS: CMAC key/AES-CCM/segment/frame/mechStatus

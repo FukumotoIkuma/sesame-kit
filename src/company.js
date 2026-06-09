@@ -24,8 +24,7 @@
 // CLI 側では client.request({action, op, ...}) (action+op 一致応答待ち) で受ける。
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
-import { assertSuccess } from "./util.js";
-import { t } from "./i18n.js";
+import { assertSuccess, badRequest } from "./util.js";
 
 // action 文字列は vendor (biz3 messageConstants) から引く (手書きしない)。
 // messageConstants.js:5 BIZ3_MANAGE_COMPANY = 'biz3ManageCompany'
@@ -73,8 +72,8 @@ export async function getCompanies(client, { timeoutMs = DEFAULT_TIMEOUT_MS } = 
  * @returns {Promise<{companyID:string, name:string}>} 更新後の {companyID, name}
  */
 export async function updateCompanyName(client, { companyID, name, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("company.err.companyIDRequired"));
-  if (name == null) throw new Error(t("company.err.nameRequired"));
+  if (!companyID) throw badRequest("company.err.companyIDRequired");
+  if (name == null) throw badRequest("company.err.nameRequired");
   const resp = await client.request(
     { action: ACT_COMPANY, obj: { companyID, name }, op: "updateName" },
     timeoutMs,
@@ -104,9 +103,9 @@ export async function updateCompanyName(client, { companyID, name, timeoutMs = D
  * @returns {Promise<object>} 新規 company オブジェクト (応答 data)
  */
 export async function addCompany(client, { name, employeeEmail, subUUID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!name) throw new Error(t("company.err.nameRequired"));
-  if (!employeeEmail) throw new Error(t("company.err.employeeEmailRequired"));
-  if (!subUUID) throw new Error(t("company.err.subUUIDRequired"));
+  if (!name) throw badRequest("company.err.nameRequired");
+  if (!employeeEmail) throw badRequest("company.err.employeeEmailRequired");
+  if (!subUUID) throw badRequest("company.err.subUUIDRequired");
   const resp = await client.request(
     { action: ACT_COMPANY, name, employeeEmail, subUUID, op: "add" },
     timeoutMs,
@@ -133,7 +132,7 @@ export async function addCompany(client, { name, employeeEmail, subUUID, timeout
  * @returns {Promise<{config:any,isYear:boolean,time:any,total:any,level:any,nextPrice:any}|null>}
  */
 export async function getPaymentConfig(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error("companyID required");
+  if (!companyID) throw badRequest("companyID required");
   const resp = await client.request(
     { action: ACT_COMPANY, companyID, op: "getPaymentConfig" },
     timeoutMs,

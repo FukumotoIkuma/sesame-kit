@@ -10,7 +10,7 @@
 // 個人ユーザ向けの getUserDevice、CRUD、履歴系をここに集める。
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
-import { assertSuccess } from "./util.js";
+import { assertSuccess, subscribeChunks, badRequest, timeoutError, rejected } from "./util.js";
 import { t } from "./i18n.js";
 import { productTypeFromModelName } from "./crypto.js";
 import { getValidIdToken } from "./auth.js";
@@ -32,27 +32,23 @@ export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS } 
   //   message.data = { totalPage, data: { list, page } }
   // page===1 で全置換、page>1 で追記、totalPage===page で完了。単発 resolve だと複数
   // ページのデバイスを取りこぼすため、全 page を蓄積して返す。
-  return new Promise((resolve, reject) => {
-    let done = false;
-    let acc = [];
-    let unsub = () => {};
-    const finish = (err, val) => {
-      if (done) return;
-      done = true;
-      clearTimeout(to);
-      unsub();
-      if (err) reject(err); else resolve(val);
-    };
-    const to = setTimeout(() => finish(new Error(t("domain.devices.getUserDeviceTimeout"))), timeoutMs);
-    unsub = client.subscribe(`${ACT_MANAGE}:PubedUserDevice`, (msg) => {
-      const totalPage = msg?.data?.totalPage;
-      const inner = msg?.data?.data ?? {};
-      const page = inner.page ?? 1;
-      acc = page === 1 ? [...(inner.list ?? [])] : [...acc, ...(inner.list ?? [])];
-      // totalPage が無ければ単一 chunk とみなし即完了 (vendor も totalPage===page で確定)。
-      if (typeof totalPage !== "number" || page >= totalPage) finish(null, acc);
-    });
-    client.send({ action: ACT_MANAGE, op: "getUserDevice" });
+  let acc = [];
+  return subscribeChunks(client, {
+    sendFrame: { action: ACT_MANAGE, op: "getUserDevice" },
+    timeoutMs,
+    onTimeout: () => timeoutError(t("domain.devices.getUserDeviceTimeout")),
+    result: () => acc,
+    subscriptions: [{
+      key: `${ACT_MANAGE}:PubedUserDevice`,
+      onMessage: (msg, finish) => {
+        const totalPage = msg?.data?.totalPage;
+        const inner = msg?.data?.data ?? {};
+        const page = inner.page ?? 1;
+        acc = page === 1 ? [...(inner.list ?? [])] : [...acc, ...(inner.list ?? [])];
+        // totalPage が無ければ単一 chunk とみなし即完了 (vendor も totalPage===page で確定)。
+        if (typeof totalPage !== "number" || page >= totalPage) finish();
+      },
+    }],
   });
 }
 
@@ -184,15 +180,17 @@ export async function makeBatteryRecordInvisible(client, { deviceUUID, timestamp
 
 /** 配信中ファームウェア一覧。 */
 export async function listFirmware(client) {
-  // この op は op フィールド無し (action のみ)
-  return new Promise((resolve, reject) => {
-    const to = setTimeout(() => { unsub(); reject(new Error(t("domain.devices.listFirmwareTimeout"))); }, DEFAULT_TIMEOUT_MS);
-    const unsub = client.subscribe(`${ACT_FIRMWARE}:`, (msg) => {
-      clearTimeout(to);
-      unsub();
-      resolve(msg?.data || []);
-    });
-    client.send({ action: ACT_FIRMWARE });
+  // この op は op フィールド無し (action のみ)。応答は単発 push (`${ACT_FIRMWARE}:`)。
+  let data = [];
+  return subscribeChunks(client, {
+    sendFrame: { action: ACT_FIRMWARE },
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+    onTimeout: () => timeoutError(t("domain.devices.listFirmwareTimeout")),
+    result: () => data,
+    subscriptions: [{
+      key: `${ACT_FIRMWARE}:`,
+      onMessage: (msg, finish) => { data = msg?.data || []; finish(); },
+    }],
   });
 }
 
@@ -305,7 +303,7 @@ function assertHttpOk(res, op) {
     const detail = res?.json?.message
       || (typeof res?.text === "string" && res.text)
       || (res?.json != null ? JSON.stringify(res.json) : "");
-    throw new Error(t("domain.devices.registerHttpError", { op, status: status ?? "?", detail }));
+    throw rejected(t("domain.devices.registerHttpError", { op, status: status ?? "?", detail }), { status: status ?? null });
   }
 }
 
@@ -319,13 +317,13 @@ function assertHttpOk(res, op) {
  * @returns {(req:{method:string, path:string, body?:object}) => Promise<{status:number, text:string, json:any}>}
  */
 export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalThis.fetch } = {}) {
-  if (!baseUrl) throw new Error(t("domain.devices.registerBaseUrlRequired"));
-  if (!tokenStore) throw new Error(t("domain.devices.registerTokenStoreRequired"));
-  if (typeof fetchImpl !== "function") throw new Error(t("domain.devices.registerFetchRequired"));
+  if (!baseUrl) throw badRequest("domain.devices.registerBaseUrlRequired");
+  if (!tokenStore) throw badRequest("domain.devices.registerTokenStoreRequired");
+  if (typeof fetchImpl !== "function") throw badRequest("domain.devices.registerFetchRequired");
   const base = baseUrl.replace(/\/+$/, ""); // 末尾スラッシュ除去 (パスと二重化させない)
   return async ({ method, path, body }) => {
     // path 未指定で base + undefined = '...undefined' という無効 URL を作らない (低優先の防御)。
-    if (typeof path !== "string" || !path) throw new Error(t("domain.devices.registerPathRequired"));
+    if (typeof path !== "string" || !path) throw badRequest("domain.devices.registerPathRequired");
     const idToken = await getValidIdToken(tokenStore);
     const res = await fetchImpl(base + path, {
       method,
@@ -361,10 +359,10 @@ export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalT
  * @returns {Promise<string>} session token (hex)。
  */
 export async function signGuestKey(transport, { deviceUUID, tokenHex, secretKey }) {
-  if (typeof transport !== "function") throw new Error(t("domain.devices.registerTransportRequired"));
-  if (!deviceUUID) throw new Error(t("domain.devices.deviceUUIDRequired"));
-  if (!tokenHex) throw new Error(t("domain.devices.tokenHexRequired"));
-  if (!secretKey) throw new Error(t("domain.devices.secretKeyRequired"));
+  if (typeof transport !== "function") throw badRequest("domain.devices.registerTransportRequired");
+  if (!deviceUUID) throw badRequest("domain.devices.deviceUUIDRequired");
+  if (!tokenHex) throw badRequest("domain.devices.tokenHexRequired");
+  if (!secretKey) throw badRequest("domain.devices.secretKeyRequired");
   const body = {
     deviceId: deviceUUID.toUpperCase(), // CHSesameOS3.kt:476 deviceId.uppercase()
     token: tokenHex,                    // CHSesameOS3.kt:477 mSesameToken.toHexString()
@@ -376,7 +374,7 @@ export async function signGuestKey(transport, { deviceUUID, tokenHex, secretKey 
   // guestKeysSignPost の戻りは素の String (= session token hex。HTTP body)。生 body を採る。
   // transport が body を JSON 文字列としてパースした場合のみ res.json (string) を使う。
   const token = res.text || (typeof res.json === "string" ? res.json : "");
-  if (!token) throw new Error(t("domain.devices.signGuestKeyNoToken"));
+  if (!token) throw badRequest("domain.devices.signGuestKeyNoToken");
   return token;
 }
 
@@ -404,10 +402,10 @@ export async function signGuestKey(transport, { deviceUUID, tokenHex, secretKey 
  * @returns {Promise<any>} サーバ応答 (json があれば json、無ければ text)。
  */
 export async function registerSesame5(transport, { deviceUUID, productType, serverSecret }) {
-  if (typeof transport !== "function") throw new Error(t("domain.devices.registerTransportRequired"));
-  if (!deviceUUID) throw new Error(t("domain.devices.deviceUUIDRequired"));
-  if (productType == null) throw new Error(t("domain.devices.productTypeRequired"));
-  if (!serverSecret) throw new Error(t("domain.devices.serverSecretRequired"));
+  if (typeof transport !== "function") throw badRequest("domain.devices.registerTransportRequired");
+  if (!deviceUUID) throw badRequest("domain.devices.deviceUUIDRequired");
+  if (productType == null) throw badRequest("domain.devices.productTypeRequired");
+  if (!serverSecret) throw badRequest("domain.devices.serverSecretRequired");
 
   // productType を数値に解決: 数値 (または数値文字列) はそのまま、それ以外は model 名として
   // crypto.js productTypeFromModelName で逆引きする (手書き複製を排除)。
@@ -418,7 +416,7 @@ export async function registerSesame5(transport, { deviceUUID, productType, serv
     pt = Number(productType);
   } else {
     pt = productTypeFromModelName(productType);
-    if (pt == null) throw new Error(t("domain.devices.unknownProductModel", { model: String(productType) }));
+    if (pt == null) throw badRequest("domain.devices.unknownProductModel", { model: String(productType) });
   }
 
   const body = {

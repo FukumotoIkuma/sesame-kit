@@ -109,6 +109,8 @@ For exact parameter types (e.g. for code generation), `sesame rpc --json rpc.dis
 
 Thin clients wrap the above so you write `c.unlock("front")` instead of building JSON by hand. They are optional — section 2 already works without them.
 
+> **`sdk/` vs `clients/`** — the clients below are the **hand-written, low-level** layer (`clients/js`, `clients/python`): minimal-dependency, multi-transport (Unix socket / stdio / HTTP / WebSocket / gRPC), with a generic `call()`. For most users the **generated, typed** SDK ([`sdk/ts`](../../sdk/ts/README.md) / [`sdk/python`](../../sdk/python/README.md)) — one typed method per RPC, generated from `schema/openrpc.json` and tracking the OpenRPC contract over HTTP — is the better default. See the ["which should I use?" guide](../../README.md#which-should-i-use--sdk-vs-clients).
+
 **Node** — after `npm install sesame-kit`:
 
 ```js

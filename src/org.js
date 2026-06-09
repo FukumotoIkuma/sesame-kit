@@ -37,8 +37,7 @@
 //   getDeviceEmployeeKeys: deviceUUID+companyID+limit 直置き。
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
-import { t } from "./i18n.js";
-import { assertSuccess } from "./util.js";
+import { assertSuccess, subscribeChunks, badRequest, timeoutError, rejected } from "./util.js";
 
 // action 文字列は vendor (biz3 messageConstants) から引く (手書きしない)。
 const ACT_EMPLOYEE = ACTION_TYPES.BIZ3_MANAGE_EMPLOYEE;             // "biz3ManageEmployee"
@@ -68,7 +67,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * @returns {Promise<{count:number, list:any[]}>}  count=totalCount, list=全社員
  */
 export async function getEmployees(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   return collectChunks(client, {
     action: ACT_EMPLOYEE,
     pubOp: "pubEmployees", // useManageEmployee.js:7
@@ -110,7 +109,7 @@ export async function getCurrentUserInfo(client, { timeoutMs = DEFAULT_TIMEOUT_M
  *   (message==='Limit Exceeded' でプラン上限 — :89-100)。
  */
 export async function addEmployees(client, { items, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!Array.isArray(items)) throw new Error(t("org.req.itemsArray"));
+  if (!Array.isArray(items)) throw badRequest("org.req.itemsArray");
   const resp = await client.request({ action: ACT_EMPLOYEE, items, op: "add" }, timeoutMs);
   assertSuccess(resp, "addEmployees");
   return resp;
@@ -125,7 +124,7 @@ export async function addEmployees(client, { items, timeoutMs = DEFAULT_TIMEOUT_
  * @returns {Promise<object>} 応答 message
  */
 export async function updateEmployee(client, { companyID, data, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_EMPLOYEE, obj: { companyID, ...data }, op: "update" },
     timeoutMs,
@@ -144,7 +143,7 @@ export async function updateEmployee(client, { companyID, data, timeoutMs = DEFA
  * @returns {Promise<object>} 応答 message
  */
 export async function removeEmployees(client, { items, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!Array.isArray(items)) throw new Error(t("org.req.itemsArray"));
+  if (!Array.isArray(items)) throw badRequest("org.req.itemsArray");
   const resp = await client.request({ action: ACT_EMPLOYEE, items, op: "delete" }, timeoutMs);
   assertSuccess(resp, "removeEmployees");
   return resp;
@@ -161,7 +160,7 @@ export async function removeEmployees(client, { items, timeoutMs = DEFAULT_TIMEO
  * @returns {Promise<object>} 応答 message
  */
 export async function reorderEmployees(client, { items, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!Array.isArray(items)) throw new Error(t("org.req.itemsArray"));
+  if (!Array.isArray(items)) throw badRequest("org.req.itemsArray");
   const resp = await client.request({ action: ACT_EMPLOYEE, items, op: "order" }, timeoutMs);
   assertSuccess(resp, "reorderEmployees");
   return resp;
@@ -179,7 +178,7 @@ export async function reorderEmployees(client, { items, timeoutMs = DEFAULT_TIME
  * @returns {Promise<any[]>} 全 chunk を結合した検索結果リスト
  */
 export async function queryByCS(client, { keyword, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!keyword) throw new Error(t("org.req.keyword"));
+  if (!keyword) throw badRequest("org.req.keyword");
   return collectChunks(client, {
     action: ACT_EMPLOYEE,
     pubOp: "pubQueryByCS", // useManageEmployee.js:411,415
@@ -209,7 +208,7 @@ export async function queryByCS(client, { keyword, timeoutMs = DEFAULT_TIMEOUT_M
  * @returns {Promise<object>} 応答 message
  */
 export async function confirmQueryByCS(client, { email, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!email) throw new Error(t("org.req.email"));
+  if (!email) throw badRequest("org.req.email");
   const resp = await client.request(
     { action: ACT_EMPLOYEE, email, op: "confirmQueryByCS" },
     timeoutMs,
@@ -231,7 +230,7 @@ export async function confirmQueryByCS(client, { email, timeoutMs = DEFAULT_TIME
  * @returns {Promise<any[]>} グループ配列
  */
 export async function getEmployeeGroups(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_GROUP, cid: companyID, op: "getGroups" },
     timeoutMs,
@@ -249,7 +248,7 @@ export async function getEmployeeGroups(client, { companyID, timeoutMs = DEFAULT
  * @returns {Promise<object>} 追加されたグループ (resp.data)
  */
 export async function addEmployeeGroup(client, { companyID, item, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_GROUP, obj: { cid: companyID, ...item }, op: "add" },
     timeoutMs,
@@ -266,7 +265,7 @@ export async function addEmployeeGroup(client, { companyID, item, timeoutMs = DE
  * @returns {Promise<object>} 応答 message
  */
 export async function updateEmployeeGroup(client, { companyID, item, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_GROUP, obj: { cid: companyID, ...item }, op: "update" },
     timeoutMs,
@@ -284,8 +283,8 @@ export async function updateEmployeeGroup(client, { companyID, item, timeoutMs =
  * @returns {Promise<object>} 応答 message
  */
 export async function removeEmployeeGroups(client, { companyID, gids, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
-  if (!Array.isArray(gids)) throw new Error(t("org.req.gidsArray"));
+  if (!companyID) throw badRequest("org.req.companyID");
+  if (!Array.isArray(gids)) throw badRequest("org.req.gidsArray");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_GROUP, objs: gids, cid: companyID, op: "deleteGroups" },
     timeoutMs,
@@ -302,7 +301,7 @@ export async function removeEmployeeGroups(client, { companyID, gids, timeoutMs 
  * @returns {Promise<object>} 応答 message (data 構造は未確認)
  */
 export async function getEmployeeGroupBindDeviceGroup(client, { gid, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!gid) throw new Error(t("org.req.gid"));
+  if (!gid) throw badRequest("org.req.gid");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_GROUP, gid, op: "getBindDeviceGroup" },
     timeoutMs,
@@ -320,7 +319,7 @@ export async function getEmployeeGroupBindDeviceGroup(client, { gid, timeoutMs =
  * @returns {Promise<object>} 応答 message
  */
 export async function addEmployeeInGroup(client, { companyID, gid, uuids, items, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_GROUP, cid: companyID, gid, uuids, items, op: "addBindUser" },
     timeoutMs,
@@ -338,8 +337,8 @@ export async function addEmployeeInGroup(client, { companyID, gid, uuids, items,
  * @returns {Promise<object>} 応答 message
  */
 export async function removeEmployeeInGroup(client, { companyID, gid, uuids, items, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
-  if (!Array.isArray(items)) throw new Error(t("org.req.itemsArray"));
+  if (!companyID) throw badRequest("org.req.companyID");
+  if (!Array.isArray(items)) throw badRequest("org.req.itemsArray");
   // biz3 useManageEmployee.js:358-360 と同じく {subUUID} だけに絞る。
   const params = items.map((item) => ({ subUUID: item.subUUID }));
   const resp = await client.request(
@@ -359,7 +358,7 @@ export async function removeEmployeeInGroup(client, { companyID, gid, uuids, ite
  * @returns {Promise<object>} 応答 message
  */
 export async function removeEmployeeGroupBindDeviceGroup(client, { companyID, data, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_GROUP, cid: companyID, ...data, op: "removeBindDeviceGroup" },
     timeoutMs,
@@ -381,7 +380,7 @@ export async function removeEmployeeGroupBindDeviceGroup(client, { companyID, da
  * @returns {Promise<any[]>} タグ配列
  */
 export async function getTags(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_ROLE, companyID, op: "get" },
     timeoutMs,
@@ -399,7 +398,7 @@ export async function getTags(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_M
  * @returns {Promise<object>} 応答 message
  */
 export async function postTag(client, { companyID, data, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_ROLE, companyID, ...data, op: "post" },
     timeoutMs,
@@ -416,7 +415,7 @@ export async function postTag(client, { companyID, data, timeoutMs = DEFAULT_TIM
  * @returns {Promise<object>} 応答 message
  */
 export async function removeTag(client, { companyID, data, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_ROLE, companyID, ...data, op: "delete" },
     timeoutMs,
@@ -438,7 +437,7 @@ export async function removeTag(client, { companyID, data, timeoutMs = DEFAULT_T
  * @returns {Promise<any[]>} デバイスグループ配列
  */
 export async function getDeviceGroups(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_DEVICE_GROUP, cid: companyID, op: "getGroups" },
     timeoutMs,
@@ -456,7 +455,7 @@ export async function getDeviceGroups(client, { companyID, timeoutMs = DEFAULT_T
  * @returns {Promise<object>} 応答 message
  */
 export async function addDeviceGroup(client, { companyID, name, uuids = [], timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_DEVICE_GROUP, obj: { name, cid: companyID, uuids }, op: "add" },
     timeoutMs,
@@ -473,7 +472,7 @@ export async function addDeviceGroup(client, { companyID, name, uuids = [], time
  * @returns {Promise<object>} 応答 message
  */
 export async function updateDeviceGroup(client, { companyID, item, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_DEVICE_GROUP, obj: { cid: companyID, ...item }, op: "update" },
     timeoutMs,
@@ -491,8 +490,8 @@ export async function updateDeviceGroup(client, { companyID, item, timeoutMs = D
  * @returns {Promise<object>} 応答 message
  */
 export async function removeDeviceGroups(client, { companyID, groupIds, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
-  if (!Array.isArray(groupIds)) throw new Error(t("org.req.groupIdsArray"));
+  if (!companyID) throw badRequest("org.req.companyID");
+  if (!Array.isArray(groupIds)) throw badRequest("org.req.groupIdsArray");
   // biz3 useManageGroup.js:71-74 と同じく各要素に cid をマージ。
   const objs = groupIds.map((obj) => ({ ...obj, cid: companyID }));
   const resp = await client.request(
@@ -512,7 +511,7 @@ export async function removeDeviceGroups(client, { companyID, groupIds, timeoutM
  * @returns {Promise<object>} 応答 message
  */
 export async function addDeviceInGroup(client, { companyID, gid, uuids, items, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_DEVICE_GROUP, cid: companyID, gid, uuids, items, op: "addBindDevice" },
     timeoutMs,
@@ -529,8 +528,8 @@ export async function addDeviceInGroup(client, { companyID, gid, uuids, items, t
  * @returns {Promise<object>} 応答 message
  */
 export async function removeDeviceInGroup(client, { companyID, gid, uuids, items, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
-  if (!Array.isArray(items)) throw new Error(t("org.req.itemsArray"));
+  if (!companyID) throw badRequest("org.req.companyID");
+  if (!Array.isArray(items)) throw badRequest("org.req.itemsArray");
   // biz3 useManageGroup.js:222-225 と同じく {deviceUUID, secretKey} だけに絞る。
   const params = items.map((item) => ({ deviceUUID: item.deviceUUID, secretKey: item.secretKey }));
   const resp = await client.request(
@@ -549,7 +548,7 @@ export async function removeDeviceInGroup(client, { companyID, gid, uuids, items
  * @returns {Promise<object>} 応答 message (data 構造は未確認)
  */
 export async function getDeviceGroupBindUserGroup(client, { gid, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!gid) throw new Error(t("org.req.gid"));
+  if (!gid) throw badRequest("org.req.gid");
   const resp = await client.request(
     { action: ACT_DEVICE_GROUP, gid, op: "getBindUserGroup" },
     timeoutMs,
@@ -567,7 +566,7 @@ export async function getDeviceGroupBindUserGroup(client, { gid, timeoutMs = DEF
  * @returns {Promise<object>} 応答 message
  */
 export async function removeDeviceGroupBindUserGroup(client, { companyID, data, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_DEVICE_GROUP, cid: companyID, ...data, op: "removeBindUserGroup" },
     timeoutMs,
@@ -591,7 +590,7 @@ export async function removeDeviceGroupBindUserGroup(client, { companyID, data, 
  * @returns {Promise<object>} 応答 message
  */
 export async function shareDeviceKeysToEmployees(client, { items, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!Array.isArray(items)) throw new Error(t("org.req.itemsArray"));
+  if (!Array.isArray(items)) throw badRequest("org.req.itemsArray");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_DEVICE, items, op: "add" },
     timeoutMs,
@@ -611,7 +610,7 @@ export async function shareDeviceKeysToEmployees(client, { items, timeoutMs = DE
  * @returns {Promise<object>} 応答 message
  */
 export async function shareDeviceGroupKeysToEmployeeGroup(client, { companyID, item, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_DEVICE, ...item, companyID, op: "group" },
     timeoutMs,
@@ -628,7 +627,7 @@ export async function shareDeviceGroupKeysToEmployeeGroup(client, { companyID, i
  * @returns {Promise<object>} 応答 message (data 構造は未確認)
  */
 export async function getEmployeeDeviceKeys(client, { subUUID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!subUUID) throw new Error(t("org.req.subUUID"));
+  if (!subUUID) throw badRequest("org.req.subUUID");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_DEVICE, subUUID, op: "get" },
     timeoutMs,
@@ -649,7 +648,7 @@ export async function getEmployeeDeviceKeys(client, { subUUID, timeoutMs = DEFAU
  * @returns {Promise<object>} 応答 message
  */
 export async function removeEmployeeDeviceKey(client, { data, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!data || typeof data !== "object") throw new Error(t("org.req.data"));
+  if (!data || typeof data !== "object") throw badRequest("org.req.data");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_DEVICE, ...data, op: "del" },
     timeoutMs,
@@ -667,7 +666,7 @@ export async function removeEmployeeDeviceKey(client, { data, timeoutMs = DEFAUL
  * @returns {Promise<object>} 応答 message
  */
 export async function updateGuestKeyTag(client, { data, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!data || typeof data !== "object") throw new Error(t("org.req.data"));
+  if (!data || typeof data !== "object") throw badRequest("org.req.data");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_DEVICE, ...data, op: "updateGuestTag" },
     timeoutMs,
@@ -689,7 +688,7 @@ export async function updateGuestKeyTag(client, { data, timeoutMs = DEFAULT_TIME
  * @returns {Promise<string>} guestKeyId
  */
 export async function generateGuestQR(client, { data, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!data || typeof data !== "object") throw new Error(t("org.req.data"));
+  if (!data || typeof data !== "object") throw badRequest("org.req.data");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_DEVICE, ...data, op: "generateGuestQR" },
     timeoutMs,
@@ -713,8 +712,8 @@ export async function generateGuestQR(client, { data, timeoutMs = DEFAULT_TIMEOU
  * @returns {Promise<any[]>} 鍵保有従業員の配列
  */
 export async function getDeviceEmployeeKeys(client, { deviceUUID, companyID, limit = 0, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  if (!deviceUUID) throw new Error(t("org.req.deviceUUID"));
-  if (!companyID) throw new Error(t("org.req.companyID"));
+  if (!deviceUUID) throw badRequest("org.req.deviceUUID");
+  if (!companyID) throw badRequest("org.req.companyID");
   const resp = await client.request(
     { action: ACT_DEVICE_EMP_KEYS, deviceUUID, companyID, limit, op: "get" },
     timeoutMs,
@@ -750,44 +749,40 @@ export async function getDeviceEmployeeKeys(client, { deviceUUID, companyID, lim
  */
 function collectChunks(client, cfg) {
   const { action, pubOp, sendFrame, timeoutMs, parseChunk, returnListOnly } = cfg;
-  return new Promise((resolve, reject) => {
-    let done = false;
-    let acc = [];
-    let total = null; // totalCount (件数) を見るモード用
-    const finish = (err) => {
-      if (done) return;
-      done = true;
-      clearTimeout(to);
-      unsub();
-      if (err) reject(err);
-      else resolve(returnListOnly ? acc : { count: total ?? acc.length, list: acc });
-    };
-    const to = setTimeout(() => finish(new Error(`${action}:${pubOp} timeout`)), timeoutMs);
-    const unsub = client.subscribe(`${action}:${pubOp}`, (msg) => {
-      if (done) return;
-      if (msg?.success === false) {
-        finish(new Error(`${action}:${pubOp} failed: ${msg.message || JSON.stringify(msg)}`));
-        return;
-      }
-      let chunk;
-      try { chunk = parseChunk(msg); }
-      catch (e) { finish(e); return; }
+  // 蓄積は本関数のクロージャで持ち、ライフサイクル (Promise/cleanup/timeout/二重解決ガード) は
+  // util.subscribeChunks に委譲する (devices/access と共通の定型)。
+  let acc = [];
+  let total = null; // totalCount (件数) を見るモード用
+  return subscribeChunks(client, {
+    sendFrame,
+    timeoutMs,
+    onTimeout: () => timeoutError(`${action}:${pubOp} timeout`),
+    result: () => (returnListOnly ? acc : { count: total ?? acc.length, list: acc }),
+    subscriptions: [{
+      key: `${action}:${pubOp}`,
+      onMessage: (msg, finish) => {
+        if (msg?.success === false) {
+          finish(rejected(`${action}:${pubOp} failed: ${msg.message || JSON.stringify(msg)}`,
+            { upstreamCode: msg?.code ?? null }));
+          return;
+        }
+        const chunk = parseChunk(msg); // throw は subscribeChunks が捕捉して reject
 
-      // page===1 で全置換、それ以外は追記 (biz3 pubEmployees の蓄積規則と同じ :75-87)。
-      if (chunk.page === 1) acc = [...chunk.list];
-      else acc = [...acc, ...chunk.list];
+        // page===1 で全置換、それ以外は追記 (biz3 pubEmployees の蓄積規則と同じ :75-87)。
+        if (chunk.page === 1) acc = [...chunk.list];
+        else acc = [...acc, ...chunk.list];
 
-      if (typeof chunk.totalCount === "number") total = chunk.totalCount;
+        if (typeof chunk.totalCount === "number") total = chunk.totalCount;
 
-      // 完了判定。
-      if (typeof chunk.totalPage === "number") {
-        if (chunk.page >= chunk.totalPage) finish(null);
-      } else if (typeof chunk.totalCount === "number") {
-        if (acc.length >= chunk.totalCount) finish(null);
-      }
-      // どちらも無い場合は timeout まで待つ (chunk 形不明時の保険)。
-    });
-    client.send(sendFrame);
+        // 完了判定。
+        if (typeof chunk.totalPage === "number") {
+          if (chunk.page >= chunk.totalPage) finish();
+        } else if (typeof chunk.totalCount === "number") {
+          if (acc.length >= chunk.totalCount) finish();
+        }
+        // どちらも無い場合は timeout まで待つ (chunk 形不明時の保険)。
+      },
+    }],
   });
 }
 

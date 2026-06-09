@@ -30,7 +30,7 @@ refreshToken が事実上失効しなくなります。biz3 の MIT ライセン
 
 - itemCode は `src/itemcodes.js` の 1 ソース（クラウドは `src/crypto.js` の `CMD`、BLE は `src/ble/protocol.js` の
   `ITEM` という別名で同じものを参照します）。
-- 能力は `src/ble/devicemodel.js` が **型 × 経路** で持ちます（各 kind に `cloud:[...]` と `ble:[...]` の op 集合）。
+- 能力は `src/ble/devicemodel.js` が **型 × 経路** で持ちます（各 kind に `cloud:[...]` と `ble:[...]` の op 集合）。制御 op の語彙 (`CONTROL_OPS`) はこのテーブルから **導出** され CLI (`DEVICE_ACTIONS` / 能力ゲート) が参照するため、ドリフトする 2 つ目のハードコード op 一覧は存在しません。
   **操作できる op = 両者の和集合**で、session の対象・操作メニュー・`pickTransport` の経路選択はすべて
   この和集合から導きます。
   - 例: ロックは `ble` に autolock があり `cloud` に無い → autolock は BLE 専用。
@@ -99,9 +99,12 @@ sesame-kit/
 ├── LICENSE.biz3
 ├── bin/
 │   └── sesame.js           # CLI 実行エントリ
-├── clients/                # sesame serve に繋ぐ薄い公式クライアント (依存ゼロ)
-│   ├── python/sesame_client.py   #   UDS/stdio/HTTP + イベント購読
-│   └── js/sesame-client.mjs      #   同等 (Node 18+)
+├── sdk/                    # 生成された型付き SDK (schema/openrpc.json から生成。推奨) — RPC ごと 1 メソッド、HTTP+SSE
+│   ├── ts/sesame-client.ts       #   型付き TS クライアント (drift-gated。手編集禁止)
+│   └── python/sesame_client.py   #   型付き Python クライアント (drift-gated。手編集禁止)
+├── clients/                # 手書きの薄い公式クライアント (低レベル。上級 / カスタム連携向け)
+│   ├── python/sesame_client.py   #   UDS/stdio/HTTP/WS + イベント購読、汎用 call() (依存ゼロ)
+│   └── js/sesame-client.mjs      #   同等 (Node 18+)。sdk/ と clients/ の違いは README 参照
 ├── vendor/
 │   └── biz3/constants/     # biz3 の import-zero 定数を逐語コピー (single source of truth)
 └── src/
@@ -116,9 +119,11 @@ sesame-kit/
     │   ├── sesame.proto    #   gRPC 型付き定義 (生成物)
     │   └── framing/        #   stdio / socket(UDS) / http(+SSE) / ws / grpc + token
     ├── client.js           # SesameHub3 高レベルクラス (namespace getter で op を自動注入)
+    ├── lock-manager.js     # LockManager (ロック名前解決 + 制御 op。client.js から委譲)
     ├── transport.js        # Hub3WsClient (reconnect/keepalive/queue/sleep)
     ├── auth.js             # Cognito CUSTOM_AUTH + REFRESH_TOKEN_AUTH + jwtSub
     ├── crypto.js           # AES-CMAC + uuid→base64 + cmd code 定数
+    ├── util.js             # assertSuccess / subscribeChunks (ページング push の定型) / SesameError ヘルパ
     ├── lock.js / ir.js / presetir.js / sharekey.js   # ドメイン op
     ├── ble/                # BLE 直接制御 (OS非依存コア + 差し替え可能トランスポート)
     │   ├── protocol.js     #   純JS: CMAC鍵/AES-CCM/セグメント/フレーム/mechStatus
