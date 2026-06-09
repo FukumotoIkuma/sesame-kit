@@ -6,6 +6,22 @@ A typed client for the self-hosted `sesame serve` daemon (JSON-RPC over HTTP),
 do not edit `sesame_client.py` by hand; it is drift-gated against the schema
 (`tests/sdk-py-contract.test.js`).
 
+## Get the file
+
+Not on PyPI (yet). It's **one file with zero dependencies** (stdlib `urllib`
+only) — **vendor it**: copy `sesame_client.py` into your project and
+`from sesame_client import SesameClient`. Python 3.10+ (uses `X | None`).
+
+## Types: what's typed vs not
+
+- **Params are typed keyword args** from the schema —
+  `client.lock.unlock(name="front")`, `client.lock.status(deviceUUID=...)`; a
+  missing required arg is a **TypeError at the call site** (before any network
+  I/O), enums are `Literal`.
+- **Results are `Any`** — the contract carries no result schemas yet, so treat
+  returns as dicts/lists and read fields directly. Errors are typed via
+  `SesameRpcError` (`kind` / `retryable`).
+
 ## Usage
 
 ```python

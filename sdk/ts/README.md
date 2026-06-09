@@ -5,6 +5,12 @@ A typed client for the self-hosted `sesame serve` daemon (JSON-RPC over HTTP).
 `npm run build:sdk` — do not edit `sesame-client.ts` by hand; it is drift-gated
 against the schema (`tests/sdk-ts-contract.test.js`).
 
+## Get the file
+
+Not published to npm (yet). It's a single self-contained file with **no runtime
+deps** (uses the global `fetch`, Node 18+ or any browser). **Vendor it**: copy
+`sesame-client.ts` into your project, or import it from a source checkout.
+
 ## Usage
 
 ```ts
@@ -28,6 +34,15 @@ try {
   if (e instanceof SesameRpcError && e.retryable) { /* retry */ }
 }
 ```
+
+## Types: what's typed vs not
+
+- **Params are typed** from the schema (`client.lock.unlock({ name })`,
+  `lock.status({ deviceUUID })` — a missing required field is a compile error).
+- **Results are `Promise<unknown>`** — the contract doesn't carry result schemas
+  yet, so cast/validate the return (e.g. `const st = await client.status() as
+  { connected: boolean; apiVersion: string }`). Errors are typed via
+  `SesameRpcError` (`kind` / `retryable`).
 
 ## Stability
 
