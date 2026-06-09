@@ -748,6 +748,21 @@ export class SesameHub3 {
     return devices.getDeviceStatus(this._ws, { deviceUUID });
   }
 
+  /**
+   * 読み取った複数 IC カードをクラウド DB へ一括登録する (postCards への委譲)。
+   *
+   * BLE enroll (`sesame access cards enroll`) で集約した records をそのまま渡せる。
+   * cards 要素は BLE 読み取り形 `{cardID, cardName, cardType}` (access.enrolledToCardList が
+   * postCards の list 形へ写像する)。既に postCards の list 形を持つ場合は access.postCards を直接使う。
+   * @param {string} deviceUUID 対象 Touch の deviceUUID
+   * @param {Array<{cardID:string, cardName?:string, cardType?:number}>} cards
+   * @returns {Promise<object|null>} postCards 応答 (cards 空なら null)
+   */
+  async registerCards(deviceUUID, cards) {
+    this._ensureConnected();
+    return access.syncEnrolledCards(this._ws, { deviceUUID, records: cards });
+  }
+
   async renameDevice(deviceUUID, deviceName) {
     this._ensureConnected();
     if (!this._subUUID) throw new Error(t("domain.client.subUUIDNotAvailable"));

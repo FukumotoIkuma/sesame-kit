@@ -157,6 +157,7 @@ Writing to the device firmware itself goes through a separate path (BLE); this l
 
 ```bash
 sesame access cards ls --device <uuid> [--device <uuid2> ...]   # list cards
+sesame access cards enroll --device <uuid>                      # [experimental] read IC cards over BLE (tap), bulk-register all
 sesame access cards clear --device <uuid>                       # delete all cards on the given device
 sesame access cards rm --json '[{"deviceID":"...","cardID":"..."}]'   # delete individually (no response)
 sesame access cards owner <cardID> [ownerSubUUID]               # assign an owner ('' to clear)
@@ -164,6 +165,8 @@ sesame access passcodes ls --device <uuid>                      # list passcodes
 ```
 
 > `rm` (delCards/delPasscodes) has no response handler in biz3 and is **fire-and-forget**. No completion response is returned.
+
+> `enroll` (**experimental, hardware-unverified**) connects to the Touch over BLE, enters register mode, collects **every** card you tap (the CARD_NOTIFY stream carries multiple records), then bulk-registers them to the cloud DB in one call (`registerCards` → `postCards`). Interactive: tap cards, press Enter when done; non-interactive: `--timeout <sec>` (default 20). Phones read several cards per session — this brings the same to the CLI instead of one-at-a-time.
 
 ---
 

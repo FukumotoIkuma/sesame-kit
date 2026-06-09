@@ -125,7 +125,7 @@ with explicitly unverified response shapes (`未確認` notes in source):
 
 - `org.*` (~34 ops: employees, groups, tags, device-group binding, key sharing)
 - `company.*` (4 ops)
-- `access.*` (11 ops: cards / passcodes)
+- `access.*` (11 ops: cards / passcodes) and `access.registerCards` (bulk cloud-register convenience over `postCards`; pairs with the `access cards enroll` BLE command)
 - `iot.*` (11 ops: Hub3 device mgmt, Matter, firmware)
 - `presetir.*` (3 ops) and `ir.send` / `ir.listKeys` — IR features
 - `schedule.*` (2 ops)
