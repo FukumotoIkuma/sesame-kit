@@ -2982,11 +2982,35 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "device[] (resp.data; vendor uses [0])",
-          "type": "array",
-          "items": {
-            "type": "object"
-          }
+          "description": "device | null (vendor consumes data[0])",
+          "type": "object",
+          "properties": {
+            "deviceUUID": {
+              "type": "string"
+            },
+            "deviceName": {
+              "type": "string"
+            },
+            "deviceModel": {
+              "type": "string"
+            },
+            "secretKey": {
+              "type": "string"
+            },
+            "keyLevel": {
+              "type": "number"
+            },
+            "rank": {
+              "type": "number"
+            },
+            "stateInfo": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "deviceUUID"
+          ],
+          "nullable": true
         }
       },
       "x-stability": "stable",

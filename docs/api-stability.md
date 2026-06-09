@@ -100,7 +100,7 @@ Each qualifies under the stable test above: **load-bearing in the official app**
 | `lock.unlock` | `name` \| `{deviceUUID, secretKey}` | |
 | `lock.toggle` | same | cloud decides direction (cmd 88) |
 | `lock.click` | same | bot click (cmd 89) |
-| `lock.status` | `{deviceUUID}` | status snapshot |
+| `lock.status` | `{deviceUUID}` | single device snapshot or `null` (vendor consumes `data[0]`; the daemon unwraps the transport array — `references_web/.../useManageDevice.js:84`) |
 
 ### devices / telemetry
 | Method | Params |

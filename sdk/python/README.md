@@ -18,12 +18,19 @@ only) — **vendor it**: copy `sesame_client.py` into your project and
   `client.lock.unlock(name="front")`, `client.lock.status(deviceUUID=...)`; a
   missing required arg is a **TypeError at the call site** (before any network
   I/O), enums are `Literal`.
-- **Stable methods are typed** — `status()` / `lock.*` / `account.whoami` return
-  `dict[str, Any]`, `devices.list()` / `device.history()` return
-  `list[dict[str, Any]]`, etc. (Python has no inline object types, so the field
-  set lives in the docstring/schema, not the annotation — full TypedDicts are a
-  possible follow-up.) Experimental / un-traced methods return `Any`. Errors are
-  typed via `SesameRpcError` (`kind` / `retryable`).
+- **Stable methods return generated `TypedDict`s** — `status()` returns
+  `StatusResult`, `account.whoami()` returns `AccountWhoamiResult`,
+  `devices.list()` returns `list[DevicesListResultItem]`, `device.battery()`
+  returns `DeviceBatteryResult`, etc. Field-level optionality is encoded with
+  `NotRequired[...]`. `lock.status()` returns `LockStatusResult | None` (vendor
+  consumes only the first element, so an empty result is `None`). Sub-objects
+  whose interior shape isn't pinned (e.g. `stateInfo`, `quotas`) stay `Any`.
+  Experimental / un-traced methods return `Any`. Errors are typed via
+  `SesameRpcError` (`kind` / `retryable`).
+  - The `TypedDict`s use `NotRequired` (typing 3.11+) imported under
+    `TYPE_CHECKING`; `from __future__ import annotations` keeps every annotation
+    a string, so the file still imports and runs on **Python 3.10** while type
+    checkers see the full shape.
 
 ## Usage
 

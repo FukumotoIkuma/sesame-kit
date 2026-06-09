@@ -32,6 +32,12 @@ function tsType(schema) {
  */
 function tsResultType(schema) {
   if (!schema || typeof schema !== "object") return "unknown";
+  const base = tsResultTypeBase(schema);
+  // nullable:true の result は値が null になりうる (例: lock.status が空なら null)。
+  return schema.nullable ? `${base} | null` : base;
+}
+
+function tsResultTypeBase(schema) {
   if (schema.properties) {
     const req = schema.required || [];
     const fields = Object.entries(schema.properties).map(([k, v]) => {

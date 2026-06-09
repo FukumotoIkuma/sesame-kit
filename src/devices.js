@@ -56,14 +56,24 @@ export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS } 
   });
 }
 
-/** 単機の現在状態 (ロック開閉、電池等)。biz3 では isFromApp=true 限定だが CLI でも投げてみる価値あり。 */
+/**
+ * 単機の現在状態 (ロック開閉、電池等)。biz3 では isFromApp=true 限定だが CLI でも投げてみる価値あり。
+ *
+ * vendor は応答 `data` を配列で受けるが、**消費するのは先頭要素のみ** (単一デバイスの状態)。
+ *   references_web/src/api/useManageDevice.js:84
+ *     setDeviceStatus(message.data?.length > 0 ? message.data[0] : null);
+ * よって生の transport 配列を露出せず vendor と同じ「単一 device-status または null」を返す
+ * (配列を返すと全消費者に `[0]` を強要し、2 要素目が来ない契約が暗黙になる)。
+ *
+ * @returns {Promise<object|null>} 単一の device-status (devices 一覧の 1 要素と同形)、無ければ null
+ */
 export async function getDeviceStatus(client, { deviceUUID }) {
   const resp = await client.request(
     { action: ACT_MANAGE, op: "getDeviceStatus", deviceUUID },
     DEFAULT_TIMEOUT_MS,
   );
   assertSuccess(resp, "getDeviceStatus", { strict: true });
-  return resp.data;
+  return Array.isArray(resp.data) && resp.data.length > 0 ? resp.data[0] : null;
 }
 
 /** デバイス名変更。subUUID は呼び出し側 (client.js) が持つ。 */

@@ -32,18 +32,67 @@ function pyType(schema) {
   }
 }
 
-/** result schema → Python 戻り型。形不明 (bare object/{}) は Any。object は dict[str, Any]
- * (Python はインライン object 型が無いため。完全な型は TypedDict 化が要るが現状はここまで)。 */
-function pyResultType(schema) {
+/** PascalCase 連結でクラス名を作る (path セグメントから決定的に・識別子に正規化)。 */
+function pyClassName(s) {
+  return String(s).replace(/[^A-Za-z0-9]+/g, " ").trim().split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+}
+
+/** result schema → Python 戻り型。properties 付き object は TypedDict を classes に登録して
+ * そのクラス名を返す (= 完全型付け)。形不明 (bare object / {}) は Any (嘘をつかない)。
+ * nullable:true は `| None` を付す。`classes`: Map<className, {fields}|null(予約中)>。 */
+function pyResultType(schema, prefix, classes) {
   if (!schema || typeof schema !== "object") return "Any";
-  if (schema.properties) return "dict[str, Any]";
+  const base = pyResultTypeBase(schema, prefix, classes);
+  return schema.nullable ? `${base} | None` : base;
+}
+
+function pyResultTypeBase(schema, prefix, classes) {
+  if (schema.properties) return registerTypedDict(schema, prefix, classes);
   switch (schema.type) {
     case "string": return "str";
     case "number": return "float";
     case "boolean": return "bool";
-    case "array": return `list[${pyResultType(schema.items || {})}]`;
-    default: return "Any"; // bare object / 型不明
+    case "array": return `list[${pyResultType(schema.items || {}, `${prefix}Item`, classes)}]`;
+    default: return "Any"; // bare object (中身未確定) / 型不明 → Any
   }
+}
+
+/** properties 付き object を TypedDict として classes に登録し、クラス名を返す (冪等)。
+ * Python 識別子にできないキーが 1 つでもあれば TypedDict 化を諦め dict[str, Any] に落とす
+ * (functional TypedDict は __future__ annotations 下で NotRequired を評価できず 3.10 で壊れるため)。 */
+function registerTypedDict(schema, name, classes) {
+  const props = Object.entries(schema.properties);
+  const unsafe = props.some(([k]) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) || PY_KEYWORDS.has(k));
+  if (unsafe) return "dict[str, Any]";
+  if (!classes.has(name)) {
+    classes.set(name, null); // 予約 (再帰/循環での重複登録を防ぐ)
+    const req = schema.required || [];
+    const fields = props.map(([k, v]) => ({
+      name: k,
+      type: pyResultType(v, `${name}${pyClassName(k)}`, classes),
+      required: req.includes(k),
+    }));
+    classes.set(name, { fields });
+  }
+  return name;
+}
+
+/** メソッドの戻り型を解決 (root の命名規則を与える)。`classes` に TypedDict を副作用で登録。 */
+function methodReturnType(schema, methodName, classes) {
+  return pyResultType(schema, `${pyClassName(methodName)}Result`, classes);
+}
+
+/** 収集した TypedDict 定義をソース化。optional フィールドは NotRequired[...] (3.11+ 型;
+ * __future__ annotations で注釈は文字列化されるため 3.10 ランタイムでも安全)。 */
+function emitTypedDicts(classes) {
+  const blocks = [];
+  for (const [name, def] of classes) {
+    if (!def) continue;
+    const lines = def.fields.map((f) => `    ${f.name}: ${f.required ? f.type : `NotRequired[${f.type}]`}`);
+    blocks.push(`class ${name}(TypedDict):\n${lines.length ? lines.join("\n") : "    pass"}`);
+  }
+  return blocks.join("\n\n\n");
 }
 
 /** params 配列 → {usable, sig, body}。usable=false なら **params フォールバック。 */
@@ -62,12 +111,12 @@ function methodParams(params) {
   return { generic: false, sig, dict };
 }
 
-function emitMethod(m, indent) {
+function emitMethod(m, indent, classes) {
   const mp = methodParams(m.params);
   const tag = m["x-stability"] === "experimental"
     ? `${indent}    """@experimental (${m["x-provenance"]}) — may change without notice."""\n`
     : "";
-  const ret = pyResultType(m.result?.schema);
+  const ret = methodReturnType(m.result?.schema, m.name, classes);
   if (mp.generic) {
     return `${indent}def ${m.op}(self, **params: Any) -> ${ret}:\n${tag}${indent}    return self._c._call(${JSON.stringify(m.name)}, params)`;
   }
@@ -86,23 +135,28 @@ export function generateSdkPy(spec) {
     groups.get(ns).push({ ...m, op });
   }
 
+  // result schema 由来の TypedDict を収集 (メソッド emit の副作用で登録される)。
+  // 登録順 = namespace ソート → root の決定的順で drift gate と一致する。
+  const classes = new Map();
+
   const nsClasses = [];
   const nsAttrs = [];
   for (const [ns, methods] of [...groups].sort((a, b) => a[0].localeCompare(b[0]))) {
     if (ns === "") continue;
     const cls = `_${ns.charAt(0).toUpperCase()}${ns.slice(1)}`;
-    nsClasses.push(`class ${cls}:\n    def __init__(self, c: "SesameClient") -> None:\n        self._c = c\n\n${methods.map((m) => emitMethod(m, "    ")).join("\n\n")}`);
+    nsClasses.push(`class ${cls}:\n    def __init__(self, c: "SesameClient") -> None:\n        self._c = c\n\n${methods.map((m) => emitMethod(m, "    ", classes)).join("\n\n")}`);
     nsAttrs.push(`        self.${ns} = ${cls}(self)`);
   }
   // ルート直下メソッド (status 等) は SesameClient のメソッドとして出す。
   const rootMethods = (groups.get("") || []).map((m) => {
     const mp = methodParams(m.params);
     const tag = m["x-stability"] === "experimental" ? `        """@experimental (${m["x-provenance"]})."""\n` : "";
-    const ret = pyResultType(m.result?.schema);
+    const ret = methodReturnType(m.result?.schema, m.name, classes);
     if (mp.generic) return `    def ${m.op}(self, **params: Any) -> ${ret}:\n${tag}        return self._call(${JSON.stringify(m.name)}, params)`;
     return `    def ${m.op}(self, *, ${mp.sig.join(", ")}) -> ${ret}:\n${tag}        return self._call(${JSON.stringify(m.name)}, _omit_none({${mp.dict.join(", ")}}))`;
   }).join("\n\n");
 
+  const typedDicts = emitTypedDicts(classes);
   const stableCount = spec.methods.filter((m) => m["x-stability"] === "stable").length;
   // 購読可能 topic (event.ready 等の broadcast は含まない)。型もここから導出 = drift gate 対象。
   const eventTopics = spec["x-event-topics"] || [];
@@ -119,7 +173,10 @@ from __future__ import annotations
 import json
 import urllib.request
 from urllib.parse import quote
-from typing import Any, Callable, Literal  # noqa: F401  (Literal used by generated enums)
+from typing import TYPE_CHECKING, Any, Callable, Literal, TypedDict  # noqa: F401  (Literal used by generated enums)
+
+if TYPE_CHECKING:  # NotRequired は 3.11+ だが __future__ annotations で注釈は文字列化され 3.10 でも安全。
+    from typing import NotRequired  # noqa: F401
 
 API_VERSION = ${JSON.stringify(spec.info["x-apiVersion"])}
 
@@ -138,6 +195,11 @@ class SesameRpcError(Exception):
 
 def _omit_none(d: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
+
+
+# Result shapes (TypedDict) for stable methods — derived from the traced response shapes in
+# src/serve/result-schemas.js. Fields whose interior shape isn't pinned stay Any / dict[str, Any].
+${typedDicts}
 
 
 ${nsClasses.join("\n\n\n")}

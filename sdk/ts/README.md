@@ -41,8 +41,10 @@ try {
   `lock.status({ deviceUUID })` — a missing required field is a compile error).
 - **Stable methods have typed results** — `await client.status()` is
   `{ connected, authState, apiVersion, ... }` (no cast needed), `devices.list()`
-  is `Array<{ deviceUUID, deviceName?, ... }>`, etc. Sub-objects whose shape
-  isn't pinned (e.g. `stateInfo`, `quotas`) are `unknown`.
+  is `Array<{ deviceUUID, deviceName?, ... }>`, etc. `lock.status()` is
+  `{ deviceUUID, ... } | null` (vendor consumes only the first element, so an
+  empty result is `null`). Sub-objects whose shape isn't pinned (e.g.
+  `stateInfo`, `quotas`) are `unknown`.
 - **Experimental / un-traced methods return `Promise<unknown>`** — cast or
   validate those. Errors are typed via `SesameRpcError` (`kind` / `retryable`).
 
