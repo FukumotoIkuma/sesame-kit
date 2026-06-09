@@ -86,13 +86,15 @@ export async function getEmployees(client, { companyID, timeoutMs = DEFAULT_TIME
 /**
  * ログイン中の自分自身の社員情報を取得する。companyID も items も不要。
  * biz3: registerCallback(action,'currentInfo',cb) で同期受信 (useManageEmployee.js:187-197)。
+ * 応答本体は res.data (vendor 確認: MobileMeIndex.js:60 setCurrentUserInfo(res.data) /
+ * me/index.js:36)。既知フィールド: nickname / email。
  * @param {import("./transport.js").Hub3WsClient} client
- * @returns {Promise<object>} 応答 message (data 構造は biz3 では未確認: 呼出側 me/index.js 依存)
+ * @returns {Promise<object>} res.data (例: { nickname, email, ... })
  */
 export async function getCurrentUserInfo(client, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const resp = await client.request({ action: ACT_EMPLOYEE, op: "currentInfo" }, timeoutMs);
   assertSuccess(resp, "getCurrentUserInfo");
-  return resp?.data ?? resp;
+  return resp.data; // vendor は常に res.data を読む (?? resp フォールバックは推測だった)
 }
 
 /**

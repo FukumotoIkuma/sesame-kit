@@ -28,22 +28,29 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 /** 個人ユーザのデバイス一覧。companyID 不要。 */
 export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  // 応答は PubedUserDevice 系で来る可能性 (catalog より)。pending 単純解決を試み、
-  // 失敗時は listener fallback を用意する。
+  // biz3 PubedUserDevice は page 単位 push (vendor 確認: useManageDevice.js:38-55):
+  //   message.data = { totalPage, data: { list, page } }
+  // page===1 で全置換、page>1 で追記、totalPage===page で完了。単発 resolve だと複数
+  // ページのデバイスを取りこぼすため、全 page を蓄積して返す。
   return new Promise((resolve, reject) => {
     let done = false;
-    const to = setTimeout(() => {
-      if (done) return;
-      done = true;
-      unsub();
-      reject(new Error(t("domain.devices.getUserDeviceTimeout")));
-    }, timeoutMs);
-    const unsub = client.subscribe(`${ACT_MANAGE}:PubedUserDevice`, (msg) => {
+    let acc = [];
+    let unsub = () => {};
+    const finish = (err, val) => {
       if (done) return;
       done = true;
       clearTimeout(to);
       unsub();
-      resolve(msg?.data?.data?.list || msg?.data?.list || msg?.data || []);
+      if (err) reject(err); else resolve(val);
+    };
+    const to = setTimeout(() => finish(new Error(t("domain.devices.getUserDeviceTimeout"))), timeoutMs);
+    unsub = client.subscribe(`${ACT_MANAGE}:PubedUserDevice`, (msg) => {
+      const totalPage = msg?.data?.totalPage;
+      const inner = msg?.data?.data ?? {};
+      const page = inner.page ?? 1;
+      acc = page === 1 ? [...(inner.list ?? [])] : [...acc, ...(inner.list ?? [])];
+      // totalPage が無ければ単一 chunk とみなし即完了 (vendor も totalPage===page で確定)。
+      if (typeof totalPage !== "number" || page >= totalPage) finish(null, acc);
     });
     client.send({ action: ACT_MANAGE, op: "getUserDevice" });
   });
@@ -335,9 +342,9 @@ export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalT
  *   ・token は mSesameToken の **hex** 文字列 (CHSesameOS3.kt:477 toHexString())
  *   ・secretKey は sesame2KeyData.secretKey をそのまま
  *
- * 戻り値: guestKeysSignPost は String を返し、SDK は login(it.data) に渡す。
- *   = session token (hex)。JSON ラップ ({data:...} 等) されている可能性があるため
- *     text / json.data / json をこの順で session token として解決する。
+ * 戻り値: guestKeysSignPost は **素の String** を返す (HTTP body そのものが token)。
+ *   SDK 確認: CHAPIClient.kt:95 `guestKeysSignPost(...): String` → CHSesameOS3.kt:481
+ *   login(it.data)。JSON ラップ ({data:...}) は vendor に存在しないので生 body (text) を採る。
  *
  * @param {(req)=>Promise<{status,text,json}>} transport makeRegisterTransport の戻り値、または fake。
  * @param {{deviceUUID:string, tokenHex:string, secretKey:string}} p
@@ -356,10 +363,9 @@ export async function signGuestKey(transport, { deviceUUID, tokenHex, secretKey 
   const res = await transport({ method: "POST", path: REG_PATH_SIGN, body });
   // 非 2xx (4xx/5xx) はここで拒否。エラー JSON ボディを session token として誤採用しない。
   assertHttpOk(res, "signGuestKey");
-  // guestKeysSignPost の戻りは String (= session token hex)。素の text を最優先で採る。
-  const token = (typeof res.json === "string" && res.json)
-    || (res.json && typeof res.json === "object" && typeof res.json.data === "string" && res.json.data)
-    || res.text;
+  // guestKeysSignPost の戻りは素の String (= session token hex。HTTP body)。生 body を採る。
+  // transport が body を JSON 文字列としてパースした場合のみ res.json (string) を使う。
+  const token = res.text || (typeof res.json === "string" ? res.json : "");
   if (!token) throw new Error(t("domain.devices.signGuestKeyNoToken"));
   return token;
 }
