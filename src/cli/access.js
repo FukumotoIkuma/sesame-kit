@@ -241,7 +241,9 @@ export function registerAccessCommands(program, ctx) {
   // sesame access cards enroll --device <uuid>  (experimental, BLE 物理読み取り)
   //
   // BLE で Touch を register モード (MODE_REGISTER=1, SSMBiometricCard.kt:74) にし、タップされた
-  // 複数カードを onEnroll で集約 → 終端でクラウド DB へ一括登録 (hub.registerCards = postCards 委譲)。
+  // 複数カードを 1 枚ずつ収集 (registerDelegate.onCardReceive) → クラウド DB へ一括登録
+  // (hub.registerCards = postCards 委譲)。_LAST 待ちの onEnroll ではなく即時収集なので、
+  // _LAST の到達順/解除順に依存して取りこぼさない。
   // ⚠️ 実機未検証: _FIRST/_NOTIFY/_LAST の到達順・cardName(hex) は HW で要確認 (biometric.js:839)。
   cards
     .command("enroll")
@@ -261,18 +263,22 @@ export function registerAccessCommands(program, ctx) {
         if (!dev) { ctx.die(t("access.err.cards.enroll.deviceNotFound", { deviceUUID }), 2); return; }
         if (!dev.secretKey) { ctx.die(t("access.err.cards.enroll.noSecretKey", { deviceUUID }), 2); return; }
 
-        const ble = ctx.makeBle({ secretKey: dev.secretKey, deviceUUID, model: dev.deviceModel ?? null, debug: !!opts?.debug });
+        const ble = ctx.makeBle({ secretKey: dev.secretKey, deviceUUID, model: dev.deviceModel ?? null, debug: !!opts.debug });
         // 生体非対応機種なら明示エラー (biometric ゲッタが throw。op を捏造しない)。
+        // transport は遅延 (NobleTransport は connect() まで noble を開かない) ので構築済みでも leak しない。
         try { void ble.biometric; }
         catch { ctx.die(t("access.err.cards.enroll.notBiometric", { deviceUUID, model: dev.deviceModel ?? "?" }), 2); return; }
 
         const collected = new Map(); // cardID -> record (重複排除)
         try {
           await ble.connect();
-          const unsub = ble.biometric.onEnroll((batch) => {
-            if (batch.kind !== "card") return;
-            for (const r of batch.records) if (r?.cardID) collected.set(r.cardID, r);
-          }, { card: true, passcode: false });
+          // カードを 1 枚ずつ即時収集する (createEnrollCollector は _LAST でしか flush しないため、
+          // _LAST の到達タイミング/unsub 順に依存して取りこぼしうる — 実機未検証 biometric.js:839)。
+          const unsub = ble.biometric.registerDelegate({
+            onCardReceive: (cardID, cardName, cardType) => {
+              if (cardID) collected.set(cardID, { cardID, cardName, cardType });
+            },
+          });
           try {
             await ble.biometric.cardModeSet(1); // MODE_REGISTER
             if (ctx.canPrompt()) {
@@ -283,10 +289,13 @@ export function registerAccessCommands(program, ctx) {
               await new Promise((r) => setTimeout(r, sec * 1000));
             }
           } finally {
-            unsub();
-            await ble.biometric.cardModeSet(0).catch(() => {}); // MODE_CONTROL へ戻す (best-effort)
+            await ble.biometric.cardModeSet(0).catch(() => {}); // 先に register を抜け (抜ける際の publish も拾う)、
+            unsub();                                            // その後に listener を解除する。
           }
         } catch (e) {
+          // die() は process.exit するため finally の close は走らない。明示的に後始末してから die。
+          await ble.biometric.cardModeSet(0).catch(() => {}); // best-effort で control へ戻す
+          await ble.close().catch(() => {});
           ctx.die(t("access.err.cards.enroll.bleFailed", { error: e?.message || String(e) }), 1);
           return;
         } finally {
