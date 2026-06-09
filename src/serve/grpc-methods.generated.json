@@ -347,6 +347,12 @@
     "method": "devices.list",
     "jsonFields": []
   },
+  "AccessRegisterCards": {
+    "method": "access.registerCards",
+    "jsonFields": [
+      "cards"
+    ]
+  },
   "DeviceHistory": {
     "method": "device.history",
     "jsonFields": []

@@ -70,6 +70,8 @@ declare namespace _default {
         "serve.result.statePush": string;
         "serve.sum.lockStatus": string;
         "serve.desc.targetDeviceUUID": string;
+        "serve.sum.accessRegisterCards": string;
+        "serve.desc.registerCardsCards": string;
         "serve.sum.devicesList": string;
         "serve.sum.deviceHistory": string;
         "serve.sum.deviceBattery": string;
@@ -182,6 +184,8 @@ declare namespace _default {
         "serve.result.statePush": string;
         "serve.sum.lockStatus": string;
         "serve.desc.targetDeviceUUID": string;
+        "serve.sum.accessRegisterCards": string;
+        "serve.desc.registerCardsCards": string;
         "serve.sum.devicesList": string;
         "serve.sum.deviceHistory": string;
         "serve.sum.deviceBattery": string;

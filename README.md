@@ -33,7 +33,7 @@
 - Hub3 IR: emit existing remotes, learn from a physical remote, remote / key CRUD, preset DB search
 - Device management: list, rename, delete, current state, state-push subscriptions
 - History: lock open/close history, battery history
-- Access control: NFC card / keypad passcode DB sync
+- Access control: NFC card / keypad passcode DB sync, plus **bulk IC-card enroll over BLE** (`access cards enroll` — tap several cards, register them all in one call; experimental)
 - Scheduling / company & org: schedules, enterprise features (employees, roles, device groups, key sharing)
 - Hub3 IoT: LED dimming, LTE relay, firmware update, Matter pairing
 - Language-agnostic backend: `sesame serve` exposes every feature as JSON-RPC over stdio / UDS / HTTP / WS / gRPC

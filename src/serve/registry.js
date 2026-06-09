@@ -108,6 +108,17 @@ function topLevelEntries() {
       params: [], result: "device[]",
       handler: ({ hub, daemon }) => { requireAuth(daemon); return hub.listDevices(); },
     },
+    // クラウド一括登録の convenience。BLE で読み取った複数カードの records を 1 回の postCards へ
+    // まとめて投入する (vendor 検証済 postCards へ委譲。新 WS op は捏造しない)。experimental。
+    "access.registerCards": {
+      summary: t("serve.sum.accessRegisterCards"),
+      params: [
+        { name: "deviceUUID", required: true, desc: t("serve.desc.targetDeviceUUID"), schema: S },
+        { name: "cards", required: true, desc: t("serve.desc.registerCardsCards"), schema: { type: "array", items: { type: "object" } } },
+      ],
+      result: "postCards ack (null if cards empty)",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID", "cards"]); return hub.registerCards(params.deviceUUID, params.cards); },
+    },
     "device.history": {
       summary: t("serve.sum.deviceHistory"),
       params: [{ name: "deviceUUID", required: true, schema: S }, { name: "pageSize", required: false, schema: N }], result: "history[]",

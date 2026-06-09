@@ -77,6 +77,7 @@ service Sesame {
   rpc LockClick (LockClickRequest) returns (JsonRpc);
   rpc LockStatus (LockStatusRequest) returns (JsonRpc);
   rpc DevicesList (DevicesListRequest) returns (JsonRpc);
+  rpc AccessRegisterCards (AccessRegisterCardsRequest) returns (JsonRpc);
   rpc DeviceHistory (DeviceHistoryRequest) returns (JsonRpc);
   rpc DeviceBattery (DeviceBatteryRequest) returns (JsonRpc);
   rpc DeviceHideHistory (DeviceHideHistoryRequest) returns (JsonRpc);
@@ -451,6 +452,10 @@ message LockStatusRequest {
   string deviceUUID = 1;
 }
 message DevicesListRequest {
+}
+message AccessRegisterCardsRequest {
+  string deviceUUID = 1;
+  string cards = 2;
 }
 message DeviceHistoryRequest {
   string deviceUUID = 1;

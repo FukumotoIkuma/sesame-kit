@@ -168,6 +168,7 @@ SESAME Touch (Pro) の NFC カード・キーパッド暗証番号の **サー�
 
 ```bash
 sesame access cards ls --device <uuid> [--device <uuid2> ...]   # カード一覧
+sesame access cards enroll --device <uuid>                      # [experimental] IC カードを BLE 読み取り(タップ)→ 複数を一括登録
 sesame access cards clear --device <uuid>                       # 指定デバイスのカード全削除
 sesame access cards rm --json '[{"deviceID":"...","cardID":"..."}]'   # 個別削除 (応答なし)
 sesame access cards owner <cardID> [ownerSubUUID]               # 所有者割当 ('' で解除)
@@ -175,6 +176,8 @@ sesame access passcodes ls --device <uuid>                      # 暗証番号�
 ```
 
 > `rm` (delCards/delPasscodes) は biz3 に応答ハンドラが無く **fire-and-forget**。完了応答は返りません。
+
+> `enroll` (**experimental・実機未検証**) は Touch に BLE 接続して register モードに入り、タップした **すべて** のカードを集約 (CARD_NOTIFY は複数レコードを含む) → クラウド DB へ 1 回で一括登録します (`registerCards` → `postCards`)。対話時はタップ後 Enter、非対話は `--timeout <sec>` (既定 20)。スマホが 1 セッションで複数枚読めるのと同じことを、1 枚ずつでなく CLI でも行えます。
 
 ---
 

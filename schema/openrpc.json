@@ -3089,6 +3089,40 @@
       "x-provenance": "app-core"
     },
     {
+      "name": "access.registerCards",
+      "summary": "[experimental] bulk-register read IC cards to the cloud DB (postCards)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "target deviceUUID",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cards",
+          "required": true,
+          "description": "card records to register: [{cardID, cardName, cardType}, ...]",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "postCards ack (null if cards empty)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "device.history",
       "summary": "open/close history",
       "params": [

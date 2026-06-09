@@ -301,6 +301,21 @@ export class SesameHub3 {
     /** 個人ユーザのデバイス一覧 (会社 vs 個人で別 op)。 */
     listUserDevices(): Promise<any>;
     getDeviceStatus(deviceUUID: any): Promise<any>;
+    /**
+     * 読み取った複数 IC カードをクラウド DB へ一括登録する (postCards への委譲)。
+     *
+     * BLE enroll (`sesame access cards enroll`) で集約した records をそのまま渡せる。
+     * cards 要素は BLE 読み取り形 `{cardID, cardName, cardType}` (access.enrolledToCardList が
+     * postCards の list 形へ写像する)。既に postCards の list 形を持つ場合は access.postCards を直接使う。
+     * @param {string} deviceUUID 対象 Touch の deviceUUID
+     * @param {Array<{cardID:string, cardName?:string, cardType?:number}>} cards
+     * @returns {Promise<object|null>} postCards 応答 (cards 空なら null)
+     */
+    registerCards(deviceUUID: string, cards: Array<{
+        cardID: string;
+        cardName?: string;
+        cardType?: number;
+    }>): Promise<object | null>;
     renameDevice(deviceUUID: any, deviceName: any): Promise<any>;
     /** company から指定 UUID のデバイスを削除。 */
     deleteDevice(deviceUUID: any): Promise<any>;

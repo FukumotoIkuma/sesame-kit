@@ -24,6 +24,7 @@ function makeFakeHub({ connected = true, devices = {} } = {}) {
     lock: vi.fn(async (n) => ({ ok: true, n })),
     unlockDevice: vi.fn(async (p) => ({ ok: true, p })),
     getDeviceStatus: vi.fn(async (u) => ({ uuid: u, locked: true })),
+    registerCards: vi.fn(async (u, cards) => ({ ok: true, u, count: cards.length })),
     listDevices: vi.fn(async () => [{ deviceUUID: "u1" }]),
     getLoginUser: vi.fn(async () => ({ companyID: "co" })),
   };
@@ -60,7 +61,7 @@ describe("registry", () => {
       expect(has(ns), `getter ${ns}`).toBe(true);
     }
     // トップレベルが参照するメソッド
-    for (const m of ["unlock", "lock", "toggle", "botClick", "unlockDevice", "getDeviceStatus", "listDevices", "getLoginUser", "getDeviceHistory", "getDeviceBattery", "send", "listKeys"]) {
+    for (const m of ["unlock", "lock", "toggle", "botClick", "unlockDevice", "getDeviceStatus", "registerCards", "listDevices", "getLoginUser", "getDeviceHistory", "getDeviceBattery", "send", "listKeys"]) {
       expect(has(m), `method ${m}`).toBe(true);
     }
   });
