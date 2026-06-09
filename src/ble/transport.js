@@ -18,6 +18,7 @@
 
 import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
 import { t } from "../i18n.js";
 import { GATT, COMPANY_ID } from "./protocol.js";
 import { PRODUCT_TYPES, KIND } from "./devicemodel.js";
@@ -163,13 +164,113 @@ let _nobleLoaded = false;
 /** このプロセスで noble をロード済みか (= 通常 exit ではプロセスが終わらない)。 */
 export function bleWasUsed() { return _nobleLoaded; }
 
+// ---------- ネイティブ abort (SIGABRT) を JS で握れない問題への対策 ----------
+//
+// @abandonware/noble の CoreBluetooth バインディングは、Bluetooth 権限 (entitlement) が無い /
+// アダプタが無い / サンドボックス環境では、ネイティブ central manager を初期化した瞬間に C++ の
+// abort() を呼ぶ。これは JS の例外ではなくプロセスレベルの SIGABRT (終了コード 134) なので
+// try/catch では一切握れず、stateChange イベントすら JS へ届かない (waitPoweredOn の unauthorized/
+// unsupported ガードは発火できない)。実測 (darwin, 権限なし):
+//   - require("@abandonware/noble")            → 安全 (バインディングは遅延初期化)
+//   - noble.state を読む / on("stateChange")    → CBCentralManager 初期化 → SIGABRT
+// つまり「require は安全だが、state を触った瞬間に落ちる」。本プロセスで state を触る前に、
+// 同一バインディングを**子プロセス**で初期化させて生死を観測し、abort を**プロセス境界の外**で
+// 起こさせてから親で安全/危険を判定する (親プロセスは決して巻き添えにならない)。
+//
+// 子の出力契約:
+//   stdout "STATE:<s>" + exit 0  : central manager 初期化に成功し state を観測できた (アダプタ有り)。
+//                                   親はそのまま in-process で noble を使ってよい (waitPoweredOn が
+//                                   poweredOn/poweredOff/unauthorized 等を JS で正しく拾える)。
+//   stdout "LOADERR:<msg>" + exit 3: require 自体が失敗 (未導入) → BLE_NO_ADAPTER。
+//   それ以外 (SIGABRT / 非0 終了, STATE: 無し)         : ネイティブ abort → アダプタ無し/権限なし。
+//                                   既存の BLE_UNAUTHORIZED / BLE_UNSUPPORTED へマップする。
+
+// 子プロセスで実行するプローブ本体。noble を require し state を 1 度だけ観測して報告する。
+// require は安全だが state アクセスで abort し得るため、その abort は**この子の中**で起き、
+// 親には signal/exit code として伝わる (stdout に STATE: を出す前なら「危険」と判定される)。
+// `-e '(function(){...})()'` で実行するため return を使える IIFE 本体として書く。
+const BLE_PROBE_SRC = `(function () {
+  var noble;
+  try { noble = require("@abandonware/noble"); }
+  catch (e) { process.stdout.write("LOADERR:" + String((e && e.message) || e).split("\\n")[0]); process.exit(3); }
+  var report = function (s) { try { process.stdout.write("STATE:" + String(s)); } catch (_) {} process.exit(0); };
+  try {
+    // ここで state を触る = CBCentralManager 初期化 = 権限なしなら SIGABRT (この子が落ちる)。
+    if (noble.state && noble.state !== "unknown") return report(noble.state);
+    var done = false;
+    var to = setTimeout(function () { if (!done) { done = true; report(noble.state || "timeout"); } }, 4000);
+    noble.on("stateChange", function (s) { if (!done) { done = true; clearTimeout(to); report(s); } });
+  } catch (e) {
+    // state アクセスが JS 例外として返る稀な実装も BLE_UNSUPPORTED 相当 (STATE: を出さず非0 終了)。
+    process.exit(2);
+  }
+})()`;
+
+// プローブ結果のキャッシュ (1 プロセス 1 回で十分。子 spawn のコストを毎回払わない)。
+let _probeResult = null;
+
+/**
+ * noble のネイティブバインディングを子プロセスで初期化して生死を観測する。
+ * abort はプロセス境界の外で起こさせ、親プロセスを巻き添えにしない。
+ * @returns {{kind:"ok", state:string} | {kind:"noAdapter", cause:string} | {kind:"aborted"}}
+ */
+function probeBleAvailability() {
+  if (_probeResult) return _probeResult;
+  const r = spawnSync(process.execPath, ["-e", BLE_PROBE_SRC], {
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 8_000,
+  });
+  const stdout = String(r.stdout || "");
+  if (stdout.startsWith("STATE:")) {
+    _probeResult = { kind: "ok", state: stdout.slice("STATE:".length) };
+  } else if (stdout.startsWith("LOADERR:")) {
+    _probeResult = { kind: "noAdapter", cause: stdout.slice("LOADERR:".length) };
+  } else {
+    // signal (SIGABRT 等) / 非0 終了で STATE: が無い = ネイティブ abort。
+    _probeResult = { kind: "aborted" };
+  }
+  return _probeResult;
+}
+
+/**
+ * ネイティブ abort を検知したときに投げる、導線付きエラーを組み立てる。
+ * macOS は Bluetooth 権限 (entitlement) 不足が最頻なので BLE_UNAUTHORIZED、それ以外
+ * (Linux/RPi/headless: アダプタ無し・権限不足) は BLE_UNSUPPORTED にマップする。
+ * いずれも waitPoweredOn の既存 i18n 文言を流用し、abort 由来の追加ヒントを添える。
+ */
+function bleAbortError() {
+  if (process.platform === "darwin") {
+    const e = new Error(`${t("ble.bluetoothUnauthorized")} ${t("ble.nativeAbortHint")}`);
+    e.code = "BLE_UNAUTHORIZED"; // CLI 側で設定ペインを開く判定に使う (waitPoweredOn と同じ)
+    return e;
+  }
+  const e = new Error(`${t("ble.bluetoothUnsupported")} ${t("ble.nativeAbortHint")}`);
+  e.code = "BLE_UNSUPPORTED";
+  return e;
+}
+
 /**
  * noble を遅延ロードする。未導入・ロード失敗時は導線付きエラー。
+ *
+ * ★ require() の前に必ず子プロセスプローブを通す。noble の state を本プロセスで触ると
+ * 権限/アダプタ無し環境では SIGABRT (exit 134, JS で握れない) で**無言クラッシュ**するため、
+ * 危険判定は子プロセスに肩代わりさせ、本プロセスは安全と分かってからのみ noble を初期化する。
  * @returns {any} noble モジュール
  */
 function loadNoble() {
+  const probe = probeBleAvailability();
+  if (probe.kind === "noAdapter") {
+    const err = new Error(t("ble.noAdapter", { cause: probe.cause }));
+    err.code = "BLE_NO_ADAPTER";
+    throw err;
+  }
+  if (probe.kind === "aborted") {
+    // 本プロセスで state を触れば同じ SIGABRT で無言クラッシュする。触る前に導線付きで止める。
+    throw bleAbortError();
+  }
+  // probe.kind === "ok": 子プロセスで central manager 初期化に成功している → 本プロセスでも安全。
   try {
-    // @abandonware/noble は optionalDependency。未導入なら下で握る。
+    // @abandonware/noble は optionalDependency。未導入なら下で握る (通常はプローブが先に検知する)。
     const noble = require("@abandonware/noble");
     _nobleLoaded = true;
     return noble;

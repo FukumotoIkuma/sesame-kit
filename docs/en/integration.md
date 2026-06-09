@@ -67,7 +67,7 @@ ir.send                      [remote] key
 org.getEmployees             companyID
 access.registerCards         deviceUUID cards   # [experimental] bulk-register read IC cards (cloud DB)
 …
-80 methods.
+82 methods.
 ```
 
 Read the line for the method you want. Each line is `method  <required> [optional]`. For example, `device.history  deviceUUID [pageSize]` means **`deviceUUID` is required and `pageSize` is optional**.
@@ -126,6 +126,12 @@ await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // always
 
 **Python** — the client is a single file shipped with the package:
 
+> **Two Python clients ship with sesame-kit, and they share the module name `sesame_client` and the class name `SesameClient` — but their APIs are different and incompatible. Install/vendor only ONE.**
+> - **This bundled client** (`clients/python`, hand-written, multi-transport convenience) — factory constructors `SesameClient.unix()` / `.http()` / `.stdio()`, positional convenience methods like `c.unlock("front")`, and `c.call(method, **params)`. Documented below.
+> - **The generated, fully-typed SDK** (`sdk/python`, HTTP-only) — constructor `SesameClient(base_url, token=...)` with namespaced typed calls like `c.lock.unlock(name="front")`. No `.unix()` / `.http()` factories and no positional convenience methods. See [`sdk/python/README.md`](../../sdk/python/README.md).
+>
+> Because both resolve `from sesame_client import SesameClient`, the examples below only work against the bundled client; copy-pasting them against the generated SDK (or vice-versa) fails. Pick one per project.
+
 ```bash
 pip install ./clients/python                       # from a cloned repo
 pip install "$(npm root -g)/sesame-kit/clients/python"   # from a global `npm install -g sesame-kit`
@@ -171,7 +177,11 @@ Topics: `lockState`, `deviceUpdate`. Over HTTP use `GET /events?topics=…` (SSE
 ## Errors
 
 Errors are `{error:{code, message, data:{kind}}}`. `kind` is one of:
-`not_authenticated` (sign in via the CLI, then restart the daemon) / `connection_lost` (cloud connection down) / `timeout` / `bad_params` / `not_implemented` (unknown method) / `internal` (anything else; details in `message`).
+`not_authenticated` (sign in via the CLI, then restart the daemon) / `connection_lost` (cloud connection down) / `timeout` / `bad_params` / `rejected` (the upstream cloud explicitly returned a failure) / `not_implemented` (unknown method) / `internal` (anything else; details in `message`).
+
+`data` may carry extra fields: `data.retryable` (boolean) is a retry hint for automation — `true` on transient kinds (`timeout`, `connection_lost`), `false` on `rejected` / `bad_params`. On `rejected`, `data.upstreamCode` carries the upstream cloud's own code.
+
+`not_authenticated` is reachable from any client, including the typed SDKs: the Python SDK maps HTTP-level failures (e.g. HTTP 401) to `SesameRpcError` with `kind = "not_authenticated"`, so an expired or missing token surfaces as a normal `SesameRpcError` rather than a raw HTTP error.
 
 ## Compatibility
 

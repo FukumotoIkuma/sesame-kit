@@ -70,7 +70,7 @@ export default {
     // ---- init / config ----
     "cli.okCreated": "OK: created {path}",
     "cli.alreadyExists": "Already exists: {path}",
-    "cli.initNode": "This tool requires Node.js 18+ (current: {version}).",
+    "cli.initNode": "This tool requires Node.js 20+ (current: {version}).",
     "cli.initCompanyId": "companyID stays at the default (ch_CandyhouseMobile); general users do not need to change it.",
     "cli.initNextSteps": "Next steps (about 3 minutes):",
     "cli.initStep1": "  1. sesame login <email>             # a verification code is sent to your email → sesame verify <code>",
@@ -410,7 +410,7 @@ export default {
     // ---- init / config ----
     "cli.okCreated": "OK: created {path}",
     "cli.alreadyExists": "Already exists: {path}",
-    "cli.initNode": "このツールは Node.js 18+ が必要です (現在: {version})。",
+    "cli.initNode": "このツールは Node.js 20+ が必要です (現在: {version})。",
     "cli.initCompanyId": "companyID はデフォルト (ch_CandyhouseMobile) のままで一般ユーザーは変更不要です。",
     "cli.initNextSteps": "次のステップ (所要 約3分):",
     "cli.initStep1": "  1. sesame login <email>             # email に確認コードが届く → sesame verify <code>",

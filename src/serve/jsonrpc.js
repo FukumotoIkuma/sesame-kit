@@ -137,6 +137,11 @@ export function classify(raw) {
   }
   if (Array.isArray(msg)) return { type: "batch" };
   if (msg === null || typeof msg !== "object") return { type: "invalid", id: null };
+  // JSON-RPC 2.0: `jsonrpc` メンバは厳密に文字列 "2.0" でなければならない。
+  // 欠落/別バージョン (例 "1.0") は Invalid Request。id は取れるなら echo (応答整形用)。
+  if (msg.jsonrpc !== "2.0") {
+    return { type: "invalid", id: normalizeId(msg.id) };
+  }
   if (typeof msg.method !== "string" || !msg.method) {
     // id を取れるなら拾う (応答整形用)。型は string/number/null のみ許容。
     return { type: "invalid", id: normalizeId(msg.id) };

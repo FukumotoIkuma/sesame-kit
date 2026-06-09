@@ -275,9 +275,20 @@ export class SesameHub3 {
         seconds: number;
     }>;
     get subUUID(): any;
-    /** Hub3 を学習モードに入れ、物理リモコンの 1 ボタンを学習して remote にキー登録。 */
-    learnIR(remoteName: any, keyName: any, { timeoutMs, onPrompt }?: {
+    /**
+     * Hub3 を学習モードに入れ、物理リモコンの 1 ボタンを学習して remote にキー登録。
+     *
+     * @param {string} remoteName リモコン名
+     * @param {string} keyName 登録するキー名
+     * @param {{
+     *   timeoutMs?: number,        // ボタン押下待ち timeout (default 60s)
+     *   onPrompt?: () => void,     // 学習モード突入後に呼ばれる (ユーザに「ボタン押して」と促す)
+     * }} [opts]
+     * @returns {Promise<{keyUUID: string, captured: any, saved: any}>}
+     */
+    learnIR(remoteName: string, keyName: string, { timeoutMs, onPrompt }?: {
         timeoutMs?: number;
+        onPrompt?: () => void;
     }): Promise<{
         keyUUID: string;
         captured: any;
@@ -324,8 +335,16 @@ export class SesameHub3 {
      * 後方互換のため残置。内部実装は onDeviceUpdate と同一。
      */
     subscribeDeviceUpdates(deviceInfos: any, onUpdate: any): any;
-    /** ロック開閉履歴を取得。`list` はデバイス指定の配列。 */
-    getDeviceHistory(list: any, pageSize: any): Promise<any>;
+    /**
+     * ロック開閉履歴を取得。`list` はデバイス指定の配列。
+     *
+     * @param {Array<{deviceUUID: string}>} list 履歴を取得するデバイスの配列
+     * @param {number} [pageSize] 1ページ件数 (未指定でサーバ既定)
+     * @returns {Promise<any>}
+     */
+    getDeviceHistory(list: Array<{
+        deviceUUID: string;
+    }>, pageSize?: number): Promise<any>;
     /** 開閉履歴の1エントリを非表示化 (論理削除)。timestamp は getDeviceHistory の各 record の値。 */
     hideDeviceHistory({ deviceUUID, timestamp }: {
         deviceUUID: any;

@@ -54,6 +54,7 @@ export default {
     "ble.bluetoothUnauthorized": "No Bluetooth permission. macOS: System Settings -> Privacy & Security -> Bluetooth, allow the running terminal.",
     "ble.bluetoothPoweredOff": "Bluetooth is off. Turn it on and retry.",
     "ble.bluetoothUnsupported": "BLE is not available in this environment (unsupported).",
+    "ble.nativeAbortHint": "(The BLE backend could not initialize: the OS aborted the Bluetooth stack. macOS: grant the running terminal Bluetooth access in System Settings -> Privacy & Security -> Bluetooth. Linux/Raspberry Pi/headless: ensure a Bluetooth adapter is present and the process has the capabilities to use it, e.g. run with sufficient privileges or `setcap`.)",
     "ble.gattNotFound": "SESAME GATT characteristic not found (write/notify)",
     "ble.notConnected": "not connected",
     "ble.deviceNotFound": "SESAME not found (scan {scanTimeoutMs}ms timeout). Make sure the target is nearby and registered.",
@@ -90,7 +91,7 @@ export default {
     // ---- ble CLI (src/cli/ble.js) ----
     "ble.cli.cmd.desc": "BLE direct read ops (keyless scan / biometric lists / Bot2 script). Library-only ops (enroll/provisioning/firmware) are not exposed.",
     "ble.cli.opt.secret": "32hex secretKey (override/supply when the device is not in config locks)",
-    "ble.cli.opt.model": "device model (override/supply, e.g. sesame_touch_pro)",
+    "ble.cli.opt.model": "device model (override/supply, e.g. ssm_touch_pro)",
     "ble.cli.opt.timeout": "publish collection timeout in ms (default 8000)",
     "ble.cli.opt.scanTimeout": "scan timeout in ms",
     "ble.cli.scan.desc": "scan nearby SESAMEs over BLE without keys (advertisement only)",
@@ -167,6 +168,7 @@ export default {
     "ble.bluetoothUnauthorized": "Bluetooth 権限がありません。macOS: システム設定→プライバシーとセキュリティ→Bluetooth で実行中のターミナルを許可してください。",
     "ble.bluetoothPoweredOff": "Bluetooth がオフです。オンにして再実行してください。",
     "ble.bluetoothUnsupported": "この環境では BLE が利用できません (unsupported)。",
+    "ble.nativeAbortHint": "(BLE バックエンドを初期化できませんでした: OS が Bluetooth スタックを abort しました。macOS: システム設定→プライバシーとセキュリティ→Bluetooth で実行中のターミナルに Bluetooth アクセスを許可してください。Linux/Raspberry Pi/ヘッドレス: Bluetooth アダプタが存在し、プロセスに利用権限があることを確認してください (十分な権限で実行する、または `setcap` を付与する等)。)",
     "ble.gattNotFound": "SESAME GATT characteristic が見つかりません (write/notify)",
     "ble.notConnected": "not connected",
     "ble.deviceNotFound": "SESAME が見つかりません (scan {scanTimeoutMs}ms タイムアウト)。対象が近くにあり登録済みか確認してください。",
@@ -203,7 +205,7 @@ export default {
     // ---- ble CLI (src/cli/ble.js) ----
     "ble.cli.cmd.desc": "BLE 直結の読み取り系 (鍵不要 scan / 生体一覧 / Bot2 スクリプト)。enroll/プロビジョニング/firmware 等の library-only op は露出しない。",
     "ble.cli.opt.secret": "32hex secretKey (config locks に無いデバイスを直接指定する用の補完/上書き)",
-    "ble.cli.opt.model": "デバイス機種 (補完/上書き。例 sesame_touch_pro)",
+    "ble.cli.opt.model": "デバイス機種 (補完/上書き。例 ssm_touch_pro)",
     "ble.cli.opt.timeout": "publish 収集の timeout (ms, 既定 8000)",
     "ble.cli.opt.scanTimeout": "scan の timeout (ms)",
     "ble.cli.scan.desc": "近接 SESAME を鍵無しで BLE スキャン (advertise のみ)",

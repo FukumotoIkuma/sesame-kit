@@ -171,6 +171,7 @@ export function generateSdkPy(spec) {
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 from urllib.parse import quote
 from typing import TYPE_CHECKING, Any, Callable, Literal, TypedDict  # noqa: F401  (Literal used by generated enums)
@@ -185,12 +186,74 @@ SesameEventTopic = ${topicType}
 
 
 class SesameRpcError(Exception):
-    def __init__(self, message: str, code: int, data: dict[str, Any] | None = None) -> None:
+    def __init__(self, message: str, code: int | None, data: dict[str, Any] | None = None) -> None:
         super().__init__(message)
+        self.message = message
         self.code = code
-        self.data = data or {}
-        self.kind = self.data.get("kind")
-        self.retryable = self.data.get("retryable")
+        self.data = data if isinstance(data, dict) else {}
+        kind = self.data.get("kind")
+        self.kind = kind if isinstance(kind, str) else None
+        retryable = self.data.get("retryable")
+        self.retryable = retryable if isinstance(retryable, bool) else None
+
+
+# HTTP status → machine-readable error kind (matches src/serve/jsonrpc.js KIND taxonomy and
+# docs/en/integration.md). Used only when an HTTP-level failure has no JSON-RPC error body.
+_HTTP_STATUS_KIND = {
+    400: "bad_params",
+    401: "not_authenticated",
+    404: "not_implemented",
+    413: "bad_params",
+}
+
+
+def _raise_http_error(e: "urllib.error.HTTPError") -> "SesameRpcError":
+    """Translate a urllib HTTPError into a typed SesameRpcError.
+
+    The \`sesame serve\` daemon answers JSON-RPC faults with HTTP 200 + an \`error\` body, but
+    transport-level rejections (auth, oversized body, unknown route) come back as real HTTP
+    status codes with a plain \`{"error","hint"}\` body — or no parseable body at all. Either
+    way the consumer gets a SesameRpcError carrying \`.kind\`/\`.retryable\`/\`.code\`.
+    """
+    raw = b""
+    try:
+        raw = e.read() or b""
+    except Exception:  # noqa: BLE001  (body already consumed / connection torn down)
+        raw = b""
+    body: Any = None
+    if raw:
+        try:
+            body = json.loads(raw)
+        except (ValueError, TypeError):
+            body = None
+    # A genuine JSON-RPC error body can ride on a non-200 status — honor it verbatim.
+    if isinstance(body, dict) and isinstance(body.get("error"), dict):
+        err = body["error"]
+        return SesameRpcError(err.get("message", "error"), err.get("code", -32000), err.get("data"))
+    status = e.code
+    kind = _HTTP_STATUS_KIND.get(status, "internal")
+    retryable = status >= 500  # 4xx are caller errors (not retryable); 5xx/transient are
+    hint = ""
+    detail = ""
+    if isinstance(body, dict):
+        if isinstance(body.get("error"), str):
+            detail = body["error"]
+        if isinstance(body.get("hint"), str):
+            hint = body["hint"]
+    message = f"HTTP {status}"
+    if detail:
+        message += f": {detail}"
+    if hint:
+        message += f" ({hint})"
+    return SesameRpcError(message, None, {"kind": kind, "retryable": retryable, "httpStatus": status})
+
+
+def _raise_url_error(e: "urllib.error.URLError") -> "SesameRpcError":
+    """Translate a connection-level failure (refused / DNS / reset) into a typed error."""
+    reason = getattr(e, "reason", e)
+    return SesameRpcError(
+        f"connection failed: {reason}", None, {"kind": "connection_lost", "retryable": True},
+    )
 
 
 def _omit_none(d: dict[str, Any]) -> dict[str, Any]:
@@ -221,8 +284,13 @@ ${nsAttrs.join("\n")}
         if self._token:
             headers["authorization"] = f"Bearer {self._token}"
         req = urllib.request.Request(f"{self._base_url}/rpc", data=body, headers=headers, method="POST")
-        with urllib.request.urlopen(req) as resp:
-            msg = json.loads(resp.read())
+        try:
+            with urllib.request.urlopen(req) as resp:
+                msg = json.loads(resp.read())
+        except urllib.error.HTTPError as e:  # 401/413/404/... — transport-level reject
+            raise _raise_http_error(e) from None
+        except urllib.error.URLError as e:  # connection refused / DNS / reset
+            raise _raise_url_error(e) from None
         if "error" in msg and msg["error"] is not None:
             err = msg["error"]
             raise SesameRpcError(err.get("message", "error"), err.get("code", -32000), err.get("data"))
@@ -237,7 +305,13 @@ ${nsAttrs.join("\n")}
         if self._token:
             headers["authorization"] = f"Bearer {self._token}"
         req = urllib.request.Request(url, headers=headers, method="GET")
-        with urllib.request.urlopen(req) as resp:
+        try:
+            resp = urllib.request.urlopen(req)
+        except urllib.error.HTTPError as e:  # 401 (bad token) / 400 (unknown topics)
+            raise _raise_http_error(e) from None
+        except urllib.error.URLError as e:  # daemon down / connection reset
+            raise _raise_url_error(e) from None
+        with resp:
             for raw in resp:
                 line = raw.decode("utf-8", "replace").rstrip("\\r\\n")
                 if line.startswith("data:"):  # ":" comment lines (heartbeat) ignored

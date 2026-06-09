@@ -71,6 +71,38 @@ sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧
 - **macOS ではターミナルに Bluetooth 権限が必要です**（システム設定 → プライバシーとセキュリティ → Bluetooth）。これは OS レベルの権限で、どの BLE 実装でも避けられません。
 - ロックの Bluetooth 通信圏内にいること。
 
+### Linux / Raspberry Pi
+
+`@abandonware/noble` はネイティブバインディング（生 HCI ソケット経由で BlueZ と通信）のため、Debian / Raspberry Pi OS ではインストール時にコンパイルが必要で、実行時にも追加の権限が必要です。
+
+- **ビルド要件** — `npm i @abandonware/noble` の前にツールチェインと udev ヘッダを入れてください。無いとネイティブビルドに失敗します。
+
+  ```sh
+  sudo apt-get install -y build-essential libudev-dev
+  ```
+
+- **root なしで実行** — Node バイナリに BLE ケイパビリティを付与すると、一般ユーザーでもスキャンできます（すべてを `sudo` で実行する必要がなくなります）。
+
+  ```sh
+  sudo setcap cap_net_raw+eip $(eval readlink -f $(which node))
+  ```
+
+  ケイパビリティは特定のバイナリに紐づくため、Node を更新したら再実行してください。
+
+- Bluetooth アダプタが無い、または上記のケイパビリティをプロセスが持たない場合（ヘッドレス / 権限なし環境でよくあります）、BLE バックエンドは初期化できません。下記の [トラブルシュート](#トラブルシュート) を参照してください。
+
+## トラブルシュート
+
+### BLE を初期化できない
+
+BLE を起動できない場合、CLI は無言クラッシュせず、わかりやすい 1 行メッセージを表示して終了コード `2` で終了します（`--json` モードでは stderr に `{ "error": "…", "code": 2, "bleCode": "…" }` を出力します）。（以前は `@abandonware/noble` のネイティブ CoreBluetooth バインディングが、権限やアダプタの無い状態で初期化された瞬間に `abort()`（プロセスレベルの `SIGABRT`・終了コード `134`）を呼び、これは `try`/`catch` で捕捉できませんでした。現在は CLI が先に独立した子プロセスで BLE を探触するため、abort する状況ではプロセス内のバックエンドに一切触れません。）
+
+メッセージでどのケースかが分かります。
+
+- **macOS — Bluetooth 権限なし**（`bleCode: BLE_UNAUTHORIZED`）。実行中のターミナル（Terminal / iTerm / VS Code など）に、**システム設定 → プライバシーとセキュリティ → Bluetooth** で Bluetooth アクセスを許可して再実行してください。macOS では CLI がこの設定ペインも自動で開きます。
+- **Linux / Raspberry Pi / ヘッドレス — アダプタ無し or 権限不足**（`bleCode: BLE_UNSUPPORTED`）。実機の Bluetooth アダプタが存在し、プロセスがそれを使える状態か確認してください。十分な権限で実行するか、ケイパビリティを付与します（上記 [Linux / Raspberry Pi](#linux--raspberry-pi) の `setcap cap_net_raw+eip` を参照）。
+- **Bluetooth がオフ**（`bleCode: BLE_POWERED_OFF`）。Bluetooth をオンにして再実行してください。
+
 ## ライブラリとして
 
 ```js
