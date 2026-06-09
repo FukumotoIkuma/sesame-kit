@@ -49,9 +49,12 @@ sesame locks ls                # 登録ロック一覧
 sesame locks set-default front
 sesame locks add               # 対話で追加 (deviceUUID + secretKey)
 sesame locks add --name front --uuid <UUID> --secret <32hex> --model sesame_5_pro  # 非対話/フラグ追加
+sesame locks add --from-url 'ssm://UI?t=sk&sk=...'  # 鍵共有 URL から deviceUUID/secretKey/model/name を補完
 sesame locks sync-from-devices # devices の結果から自動取り込み
 sesame locks rm front
 ```
+
+`--from-url` は鍵共有 URL（`sesame org keys share-url` の逆）を解析し、`deviceUUID` / `secretKey` / `model` / `name` を補完します。明示フラグ（`--uuid` / `--secret` / `--model` / `--name`）を指定すると、URL から取った値より優先されます。
 
 クラウド操作の応答は同期 ack (`biz3TriggerLocker`, `success:true`) を待ってから戻ります (timeout 10s)。
 
@@ -122,9 +125,13 @@ sesame device rm <uuid>                  # company から削除
 
 sesame history <uuid>                    # ロック開閉履歴
 sesame history                           # 全デバイス
+sesame history <uuid> --delete <ts>      # 開閉履歴 1 件を timestamp で hide（ソフト削除）
 sesame battery <uuid>                    # 電池履歴 (light/heavy 電圧 + 割合)
+sesame battery <uuid> --delete <ts>      # 電池履歴 1 件を ts（秒）で hide（ソフト削除）
 sesame firmware                          # 配信中ファームウェア一覧
 ```
+
+> `--delete` は一覧ではなく 1 件を hide します: 開閉履歴（`history`）はそのエントリの `timestamp`、電池履歴（`battery`）は秒単位の `ts` を渡します。
 
 ---
 
@@ -138,6 +145,8 @@ sesame webapi webapi_ssm_shadow_get --query '{"device_id":"..."}'
 sesame webapi webapi_history_get --query '{"device_id":"...","page":0,"lg":"ja","isBiz":true}'
 sesame webapi webapi_cmd_send --body '{"device_id":"...","cmd":83,"sign":"...","history":"..."}'
 ```
+
+> 同じ proxy は `sesame serve` 経由でも `webapi.invoke` RPC メソッド（params: `func`・`query?`・`body?`・`apiKeyId?`）として呼べます。従来は CLI 専用でした。`history --delete` / `battery --delete` の RPC 版である `device.hideHistory` / `device.hideBattery` ソフト削除メソッドと同様、tier は `experimental` です。
 
 ---
 
@@ -260,6 +269,25 @@ sesame front autolock 30         # オートロック (BLE 必須。本当に効
 sesame front autolock 0          # 無効化
 ```
 
+### `sesame ble` — BLE 直接の読み取り専用 op
+
+`ble` コマンドグループは、BLE サーフェスの**読み取り専用**サブセット（鍵なしスキャン、生体 / スクリプトの一覧読み出し、登録モードの取得）を直接公開します。残りの BLE 機能（登録・プロビジョニング・ファームウェア・ペアリング・reset・OS2 ファサード）はライブラリ専用のままです — [ble.md](./ble.md) を参照してください。
+
+```bash
+sesame ble scan [--timeout <ms>]         # 鍵なしの近接スキャン（secretKey 不要）
+sesame ble cards <device>                # 登録済み NFC カード一覧（Touch / Touch Pro）
+sesame ble passcodes <device>            # 登録済みキーパッド暗証番号一覧（Touch / Touch Pro）
+sesame ble fingers <device>              # 登録済み指紋一覧（Touch Pro / Bike3）
+sesame ble faces <device>                # 登録済み顔一覧（Face）
+sesame ble palms <device>                # 登録済み掌紋一覧（Palm）
+sesame ble mode <device> <type>          # 現在の登録モードを取得（type: card/passcode/finger/face/palm）
+sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧 + 現在スクリプト
+```
+
+`<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドでは、`--secret <hex>` と `--model <model>` で config のロックに無いデバイスを対象にでき、`--timeout <ms>` で publish 収集のタイムアウト（既定 8000）を指定します。`scan` は鍵なしでどちらも不要です。
+
+> これらのコマンドはライブラリの読み出しと同じ BLE コード経路で、ユニットテスト済みですが**実機未確認**です。読み取り専用であり、登録 / モード設定 / スクリプトの切替 / 書き込み / 実行はライブラリ専用のままです。
+
 > **BLE エラーは `SesameResultCode` で意味づけ済み** — デバイスが非 0 の結果を返すと、ライブラリは
 > `BleResultError`（`.resultCode` / `.resultName`）を投げます。`resultName` は公式 SesameSDK の
 > `SesameResultCode`（`success`/`invalidFormat`/`notSupported`/`invalidSig`/`notFound`/`unknown`/
@@ -277,7 +305,7 @@ sesame front autolock 0          # 無効化
 | ロック `sesame_5`/`_pro`/`sesame_6`/`_pro`/`_us`/`miwa` | `lock` `unlock` `toggle` `autolock` `status` | 施錠/解錠 + 位置 |
 | Bot `bot_2`/`bot_3` | `click` `status` | 施錠/解錠 (位置なし) |
 | Bike `bike_2`/`bike_3` | `unlock` `status` | 施錠/解錠 (位置なし) |
-| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (CLI では BLE 施錠操作なし) — 生体登録 / Wi-Fi プロビジョニングは**ライブラリ専用**（`SesameBle#biometric` / `#wifi`、[ble.md](./ble.md) 参照） | — |
+| Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (BLE 施錠操作なし) — 生体 / 登録モードの**読み出し**は `sesame ble cards/passcodes/fingers/faces/palms/mode` で CLI から可。登録（書き込み）と Wi-Fi プロビジョニングは**ライブラリ専用**（`SesameBle#biometric` / `#wifi`、[ble.md](./ble.md) 参照） | — |
 | OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | **ライブラリ**で BLE 対応（`SesameOS2Ble`・別プロトコル）。CLI 経路は OS2 ではクラウドのみ | 施錠/解錠/moved + 位置 |
 
 > 「施錠/解錠」は OS3 では `isInLockRange` の有無による **2 値**のみ。OS3 に中間状態 (moved) はありません
@@ -294,7 +322,7 @@ await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
 });
 ```
 
-> **CLI** は OS3 のロック / Bot / Bike 制御を扱います。**ライブラリ**ではさらに OS2 デバイス（`SesameOS2Ble`）・新規ペアリング / 登録（`SesameBle.registerOnce()` / `SesameOS2Ble.registerOnce()`）・生体 / アクセス制御の登録・WifiModule2 プロビジョニング・BLE OTA も扱えます（いずれも SesameSDK から移植。一部は実機未検証）。[ble.md](./ble.md) と README の [既知の制限](../../README.ja.md#既知の制限) を参照してください。
+> **CLI** は OS3 のロック / Bot / Bike 制御に加え、`sesame ble` 配下の読み取り専用 BLE op（鍵なしスキャン、生体 / スクリプトの一覧読み出し、登録モードの取得）を扱います。**ライブラリ**ではさらに OS2 デバイス（`SesameOS2Ble`）・新規ペアリング / 登録（`SesameBle.registerOnce()` / `SesameOS2Ble.registerOnce()`）・生体 / アクセス制御の登録（書き込み）・WifiModule2 プロビジョニング・BLE OTA も扱えます（いずれも SesameSDK から移植。一部は実機未検証）。[ble.md](./ble.md) と README の [既知の制限](../../README.ja.md#既知の制限) を参照してください。
 
 ---
 

@@ -2,10 +2,20 @@
 export function getUserDevices(client: any, { timeoutMs }?: {
     timeoutMs?: number;
 }): Promise<any>;
-/** 単機の現在状態 (ロック開閉、電池等)。biz3 では isFromApp=true 限定だが CLI でも投げてみる価値あり。 */
+/**
+ * 単機の現在状態 (ロック開閉、電池等)。biz3 では isFromApp=true 限定だが CLI でも投げてみる価値あり。
+ *
+ * vendor は応答 `data` を配列で受けるが、**消費するのは先頭要素のみ** (単一デバイスの状態)。
+ *   references_web/src/api/useManageDevice.js:84
+ *     setDeviceStatus(message.data?.length > 0 ? message.data[0] : null);
+ * よって生の transport 配列を露出せず vendor と同じ「単一 device-status または null」を返す
+ * (配列を返すと全消費者に `[0]` を強要し、2 要素目が来ない契約が暗黙になる)。
+ *
+ * @returns {Promise<object|null>} 単一の device-status (devices 一覧の 1 要素と同形)、無ければ null
+ */
 export function getDeviceStatus(client: any, { deviceUUID }: {
     deviceUUID: any;
-}): Promise<any>;
+}): Promise<object | null>;
 /** デバイス名変更。subUUID は呼び出し側 (client.js) が持つ。 */
 export function updateDeviceName(client: any, { subUUID, deviceUUID, deviceName }: {
     subUUID: any;
@@ -148,9 +158,9 @@ export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl }?: {
  *   ・token は mSesameToken の **hex** 文字列 (CHSesameOS3.kt:477 toHexString())
  *   ・secretKey は sesame2KeyData.secretKey をそのまま
  *
- * 戻り値: guestKeysSignPost は String を返し、SDK は login(it.data) に渡す。
- *   = session token (hex)。JSON ラップ ({data:...} 等) されている可能性があるため
- *     text / json.data / json をこの順で session token として解決する。
+ * 戻り値: guestKeysSignPost は **素の String** を返す (HTTP body そのものが token)。
+ *   SDK 確認: CHAPIClient.kt:95 `guestKeysSignPost(...): String` → CHSesameOS3.kt:481
+ *   login(it.data)。JSON ラップ ({data:...}) は vendor に存在しないので生 body (text) を採る。
  *
  * @param {(req)=>Promise<{status,text,json}>} transport makeRegisterTransport の戻り値、または fake。
  * @param {{deviceUUID:string, tokenHex:string, secretKey:string}} p

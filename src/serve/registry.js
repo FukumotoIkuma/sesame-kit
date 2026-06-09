@@ -129,6 +129,32 @@ function topLevelEntries() {
       params: [{ name: "deviceUUID", required: true, schema: S }, { name: "pageSize", required: false, schema: N }], result: "{ records, lastEvaluatedKey }",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID"]); return hub.getDeviceBattery(params.deviceUUID, { pageSize: params.pageSize }); },
     },
+    "device.hideHistory": {
+      summary: t("serve.sum.deviceHideHistory"),
+      params: [
+        { name: "deviceUUID", required: true, desc: t("serve.desc.targetDeviceUUID"), schema: S },
+        { name: "timestamp", required: true, desc: t("serve.desc.historyTimestamp"), schema: N },
+      ], result: "{ success: true }",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID", "timestamp"]); return hub.hideDeviceHistory({ deviceUUID: params.deviceUUID, timestamp: params.timestamp }); },
+    },
+    "device.hideBattery": {
+      summary: t("serve.sum.deviceHideBattery"),
+      params: [
+        { name: "deviceUUID", required: true, desc: t("serve.desc.targetDeviceUUID"), schema: S },
+        { name: "timestampSecond", required: true, desc: t("serve.desc.batteryTimestamp"), schema: N },
+      ], result: "{ success: true }",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID", "timestampSecond"]); return hub.hideBatteryRecord({ deviceUUID: params.deviceUUID, timestampSecond: params.timestampSecond }); },
+    },
+    "webapi.invoke": {
+      summary: t("serve.sum.webapiInvoke"),
+      params: [
+        { name: "func", required: true, desc: t("serve.desc.webapiFunc"), schema: S },
+        { name: "query", required: false, desc: t("serve.desc.webapiQuery"), schema: { type: "object" } },
+        { name: "body", required: false, desc: t("serve.desc.webapiBody"), schema: { type: "object" } },
+        { name: "apiKeyId", required: false, desc: t("serve.desc.webapiApiKeyId"), schema: S },
+      ], result: "any (WebAPI proxy 応答)",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["func"]); return hub.invokeWebAPI({ func: params.func, query: params.query, body: params.body, apiKeyId: params.apiKeyId }); },
+    },
     "ir.send": {
       summary: t("serve.sum.irSend"),
       params: [{ name: "remote", required: false, desc: t("serve.desc.irRemote"), schema: S }, { name: "key", required: true, desc: t("serve.desc.irKey"), schema: S }],

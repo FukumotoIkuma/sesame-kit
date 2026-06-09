@@ -22,6 +22,25 @@ sesame front autolock 0          # disable
 
 Without `--ble-only`, the route (cloud / BLE) is chosen automatically; `--cloud-only` pins it to the cloud.
 
+### `sesame ble` — read-only BLE commands
+
+A small **read-only** slice of the BLE surface is also exposed as the `ble` command group, so you can inspect a device without writing any code:
+
+```bash
+sesame ble scan [--timeout <ms>]         # keyless nearby scan (listNearbyDevices; no secretKey)
+sesame ble cards <device>                # list enrolled NFC cards (Touch / Touch Pro)
+sesame ble passcodes <device>            # list enrolled keypad passcodes (Touch / Touch Pro)
+sesame ble fingers <device>              # list enrolled fingerprints (Touch Pro / Bike3)
+sesame ble faces <device>                # list enrolled faces (Face)
+sesame ble palms <device>                # list enrolled palms (Palm)
+sesame ble mode <device> <type>          # get the current enroll mode (card/passcode/finger/face/palm)
+sesame ble script <device> [--index <n>] # list Bot2/Bot3 script names + the current script
+```
+
+`<device>` is a config lock name or a deviceUUID; the connect-based subcommands accept `--secret <hex>` / `--model <model>` (to target a device not in your config locks) and `--timeout <ms>` (publish collection timeout, default 8000). `scan` is keyless.
+
+Everything else on this page — biometric/access-control **enrollment** (add/delete/rename, mode-set), Bike3 fingerprint delete/rename/mode-set, Bot2 script select/write/run-by-index, WM2 / Hub3 provisioning, BLE OTA, pairing/registration, factory `reset`, and the OS2 facade — remains **library-only** (no CLI command). The `sesame ble` read commands use the same code paths as the library reads below and are unit-tested but **not yet confirmed against real hardware**.
+
 ## Capabilities by device type (follows the official SesameSDK)
 
 The operation set differs by device type. The official SDK defines capabilities asymmetrically per type, and this CLI reproduces that from the `model` in your config. Unsupported operations are rejected (e.g. `lock` on a Bot → "use click").

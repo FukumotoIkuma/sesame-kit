@@ -1409,6 +1409,64 @@
       }
     }
   ],
+  "iot.removeSesameFromHub3": [
+    {
+      "name": "hub3Id",
+      "required": true,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "secretKey",
+      "required": true,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "sesameId",
+      "required": true,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "ssmSecKa",
+      "required": true,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "nickName",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "deviceModel",
+      "required": true,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "timeoutMs",
+      "required": false,
+      "tsType": "number",
+      "schema": {
+        "type": "number"
+      }
+    }
+  ],
   "iot.startFirmwareUpdate": [
     {
       "name": "deviceId",

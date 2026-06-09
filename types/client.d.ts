@@ -301,6 +301,21 @@ export class SesameHub3 {
     /** 個人ユーザのデバイス一覧 (会社 vs 個人で別 op)。 */
     listUserDevices(): Promise<any>;
     getDeviceStatus(deviceUUID: any): Promise<any>;
+    /**
+     * 読み取った複数 IC カードをクラウド DB へ一括登録する (postCards への委譲)。
+     *
+     * BLE enroll (`sesame access cards enroll`) で集約した records をそのまま渡せる。
+     * cards 要素は BLE 読み取り形 `{cardID, cardName, cardType}` (access.enrolledToCardList が
+     * postCards の list 形へ写像する)。既に postCards の list 形を持つ場合は access.postCards を直接使う。
+     * @param {string} deviceUUID 対象 Touch の deviceUUID
+     * @param {Array<{cardID:string, cardName?:string, cardType?:number}>} cards
+     * @returns {Promise<object|null>} postCards 応答 (cards 空なら null)
+     */
+    registerCards(deviceUUID: string, cards: Array<{
+        cardID: string;
+        cardName?: string;
+        cardType?: number;
+    }>): Promise<object | null>;
     renameDevice(deviceUUID: any, deviceName: any): Promise<any>;
     /** company から指定 UUID のデバイスを削除。 */
     deleteDevice(deviceUUID: any): Promise<any>;
@@ -311,10 +326,20 @@ export class SesameHub3 {
     subscribeDeviceUpdates(deviceInfos: any, onUpdate: any): any;
     /** ロック開閉履歴を取得。`list` はデバイス指定の配列。 */
     getDeviceHistory(list: any, pageSize: any): Promise<any>;
+    /** 開閉履歴の1エントリを非表示化 (論理削除)。timestamp は getDeviceHistory の各 record の値。 */
+    hideDeviceHistory({ deviceUUID, timestamp }: {
+        deviceUUID: any;
+        timestamp: any;
+    }): Promise<any>;
     /** 電池履歴を取得 (1ページ)。lastEvaluatedKey でページング。 */
     getDeviceBattery(deviceUUID: any, { lastEvaluatedKey, pageSize }?: {
         lastEvaluatedKey?: any;
         pageSize?: number;
+    }): Promise<any>;
+    /** 電池履歴の1エントリを非表示化 (論理削除)。timestampSecond は getDeviceBattery の record.ts。 */
+    hideBatteryRecord({ deviceUUID, timestampSecond }: {
+        deviceUUID: any;
+        timestampSecond: any;
     }): Promise<any>;
     listFirmware(): Promise<any>;
     /** WebAPI proxy 経由で REST API を叩く。apiKeyId は config 側に保存。 */

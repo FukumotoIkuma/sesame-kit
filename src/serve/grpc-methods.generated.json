@@ -267,12 +267,6 @@
     "method": "iot.sendIotCmd",
     "jsonFields": []
   },
-  "IotSubscribeIotResponse": {
-    "method": "iot.subscribeIotResponse",
-    "jsonFields": [
-      "params"
-    ]
-  },
   "IotSendIotCmdAwait": {
     "method": "iot.sendIotCmdAwait",
     "jsonFields": []
@@ -291,9 +285,7 @@
   },
   "IotRemoveSesameFromHub3": {
     "method": "iot.removeSesameFromHub3",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "IotStartFirmwareUpdate": {
     "method": "iot.startFirmwareUpdate",
@@ -368,6 +360,21 @@
   "DeviceBattery": {
     "method": "device.battery",
     "jsonFields": []
+  },
+  "DeviceHideHistory": {
+    "method": "device.hideHistory",
+    "jsonFields": []
+  },
+  "DeviceHideBattery": {
+    "method": "device.hideBattery",
+    "jsonFields": []
+  },
+  "WebapiInvoke": {
+    "method": "webapi.invoke",
+    "jsonFields": [
+      "query",
+      "body"
+    ]
   },
   "IrSend": {
     "method": "ir.send",

@@ -16,6 +16,7 @@ export * as sharekey from "./sharekey.js";
 export * as lock from "./lock.js";
 export * as ble from "./ble/index.js";
 export { assertSuccess } from "./util.js";
+export { SesameError, ERR } from "./errors.js";
 export { Hub3WsClient, sendIR, getIRCodes } from "./transport.js";
 export { configPaths, resolveConfigDir } from "./paths.js";
 export { SesameBle, SesameOS2Ble } from "./ble/index.js";

@@ -18,6 +18,25 @@ describe("生成物の drift", () => {
     expect(readFileSync(MAP_PATH, "utf8")).toBe(JSON.stringify(nameMap, null, 2) + "\n");
   });
 
+  // 回帰ガード: `Parameters<typeof addSesameToHub3>[1]` のような indexed-access 引数型でも
+  // 参照先 op の引数を解決して param schema を出す (extractModule の TypeLiteral 限定で
+  // removeSesameFromHub3 が空 (params) に落ちていた drift の再発防止)。
+  it("iot.removeSesameFromHub3 は addSesameToHub3 と同じ param を Parameters<>[1] から解決する", async () => {
+    const schema = await generateSchema();
+    const add = schema["iot.addSesameToHub3"];
+    const rm = schema["iot.removeSesameFromHub3"];
+    expect(add, "iot.addSesameToHub3 が無い").toBeTruthy();
+    expect(rm, "iot.removeSesameFromHub3 が解決されていない (Parameters<>[1] 未対応?)").toBeTruthy();
+    expect(rm.map((p) => p.name)).toEqual(add.map((p) => p.name));
+  });
+
+  // subscribeIotResponse(client, cmd, fn) は (params) 1 引数規約に反する購読プリミティブなので
+  // namespace/JSON-RPC に露出しない (NAMESPACE_OPS から除外済み)。
+  it("iot.subscribeIotResponse は名前空間 op として公開されない", async () => {
+    const schema = await generateSchema();
+    expect(schema["iot.subscribeIotResponse"]).toBeUndefined();
+  });
+
   it("scalar (string/number) 引数の主要 op は jsonFields に落ちない (schema 付け忘れ検出)", async () => {
     const { nameMap } = await generateProto(); // { Pascal: { method, jsonFields } }
     const byMethod = Object.fromEntries(Object.values(nameMap).map((e) => [e.method, e]));

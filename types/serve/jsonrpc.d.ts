@@ -64,7 +64,7 @@ export function makeEvent(topic: any, payload: any): {
     method: string;
     params: any;
 };
-export const CONTRACT_VERSION: "1.0.0";
+export const CONTRACT_VERSION: "1.2.0";
 /** JSON-RPC 2.0 標準エラーコード + アプリ域 (-32000)。 */
 export const RPC: Readonly<{
     PARSE_ERROR: -32700;
@@ -97,14 +97,19 @@ export class RpcError extends Error {
  *   connection_lost   : クラウド WS 未接続/切断
  *   timeout           : op がタイムアウト (transport の request timeout 由来)
  *   bad_params        : 引数不正/parse 不能
+ *   rejected          : 上流クラウドが明示的に失敗を返した (error.data.upstreamCode に上流 code)
  *   not_implemented   : 未知メソッド
  *   internal          : 上記以外 (ライブラリ/サーバ由来の想定外エラー。message に詳細)
+ *
+ * error.data.retryable (boolean, 任意): 自動化向けの再試行ヒント。timeout/connection_lost=true、
+ *   rejected/bad_params=false。kind で分岐しきれない「再試行可否」を 1 フラグで示す。
  */
 export const KIND: Readonly<{
     NOT_AUTHENTICATED: "not_authenticated";
     BAD_PARAMS: "bad_params";
     TIMEOUT: "timeout";
     CONNECTION_LOST: "connection_lost";
+    REJECTED: "rejected";
     INTERNAL: "internal";
     NOT_IMPLEMENTED: "not_implemented";
 }>;

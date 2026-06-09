@@ -796,10 +796,22 @@ export class SesameHub3 {
     });
   }
 
+  /** 開閉履歴の1エントリを非表示化 (論理削除)。timestamp は getDeviceHistory の各 record の値。 */
+  async hideDeviceHistory({ deviceUUID, timestamp }) {
+    this._ensureConnected();
+    return devices.makeHistoryInvisible(this._ws, { deviceUUID, timestamp });
+  }
+
   /** 電池履歴を取得 (1ページ)。lastEvaluatedKey でページング。 */
   async getDeviceBattery(deviceUUID, { lastEvaluatedKey = null, pageSize = 100 } = {}) {
     this._ensureConnected();
     return devices.getBatteryRecord(this._ws, { deviceUUID, lastEvaluatedKey, pageSize });
+  }
+
+  /** 電池履歴の1エントリを非表示化 (論理削除)。timestampSecond は getDeviceBattery の record.ts。 */
+  async hideBatteryRecord({ deviceUUID, timestampSecond }) {
+    this._ensureConnected();
+    return devices.makeBatteryRecordInvisible(this._ws, { deviceUUID, timestampSecond });
   }
 
   async listFirmware() {

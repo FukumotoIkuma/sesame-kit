@@ -130,3 +130,23 @@ sesame-kit/
     ├── tokens.js           # FileTokenStore
     └── paths.js            # 設定ディレクトリ解決
 ```
+
+## 生成物 (コミット + CI ガード)
+
+リポジトリ内のいくつかのファイルは**生成・コミット・ガード**されており、手編集しません。ソースを変えたら `npm run build` を実行して結果をコミットしてください:
+
+| 生成物 | 生成元 | 生成コマンド |
+| --- | --- | --- |
+| `types/**/*.d.ts` (+ `.d.ts.map`) | `src/**/*.js` の JSDoc | `tsc` (`npm run build:types`) |
+| `src/serve/rpc-params.generated.json` | 各モジュールの `NAMESPACE_OPS` + `types/*.d.ts` | `npm run build:rpc-schema` |
+| `src/serve/sesame.proto`, `src/serve/grpc-methods.generated.json` | RPC レジストリ | `npm run build:grpc-proto` |
+| `schema/openrpc.json` | RPC レジストリ | `npm run build:openrpc` |
+| `sdk/ts/sesame-client.ts`, `sdk/python/sesame_client.py` | OpenRPC ドキュメント | `npm run build:sdk` |
+
+**方針: 生成物をコミットする**（JSON/proto 契約と同じ慣習。リポジトリを clone した利用者がビルド無しで `.d.ts` を得られ、`npm publish` 時は `prepack` が再生成する）。
+
+コミット済みコピーの整合は 2 つのガードが守ります:
+- `tests/serve/schema-drift.test.js` が RPC param スキーマと gRPC proto をインプロセスで再生成しバイト比較する。
+- CI (`.github/workflows/ci.yml`) が**フル** `npm run build` を実行し、`git` に差分が出たら失敗する（`types/` を含む生成面全体をカバー）。
+
+`tsc` は `package-lock.json` + `npm ci` でバージョン固定され、各ジェネレータは決定的（タイムスタンプ/乱数なし、`.d.ts.map` は相対ソースパス）なので、再ビルドはマシン間でバイト安定です。CI の "Verify committed artifacts are up to date" が失敗したら、ローカルで `npm run build` を実行して結果をコミットしてください。（歴史的に `types/` が腐ったのは JSON/proto 生成物しかガードされていなかったため。CI のビルド差分ガードがこの穴を塞ぎます。）

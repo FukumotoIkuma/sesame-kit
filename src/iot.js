@@ -502,9 +502,14 @@ export const __internal = {
  * namespace (hub.iot.*) に露出する client op の allowlist。
  * buildIotTopic / buildIotPayload / __internal は client を取らない内部ヘルパー
  * なので namespace に出さない (低レベル用途は index.js から直接 import)。
+ *
+ * subscribeIotResponse(client, cmd, fn) は (params) 1 引数の namespace/JSON-RPC 規約に
+ * 適合しない購読プリミティブ (第2引数が cmd 数値、第3がコールバック) なので allowlist に
+ * 載せない。sendIotCmdAwait が内部で直接使うほか、低レベル購読が要る利用者は
+ * `import { iot } from "sesame-kit"` で直接 import する。
  */
 export const NAMESPACE_OPS = [
-  "sendIotCmd", "subscribeIotResponse", "sendIotCmdAwait",
+  "sendIotCmd", "sendIotCmdAwait",
   "setHub3LedDuty", "hub3RelaySwitch",
   "addSesameToHub3", "removeSesameFromHub3",
   "startFirmwareUpdate", "clearHub3WifiSsid",
