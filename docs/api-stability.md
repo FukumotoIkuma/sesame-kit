@@ -149,7 +149,14 @@ JSON-RPC 2.0 errors carry a structured, machine-readable `data.kind`:
 
 - Codes: `-32700/-32600/-32601/-32602/-32603` (standard) and `-32000` (app).
 - `kind` ∈ `not_authenticated | bad_params | timeout | connection_lost |
-  internal | not_implemented`.
+  rejected | internal | not_implemented`.
+- `data.retryable` (boolean, optional): retry hint for automation —
+  `timeout`/`connection_lost` = true, `rejected`/`bad_params` = false.
+- `rejected` carries `data.upstreamCode` (the vendor cloud's failure code;
+  provenance = upstream).
+- Library throws are typed (`SesameError` with a machine `code`); the serve
+  boundary maps `code` → `kind` (`src/errors.js` → `src/serve/jsonrpc.js`), so
+  domain failures no longer collapse to `internal`.
 - `data` never echoes inbound params (avoids leaking `secretKey`).
 - Transport failures are classified by **structured code**, not error-string
   matching (good); authState is decided by token presence, not regex.
@@ -161,11 +168,12 @@ JSON-RPC 2.0 errors carry a structured, machine-readable `data.kind`:
 
 Tracked here so the stable tier is honest when it freezes:
 
-1. **Domain errors collapse to `internal`.** Namespace ops throw plain `Error`,
-   which becomes `{code:-32603, kind:"internal", message}`. Consumers can't branch
-   on domain failures without parsing localized messages. → Introduce domain
-   `kind`s (e.g. `device_offline`, `not_found`, `rejected`) and optionally
-   `data.retryable` before any affected method enters `stable`. **Biggest gap.**
+1. **Domain errors collapse to `internal`.** *(addressed for the stable lock path
+   in 1.1.0)* — `src/errors.js` (`SesameError` + machine `code`) is mapped at the
+   serve boundary to `kind` + `data.retryable`; `lock.*` and the lock-resolution
+   path now emit `rejected`/`connection_lost`/`timeout`/`bad_params` instead of
+   `internal`. **Remaining:** experimental namespace ops (`org/iot/...`) still
+   throw plain `Error` → `internal`; convert each before it enters `stable`.
 2. **`event.ready`** is advertised in `rpc.discover` but never emitted — either
    emit it or drop it from the contract.
 3. **`iot.subscribeIotResponse` / `iot.removeSesameFromHub3`** have no extracted

@@ -70,9 +70,12 @@ guarantees schema and implementation never diverge.
   (canonical; `contractVersion`/`x-contractVersion` kept as deprecated aliases).
   Also fixed: vitest `projects` config (self-contained; `--project unit|e2e`
   filters work, no double-count) and restored `npm test` = unit then e2e.
-- [ ] **ii-b — Error model hardening.** Replace `internal`-collapse with domain
-  `kind`s (e.g. `device_offline`, `not_found`, `rejected`) + optional
-  `data.retryable`, on stable methods. *(the biggest gap; contract-freezing)*
+- [x] **ii-b — Error model hardening.** `src/errors.js` (`SesameError` + machine
+  `code`, `retryable`, `data`) typed at the library layer; serve boundary maps
+  `code` → `kind` (+`data.retryable`, `data.upstreamCode`). New `kind=rejected`.
+  Applied to the stable `lock.*` path + lock resolution. CONTRACT_VERSION → 1.1.0
+  (additive). **Remaining:** experimental ns ops still collapse to `internal`
+  (convert each before promoting to stable).
 - [ ] **iii — OpenRPC canonical + bidirectional drift gate.** Make OpenRPC the
   hand-curated source of truth; generate proto/params from it; extend the
   schema-drift test into a CI-blocking guarantee that schema ↔ impl can't diverge.

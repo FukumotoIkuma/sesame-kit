@@ -133,6 +133,21 @@ describe("gRPC 型付きメソッド", () => {
     expect(JSON.parse(r.json).result.openrpc).toBe("1.2.6");
   });
 
+  it("ドメイン拒否 (SesameError) は FAILED_PRECONDITION + kind/retryable metadata", async () => {
+    const { SesameError, ERR } = await import("../../src/errors.js");
+    hub = fakeHub();
+    hub.unlock = vi.fn(async () => {
+      throw new SesameError("nope", { code: ERR.REJECTED, retryable: false, data: { upstreamCode: 403 } });
+    });
+    const d = new Daemon({ hub }); d.authState = "ok";
+    handle = await startGrpcFraming(d, { port: 0, token: TOKEN });
+    client = makeClient(handle.port);
+    const err = await unary(client, "LockUnlock", { name: "front" }, bearer(TOKEN)).catch((e) => e);
+    expect(err.code).toBe(grpc.status.FAILED_PRECONDITION); // internal ではない
+    expect(err.metadata.get("kind")[0]).toBe("rejected");
+    expect(err.metadata.get("retryable")[0]).toBe("false");
+  });
+
   it("Subscribe でイベントストリーム", async () => {
     hub = fakeHub();
     const d = new Daemon({ hub }); d.authState = "ok";

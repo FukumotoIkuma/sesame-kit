@@ -15,6 +15,7 @@ import { Buffer } from "node:buffer";
 import { cmacTime, uuidToHistoryBase64, CMD } from "./crypto.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { t } from "./i18n.js";
+import { SesameError, ERR } from "./errors.js";
 
 const TRIGGER_ACTION = ACTION_TYPES.BIZ3_TRIGGER_LOCKER; // "biz3TriggerLocker" (vendor 由来)
 // 同期 ack のキー: サーバは {action:"biz3TriggerLocker", code:200, data:{}, success:true} を
@@ -41,7 +42,7 @@ function dispatchTrigger(client, { cmd, sign, history, deviceId, timeoutMs = DEF
   // sign は時刻 CMAC で 256 秒粒度。未接続で queue に積まれ 256 秒超過すると署名期限切れ。
   // lock は queue させず即 throw (Review H-3)。
   if (client.getStatus && client.getStatus() !== "open") {
-    throw new Error(t("domain.lock.notConnected"));
+    throw new SesameError(t("domain.lock.notConnected"), { code: ERR.NOT_CONNECTED, retryable: true });
   }
   const target = normalizeUuid(deviceId);
 
@@ -52,14 +53,17 @@ function dispatchTrigger(client, { cmd, sign, history, deviceId, timeoutMs = DEF
     const fail = (err) => { if (done) return; done = true; cleanup(); reject(err); };
 
     const to = setTimeout(
-      () => fail(new Error(t("domain.lock.timeout", { cmd, device: target }))),
+      () => fail(new SesameError(t("domain.lock.timeout", { cmd, device: target }), { code: ERR.TIMEOUT, retryable: true })),
       timeoutMs,
     );
 
     // (主) 同期 ack。success:false は明示的失敗、それ以外 (code:200/success:true) は成功。
     const unsubAck = client.subscribe(ACK_KEY, (msg) => {
       if (msg && msg.success === false) {
-        fail(new Error(t("domain.lock.failed", { cmd, code: msg.code ?? "?", message: msg.message || "" }).trim()));
+        fail(new SesameError(
+          t("domain.lock.failed", { cmd, code: msg.code ?? "?", message: msg.message || "" }).trim(),
+          { code: ERR.REJECTED, retryable: false, data: { upstreamCode: msg.code ?? null } },
+        ));
         return;
       }
       succeed(msg);
@@ -90,10 +94,11 @@ function dispatchTrigger(client, { cmd, sign, history, deviceId, timeoutMs = DEF
  * @returns {Promise<any>} biz3TriggerLocker ack メッセージ
  */
 export async function triggerLock(client, params) {
-  if (!params.deviceId) throw new Error(t("domain.lock.deviceIdRequired"));
-  if (!params.secretKey) throw new Error(t("domain.lock.secretKeyRequired"));
-  if (!params.subUUID) throw new Error(t("domain.lock.subUUIDRequired"));
-  if (typeof params.cmd !== "number") throw new Error(t("domain.lock.cmdRequired"));
+  const bad = (m) => new SesameError(t(m), { code: ERR.BAD_REQUEST });
+  if (!params.deviceId) throw bad("domain.lock.deviceIdRequired");
+  if (!params.secretKey) throw bad("domain.lock.secretKeyRequired");
+  if (!params.subUUID) throw bad("domain.lock.subUUIDRequired");
+  if (typeof params.cmd !== "number") throw bad("domain.lock.cmdRequired");
 
   const sign = cmacTime(params.secretKey);
   const history = uuidToHistoryBase64(params.subUUID);
@@ -143,9 +148,10 @@ export function botClick(client, p) { return triggerLock(client, { ...p, cmd: CM
  * @returns {Promise<any>} biz3TriggerLocker ack メッセージ (success:false は reject)
  */
 export async function triggerItemCommand(client, params) {
-  if (!params.deviceId) throw new Error(t("domain.lock.deviceIdRequired"));
-  if (!params.secretKey) throw new Error(t("domain.lock.secretKeyRequired"));
-  if (typeof params.cmd !== "number") throw new Error(t("domain.lock.cmdRequired"));
+  const bad = (m) => new SesameError(t(m), { code: ERR.BAD_REQUEST });
+  if (!params.deviceId) throw bad("domain.lock.deviceIdRequired");
+  if (!params.secretKey) throw bad("domain.lock.secretKeyRequired");
+  if (typeof params.cmd !== "number") throw bad("domain.lock.cmdRequired");
 
   const sign = cmacTime(params.secretKey);
   let history;
@@ -154,7 +160,7 @@ export async function triggerItemCommand(client, params) {
   } else if (params.subUUID) {
     history = uuidToHistoryBase64(params.subUUID);
   } else {
-    throw new Error(t("domain.lock.payloadOrSubUUID"));
+    throw bad("domain.lock.payloadOrSubUUID");
   }
 
   return dispatchTrigger(client, {
@@ -182,7 +188,7 @@ export async function triggerItemCommand(client, params) {
  */
 export async function setAutolock(client, { deviceId, secretKey, seconds, timeoutMs }) {
   if (!Number.isInteger(seconds) || seconds < 0 || seconds > 0xffff) {
-    throw new Error(t("domain.lock.secondsRange"));
+    throw new SesameError(t("domain.lock.secondsRange"), { code: ERR.BAD_REQUEST });
   }
   // 2byte リトルエンディアン (SDK: delay.toShort().toReverseBytes())。
   const payload = Buffer.from([seconds & 0xff, (seconds >> 8) & 0xff]);

@@ -20,6 +20,7 @@
 //   import { lock } from "sesame-kit";   // lock.* namespace も利用可
 
 export { SesameHub3 } from "./client.js";
+export { SesameError, ERR } from "./errors.js"; // 型付きドメインエラー (err.code で分岐)
 export { Hub3WsClient, sendIR, getIRCodes } from "./transport.js";
 export { FileTokenStore } from "./tokens.js";
 export { ConfigStore } from "./config.js";

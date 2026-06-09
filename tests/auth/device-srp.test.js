@@ -6,8 +6,13 @@
 //   - salt は 16 bytes 由来 (padHex で先頭 00 が付くと 17 bytes)
 //   - 呼ぶたびに値が変わる (salt/password がランダム)
 //   - verifier / salt が正しい base64 で再エンコード往復する
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { generateDeviceVerifier } from "../../src/device-srp.js";
+
+// SRP は 3072-bit BigInt modPow で CPU 重い。並列ユニット最大同時実行下では隣ワーカーの
+// modPow に CPU を奪われ、軽いテストでも稀に既定 5s を超える (実機観測)。計算は正しく
+// 短時間で終わるので、starvation で偽陽性にならないようファイル単位で余裕を持たせる。
+vi.setConfig({ testTimeout: 20000 });
 
 const GROUP = "ap-northeast-1_abcdEFGH";
 const DEVKEY = "ap-northeast-1_11111111-2222-3333-4444-555555555555";

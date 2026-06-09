@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { triggerLock, lockLock, lockUnlock, lockToggle, botClick } from "../../src/lock.js";
 import { CMD } from "../../src/crypto.js";
+import { SesameError, ERR } from "../../src/errors.js";
 
 const VALID_KEY = "0123456789abcdef0123456789abcdef";
 const VALID_SUB = "11111111222233334444555566667777";
@@ -175,6 +176,39 @@ describe("triggerLock", () => {
     it("timeout メッセージに cmd と device が含まれる", async () => {
       const p = triggerLock(client, { deviceId: VALID_DEVICE, secretKey: VALID_KEY, subUUID: VALID_SUB, cmd: CMD.UNLOCK, timeoutMs: 30 });
       await expect(p).rejects.toThrow(new RegExp(`cmd=${CMD.UNLOCK}`));
+    });
+  });
+
+  describe("型付きエラー (SesameError: code/retryable/data)", () => {
+    const base = { deviceId: VALID_DEVICE, secretKey: VALID_KEY, subUUID: VALID_SUB };
+
+    it("バリデーション失敗は code=bad_request", async () => {
+      await expect(triggerLock(client, { secretKey: VALID_KEY, subUUID: VALID_SUB, cmd: CMD.LOCK }))
+        .rejects.toMatchObject({ name: "SesameError", code: ERR.BAD_REQUEST });
+    });
+
+    it("未接続は code=not_connected, retryable=true", async () => {
+      client.status = "closed";
+      await expect(triggerLock(client, { ...base, cmd: CMD.LOCK }))
+        .rejects.toMatchObject({ code: ERR.NOT_CONNECTED, retryable: true });
+    });
+
+    it("timeout は code=timeout, retryable=true", async () => {
+      const p = triggerLock(client, { ...base, cmd: CMD.LOCK, timeoutMs: 20 });
+      await expect(p).rejects.toMatchObject({ code: ERR.TIMEOUT, retryable: true });
+    });
+
+    it("上流 success:false は code=rejected, retryable=false, data.upstreamCode", async () => {
+      const p = triggerLock(client, { ...base, cmd: CMD.LOCK, timeoutMs: 200 });
+      client.emit(ACK_KEY, { action: "biz3TriggerLocker", code: 403, message: "forbidden", success: false });
+      await expect(p).rejects.toMatchObject({
+        name: "SesameError", code: ERR.REJECTED, retryable: false, data: { upstreamCode: 403 },
+      });
+    });
+
+    it("投げられるのは SesameError インスタンス", async () => {
+      const err = await triggerLock(client, { ...base, cmd: CMD.LOCK, timeoutMs: 20 }).catch((e) => e);
+      expect(err).toBeInstanceOf(SesameError);
     });
   });
 

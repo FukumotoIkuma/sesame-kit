@@ -45,6 +45,7 @@ import * as access from "./access.js";
 import * as iot from "./iot.js";
 import * as presetir from "./presetir.js";
 import { t } from "./i18n.js";
+import { SesameError, ERR } from "./errors.js";
 
 const DEFAULT_CONFIG = {
   companyID: "ch_CandyhouseMobile",
@@ -515,18 +516,18 @@ export class SesameHub3 {
     const names = Object.keys(locks);
     const chosen = name || cfg.default?.lock || (names.length === 1 ? names[0] : null);
     if (!chosen) {
-      throw new Error(t("domain.client.noLockNoDefault", { names: names.join(", ") || "(none)" }));
+      throw new SesameError(t("domain.client.noLockNoDefault", { names: names.join(", ") || "(none)" }), { code: ERR.BAD_REQUEST });
     }
     const lock = locks[chosen];
-    if (!lock) throw new Error(t("domain.client.unknownLock", { name: chosen, names: names.join(", ") || "(none)" }));
+    if (!lock) throw new SesameError(t("domain.client.unknownLock", { name: chosen, names: names.join(", ") || "(none)" }), { code: ERR.BAD_REQUEST });
     return { name: chosen, lock };
   }
 
   _lockParams(name) {
-    if (!this._subUUID) throw new Error(t("domain.client.subUUIDNotAvailableConnect"));
+    if (!this._subUUID) throw new SesameError(t("domain.client.subUUIDNotAvailableConnect"), { code: ERR.NOT_CONNECTED, retryable: true });
     const { lock } = this.resolveLock(name);
-    if (!lock.deviceUUID) throw new Error(t("domain.client.lockMissingDeviceUUID", { name: name || "(default)" }));
-    if (!lock.secretKey) throw new Error(t("domain.client.lockMissingSecretKey", { name: name || "(default)" }));
+    if (!lock.deviceUUID) throw new SesameError(t("domain.client.lockMissingDeviceUUID", { name: name || "(default)" }), { code: ERR.BAD_REQUEST });
+    if (!lock.secretKey) throw new SesameError(t("domain.client.lockMissingSecretKey", { name: name || "(default)" }), { code: ERR.BAD_REQUEST });
     return { deviceId: lock.deviceUUID, secretKey: lock.secretKey, subUUID: this._subUUID };
   }
 

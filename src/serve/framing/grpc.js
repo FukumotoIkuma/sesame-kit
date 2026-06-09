@@ -12,7 +12,7 @@ import protoLoader from "@grpc/proto-loader";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { tokenMatches } from "./token.js";
-import { RpcError } from "../jsonrpc.js";
+import { errorFromThrow } from "../jsonrpc.js";
 import { t } from "../../i18n.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -33,6 +33,7 @@ function grpcStatusFor(kind) {
     case "not_implemented": return grpc.status.UNIMPLEMENTED;
     case "connection_lost":
     case "timeout": return grpc.status.UNAVAILABLE;
+    case "rejected": return grpc.status.FAILED_PRECONDITION; // 上流が明示的に拒否 (server bug ではない)
     default: return grpc.status.INTERNAL;
   }
 }
@@ -71,9 +72,14 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
         const result = await daemon.invoke(method, params, conn);
         callback(null, { json: JSON.stringify(result ?? null) });
       } catch (e) {
-        const kind = e instanceof RpcError ? e.kind : "internal";
-        const md = new grpc.Metadata(); if (kind) md.set("kind", kind);
-        callback({ code: grpcStatusFor(kind), message: e?.message || "error", metadata: md });
+        // HTTP/WS/stdio と同じ単一写像 (errorFromThrow) を通す。これにより SesameError も
+        // 正しい kind になり、gRPC だけ internal に潰れる穴を防ぐ。
+        const norm = errorFromThrow(null, e).error;
+        const kind = norm.data?.kind || "internal";
+        const md = new grpc.Metadata();
+        md.set("kind", kind);
+        if (typeof norm.data?.retryable === "boolean") md.set("retryable", String(norm.data.retryable));
+        callback({ code: grpcStatusFor(kind), message: norm.message || "error", metadata: md });
       } finally {
         daemon.removeConnection(conn);
       }
