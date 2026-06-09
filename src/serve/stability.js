@@ -13,9 +13,13 @@
 // tier 導出: provenance が local/app-core のものだけ `stable`。それ以外は `experimental`。
 
 // stable コア (= docs/api-stability.md の "Stable 1.0 surface")。値は provenance。
+// export しているのは整合テスト用 (全キーが実レジストリ/イベントに実在することを保証し、
+// typo/rename による無言の experimental 降格を防ぐ)。
+export // 注: `rpc.discover` は daemon が特別扱いで直接処理し、レジストリ＝discover の methods 配列
+// には現れない (注釈対象外)。OpenRPC 仕様の暗黙メタとして常に存在し implicit に stable なので
+// ここには載せない (載せると整合ガードで「実在しない」と落ちる)。
 const STABLE_METHODS = {
   "status": "local",
-  "rpc.discover": "local",
   "account.whoami": "app-core",
   "lock.lock": "app-core",
   "lock.unlock": "app-core",
@@ -31,7 +35,7 @@ const STABLE_METHODS = {
 
 // サーバ発イベントの provenance。event.ready は discover に広告されるが現状未発火
 // (docs の pre-1.0 issue) なので unverified=experimental 扱いで正直に示す。
-const STABLE_EVENTS = {
+export const STABLE_EVENTS = {
   "event.lockState": "app-core",
   "event.deviceUpdate": "app-core",
 };
