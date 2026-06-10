@@ -19,7 +19,7 @@ import { configPaths } from "./paths.js";
 import { ensureSecureDir, writeSecretJson, restrictSecretFile } from "./secure-fs.js";
 import { setLocale, resolveLocale, isKnownLang, t } from "./i18n.js";
 import {
-  EXIT, die, setJsonMode, isJsonMode, withStaleHint,
+  die, setJsonMode, isJsonMode, withStaleHint,
   isCommanderError, commanderErrorInfo, runtimeExitCode,
 } from "./cli/errors.js";
 import { routeDeviceArgv } from "./cli/dispatch.js";
