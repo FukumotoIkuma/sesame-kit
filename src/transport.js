@@ -100,27 +100,23 @@ function asErrMsg(e) {
 
 // debug ログに出さない秘匿フィールド名 (値を伏字にする)。
 const LOG_SECRET_KEYS = "secretKey|sk|token|idToken|refreshToken|accessToken|deviceKey|deviceGroupKey|devicePassword|password";
+const LOG_REDACT_JSON = new RegExp(`("(?:${LOG_SECRET_KEYS})"\\s*:\\s*")[^"]*(")`, "gi");
+const LOG_REDACT_KV = new RegExp(`\\b(${LOG_SECRET_KEYS})=[^&\\s"]+`, "gi");
 
 /**
- * debug ログ用に引数を 1 行の文字列へ整形する。
+ * 外部由来 (サーバ応答 / WS payload 等) の値を debug ログへ出す前に無害化する。
  *   - CR/LF を除去してログインジェクション (偽ログ行の差し込み) を防ぐ。
- *   - token / secretKey 等の秘匿値を `***` に伏字化し、平文での漏えいを防ぐ
- *     (WS payload には secretKey/token が含まれうるため)。
- * @param {unknown[]} args
+ *   - token / secretKey 等の秘匿値を `***` に伏字化し、平文漏えいを防ぐ。
+ * 信頼できる固定文字列には使わない (ログのノイズ回避)。
+ * @param {unknown} v
  * @returns {string}
  */
-function formatLogLine(args) {
-  const parts = [];
-  for (const a of args) {
-    if (typeof a === "string") parts.push(a);
-    else { try { parts.push(JSON.stringify(a)); } catch { parts.push(String(a)); } }
-  }
-  return parts.join(" ")
-    .replace(/[\r\n]+/g, " ") // log-injection 対策 (改行除去)
-    // JSON 形式 "key":"value" の秘匿値を伏字化
-    .replace(new RegExp(`("(?:${LOG_SECRET_KEYS})"\\s*:\\s*")[^"]*(")`, "gi"), "$1***$2")
-    // query/kv 形式 key=value の秘匿値を伏字化
-    .replace(new RegExp(`\\b(${LOG_SECRET_KEYS})=[^&\\s"]+`, "gi"), "$1=***");
+function scrub(v) {
+  let s;
+  if (typeof v === "string") s = v;
+  else { try { s = JSON.stringify(v); } catch { s = undefined; } }
+  if (typeof s !== "string") s = String(v); // undefined/null/シンボル等のフォールバック
+  return s.replace(/[\r\n]+/g, " ").replace(LOG_REDACT_JSON, "$1***$2").replace(LOG_REDACT_KV, "$1=***");
 }
 
 /**
@@ -196,7 +192,7 @@ export class Hub3WsClient {
 
   /** @param {...unknown} args */
   log(...args) {
-    if (this.cfg.debug) console.error("[hub3]", formatLogLine(args));
+    if (this.cfg.debug) console.error("[hub3]", ...args);
   }
 
   // ---------- public API ----------
@@ -409,7 +405,7 @@ export class Hub3WsClient {
    * @param {Buffer} [reason]
    */
   _onClose(code, reason) {
-    this.log("closed", code, reason?.toString());
+    this.log("closed", code, scrub(reason?.toString())); // reason はサーバ由来 → 無害化
     this._clearKeepalive();
     if (this.connectTimer) { clearTimeout(this.connectTimer); this.connectTimer = null; }
     const wasOpen = this.status === STATUS.OPEN;
@@ -513,10 +509,10 @@ export class Hub3WsClient {
     let msg;
     try { msg = JSON.parse(text); }
     catch {
-      this.log("non-JSON message:", text.slice(0, 200));
+      this.log("non-JSON message:", scrub(text.slice(0, 200))); // text はサーバ由来 → 無害化
       return;
     }
-    this.log("recv:", text.length > 200 ? text.slice(0, 200) + "..." : text);
+    this.log("recv:", scrub(text.length > 200 ? text.slice(0, 200) + "..." : text)); // 同上
     this.lastActiveTime = Date.now();
 
     // keepalive ack: success フィールド有無問わず pong timer をクリア (Review H-1:
