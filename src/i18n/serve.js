@@ -13,6 +13,9 @@ export default {
     "serve.opt.grpc": "Listen for gRPC (default {port})",
     "serve.opt.bind": "TCP bind address",
     "serve.opt.token": "loopback token for HTTP/WS/gRPC (generated and shown when omitted)",
+    "serve.opt.cors": "enable CORS for HTTP (comma-separated allowed origins, or '*'). Off by default",
+    "serve.noFraming": "no framing selected. Pick at least one: --stdio / --socket / --http / --ws / --grpc (or run `sesame serve` with no args for the default UDS)",
+    "serve.note.cors": "CORS enabled for HTTP origins: {origins}",
     "serve.help.after": `
 If unsure: start with no args (UDS) and use \`sesame rpc\` from another terminal (no JSON to write).
   sesame serve                         # UDS (default. most portable)
@@ -151,8 +154,7 @@ List all methods:
 Watch events (SSE):
   curl -N -H "Authorization: Bearer <token>" "http://{bind}:{port}/events?topics=lockState"
 `,
-    "serve.http.unauthorized": "unauthorized",
-    "serve.http.unauthorizedHint": "Authorization: Bearer <token> (the token is printed to stderr when serve starts)",
+    "serve.http.unauthorized": "unauthorized: send Authorization: Bearer <token> (the token is printed to stderr when serve starts)",
     "serve.http.payloadTooLarge": "payload too large",
     "serve.http.unknownTopics": "unknown topic(s): {topics}",
     "serve.http.notFound": "not found",
@@ -180,6 +182,9 @@ Watch events (SSE):
     "serve.opt.grpc": "gRPC を listen (既定 {port})",
     "serve.opt.bind": "TCP バインドアドレス",
     "serve.opt.token": "HTTP/WS/gRPC 用の loopback token (省略時は生成して表示)",
+    "serve.opt.cors": "HTTP の CORS を有効化 (カンマ区切りの許可 origin、または '*')。既定は無効",
+    "serve.noFraming": "フレーミングが 1 つも選ばれていません。最低 1 つ選んでください: --stdio / --socket / --http / --ws / --grpc (既定の UDS なら引数なしで `sesame serve`)",
+    "serve.note.cors": "HTTP の CORS を有効化 (許可 origin: {origins})",
     "serve.help.after": `
 迷ったら: 引数なしで起動 (UDS) し、別端末で \`sesame rpc\` を使うのが最速 (JSON を書かずに済む)。
   sesame serve                         # UDS (既定。最も移植性が高い)
@@ -318,8 +323,7 @@ List all methods:
 Watch events (SSE):
   curl -N -H "Authorization: Bearer <token>" "http://{bind}:{port}/events?topics=lockState"
 `,
-    "serve.http.unauthorized": "unauthorized",
-    "serve.http.unauthorizedHint": "Authorization: Bearer <token> (token は serve 起動時に stderr へ表示)",
+    "serve.http.unauthorized": "unauthorized: Authorization: Bearer <token> を送ってください (token は serve 起動時に stderr へ表示)",
     "serve.http.payloadTooLarge": "payload too large",
     "serve.http.unknownTopics": "unknown topic(s): {topics}",
     "serve.http.notFound": "not found",

@@ -18,9 +18,40 @@
 //     (biz3 の useCallbacks は同一 op の全 callback に同じ response を流すバグがあるが、
 //      こちらは FIFO で意味的に正しい)
 
+// `ws` は型定義 (@types/ws) を同梱せず、本リポジトリにも追加していないため
+// implicit any になる。ランタイム挙動には影響しないので import だけ抑制し、
+// 実際に使う socket メソッドは下の WsLike typedef で型付けする。
+// @ts-expect-error -- ws ships no type declarations and @types/ws is not installed
 import WebSocket from "ws";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { t } from "./i18n.js";
+
+/**
+ * transport が利用する WebSocket socket の最小インターフェース。
+ * `ws` の WebSocket インスタンスがこれを満たす (型定義非同梱のため自前定義)。
+ * @typedef {object} WsLike
+ * @property {(data: string) => void} send
+ * @property {() => void} close
+ * @property {(event?: string) => void} removeAllListeners
+ * @property {(event: string, listener: (...args: any[]) => void) => void} on
+ * @property {(event: string, listener: (...args: any[]) => void) => void} once
+ */
+
+/**
+ * WS 接続状態。
+ * @typedef {"disconnected"|"connecting"|"open"|"closing"} WsStatus
+ */
+
+/**
+ * サーバから受信する WS メッセージ (JSON parse 後)。op ごとに `data` 等が付く。
+ * @typedef {{ action?: string, op?: string, success?: boolean, message?: string, data?: unknown }
+ *   & Record<string, unknown>} WsMessage
+ */
+
+/**
+ * 送信フレーム。最低限 action を持ち、op その他は呼び出し側が付与する。
+ * @typedef {{ action: string, op?: string } & Record<string, unknown>} WsFrame
+ */
 
 const STATUS = Object.freeze({
   DISCONNECTED: "disconnected",
@@ -48,22 +79,45 @@ const KEEPALIVE_ACTION = ACTION_TYPES.BIZ3_KEEP_ALIVE; // "biz3KeepAlive" (vendo
 // transport が投げるエラーの分類コード (.code)。serve の daemon が文字列正規表現でなく
 // これで kind (timeout/connection_lost) を決定する (跨モジュールの暗黙文字列契約を排除)。
 export const TRANSPORT_ERR = Object.freeze({ TIMEOUT: "TRANSPORT_TIMEOUT", CLOSED: "TRANSPORT_CLOSED" });
-function timeoutErr(msg) { const e = new Error(msg); e.code = TRANSPORT_ERR.TIMEOUT; return e; }
-function closedErr(msg) { const e = new Error(msg); e.code = TRANSPORT_ERR.CLOSED; return e; }
+/**
+ * `.code` 付きの Error。serve daemon が code で kind を分類する。
+ * @typedef {Error & { code?: string }} CodedError
+ */
+/** @param {string} msg @returns {CodedError} */
+function timeoutErr(msg) { const e = /** @type {CodedError} */ (new Error(msg)); e.code = TRANSPORT_ERR.TIMEOUT; return e; }
+/** @param {string} msg @returns {CodedError} */
+function closedErr(msg) { const e = /** @type {CodedError} */ (new Error(msg)); e.code = TRANSPORT_ERR.CLOSED; return e; }
+
+/**
+ * catch 節の unknown から message 文字列を取り出し、改行 (CR/LF) を除去して返す。
+ * 改行除去はログインジェクション (偽ログ行の差し込み) 対策の sanitizer を兼ねる
+ * (error message はネットワーク/上流由来でありうるため)。
+ * @param {unknown} e
+ * @returns {string}
+ */
+function asErrMsg(e) {
+  const m = e instanceof Error ? e.message : String(e);
+  return m.replace(/\n|\r/g, "");
+}
+
+/**
+ * Hub3WsClient のコンストラクタ設定。
+ * @typedef {object} Hub3WsClientConfig
+ * @property {string} wsUrl 接続先 WS URL
+ * @property {string} idToken Cognito idToken (?token= で渡す)
+ * @property {string} [lang] UI 言語 (?lang=)
+ * @property {boolean} [debug] デバッグログ出力 (default false)
+ * @property {boolean} [autoReconnect] 切断時に自動再接続するか (default true)
+ * @property {(oldToken: string) => Promise<string|null>} [onTokenRefreshNeeded]
+ *   retry が MAX_RETRIES_BEFORE_TOKEN_CHECK に達した時に呼ばれる。新 token を返すと
+ *   idToken を差し替えて retryCount をリセットして再接続継続。null を返すと諦めず
+ *   exponential backoff を続行 (token は古いまま)。
+ * @property {(() => void) | null} [onReopen] 再接続 (初回以外の OPEN) で呼ばれる
+ */
 
 export class Hub3WsClient {
   /**
-   * @param {{
-   *   wsUrl: string,
-   *   idToken: string,
-   *   lang?: string,
-   *   debug?: boolean,
-   *   autoReconnect?: boolean,              // default true
-   *   onTokenRefreshNeeded?: (oldToken: string) => Promise<string|null>,
-   *     // retry が MAX_RETRIES_BEFORE_TOKEN_CHECK に達した時に呼ばれる。
-   *     // 新 token を返すと idToken を差し替えて retryCount をリセットして再接続継続。
-   *     // null を返すと諦めず exponential backoff を続行 (token は古いまま)。
-   * }} cfg
+   * @param {Hub3WsClientConfig} cfg
    */
   constructor(cfg) {
     if (!cfg.wsUrl) throw new Error(t("domain.transport.wsUrlRequired"));
@@ -76,17 +130,18 @@ export class Hub3WsClient {
     this.onReopen = cfg.onReopen || null;
     this._everConnected = false;
 
-    /** @type {import("ws").WebSocket | null} */
+    /** @type {WsLike | null} */
     this.ws = null;
+    /** @type {WsStatus} */
     this.status = STATUS.DISCONNECTED;
 
-    /** @type {Map<string, ((msg:any|Error)=>void)[]>} action+op → FIFO の resolver 配列 */
+    /** @type {Map<string, ((msg: WsMessage|CodedError)=>void)[]>} action+op → FIFO の resolver 配列 */
     this.pending = new Map();
-    /** @type {((msg:any)=>void)[]} 任意メッセージのリスナ */
+    /** @type {((msg: WsMessage)=>void)[]} 任意メッセージのリスナ */
     this.listeners = [];
-    /** @type {Map<string, Set<(msg:any)=>void>>} action+op → 永続購読 fn 集合 (biz3 の pub* 系イベント受信用) */
+    /** @type {Map<string, Set<(msg: WsMessage)=>void>>} action+op → 永続購読 fn 集合 (biz3 の pub* 系イベント受信用) */
     this.subscribers = new Map();
-    /** @type {any[]} 未接続中の送信をバッファ */
+    /** @type {Array<{payload: unknown, enqueuedAt: number}>} 未接続中の送信をバッファ */
     this.messageQueue = [];
 
     this.retryCount = 0;
@@ -96,18 +151,27 @@ export class Hub3WsClient {
     this._refreshedThisCycle = false; // 1 接続サイクルに 1 回まで token refresh (Review C-3)
 
     // timers
+    /** @type {ReturnType<typeof setInterval> | null} */
     this.keepaliveTimer = null;
+    /** @type {ReturnType<typeof setTimeout> | null} */
     this.pongTimer = null;
+    /** @type {ReturnType<typeof setTimeout> | null} */
     this.connectTimer = null;
+    /** @type {ReturnType<typeof setTimeout> | null} */
     this.reconnectTimer = null;
+    /** @type {ReturnType<typeof setInterval> | null} */
     this.sleepDetectorTimer = null;
 
     // 初回 connect() の promise/resolver (Review C-2)
+    /** @type {Promise<void> | null} */
     this._connectPromise = null;
+    /** @type {(() => void) | null} */
     this._initialConnectResolve = null;
+    /** @type {((reason?: unknown) => void) | null} */
     this._initialConnectReject = null;
   }
 
+  /** @param {...unknown} args */
   log(...args) {
     if (this.cfg.debug) console.error("[hub3]", ...args);
   }
@@ -127,7 +191,7 @@ export class Hub3WsClient {
     this._refreshedThisCycle = false;
     this._startSleepDetector();
 
-    this._connectPromise = new Promise((resolve, reject) => {
+    this._connectPromise = new Promise(/** @param {() => void} resolve */ (resolve, reject) => {
       this._initialConnectResolve = resolve;
       this._initialConnectReject = reject;
       this._initWebSocket();
@@ -172,10 +236,14 @@ export class Hub3WsClient {
   /**
    * リクエスト送信。応答 (action+op 一致) を1個待つ。FIFO。
    * 未接続中は messageQueue に積まれ、接続復帰後 flush される。
+   * @param {WsFrame} payload
+   * @param {number} [timeoutMs]
+   * @returns {Promise<WsMessage>}
    */
   request(payload, timeoutMs = 10_000) {
     const key = `${payload.action}:${payload.op || ""}`;
     return new Promise((resolve, reject) => {
+      /** @param {WsMessage|CodedError} msg */
       const resolver = (msg) => {
         clearTimeout(to);
         if (msg instanceof Error) reject(msg);
@@ -190,11 +258,19 @@ export class Hub3WsClient {
     });
   }
 
-  /** 応答を期待しない fire-and-forget 送信。 */
+  /**
+   * 応答を期待しない fire-and-forget 送信。
+   * @param {WsFrame} payload
+   */
   send(payload) {
     this._sendOrQueue(payload);
   }
 
+  /**
+   * 任意の受信メッセージを購読する。
+   * @param {(msg: WsMessage)=>void} fn
+   * @returns {()=>void} unsubscribe
+   */
   onMessage(fn) {
     this.listeners.push(fn);
     // unsubscribe を返す (Review L-6: 長時間プロセスの leak 防止)
@@ -243,7 +319,15 @@ export class Hub3WsClient {
 
   _initWebSocket() {
     this.status = STATUS.CONNECTING;
-    const url = `${this.cfg.wsUrl}?token=${encodeURIComponent(this.idToken)}&lang=${encodeURIComponent(this.cfg.lang)}`;
+    // URL は new URL() で構築・検証する (生文字列連結を避け、scheme を ws/wss に限定)。
+    // これにより不正な wsUrl を接続前に弾き、token/lang のエンコードも URL API に委ねる。
+    const wsBase = new URL(this.cfg.wsUrl);
+    if (wsBase.protocol !== "wss:" && wsBase.protocol !== "ws:") {
+      throw new Error(t("domain.transport.wsUrlRequired"));
+    }
+    wsBase.searchParams.set("token", this.idToken);
+    wsBase.searchParams.set("lang", this.cfg.lang);
+    const url = wsBase.href;
     this.log("connecting", this.cfg.wsUrl);
 
     if (this.ws) {
@@ -254,7 +338,9 @@ export class Hub3WsClient {
       this.ws = null;
     }
 
-    this.ws = new WebSocket(url);
+    /** @type {WsLike} */
+    const ws = new WebSocket(url);
+    this.ws = ws;
 
     this.connectTimer = setTimeout(() => {
       this.connectTimer = null;
@@ -264,10 +350,10 @@ export class Hub3WsClient {
       }
     }, CONNECT_TIMEOUT_MS);
 
-    this.ws.once("open", () => this._onOpen());
-    this.ws.on("message", (raw) => this._onMessage(raw));
-    this.ws.on("close", (code, reason) => this._onClose(code, reason));
-    this.ws.on("error", (err) => this._onError(err));
+    ws.once("open", () => this._onOpen());
+    ws.on("message", (/** @type {Buffer|string} */ raw) => this._onMessage(raw));
+    ws.on("close", (/** @type {number} */ code, /** @type {Buffer} */ reason) => this._onClose(code, reason));
+    ws.on("error", (/** @type {Error} */ err) => this._onError(err));
   }
 
   _onOpen() {
@@ -291,12 +377,17 @@ export class Hub3WsClient {
 
     // 再接続時: 購読者は subscribe frame の再送が要る (サーバは新接続を覚えていない)。
     if (isReconnect && this.onReopen) {
-      try { this.onReopen(); } catch (e) { this.log("onReopen error", e?.message); }
+      try { this.onReopen(); } catch (e) { this.log("onReopen error", asErrMsg(e)); }
     }
   }
 
+  /**
+   * @param {number} code
+   * @param {Buffer} [reason]
+   */
   _onClose(code, reason) {
-    this.log("closed", code, reason?.toString());
+    // reason はサーバ由来。改行を除去してログインジェクションを防ぐ (sanitizer は inline)。
+    this.log("closed", code, (reason ? reason.toString() : "").replace(/\n|\r/g, ""));
     this._clearKeepalive();
     if (this.connectTimer) { clearTimeout(this.connectTimer); this.connectTimer = null; }
     const wasOpen = this.status === STATUS.OPEN;
@@ -325,8 +416,9 @@ export class Hub3WsClient {
     }
   }
 
+  /** @param {Error} err */
   _onError(err) {
-    this.log("error", err?.message || err);
+    this.log("error", String(err?.message || err).replace(/\n|\r/g, "")); // err はネットワーク由来
     // error 直後に close も来るので、reconnect 判断は close 側で行う
   }
 
@@ -364,7 +456,7 @@ export class Hub3WsClient {
             this.log("token refresh returned no new token — continuing backoff");
           }
         } catch (e) {
-          this.log("token refresh callback threw:", e?.message || e);
+          this.log("token refresh callback threw:", asErrMsg(e));
         }
       }
       this._initWebSocket();
@@ -392,15 +484,18 @@ export class Hub3WsClient {
 
   // ---------- internal: message routing ----------
 
+  /** @param {Buffer|string} raw */
   _onMessage(raw) {
     const text = typeof raw === "string" ? raw : raw.toString("utf8");
+    /** @type {WsMessage} */
     let msg;
     try { msg = JSON.parse(text); }
     catch {
-      this.log("non-JSON message:", text.slice(0, 200));
+      // text はサーバ由来。改行除去でログインジェクションを防ぐ (sanitizer は inline)。
+      this.log("non-JSON message:", text.slice(0, 200).replace(/\n|\r/g, ""));
       return;
     }
-    this.log("recv:", text.length > 200 ? text.slice(0, 200) + "..." : text);
+    this.log("recv:", (text.length > 200 ? text.slice(0, 200) + "..." : text).replace(/\n|\r/g, ""));
     this.lastActiveTime = Date.now();
 
     // keepalive ack: success フィールド有無問わず pong timer をクリア (Review H-1:
@@ -415,7 +510,7 @@ export class Hub3WsClient {
     if (queue && queue.length > 0) {
       const resolver = queue.shift();
       if (queue.length === 0) this.pending.delete(key);
-      try { resolver(msg); } catch (e) { this.log("resolver threw:", e); }
+      if (resolver) { try { resolver(msg); } catch (e) { this.log("resolver threw:", asErrMsg(e)); } }
     }
 
     // 永続購読 fan-out。Set を snapshot してから iterate (Review H-6:
@@ -423,21 +518,29 @@ export class Hub3WsClient {
     const subs = this.subscribers.get(key);
     if (subs && subs.size > 0) {
       for (const fn of [...subs]) {
-        try { fn(msg); } catch (e) { this.log("subscriber threw:", e); }
+        try { fn(msg); } catch (e) { this.log("subscriber threw:", asErrMsg(e)); }
       }
     }
 
     for (const l of this.listeners) {
-      try { l(msg); } catch (e) { this.log("listener err", e); }
+      try { l(msg); } catch (e) { this.log("listener err", asErrMsg(e)); }
     }
   }
 
+  /**
+   * @param {string} key
+   * @param {(msg: WsMessage|CodedError)=>void} resolver
+   */
   _registerPending(key, resolver) {
     let queue = this.pending.get(key);
     if (!queue) { queue = []; this.pending.set(key, queue); }
     queue.push(resolver);
   }
 
+  /**
+   * @param {string} key
+   * @param {(msg: WsMessage|CodedError)=>void} resolver
+   */
   _unregisterPending(key, resolver) {
     const queue = this.pending.get(key);
     if (!queue) return;
@@ -446,6 +549,7 @@ export class Hub3WsClient {
     if (queue.length === 0) this.pending.delete(key);
   }
 
+  /** @param {CodedError} err */
   _rejectAllPending(err) {
     for (const [, queue] of this.pending) {
       for (const r of queue) {
@@ -457,17 +561,18 @@ export class Hub3WsClient {
 
   // ---------- internal: send / queue ----------
 
+  /** @param {WsFrame} payload */
   _sendOrQueue(payload) {
     if (this.ws && this.status === STATUS.OPEN) {
-      this.log("send:", JSON.stringify(payload));
+      this.log("send:", JSON.stringify(payload).replace(/\n|\r/g, "")); // payload は呼び出し側入力
       try {
         this.ws.send(JSON.stringify(payload));
       } catch (e) {
-        this.log("send failed, queueing:", e?.message || e);
+        this.log("send failed, queueing:", asErrMsg(e));
         this.messageQueue.push({ payload, enqueuedAt: Date.now() });
       }
     } else {
-      this.log("queued (not open):", JSON.stringify(payload));
+      this.log("queued (not open):", JSON.stringify(payload).replace(/\n|\r/g, ""));
       this.messageQueue.push({ payload, enqueuedAt: Date.now() });
     }
   }
@@ -484,11 +589,12 @@ export class Hub3WsClient {
     if (dropped > 0) this.log(`flush: dropped ${dropped} stale queued payload(s)`);
     while (this.messageQueue.length > 0 && this.ws && this.status === STATUS.OPEN) {
       const entry = this.messageQueue.shift();
+      if (!entry) break;
       try {
-        this.log("flush:", JSON.stringify(entry.payload));
+        this.log("flush:", JSON.stringify(entry.payload).replace(/\n|\r/g, ""));
         this.ws.send(JSON.stringify(entry.payload));
       } catch (e) {
-        this.log("flush failed, re-queueing:", e?.message || e);
+        this.log("flush failed, re-queueing:", asErrMsg(e));
         this.messageQueue.unshift(entry);
         break;
       }
@@ -519,9 +625,12 @@ export class Hub3WsClient {
   _triggerHeartbeatCheck() {
     if (this.pongTimer) { clearTimeout(this.pongTimer); this.pongTimer = null; }
     try {
-      this.ws.send(JSON.stringify({ action: KEEPALIVE_ACTION }));
+      // ws が null の場合は元実装同様に TypeError を発生させ、下の catch で握って return する
+      // (heartbeat を送れない接続では pongTimer を張らない、という挙動を保つ)。
+      const ws = /** @type {WsLike} */ (this.ws);
+      ws.send(JSON.stringify({ action: KEEPALIVE_ACTION }));
     } catch (e) {
-      this.log("keepalive send err:", e?.message || e);
+      this.log("keepalive send err:", asErrMsg(e));
       return;
     }
     this.pongTimer = setTimeout(() => {
@@ -582,15 +691,18 @@ export class Hub3WsClient {
 /**
  * SESAME Hub3 から IR を発射する。
  *
+ * deviceId / irDeviceUUID / companyID は config 由来で undefined になり得るため optional。
+ *
  * @param {Hub3WsClient} client
  * @param {{
- *   deviceId: string,         // Hub3 UUID (大文字)
- *   irDeviceUUID: string,     // remote.uuid
- *   irType: number,           // remote.type (例: 49152)
- *   command: string,          // 自己学習なら keyUUID、プリセットなら 16byte hex
+ *   deviceId?: string,         // Hub3 UUID (大文字)
+ *   irDeviceUUID?: string,     // remote.uuid
+ *   irType: number,            // remote.type (例: 49152)
+ *   command: string,           // 自己学習なら keyUUID、プリセットなら 16byte hex
  *   operation: "learnEmit"|"remoteEmit",
- *   companyID: string,
+ *   companyID?: string,
  * }} params
+ * @returns {Promise<import("./transport.js").WsMessage>}
  */
 export async function sendIR(client, params) {
   const frame = {
@@ -617,7 +729,8 @@ export async function sendIR(client, params) {
  *     `hub3DeviceId`。これは公式 biz3 の意図的な命名差 (useRemoteCtrl.js:820-826)。
  *
  * @param {Hub3WsClient} client
- * @param {{deviceId:string, irDeviceUUID:string, companyID:string}} params
+ * @param {{deviceId?:string, irDeviceUUID?:string, companyID?:string}} params
+ * @returns {Promise<Array<{name:string, keyUUID:string}>>}
  */
 export async function getIRCodes(client, params) {
   const frame = {
@@ -631,5 +744,5 @@ export async function getIRCodes(client, params) {
   if (!resp.success) {
     throw new Error(t("domain.transport.getIRCodesFailed", { detail: resp.message || JSON.stringify(resp) }));
   }
-  return resp.data || [];
+  return /** @type {Array<{name:string, keyUUID:string}>} */ (resp.data || []);
 }

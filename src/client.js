@@ -16,15 +16,44 @@
 
 /**
  * トークン永続化インターフェース。FileTokenStore がデフォルト実装。
- * 独自実装 (keychain / DB / メモリ) を渡す場合は下記 6 メソッドすべて必須。
- *
- * @typedef {Object} TokenStore
- * @property {() => (object|null)} load            保存済みトークン {idToken, refreshToken, clientId, accessToken?, deviceKey?} を返す。無ければ null
- * @property {(tokens: object) => void} save       トークンを永続化 (refresh 時に呼ばれる)
- * @property {() => void} clear                     トークンを破棄
- * @property {() => (object|null)} loadPending      sign-in 進行中の一時状態を返す。無ければ null
- * @property {(state: object) => void} savePending  sign-in 進行中の一時状態を保存
- * @property {() => void} clearPending              sign-in 一時状態を破棄
+ * 正準定義は tokens.js にある (load/save/clear + loadPending/savePending/clearPending)。
+ * @typedef {import("./tokens.js").TokenStore} TokenStore
+ */
+
+/**
+ * 高レベルクライアントが扱う設定。`load()` 後は locks/hub3s が必ず存在するため
+ * LoadedConfig を採用する (LockManager もこの形を要求する)。
+ * @typedef {import("./config.js").LoadedConfig} ClientConfig
+ */
+
+/**
+ * getCompanyDevice 応答 1 件。正準定義は config.js の DeviceRecord。
+ * @typedef {import("./config.js").DeviceRecord} DeviceInfo
+ */
+
+/**
+ * IR リモコンキー 1 件 (listKeys / getIRCodes の戻り)。
+ * @typedef {{ name: string, keyUUID: string }} IRKey
+ */
+
+/**
+ * #18 biometric REST (post/put/deleteAuthenticationData) の公開オプション袋。
+ * baseUrl/transport は client が解決して access.* に渡すため省略可。
+ * @typedef {object} BiometricAuthBag
+ * @property {string} [operation]
+ * @property {string} [deviceID]
+ * @property {object[]} [items]
+ * @property {string} [baseUrl]
+ * @property {import("./access.js").BiometricsTransport} [transport]
+ */
+
+/**
+ * updateAuthenticationName の公開オプション袋。request 直指定 or kind から組み立て。
+ * 残りのフィールド (subUUID/stpDeviceUUID/name/...) は access 側へ透過する。
+ * @typedef {Omit<import("./access.js").UpdateAuthNameParams, "transport"|"baseUrl"|"authorization"|"bearerToken"|"authorizationProvider"|"fetchImpl"> & {
+ *   baseUrl?: string,
+ *   transport?: import("./access.js").BiometricsTransport,
+ * }} BiometricNameBag
  */
 
 import { Hub3WsClient, sendIR, getIRCodes } from "./transport.js";
@@ -47,6 +76,10 @@ import * as payment from "./payment.js";
 import { setAutolock as setAutolockRaw } from "./lock.js";
 import { t } from "./i18n.js";
 
+/**
+ * 直接構築 (use) 時の既定値。`devices` は持たないため Partial。
+ * @type {Partial<ClientConfig>}
+ */
 const DEFAULT_CONFIG = {
   companyID: "ch_CandyhouseMobile",
   wsUrl: "wss://82q6nuplv0.execute-api.ap-northeast-1.amazonaws.com/public", // 公式ステージ (旧 /production は web 由来の誤値)
@@ -59,6 +92,16 @@ const DEFAULT_CONFIG = {
 
 const STATE_CHANGE_KEY = `${ACTION_TYPES.BIZ3_TRIGGER_LOCKER}:pubDeviceStateChange`;
 
+/**
+ * catch 節の unknown から message 文字列を安全に取り出す (debug ログ用)。
+ * @param {unknown} e
+ * @returns {string}
+ */
+function errMsg(e) {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** @param {unknown} s @returns {string} */
 function normalizeUuid(s) {
   return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
 }
@@ -92,11 +135,21 @@ export class SesameHub3 {
    *
    * config / tokenStore を opts で渡せば fromConfig をスキップ (他プロジェクト埋込み用)。
    *
-   * @param {((hub:SesameHub3) => Promise<any>) | object} fnOrOpts
+   * @typedef {object} UseOpts
+   * @property {string} [configDir]
+   * @property {boolean} [debug]
+   * @property {Partial<ClientConfig>} [config]
+   * @property {TokenStore} [tokenStore]
+   * @property {ConfigStore | null} [configStore]
+   *
+   * @param {((hub:SesameHub3) => Promise<any>) | UseOpts} fnOrOpts
    * @param {(hub:SesameHub3) => Promise<any>} [maybeFn]
    */
   static async use(fnOrOpts, maybeFn) {
-    let opts = {}, fn;
+    /** @type {UseOpts} */
+    let opts = {};
+    /** @type {((hub:SesameHub3) => Promise<any>) | undefined} */
+    let fn;
     if (typeof fnOrOpts === "function") { fn = fnOrOpts; }
     else { opts = fnOrOpts || {}; fn = maybeFn; }
     if (typeof fn !== "function") {
@@ -119,9 +172,9 @@ export class SesameHub3 {
 
   /**
    * @param {{
-   *   config: object,
+   *   config: ClientConfig | Partial<ClientConfig>,
    *   tokenStore: TokenStore,
-   *   configStore?: ConfigStore,
+   *   configStore?: ConfigStore | null,
    *   debug?: boolean,
    * }} args
    */
@@ -167,8 +220,17 @@ export class SesameHub3 {
   /** 登録済み再接続コールバックを発火する (transport の onReopen から呼ばれる)。 */
   _fireReconnect() {
     for (const cb of [...this._reconnectCbs]) {
-      try { cb(); } catch (e) { if (this._debug) console.error("[hub3] onReconnect cb error:", e?.message || e); }
+      try { cb(); } catch (e) { if (this._debug) console.error("[hub3] onReconnect cb error:", errMsg(e)); }
     }
+  }
+
+  /**
+   * companyID を必ず string で返す (DEFAULT_CONFIG / config.load が常に設定するため、
+   * 型上 optional でも実体は常に present)。下流モジュールは companyID:string を要求する。
+   * @returns {string}
+   */
+  get _companyID() {
+    return /** @type {string} */ (this._config.companyID);
   }
 
   get config() { return this._config; }
@@ -178,6 +240,7 @@ export class SesameHub3 {
 
   /**
    * remote 名 (省略時は default) から remote 定義と親 hub3 をまとめて取得。
+   * @param {string} [name]
    */
   resolveRemote(name) {
     if (this._configStore) return this._configStore.resolveRemote(name);
@@ -200,7 +263,7 @@ export class SesameHub3 {
     const idToken = await getValidIdToken(this._tokenStore);
     this._subUUID = jwtSub(idToken);
     this._ws = new Hub3WsClient({
-      wsUrl: this._config.wsUrl,
+      wsUrl: /** @type {string} */ (this._config.wsUrl),
       idToken,
       lang: this._config.lang,
       debug: this._debug,
@@ -211,7 +274,7 @@ export class SesameHub3 {
           // marginSec を大きくして必ず refresh する
           return await getValidIdToken(this._tokenStore, { marginSec: 999999 });
         } catch (e) {
-          if (this._debug) console.error("[hub3] token refresh failed:", e?.message || e);
+          if (this._debug) console.error("[hub3] token refresh failed:", errMsg(e));
           return null;
         }
       },
@@ -233,8 +296,14 @@ export class SesameHub3 {
     this._ws = null;
   }
 
+  /**
+   * 未接続なら throw、接続済みなら非 null の WS client を返す。
+   * 呼び出し側はこの戻り値を使うと `this._ws` の null 絞り込みを跨いで保持できる。
+   * @returns {Hub3WsClient}
+   */
   _ensureConnected() {
     if (!this._ws) throw new Error(t("domain.client.notConnected"));
+    return this._ws;
   }
 
   // ---------- ドメイン namespace ----------
@@ -250,17 +319,24 @@ export class SesameHub3 {
   // 低レベル関数を直接使いたい場合は `import { org } from "sesame-kit"` で
   // モジュールごと取り、第1引数に WS client を渡す。
 
+  /**
+   * ドメインモジュール (純関数集) を namespace オブジェクトに束ねる。
+   * companyID/subUUID を既定注入し、各 op を `(params) => fn(ws, {...})` でラップする。
+   * @param {Record<string, unknown>} mod
+   * @returns {Record<string, (params?: Record<string, unknown>) => unknown>}
+   */
   _bindNs(mod) {
     this._ensureConnected();
     const ws = this._ws;
-    const companyID = this._config.companyID;
+    const companyID = this._companyID;
     const subUUID = this._subUUID;
     // モジュールが NAMESPACE_OPS (公開 op の allowlist) を持つ場合はそれだけを露出。
     // presetir/iot のように client を取らない純ロジック (class/builder) が export に
     // 混じるモジュールで、それらを誤ってラップして壊すのを防ぐ。
     const names = Array.isArray(mod.NAMESPACE_OPS)
-      ? mod.NAMESPACE_OPS
+      ? /** @type {string[]} */ (mod.NAMESPACE_OPS)
       : Object.keys(mod).filter((k) => typeof mod[k] === "function");
+    /** @type {Record<string, (params?: Record<string, unknown>) => unknown>} */
     const out = {};
     for (const name of names) {
       const fn = mod[name];
@@ -296,22 +372,22 @@ export class SesameHub3 {
    * @returns {Promise<object>} sendIR の応答 (success / data.message 等)
    */
   async send(remoteName, keyOrUUID) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     if (!keyOrUUID) throw new Error(t("domain.client.keyRequired"));
-    const { remote, hub3 } = this.resolveRemote(remoteName);
+    const { remote, hub3 } = this.resolveRemote(remoteName ?? undefined);
     const isUUID = UUID_RE.test(keyOrUUID);
     const command = isUUID ? keyOrUUID : remote.keys?.[keyOrUUID];
     if (!command) {
       const avail = Object.keys(remote.keys || {}).join(", ") || "(none)";
       throw new Error(t("domain.client.unknownKey", { key: keyOrUUID, avail }));
     }
-    return sendIR(this._ws, {
-      deviceId: hub3.deviceId,
+    return sendIR(ws, {
+      deviceId: /** @type {string} */ (hub3.deviceId),
       irDeviceUUID: remote.irDeviceUUID,
       irType: remote.irType,
       command,
-      operation: remote.irOperation,
-      companyID: this._config.companyID,
+      operation: /** @type {"learnEmit"|"remoteEmit"} */ (remote.irOperation),
+      companyID: this._companyID,
     });
   }
 
@@ -323,12 +399,12 @@ export class SesameHub3 {
    * @returns {Promise<Array<{name:string, keyUUID:string}>>}
    */
   async listKeys(remoteName) {
-    this._ensureConnected();
-    const { remote, hub3 } = this.resolveRemote(remoteName);
-    return getIRCodes(this._ws, {
-      deviceId: hub3.deviceId,
+    const ws = this._ensureConnected();
+    const { remote, hub3 } = this.resolveRemote(remoteName ?? undefined);
+    return getIRCodes(ws, {
+      deviceId: /** @type {string} */ (hub3.deviceId),
       irDeviceUUID: remote.irDeviceUUID,
-      companyID: this._config.companyID,
+      companyID: this._companyID,
     });
   }
 
@@ -337,8 +413,8 @@ export class SesameHub3 {
    * 失敗時は throw。
    */
   async ping() {
-    this._ensureConnected();
-    return this._ws.ping();
+    const ws = this._ensureConnected();
+    return ws.ping();
   }
 
   // ---------- アカウント (ログインユーザ情報) ----------
@@ -349,10 +425,10 @@ export class SesameHub3 {
    * @returns {Promise<{customerInfo: object|null, quotas: object|null}>}
    */
   async getLoginUser() {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const email = this._tokenStore.load()?.username;
     if (!email) throw new Error(t("domain.client.emailNotInStore"));
-    return account.getLoginUser(this._ws, { email });
+    return account.getLoginUser(ws, { email });
   }
 
   /**
@@ -362,16 +438,18 @@ export class SesameHub3 {
    */
   async refreshAccount() {
     const { customerInfo } = await this.getLoginUser();
-    if (customerInfo?.companyID) {
-      this._config.companyID = customerInfo.companyID;
+    // customerInfo は biz3 由来の動的 JSON。companyID / subUUID を読むためにナロー化する。
+    const ci = /** @type {{ companyID?: string, subUUID?: string } | null} */ (customerInfo);
+    if (ci?.companyID) {
+      this._config.companyID = ci.companyID;
       if (this._configStore) {
         const cfg = this._configStore.load();
-        cfg.companyID = customerInfo.companyID;
+        cfg.companyID = ci.companyID;
         this._configStore.save();
       }
     }
-    if (customerInfo?.subUUID) {
-      this._subUUID = customerInfo.subUUID; // jwtSub と同値のはずだが、正式値で上書き
+    if (ci?.subUUID) {
+      this._subUUID = ci.subUUID; // jwtSub と同値のはずだが、正式値で上書き
     }
     return customerInfo ?? null;
   }
@@ -379,11 +457,16 @@ export class SesameHub3 {
   /**
    * 全 SESAME デバイス (Hub3 含む) のリストを取得。
    * biz3ManageDevice/getCompanyDevice → PubedCompanyDevice の応答を待つ。
+   * @param {{ timeoutMs?: number }} [opts]
+   * @returns {Promise<DeviceInfo[]>}
    */
   async listDevices({ timeoutMs = 10_000 } = {}) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
+    /** @type {(msg: import("./transport.js").WsMessage) => void} */
     let resolveGot;
+    /** @type {Promise<import("./transport.js").WsMessage>} */
     const got = new Promise((resolve) => { resolveGot = resolve; });
+    /** @param {import("./transport.js").WsMessage} msg */
     const listener = (msg) => {
       if (msg.action === ACTION_TYPES.BIZ3_MANAGE_DEVICE && msg.op === "PubedCompanyDevice") {
         resolveGot(msg);
@@ -391,19 +474,23 @@ export class SesameHub3 {
     };
     // 3rd-pass L-3: onMessage の戻り unsubscribe を必ず呼んで listener leak を防ぐ
     // (daemon 用途で listDevices を繰り返し呼ぶと累積していた)
-    const off = this._ws.onMessage(listener);
+    const off = ws.onMessage(listener);
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
     let timeoutId;
     try {
-      this._ws.send({
+      ws.send({
         action: ACTION_TYPES.BIZ3_MANAGE_DEVICE,
         op: "getCompanyDevice",
-        companyID: this._config.companyID,
+        companyID: this._companyID,
       });
+      /** @type {Promise<never>} */
       const timeout = new Promise((_, rej) => {
         timeoutId = setTimeout(() => rej(new Error(t("domain.client.getCompanyDeviceTimeout"))), timeoutMs);
       });
       const msg = await Promise.race([got, timeout]);
-      return msg?.data?.data?.list || [];
+      // data.data.list は biz3 の動的応答ペイロード。device レコード配列として読む。
+      const payload = /** @type {{ data?: { data?: { list?: import("./config.js").DeviceRecord[] } } }} */ (msg);
+      return payload?.data?.data?.list || [];
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
       off();
@@ -415,8 +502,14 @@ export class SesameHub3 {
   // いずれも内部で listDevices / listIRRemotes を引いて ConfigStore に委譲する。
   // configStore 無しで構築された場合は使えない (throw)。
 
+  /**
+   * configStore が無ければ throw、あれば非 null の ConfigStore を返す。
+   * @param {string} op エラーメッセージ用の操作名
+   * @returns {ConfigStore}
+   */
   _requireConfigStore(op) {
     if (!this._configStore) throw new Error(t("domain.client.requiresConfigStore", { op }));
+    return this._configStore;
   }
 
   /**
@@ -426,9 +519,9 @@ export class SesameHub3 {
    */
   async syncLocksFromDevices(opts = {}) {
     this._ensureConnected();
-    this._requireConfigStore("syncLocksFromDevices");
+    const configStore = this._requireConfigStore("syncLocksFromDevices");
     const list = await this.listDevices();
-    return this._configStore.syncLocksFromDevices(list, opts);
+    return configStore.syncLocksFromDevices(list, opts);
   }
 
   /**
@@ -438,23 +531,26 @@ export class SesameHub3 {
    */
   async syncHub3sFromDevices(opts = {}) {
     this._ensureConnected();
-    this._requireConfigStore("syncHub3sFromDevices");
+    const configStore = this._requireConfigStore("syncHub3sFromDevices");
     const list = await this.listDevices();
-    return this._configStore.syncHub3sFromDevices(list, opts);
+    return configStore.syncHub3sFromDevices(list, opts);
   }
 
   /**
    * `devices` 応答だけからリモコンを config に取り込む (引数不要)。
    * 内部で Hub3 を自動登録してから、各 Hub3 の stateInfo.remoteList を展開する。
    * irType はリモコン側が持っているのでユーザー指定不要。
-   * @returns {Promise<{hub3:{added,updated,removed}, remotes:{added,updated}}>}
+   * @returns {Promise<{
+   *   hub3: {added:string[], updated:string[], removed:string[]},
+   *   remotes: {added:string[], updated:string[]},
+   * }>}
    */
   async syncRemotesFromDevices() {
     this._ensureConnected();
-    this._requireConfigStore("syncRemotesFromDevices");
+    const configStore = this._requireConfigStore("syncRemotesFromDevices");
     const list = await this.listDevices();
-    const hub3 = this._configStore.syncHub3sFromDevices(list);
-    const remotes = this._configStore.syncRemotesFromDevices(list);
+    const hub3 = configStore.syncHub3sFromDevices(list);
+    const remotes = configStore.syncRemotesFromDevices(list);
     return { hub3, remotes };
   }
 
@@ -466,18 +562,20 @@ export class SesameHub3 {
   async listRemotesFromDevices() {
     this._ensureConnected();
     const list = await this.listDevices();
+    /** @type {Array<{hub3DeviceUUID:string, hub3Name:string, uuid:string, type:number, alias:string|null}>} */
     const out = [];
     for (const d of list) {
       if (d.deviceModel !== "hub_3" && d.deviceModel !== "hub_3_lte") continue;
-      for (const r of d.stateInfo?.remoteList || []) {
-        const uuid = r.uuid || r.irDeviceUUID;
+      const remoteList = /** @type {Array<Record<string, unknown>>} */ (d.stateInfo?.remoteList || []);
+      for (const r of remoteList) {
+        const uuid = /** @type {string|undefined} */ (r.uuid || r.irDeviceUUID);
         if (!uuid) continue;
         out.push({
-          hub3DeviceUUID: d.deviceUUID,
-          hub3Name: d.deviceName || d.deviceUUID,
+          hub3DeviceUUID: d.deviceUUID ?? "",
+          hub3Name: d.deviceName || d.deviceUUID || "",
           uuid,
           type: Number(r.type ?? r.irType),
-          alias: r.alias || r.name || null,
+          alias: /** @type {string|null} */ (r.alias || r.name || null),
         });
       }
     }
@@ -493,9 +591,11 @@ export class SesameHub3 {
    */
   async syncRemotesFromServer(hub3Name, irType) {
     this._ensureConnected();
-    this._requireConfigStore("syncRemotesFromServer");
-    const list = await this.listIRRemotes(irType);
-    return this._configStore.syncRemotesFromServer(list, hub3Name);
+    const configStore = this._requireConfigStore("syncRemotesFromServer");
+    const list = /** @type {Array<{irDeviceUUID?: string, uuid?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null, irOperation?: string}>} */ (
+      await this.listIRRemotes(irType)
+    );
+    return configStore.syncRemotesFromServer(list, hub3Name);
   }
 
   /**
@@ -505,12 +605,13 @@ export class SesameHub3 {
    */
   async syncRemoteKeys(remoteName) {
     this._ensureConnected();
-    this._requireConfigStore("syncRemoteKeys");
-    const { name } = this.resolveRemote(remoteName);
+    const configStore = this._requireConfigStore("syncRemoteKeys");
+    const { name } = this.resolveRemote(remoteName ?? undefined);
     const codes = await this.listKeys(name);
+    /** @type {Record<string, string>} */
     const keys = {};
     for (const c of codes) keys[c.name] = c.keyUUID;
-    this._configStore.updateRemoteKeys(name, keys);
+    configStore.updateRemoteKeys(name, keys);
     return { name, keyCount: Object.keys(keys).length };
   }
 
@@ -521,6 +622,7 @@ export class SesameHub3 {
   /**
    * lock 設定を name から解決。name 省略時は default.lock、
    * 無ければ locks が 1 つだけならそれ。
+   * @param {string|null} [name]
    */
   resolveLock(name) {
     return this._lock.resolveLock(name);
@@ -566,15 +668,19 @@ export class SesameHub3 {
   /**
    * デバッグ用: WS の全受信メッセージを購読する (戻り値で unsubscribe)。
    * fire-and-forget な op (autolock 等) のサーバ応答を観測するのに使う。
-   * @param {(msg:object)=>void} fn
+   * @param {(msg: import("./transport.js").WsMessage)=>void} fn
    * @returns {()=>void} unsubscribe
    */
   onAnyMessage(fn) {
-    this._ensureConnected();
-    return this._ws.onMessage(fn);
+    const ws = this._ensureConnected();
+    return ws.onMessage(fn);
   }
 
-  /** 任意 cmd 直指定 (上級用)。 */
+  /**
+   * 任意 cmd 直指定 (上級用)。
+   * @param {string|null} name
+   * @param {number} cmd
+   */
   async triggerLockRaw(name, cmd) {
     return this._lock.triggerRaw(name, cmd);
   }
@@ -607,17 +713,17 @@ export class SesameHub3 {
    *   timeoutMs?: number,        // ボタン押下待ち timeout (default 60s)
    *   onPrompt?: () => void,     // 学習モード突入後に呼ばれる (ユーザに「ボタン押して」と促す)
    * }} [opts]
-   * @returns {Promise<{keyUUID: string, captured: any, saved: any}>}
+   * @returns {Promise<{keyUUID: string, captured: unknown, saved: unknown}>}
    */
   async learnIR(remoteName, keyName, { timeoutMs = 60_000, onPrompt } = {}) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const { remote, hub3, name: rName } = this.resolveRemote(remoteName);
-    const result = await ir.learnIRKey(this._ws, {
-      hub3DeviceId: hub3.deviceId,
-      remoteId: remote.irDeviceUUID,
+    const result = await ir.learnIRKey(ws, {
+      hub3DeviceId: /** @type {string} */ (hub3.deviceId),
+      remoteId: /** @type {string} */ (remote.irDeviceUUID),
       keyName,
       irType: remote.irType,
-      companyID: this._config.companyID,
+      companyID: this._companyID,
       timeoutMs,
       onPrompt,
     });
@@ -631,51 +737,69 @@ export class SesameHub3 {
     return result;
   }
 
+  /**
+   * @param {number} type irType
+   * @param {{ page?: number, pageSize?: number }} [opts]
+   */
   async listIRRemotes(type, { page, pageSize } = {}) {
-    this._ensureConnected();
-    return ir.getRemoteList(this._ws, { type, companyID: this._config.companyID, page, pageSize });
+    const ws = this._ensureConnected();
+    return ir.getRemoteList(ws, { type, companyID: this._companyID, page, pageSize });
   }
 
+  /**
+   * @param {number} type irType
+   * @param {string} searchTerm
+   */
   async searchPresetIRRemotes(type, searchTerm) {
-    this._ensureConnected();
-    return ir.searchRemoteList(this._ws, { type, companyID: this._config.companyID, searchTerm });
+    const ws = this._ensureConnected();
+    return ir.searchRemoteList(ws, { type, companyID: this._companyID, searchTerm });
   }
 
+  /** @param {object} remoteObj */
   async addIRRemoteServer(remoteObj) {
-    this._ensureConnected();
-    return ir.addIRRemote(this._ws, { remote: remoteObj, companyID: this._config.companyID });
+    const ws = this._ensureConnected();
+    return ir.addIRRemote(ws, { remote: remoteObj, companyID: this._companyID });
   }
 
+  /** @param {string} [remoteName] */
   async deleteIRRemoteServer(remoteName) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const { remote, hub3 } = this.resolveRemote(remoteName);
-    return ir.deleteIRRemote(this._ws, {
-      hub3DeviceId: hub3.deviceId,
-      uuid: remote.irDeviceUUID,
-      companyID: this._config.companyID,
+    return ir.deleteIRRemote(ws, {
+      hub3DeviceId: /** @type {string} */ (hub3.deviceId),
+      uuid: /** @type {string} */ (remote.irDeviceUUID),
+      companyID: this._companyID,
     });
   }
 
+  /**
+   * @param {string} remoteName
+   * @param {string} alias
+   */
   async renameIRRemote(remoteName, alias) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const { remote, hub3 } = this.resolveRemote(remoteName);
-    return ir.updateRemoteAlias(this._ws, {
-      hub3DeviceId: hub3.deviceId,
-      uuid: remote.irDeviceUUID,
+    return ir.updateRemoteAlias(ws, {
+      hub3DeviceId: /** @type {string} */ (hub3.deviceId),
+      uuid: /** @type {string} */ (remote.irDeviceUUID),
       alias,
-      companyID: this._config.companyID,
+      companyID: this._companyID,
     });
   }
 
+  /**
+   * @param {string} remoteName
+   * @param {string} keyOrUUID
+   */
   async deleteIRKey(remoteName, keyOrUUID) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const { remote, hub3, name } = this.resolveRemote(remoteName);
     const keyUUID = remote.keys?.[keyOrUUID] || keyOrUUID;
-    const resp = await ir.deleteIRCode(this._ws, {
-      hub3DeviceId: hub3.deviceId,
-      remoteId: remote.irDeviceUUID,
+    const resp = await ir.deleteIRCode(ws, {
+      hub3DeviceId: /** @type {string} */ (hub3.deviceId),
+      remoteId: /** @type {string} */ (remote.irDeviceUUID),
       keyUUID,
-      companyID: this._config.companyID,
+      companyID: this._companyID,
     });
     // config 側からも除去
     if (this._configStore && remote.keys?.[keyOrUUID]) {
@@ -685,16 +809,21 @@ export class SesameHub3 {
     return resp;
   }
 
+  /**
+   * @param {string} remoteName
+   * @param {string} keyOrUUID
+   * @param {string} newName
+   */
   async renameIRKey(remoteName, keyOrUUID, newName) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const { remote, hub3, name } = this.resolveRemote(remoteName);
     const keyUUID = remote.keys?.[keyOrUUID] || keyOrUUID;
-    const resp = await ir.updateIRCode(this._ws, {
-      hub3DeviceId: hub3.deviceId,
-      remoteId: remote.irDeviceUUID,
+    const resp = await ir.updateIRCode(ws, {
+      hub3DeviceId: /** @type {string} */ (hub3.deviceId),
+      remoteId: /** @type {string} */ (remote.irDeviceUUID),
       keyUUID,
       name: newName,
-      companyID: this._config.companyID,
+      companyID: this._companyID,
     });
     if (this._configStore && remote.keys?.[keyOrUUID]) {
       const next = { ...remote.keys };
@@ -705,23 +834,30 @@ export class SesameHub3 {
     return resp;
   }
 
+  /** @param {string} [hub3Name] */
   async getIRMode(hub3Name) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const hub3 = this._resolveHub3(hub3Name);
-    return ir.getIRMode(this._ws, { deviceId: hub3.deviceId, companyID: this._config.companyID });
+    return ir.getIRMode(ws, { deviceId: /** @type {string} */ (hub3.deviceId), companyID: this._companyID });
   }
 
+  /**
+   * @param {string} hub3Name
+   * @param {number} mode ir.MODE の値 (0=CONTROL, 1=REGISTER)
+   */
   async setIRMode(hub3Name, mode) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const hub3 = this._resolveHub3(hub3Name);
-    return ir.setIRMode(this._ws, { deviceId: hub3.deviceId, mode, companyID: this._config.companyID });
+    return ir.setIRMode(ws, { deviceId: /** @type {string} */ (hub3.deviceId), mode, companyID: this._companyID });
   }
 
+  /** @param {{ irData: string, irType: number, brandName?: string }} args */
   async matchIRRemote({ irData, irType, brandName }) {
-    this._ensureConnected();
-    return ir.matchRemote(this._ws, { irData, irType, brandName, companyID: this._config.companyID });
+    const ws = this._ensureConnected();
+    return ir.matchRemote(ws, { irData, irType, brandName, companyID: this._companyID });
   }
 
+  /** @param {string} [name] @returns {import("./config.js").Hub3View} */
   _resolveHub3(name) {
     const cfg = this._config;
     const hub3s = cfg.hub3s || {};
@@ -737,13 +873,14 @@ export class SesameHub3 {
 
   /** 個人ユーザのデバイス一覧 (会社 vs 個人で別 op)。 */
   async listUserDevices() {
-    this._ensureConnected();
-    return devices.getUserDevices(this._ws);
+    const ws = this._ensureConnected();
+    return devices.getUserDevices(ws);
   }
 
+  /** @param {string} deviceUUID */
   async getDeviceStatus(deviceUUID) {
-    this._ensureConnected();
-    return devices.getDeviceStatus(this._ws, { deviceUUID });
+    const ws = this._ensureConnected();
+    return devices.getDeviceStatus(ws, { deviceUUID });
   }
 
   /**
@@ -757,20 +894,30 @@ export class SesameHub3 {
    * @returns {Promise<object|null>} postCards 応答 (cards 空なら null)
    */
   async registerCards(deviceUUID, cards) {
-    this._ensureConnected();
-    return access.syncEnrolledCards(this._ws, { deviceUUID, records: cards });
+    const ws = this._ensureConnected();
+    // BLE 読み取り形は cardName/cardType を欠くことがあるが、enrolledToCardList が
+    // 既定値で補正するため records 契約 (全フィールド必須) へキャストして渡す。
+    const records = /** @type {Array<{cardID:string, cardName:string, cardType:number}>} */ (cards);
+    return access.syncEnrolledCards(ws, { deviceUUID, records });
   }
 
+  /**
+   * biometrics REST のベース URL を解決する。引数 > config.biometricsBaseUrl > config.registerBaseUrl。
+   * @param {string} [baseUrl]
+   * @returns {string}
+   */
   _biometricsBaseUrl(baseUrl) {
     const url = baseUrl || this._config.biometricsBaseUrl || this._config.registerBaseUrl;
     if (!url) throw new Error("biometrics baseUrl required (set config.biometricsBaseUrl or pass baseUrl)");
     return url;
   }
 
+  /** @returns {() => Promise<string>} 都度 idToken から Bearer を発行する provider */
   _biometricsAuthorizationProvider() {
     return async () => `Bearer ${await getValidIdToken(this._tokenStore)}`;
   }
 
+  /** @param {import("./client.js").BiometricAuthBag} [args] */
   async postAuthenticationData({ operation, deviceID, items, baseUrl, transport } = {}) {
     return access.postAuthenticationData(null, {
       operation,
@@ -782,6 +929,7 @@ export class SesameHub3 {
     });
   }
 
+  /** @param {import("./client.js").BiometricAuthBag} [args] */
   async putAuthenticationData({ operation, deviceID, items, baseUrl, transport } = {}) {
     return access.putAuthenticationData(null, {
       operation,
@@ -793,6 +941,7 @@ export class SesameHub3 {
     });
   }
 
+  /** @param {import("./client.js").BiometricAuthBag} [args] */
   async deleteAuthenticationData({ operation, deviceID, items, baseUrl, transport } = {}) {
     return access.deleteAuthenticationData(null, {
       operation,
@@ -804,6 +953,7 @@ export class SesameHub3 {
     });
   }
 
+  /** @param {import("./client.js").BiometricNameBag} [args] */
   async updateAuthenticationName({ request, kind, baseUrl, transport, ...rest } = {}) {
     return access.updateAuthenticationName(null, {
       request,
@@ -815,17 +965,24 @@ export class SesameHub3 {
     });
   }
 
+  /**
+   * @param {string} deviceUUID
+   * @param {string} deviceName
+   */
   async renameDevice(deviceUUID, deviceName) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     if (!this._subUUID) throw new Error(t("domain.client.subUUIDNotAvailable"));
-    return devices.updateDeviceName(this._ws, { subUUID: this._subUUID, deviceUUID, deviceName });
+    return devices.updateDeviceName(ws, { subUUID: this._subUUID, deviceUUID, deviceName });
   }
 
-  /** company から指定 UUID のデバイスを削除。 */
+  /**
+   * company から指定 UUID のデバイスを削除。
+   * @param {string} deviceUUID
+   */
   async deleteDevice(deviceUUID) {
-    this._ensureConnected();
-    return devices.deleteDevices(this._ws, {
-      companyID: this._config.companyID,
+    const ws = this._ensureConnected();
+    return devices.deleteDevices(ws, {
+      companyID: this._companyID,
       items: [{ deviceUUID }],
     });
   }
@@ -833,6 +990,8 @@ export class SesameHub3 {
   /**
    * @deprecated `onDeviceUpdate(items, fn)` を使ってください (on* イベント命名に統一)。
    * 後方互換のため残置。内部実装は onDeviceUpdate と同一。
+   * @param {{deviceUUID:string, deviceModel?:string}[]} deviceInfos
+   * @param {(msg:any) => void} onUpdate
    */
   subscribeDeviceUpdates(deviceInfos, onUpdate) {
     return this.onDeviceUpdate(deviceInfos, onUpdate);
@@ -842,68 +1001,84 @@ export class SesameHub3 {
    * ロック開閉履歴を取得。`list` はデバイス指定の配列。
    *
    * @param {Array<{deviceUUID: string}>} list 履歴を取得するデバイスの配列
-   * @param {number} [pageSize] 1ページ件数 (未指定でサーバ既定)
+   * @param {number} [pageSize] 1 ページあたりの件数 (未指定でサーバ既定)
    * @returns {Promise<any>}
    */
   async getDeviceHistory(list, pageSize) {
-    this._ensureConnected();
-    return devices.getDeviceHistory(this._ws, {
-      companyID: this._config.companyID,
+    const ws = this._ensureConnected();
+    return devices.getDeviceHistory(ws, {
+      companyID: this._companyID,
       list,
       pageSize,
     });
   }
 
-  /** 開閉履歴の1エントリを非表示化 (論理削除)。timestamp は getDeviceHistory の各 record の値。 */
+  /**
+   * 開閉履歴の1エントリを非表示化 (論理削除)。timestamp は getDeviceHistory の各 record の値。
+   * @param {{ deviceUUID: string, timestamp: number }} args
+   */
   async hideDeviceHistory({ deviceUUID, timestamp }) {
-    this._ensureConnected();
-    return devices.makeHistoryInvisible(this._ws, { deviceUUID, timestamp });
+    const ws = this._ensureConnected();
+    return devices.makeHistoryInvisible(ws, { deviceUUID, timestamp });
   }
 
-  /** 電池履歴を取得 (1ページ)。lastEvaluatedKey でページング。 */
+  /**
+   * 電池履歴を取得 (1ページ)。lastEvaluatedKey でページング。
+   * @param {string} deviceUUID
+   * @param {{ lastEvaluatedKey?: unknown, pageSize?: number }} [opts]
+   */
   async getDeviceBattery(deviceUUID, { lastEvaluatedKey = null, pageSize = 100 } = {}) {
-    this._ensureConnected();
-    return devices.getBatteryRecord(this._ws, { deviceUUID, lastEvaluatedKey, pageSize });
+    const ws = this._ensureConnected();
+    return devices.getBatteryRecord(ws, { deviceUUID, lastEvaluatedKey, pageSize });
   }
 
-  /** 電池履歴の1エントリを非表示化 (論理削除)。timestampSecond は getDeviceBattery の record.ts。 */
+  /**
+   * 電池履歴の1エントリを非表示化 (論理削除)。timestampSecond は getDeviceBattery の record.ts。
+   * @param {{ deviceUUID: string, timestampSecond: number }} args
+   */
   async hideBatteryRecord({ deviceUUID, timestampSecond }) {
-    this._ensureConnected();
-    return devices.makeBatteryRecordInvisible(this._ws, { deviceUUID, timestampSecond });
+    const ws = this._ensureConnected();
+    return devices.makeBatteryRecordInvisible(ws, { deviceUUID, timestampSecond });
   }
 
   async listFirmware() {
-    this._ensureConnected();
-    return devices.listFirmware(this._ws);
+    const ws = this._ensureConnected();
+    return devices.listFirmware(ws);
   }
 
-  /** WebAPI proxy 経由で REST API を叩く。apiKeyId は config 側に保存。 */
+  /**
+   * WebAPI proxy 経由で REST API を叩く。apiKeyId は config 側に保存。
+   * @param {{ func: string, query?: object, body?: object, apiKeyId?: string }} args
+   */
   async invokeWebAPI({ func, query, body, apiKeyId }) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const key = apiKeyId || this._config.apiKeyId;
     if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
-    return devices.invokeWebAPI(this._ws, { func, apiKeyId: key, query, body });
+    return devices.invokeWebAPI(ws, { func, apiKeyId: key, query, body });
   }
 
+  /** @param {{ deviceId?: string, apiKeyId?: string }} [args] */
   async webapiDeviceState({ deviceId, apiKeyId } = {}) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const key = apiKeyId || this._config.apiKeyId;
     if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
-    return devices.webapiDeviceState(this._ws, { apiKeyId: key, deviceId });
+    return devices.webapiDeviceState(ws, { apiKeyId: key, deviceId: /** @type {string} */ (deviceId) });
   }
 
+  /** @param {{ deviceId?: string, page?: number, lg?: number, isBiz?: boolean, apiKeyId?: string }} [args] */
   async webapiDeviceHistory({ deviceId, page, lg, isBiz, apiKeyId } = {}) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const key = apiKeyId || this._config.apiKeyId;
     if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
-    return devices.webapiDeviceHistory(this._ws, { apiKeyId: key, deviceId, page, lg, isBiz });
+    return devices.webapiDeviceHistory(ws, { apiKeyId: key, deviceId: /** @type {string} */ (deviceId), page, lg, isBiz });
   }
 
+  /** @param {{ deviceId?: string, cmd?: unknown, sign?: unknown, history?: unknown, apiKeyId?: string }} [args] */
   async webapiSendCmd({ deviceId, cmd, sign, history, apiKeyId } = {}) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const key = apiKeyId || this._config.apiKeyId;
     if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
-    return devices.webapiSendCmd(this._ws, { apiKeyId: key, deviceId, cmd, sign, history });
+    return devices.webapiSendCmd(ws, { apiKeyId: key, deviceId: /** @type {string} */ (deviceId), cmd, sign, history });
   }
 
   // ---------- config-less direct API ----------
@@ -952,8 +1127,8 @@ export class SesameHub3 {
    * @returns {Promise<{ack:any, cmd:number, seconds:number}>}
    */
   setAutolockDevice({ deviceUUID, secretKey, seconds, timeoutMs }) {
-    this._ensureConnected();
-    return setAutolockRaw(this._ws, { deviceId: deviceUUID, secretKey, seconds, timeoutMs });
+    const ws = this._ensureConnected();
+    return setAutolockRaw(ws, { deviceId: deviceUUID, secretKey, seconds, timeoutMs });
   }
 
   /**
@@ -964,14 +1139,14 @@ export class SesameHub3 {
    * @returns {Promise<object>} sendIR の応答
    */
   async sendIRDirect({ hub3DeviceId, irDeviceUUID, irType, command, operation = "learnEmit" }) {
-    this._ensureConnected();
-    return sendIR(this._ws, {
+    const ws = this._ensureConnected();
+    return sendIR(ws, {
       deviceId: hub3DeviceId,
       irDeviceUUID,
       irType,
       command,
-      operation,
-      companyID: this._config.companyID,
+      operation: /** @type {"learnEmit"|"remoteEmit"} */ (operation),
+      companyID: this._companyID,
     });
   }
 
@@ -981,11 +1156,11 @@ export class SesameHub3 {
    * @returns {Promise<Array<{name:string, keyUUID:string}>>}
    */
   async getIRCodesDirect({ hub3DeviceId, irDeviceUUID }) {
-    this._ensureConnected();
-    return getIRCodes(this._ws, {
+    const ws = this._ensureConnected();
+    return getIRCodes(ws, {
       deviceId: hub3DeviceId,
       irDeviceUUID,
-      companyID: this._config.companyID,
+      companyID: this._companyID,
     });
   }
 
@@ -994,22 +1169,31 @@ export class SesameHub3 {
   // deviceId フィルタ・複数 unsubscribe の合成・モード切替の自動化など、
   // 「やりたいこと」レベルで使えるよう包んだ。
 
-  /** name で指定したロックの state change push を購読。戻り値は unsubscribe。 */
+  /**
+   * name で指定したロックの state change push を購読。戻り値は unsubscribe。
+   * @param {string|null} name
+   * @param {(msg: import("./transport.js").WsMessage)=>void} fn
+   */
   onLockStateChange(name, fn) {
     this._ensureConnected();
     const { lock } = this.resolveLock(name);
     return this.onLockStateChangeDevice(lock.deviceUUID, fn);
   }
 
-  /** UUID 直指定で state change を購読。 */
+  /**
+   * UUID 直指定で state change を購読。
+   * @param {string|undefined} deviceUUID
+   * @param {(msg: import("./transport.js").WsMessage)=>void} fn
+   */
   onLockStateChangeDevice(deviceUUID, fn) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const target = normalizeUuid(deviceUUID);
-    return this._ws.subscribe(STATE_CHANGE_KEY, (msg) => {
+    return ws.subscribe(STATE_CHANGE_KEY, (msg) => {
       // pubDeviceStateChange の本体は message.data、識別は data.deviceUUID
       // (vendor 確認: useIotCtrl.js:20-21 が updateDeviceState(message.data)、
       //  useManageDevice.js:147 が updatedDevice.deviceUUID)。単一フィールドのみ。
-      const incoming = normalizeUuid(msg?.data?.deviceUUID);
+      const data = /** @type {{ deviceUUID?: string } | undefined} */ (msg?.data);
+      const incoming = normalizeUuid(data?.deviceUUID);
       if (incoming !== target) return;
       try { fn(msg); } catch { /* ignore */ }
     });
@@ -1025,15 +1209,22 @@ export class SesameHub3 {
    *
    * 戻り値: async () => Promise<void>  — subscribe 解除 + setIRMode(CONTROL) 復帰
    */
+  /**
+   * @param {string} hub3Name
+   * @param {(data: unknown)=>void} fn
+   * @returns {Promise<() => Promise<void>>}
+   */
   async onIRLearned(hub3Name, fn) {
-    this._ensureConnected();
+    const ws = this._ensureConnected();
     const h = this._resolveHub3(hub3Name);
-    const companyID = this._config.companyID;
-    await ir.setIRMode(this._ws, { deviceId: h.deviceId, mode: ir.MODE.REGISTER, companyID });
-    const sub = await ir.subscribeIRData(this._ws, { deviceId: h.deviceId, companyID });
-    const off = sub.onData((msg) => {
+    const deviceId = /** @type {string} */ (h.deviceId);
+    const companyID = this._companyID;
+    await ir.setIRMode(ws, { deviceId, mode: ir.MODE.REGISTER, companyID });
+    const sub = await ir.subscribeIRData(ws, { deviceId, companyID });
+    const off = sub.onData((/** @type {import("./transport.js").WsMessage} */ msg) => {
       // 学習波形は response.data.data (vendor 確認: learn/index.js:219,227)。単一パスのみ。
-      try { fn(msg?.data?.data); } catch { /* ユーザ callback の例外は購読を壊さない */ }
+      const data = /** @type {{ data?: unknown } | undefined} */ (msg?.data);
+      try { fn(data?.data); } catch { /* ユーザ callback の例外は購読を壊さない */ }
     });
     let cleaned = false;
     const cleanup = async () => {
@@ -1043,7 +1234,7 @@ export class SesameHub3 {
       off();
       sub.unsubscribe();
       try {
-        await ir.setIRMode(this._ws, { deviceId: h.deviceId, mode: ir.MODE.CONTROL, companyID });
+        await ir.setIRMode(ws, { deviceId, mode: ir.MODE.CONTROL, companyID });
       } catch { /* best effort */ }
     };
     // close() 時の自動 cleanup 用に登録 (2nd-pass M-1)
@@ -1057,9 +1248,9 @@ export class SesameHub3 {
    * @param {(msg:any) => void} fn
    */
   onDeviceUpdate(items, fn) {
-    this._ensureConnected();
-    return devices.subscribeDevicesUpdate(this._ws, {
-      companyID: this._config.companyID,
+    const ws = this._ensureConnected();
+    return devices.subscribeDevicesUpdate(ws, {
+      companyID: this._companyID,
       items,
       onUpdate: fn,
     });

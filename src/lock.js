@@ -17,6 +17,16 @@ import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { t } from "./i18n.js";
 import { SesameError, ERR } from "./errors.js";
 
+/**
+ * 下位 WS トランスポート。
+ * @typedef {import("./transport.js").Hub3WsClient} WsClient
+ */
+
+/**
+ * lock/unlock/toggle/click 系コマンドの共通パラメータ (cmd は各ラッパが補う)。
+ * @typedef {{deviceId: string, secretKey: string, subUUID: string, timeoutMs?: number}} LockParams
+ */
+
 const TRIGGER_ACTION = ACTION_TYPES.BIZ3_TRIGGER_LOCKER; // "biz3TriggerLocker" (vendor 由来)
 // 同期 ack のキー: サーバは {action:"biz3TriggerLocker", code:200, data:{}, success:true} を
 // op 無しで返す → transport の dispatch キーは `biz3TriggerLocker:` (op 空)。
@@ -49,7 +59,9 @@ function dispatchTrigger(client, { cmd, sign, history, deviceId, timeoutMs = DEF
   return new Promise((resolve, reject) => {
     let done = false;
     const cleanup = () => { clearTimeout(to); unsubAck(); unsubState(); };
+    /** @param {any} msg */
     const succeed = (msg) => { if (done) return; done = true; cleanup(); resolve(msg); };
+    /** @param {Error} err */
     const fail = (err) => { if (done) return; done = true; cleanup(); reject(err); };
 
     const to = setTimeout(
@@ -95,6 +107,7 @@ function dispatchTrigger(client, { cmd, sign, history, deviceId, timeoutMs = DEF
  * @returns {Promise<any>} biz3TriggerLocker ack メッセージ
  */
 export async function triggerLock(client, params) {
+  /** @param {string} m */
   const bad = (m) => new SesameError(t(m), { code: ERR.BAD_REQUEST });
   if (!params.deviceId) throw bad("domain.lock.deviceIdRequired");
   if (!params.secretKey) throw bad("domain.lock.secretKeyRequired");
@@ -112,13 +125,13 @@ export async function triggerLock(client, params) {
   });
 }
 
-/** ロックを施錠 (cmd=82)。 */
+/** ロックを施錠 (cmd=82)。 @param {WsClient} client @param {LockParams} p */
 export function lockLock(client, p) { return triggerLock(client, { ...p, cmd: CMD.LOCK }); }
-/** ロックを解錠 (cmd=83)。 */
+/** ロックを解錠 (cmd=83)。 @param {WsClient} client @param {LockParams} p */
 export function lockUnlock(client, p) { return triggerLock(client, { ...p, cmd: CMD.UNLOCK }); }
-/** ロックを反転 (cmd=88, cloud のみ)。現在状態に応じてサーバが LOCK/UNLOCK を判定。 */
+/** ロックを反転 (cmd=88, cloud のみ)。現在状態に応じてサーバが LOCK/UNLOCK を判定。 @param {WsClient} client @param {LockParams} p */
 export function lockToggle(client, p) { return triggerLock(client, { ...p, cmd: CMD.TOGGLE }); }
-/** SESAME Bot のボタンクリック (cmd=89)。 */
+/** SESAME Bot のボタンクリック (cmd=89)。 @param {WsClient} client @param {LockParams} p */
 export function botClick(client, p) { return triggerLock(client, { ...p, cmd: CMD.CLICK }); }
 
 /**
@@ -149,6 +162,7 @@ export function botClick(client, p) { return triggerLock(client, { ...p, cmd: CM
  * @returns {Promise<any>} biz3TriggerLocker ack メッセージ (success:false は reject)
  */
 export async function triggerItemCommand(client, params) {
+  /** @param {string} m */
   const bad = (m) => new SesameError(t(m), { code: ERR.BAD_REQUEST });
   if (!params.deviceId) throw bad("domain.lock.deviceIdRequired");
   if (!params.secretKey) throw bad("domain.lock.secretKeyRequired");
@@ -197,6 +211,10 @@ export async function setAutolock(client, { deviceId, secretKey, seconds, timeou
   return { ack, cmd: CMD.AUTOLOCK, seconds };
 }
 
+/**
+ * @param {string|null|undefined} s
+ * @returns {string}
+ */
 function normalizeUuid(s) {
   return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
 }

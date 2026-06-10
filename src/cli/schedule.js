@@ -16,7 +16,7 @@ import { t } from "../i18n.js";
 
 /**
  * @param {import("commander").Command} program
- * @param {object} ctx cli.js makeCtx() が供給する共有コンテキスト
+ * @param {import("../cli.js").CliCtx} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
 export function registerScheduleCommands(program, ctx) {
   const schedule = program.command("schedule").description(t("schedule.cmd.desc"));

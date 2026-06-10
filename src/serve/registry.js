@@ -27,8 +27,41 @@ import * as iot from "../iot.js";
 import * as presetir from "../presetir.js";
 import { SesameBle, SesameOS2Ble, createBleTransport } from "../ble/index.js";
 
+/**
+ * 常駐 hub。registry は (a) 明示メソッド (hub.lock 等) と (b) 名前空間 op の動的
+ * dispatch (hub[ns][op]) の両方で hub を使う。どちらも実行時に解決する設計なので、
+ * 型は daemon の HubLike を index signature 付きで緩める (動的 dispatch を許す)。
+ * daemon が実際に渡す `this.hub` (HubLike) と互換である必要がある。
+ * @typedef {import("./daemon.js").HubLike & Record<string, any>} Hub
+ */
+
+/**
+ * RPC ハンドラに渡る実行コンテキスト。
+ * @typedef {object} HandlerCtx
+ * @property {Hub} hub 常駐 SesameHub3
+ * @property {Record<string, any>} params JSON-RPC params (オブジェクト)
+ * @property {import("./daemon.js").Connection} [conn] 呼び出し元 Connection
+ * @property {import("./daemon.js").Daemon} daemon Daemon (購読/リース/authState 用)
+ */
+
+/**
+ * 1 メソッドのレジストリエントリ。
+ * @typedef {object} MethodEntry
+ * @property {string} summary
+ * @property {Array<{name:string, required:boolean, desc?:string, schema?:Record<string, unknown>}>} params
+ * @property {string} result
+ * @property {(ctx: HandlerCtx) => unknown} handler
+ * @property {string} [namespace]
+ */
+
+/**
+ * gen-rpc-schema が抽出した 1 param の記述。
+ * @typedef {{ name:string, required:boolean, tsType?:string, schema?:Record<string, unknown> }} GenParam
+ */
+
 // ビルド時に .d.ts から抽出した名前空間 op の param 型 (scripts/gen-rpc-schema.mjs)。
 // これにより discover が「名前空間 op の引数名・型」を自己記述できる。
+/** @type {Record<string, GenParam[]>} */
 let GEN_PARAMS = {};
 try {
   GEN_PARAMS = JSON.parse(readFileSync(new URL("./rpc-params.generated.json", import.meta.url), "utf8"));
@@ -37,7 +70,11 @@ try {
 // 自動公開する名前空間 (getter 名 → モジュール)。getter は SesameHub3 のプロパティ名と一致。
 const NS_MODULES = { schedule, org, company, payment, access, iot, presetir };
 
-/** params 必須キーの存在チェック (軽量バリデータ)。欠落は bad_params。 */
+/**
+ * params 必須キーの存在チェック (軽量バリデータ)。欠落は bad_params。
+ * @param {Record<string, unknown>} params
+ * @param {string[]} keys
+ */
 function need(params, keys) {
   for (const k of keys) {
     if (params[k] === undefined || params[k] === null || params[k] === "") {
@@ -46,6 +83,22 @@ function need(params, keys) {
   }
 }
 
+/**
+ * topics param を topic 文字列配列へ正規化する (単一値も配列に包む)。
+ * 値の妥当性 (既知 topic か) は呼び出し側が TOPICS で検証する。
+ * @param {unknown} raw
+ * @returns {string[]}
+ */
+function asTopicList(raw) {
+  const arr = Array.isArray(raw) ? raw : [raw];
+  return arr.map((v) => String(v));
+}
+
+/**
+ * JSON で送られた特殊エンコード (Buffer/$buffer) を実値へ復元する。prototype 汚染キーは拒否。
+ * @param {any} value
+ * @returns {any}
+ */
 function reviveJsonArg(value) {
   if (Array.isArray(value)) return value.map(reviveJsonArg);
   if (!value || typeof value !== "object") return value;
@@ -54,6 +107,7 @@ function reviveJsonArg(value) {
     const encoding = value.encoding === "base64" ? "base64" : "hex";
     return Buffer.from(value.$buffer, encoding);
   }
+  /** @type {Record<string, any>} */
   const out = {};
   for (const [key, nested] of Object.entries(value)) {
     if (key === "__proto__" || key === "prototype" || key === "constructor") {
@@ -64,7 +118,10 @@ function reviveJsonArg(value) {
   return out;
 }
 
-/** クラウド接続が要る op の前段ガード (未認証/未接続を明示エラーに)。 */
+/**
+ * クラウド接続が要る op の前段ガード (未認証/未接続を明示エラーに)。
+ * @param {import("./daemon.js").Daemon} daemon
+ */
 function requireAuth(daemon) {
   if (daemon.authState === "expired") {
     throw new RpcError(t("serve.notAuthenticated"), { kind: KIND.NOT_AUTHENTICATED });
@@ -74,6 +131,11 @@ function requireAuth(daemon) {
   }
 }
 
+/**
+ * @param {Record<string, any>} root 走査対象のオブジェクトツリー (ble facade 等)。
+ * @param {string} path ドット区切りの op パス。
+ * @param {unknown[]} [args]
+ */
 async function invokePath(root, path, args = []) {
   if (!path || typeof path !== "string") {
     throw new RpcError("missing required param: op", { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
@@ -102,9 +164,14 @@ async function invokePath(root, path, args = []) {
 /**
  * 位置引数を持つ高レベル op の薄い橋渡し表。
  * 各 entry: { summary, params:[{name,required,desc}], result, handler }
+ * @returns {Record<string, MethodEntry>}
  */
 function topLevelEntries() {
-  /** name (config) もしくは {deviceUUID,secretKey} で lock op を発行する共通 helper。 */
+  /**
+   * name (config) もしくは {deviceUUID,secretKey} で lock op を発行する共通 helper。
+   * @param {string} verb
+   * @returns {(ctx: HandlerCtx) => unknown}
+   */
   const lockOp = (verb) => ({ hub, params, daemon }) => {
     requireAuth(daemon);
     if (params.deviceUUID) {
@@ -464,7 +531,9 @@ function topLevelEntries() {
       result: "OS3 BLE registration result",
       handler: async ({ params }) => {
         need(params, ["deviceUUID"]);
-        return SesameBle.registerOnce({
+        // model は SesameBle コンストラクタ (能力テーブル参照) へ透過する。registerOnce の
+        // 公開 opts 型には現れないが ...ctorOpts で受け渡されるため、型のみキャストで補う。
+        return SesameBle.registerOnce(/** @type {Parameters<typeof SesameBle.registerOnce>[0] & {model?:string|null}} */ ({
           deviceUUID: params.deviceUUID,
           address: params.address,
           model: params.model ?? null,
@@ -472,7 +541,7 @@ function topLevelEntries() {
           scanTimeoutMs: params.scanTimeoutMs,
           debug: !!params.debug,
           nowMs: params.nowMs,
-        });
+        }));
       },
     },
     "ble.os2.invoke": {
@@ -549,7 +618,10 @@ function topLevelEntries() {
 // 集合はこちらを単一の真実とし、契約 (x-event-topics) と SDK の型をここから導出する。
 export const SUBSCRIBABLE_TOPICS = ["lockState", "deviceUpdate"];
 
-/** events.subscribe / unsubscribe (daemon に委譲)。 */
+/**
+ * events.subscribe / unsubscribe (daemon に委譲)。
+ * @returns {Record<string, MethodEntry>}
+ */
 function eventEntries() {
   const TOPICS = SUBSCRIBABLE_TOPICS;
   return {
@@ -562,7 +634,7 @@ function eventEntries() {
           throw new RpcError(t("serve.eventsNeedPersistent"),
             { code: RPC.INVALID_REQUEST, kind: KIND.BAD_PARAMS });
         }
-        const topics = Array.isArray(params.topics) ? params.topics : [params.topics];
+        const topics = asTopicList(params.topics);
         const bad = topics.filter((tp) => !TOPICS.includes(tp));
         if (bad.length) throw new RpcError(t("serve.unknownTopics", { topics: bad.join(",") }), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
         return daemon.subscribe(conn, topics);
@@ -573,7 +645,7 @@ function eventEntries() {
       params: [{ name: "topics", required: true }],
       result: "{ subscribed: string[] }",
       handler: ({ params, conn, daemon }) => {
-        const topics = Array.isArray(params.topics) ? params.topics : [params.topics];
+        const topics = asTopicList(params.topics);
         return daemon.unsubscribe(conn, topics);
       },
     },
@@ -582,9 +654,10 @@ function eventEntries() {
 
 /**
  * 全エントリを {name → entry} で構築する。
- * @returns {Map<string, {summary:string, params:any[], result:string, handler:Function, namespace?:string}>}
+ * @returns {Map<string, MethodEntry>}
  */
 export function buildRegistry() {
+  /** @type {Map<string, MethodEntry>} */
   const reg = new Map();
 
   // 1) 名前空間 op を NAMESPACE_OPS から自動公開。
@@ -618,8 +691,12 @@ export function buildRegistry() {
 /**
  * OpenRPC 文書を組み立てる (rpc.discover 応答)。param スキーマは初期は粗いが
  * 「何の op が在るか」は完全網羅する。secretKey 等の実値 example は載せない。
+ * @param {Map<string, MethodEntry>} reg
+ * @param {string} version
+ * @returns {Record<string, unknown>}
  */
 export function buildOpenRpcDoc(reg, version) {
+  /** @type {Array<Record<string, unknown>>} */
   const methods = [];
   for (const [name, e] of reg) {
     methods.push({
@@ -645,6 +722,7 @@ export function buildOpenRpcDoc(reg, version) {
     });
   }
   // サーバ発イベントも記述 (予約名 event.<topic>)。event.* も stable/experimental を持つ。
+  /** @param {string} name @param {string} description */
   const event = (name, description) => ({
     name, description,
     "x-stability": eventStabilityOf(name),

@@ -5,10 +5,15 @@
 
 import { t } from "../i18n.js";
 
+/** @typedef {import("../cli.js").CliCtx} CliCtx */
+/** @typedef {import("../client.js").SesameHub3} SesameHub3 */
+
+/** @param {unknown} value */
 function printJson(value) {
   console.log(JSON.stringify(value, null, 2));
 }
 
+/** @param {CliCtx} ctx @param {Record<string, any>} opts @returns {boolean} */
 function requireYes(ctx, opts) {
   if (!opts.yes) {
     ctx.die(t("payment.err.confirmRequired"), 2);
@@ -17,6 +22,7 @@ function requireYes(ctx, opts) {
   return true;
 }
 
+/** @param {string|undefined} v @returns {number|undefined} */
 function toInt(v) {
   if (v == null) return undefined;
   const n = parseInt(v, 10);
@@ -24,6 +30,13 @@ function toInt(v) {
   return n;
 }
 
+/**
+ * @param {SesameHub3} hub
+ * @param {CliCtx} ctx
+ * @param {Record<string, any>} opts
+ * @param {number|undefined} level
+ * @returns {Promise<boolean|undefined>}
+ */
 async function inferIsUpgrade(hub, ctx, opts, level) {
   if (opts.upgrade && opts.downgrade) {
     ctx.die(t("payment.err.upgradeConflict"), 2);
@@ -31,7 +44,7 @@ async function inferIsUpgrade(hub, ctx, opts, level) {
   }
   if (opts.upgrade) return true;
   if (opts.downgrade || opts.cancel) return false;
-  const config = await hub.company.getPaymentConfig({ companyID: opts.customerId });
+  const config = /** @type {{ level?: number } | null} */ (await hub.company.getPaymentConfig({ companyID: opts.customerId }));
   const current = Number(config?.level);
   if (Number.isFinite(current)) return current * 2 < Number(level);
   ctx.die(t("payment.err.upgradeUnknown"), 2);
@@ -40,7 +53,7 @@ async function inferIsUpgrade(hub, ctx, opts, level) {
 
 /**
  * @param {import("commander").Command} program
- * @param {object} ctx
+ * @param {import("../cli.js").CliCtx} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
 export function registerPaymentCommands(program, ctx) {
   const payment = program.command("payment").description(t("payment.cmd.desc"));
@@ -50,7 +63,7 @@ export function registerPaymentCommands(program, ctx) {
     .option("--customer-id <id>", t("payment.opt.customerId"))
     .action((opts) =>
       ctx.withAccount(async (hub, { opts: gopts }) => {
-        const items = await hub.payment.getPaymentMethods({ customerId: opts.customerId });
+        const items = /** @type {Array<{ id?: string, isDefaultPay?: boolean }>} */ (await hub.payment.getPaymentMethods({ customerId: opts.customerId }));
         ctx.out(gopts.json, () => {
           if (!items.length) {
             console.log(t("payment.methods.none"));
@@ -69,8 +82,8 @@ export function registerPaymentCommands(program, ctx) {
     .option("--customer-id <id>", t("payment.opt.customerId"))
     .action((opts) =>
       ctx.withAccount(async (hub, { opts: gopts }) => {
-        const secret = await hub.payment.getClientSecret({ customerId: opts.customerId });
-        ctx.out(gopts.json, () => console.log(t("payment.secret.value", { secret })), { ok: true, clientSecret: secret });
+        const secret = /** @type {string|null} */ (await hub.payment.getClientSecret({ customerId: opts.customerId }));
+        ctx.out(gopts.json, () => console.log(t("payment.secret.value", { secret: secret ?? "" })), { ok: true, clientSecret: secret });
       }),
     );
 

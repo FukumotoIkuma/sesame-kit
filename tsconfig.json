@@ -1,8 +1,8 @@
 {
-  "//": "JSDoc から .d.ts を機械生成するためだけの設定 (実行時は素の JS)。`npm run build:types` で types/ に出力。",
+  "//": "JSDoc から .d.ts を生成しつつ src/ を厳格に型チェックする (実行時は素の JS)。`npm run build:types` で types/ に出力 + 型検証。checkJs+strict を有効化済み。",
   "compilerOptions": {
     "allowJs": true,
-    "checkJs": false,
+    "checkJs": true,
     "declaration": true,
     "emitDeclarationOnly": true,
     "declarationMap": true,
@@ -11,7 +11,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "target": "ES2022",
-    "strict": false,
+    "strict": true,
     "skipLibCheck": true
   },
   "include": ["src/**/*.js"],

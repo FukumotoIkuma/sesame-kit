@@ -17,22 +17,35 @@ export class SesameHub3 {
      *
      * config / tokenStore を opts で渡せば fromConfig をスキップ (他プロジェクト埋込み用)。
      *
-     * @param {((hub:SesameHub3) => Promise<any>) | object} fnOrOpts
+     * @typedef {object} UseOpts
+     * @property {string} [configDir]
+     * @property {boolean} [debug]
+     * @property {Partial<ClientConfig>} [config]
+     * @property {TokenStore} [tokenStore]
+     * @property {ConfigStore | null} [configStore]
+     *
+     * @param {((hub:SesameHub3) => Promise<any>) | UseOpts} fnOrOpts
      * @param {(hub:SesameHub3) => Promise<any>} [maybeFn]
      */
-    static use(fnOrOpts: ((hub: SesameHub3) => Promise<any>) | object, maybeFn?: (hub: SesameHub3) => Promise<any>): Promise<any>;
+    static use(fnOrOpts: ((hub: SesameHub3) => Promise<any>) | {
+        configDir?: string | undefined;
+        debug?: boolean | undefined;
+        config?: Partial<import("./config.js").LoadedConfig> | undefined;
+        tokenStore?: import("./tokens.js").TokenStore | undefined;
+        configStore?: ConfigStore | null | undefined;
+    }, maybeFn?: (hub: SesameHub3) => Promise<any>): Promise<any>;
     /**
      * @param {{
-     *   config: object,
+     *   config: ClientConfig | Partial<ClientConfig>,
      *   tokenStore: TokenStore,
-     *   configStore?: ConfigStore,
+     *   configStore?: ConfigStore | null,
      *   debug?: boolean,
      * }} args
      */
     constructor({ config, tokenStore, configStore, debug }: {
-        config: object;
+        config: ClientConfig | Partial<ClientConfig>;
         tokenStore: TokenStore;
-        configStore?: ConfigStore;
+        configStore?: ConfigStore | null;
         debug?: boolean;
     });
     /** @type {Hub3WsClient | null} */
@@ -51,38 +64,56 @@ export class SesameHub3 {
     onReconnect(cb: () => void): () => void;
     /** 登録済み再接続コールバックを発火する (transport の onReopen から呼ばれる)。 */
     _fireReconnect(): void;
-    get config(): any;
-    get configStore(): ConfigStore;
-    get tokenStore(): TokenStore;
+    /**
+     * companyID を必ず string で返す (DEFAULT_CONFIG / config.load が常に設定するため、
+     * 型上 optional でも実体は常に present)。下流モジュールは companyID:string を要求する。
+     * @returns {string}
+     */
+    get _companyID(): string;
+    get config(): import("./config.js").LoadedConfig;
+    get configStore(): ConfigStore | null;
+    get tokenStore(): import("./tokens.js").TokenStore;
     get connected(): boolean;
     /**
      * remote 名 (省略時は default) から remote 定義と親 hub3 をまとめて取得。
+     * @param {string} [name]
      */
-    resolveRemote(name: any): {
-        name: any;
-        remote: any;
-        hub3Name: any;
-        hub3: any;
+    resolveRemote(name?: string): {
+        name: string;
+        remote: RemoteEntry;
+        hub3Name: string;
+        hub3: Hub3View;
     };
     /** WS 接続を確立。既に接続済みなら何もしない。 */
     connect(): Promise<void>;
     close(): Promise<void>;
-    _ensureConnected(): void;
-    _bindNs(mod: any): {};
+    /**
+     * 未接続なら throw、接続済みなら非 null の WS client を返す。
+     * 呼び出し側はこの戻り値を使うと `this._ws` の null 絞り込みを跨いで保持できる。
+     * @returns {Hub3WsClient}
+     */
+    _ensureConnected(): Hub3WsClient;
+    /**
+     * ドメインモジュール (純関数集) を namespace オブジェクトに束ねる。
+     * companyID/subUUID を既定注入し、各 op を `(params) => fn(ws, {...})` でラップする。
+     * @param {Record<string, unknown>} mod
+     * @returns {Record<string, (params?: Record<string, unknown>) => unknown>}
+     */
+    _bindNs(mod: Record<string, unknown>): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** スケジュール (biz3Schedule)。 */
-    get schedule(): {};
+    get schedule(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** 組織管理 (employee/group/role/device-group/employee-device)。 */
-    get org(): {};
+    get org(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** 会社 (biz3ManageCompany)。 */
-    get company(): {};
+    get company(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** 支払い管理 (biz3ManagePayment)。 */
-    get payment(): {};
+    get payment(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** 認証データ (NFC カード/パスコードの WS op)。 */
-    get access(): {};
+    get access(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** IoT cmd (biz3OperateIoT: DFU/LED/リレー/Sesame item)。 */
-    get iot(): {};
+    get iot(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** プリセットリモコン command 生成 (remoteEmit, HXD)。 */
-    get presetir(): {};
+    get presetir(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /**
      * IR 発射 (name-based)。`keyOrUUID` が UUID 形式ならそのまま command として、
      * そうでなければ remote.keys から名前解決する。
@@ -127,11 +158,18 @@ export class SesameHub3 {
     /**
      * 全 SESAME デバイス (Hub3 含む) のリストを取得。
      * biz3ManageDevice/getCompanyDevice → PubedCompanyDevice の応答を待つ。
+     * @param {{ timeoutMs?: number }} [opts]
+     * @returns {Promise<DeviceInfo[]>}
      */
     listDevices({ timeoutMs }?: {
         timeoutMs?: number;
-    }): Promise<any>;
-    _requireConfigStore(op: any): void;
+    }): Promise<DeviceInfo[]>;
+    /**
+     * configStore が無ければ throw、あれば非 null の ConfigStore を返す。
+     * @param {string} op エラーメッセージ用の操作名
+     * @returns {ConfigStore}
+     */
+    _requireConfigStore(op: string): ConfigStore;
     /**
      * 全 SESAME デバイスを引いてロックを config に取り込む。
      * @param {{prune?:boolean}} [opts]
@@ -160,17 +198,20 @@ export class SesameHub3 {
      * `devices` 応答だけからリモコンを config に取り込む (引数不要)。
      * 内部で Hub3 を自動登録してから、各 Hub3 の stateInfo.remoteList を展開する。
      * irType はリモコン側が持っているのでユーザー指定不要。
-     * @returns {Promise<{hub3:{added,updated,removed}, remotes:{added,updated}}>}
+     * @returns {Promise<{
+     *   hub3: {added:string[], updated:string[], removed:string[]},
+     *   remotes: {added:string[], updated:string[]},
+     * }>}
      */
     syncRemotesFromDevices(): Promise<{
         hub3: {
-            added: any;
-            updated: any;
-            removed: any;
+            added: string[];
+            updated: string[];
+            removed: string[];
         };
         remotes: {
-            added: any;
-            updated: any;
+            added: string[];
+            updated: string[];
         };
     }>;
     /**
@@ -208,10 +249,11 @@ export class SesameHub3 {
     /**
      * lock 設定を name から解決。name 省略時は default.lock、
      * 無ければ locks が 1 つだけならそれ。
+     * @param {string|null} [name]
      */
-    resolveLock(name: any): {
-        name: any;
-        lock: any;
+    resolveLock(name?: string | null): {
+        name: string;
+        lock: import("./config.js").LockView;
     };
     /**
      * ロック施錠 (name-based, cmd=82)。config を介さない版は {@link SesameHub3#lockDevice}。
@@ -241,12 +283,16 @@ export class SesameHub3 {
     /**
      * デバッグ用: WS の全受信メッセージを購読する (戻り値で unsubscribe)。
      * fire-and-forget な op (autolock 等) のサーバ応答を観測するのに使う。
-     * @param {(msg:object)=>void} fn
+     * @param {(msg: import("./transport.js").WsMessage)=>void} fn
      * @returns {()=>void} unsubscribe
      */
-    onAnyMessage(fn: (msg: object) => void): () => void;
-    /** 任意 cmd 直指定 (上級用)。 */
-    triggerLockRaw(name: any, cmd: any): Promise<any>;
+    onAnyMessage(fn: (msg: import("./transport.js").WsMessage) => void): () => void;
+    /**
+     * 任意 cmd 直指定 (上級用)。
+     * @param {string|null} name
+     * @param {number} cmd
+     */
+    triggerLockRaw(name: string | null, cmd: number): Promise<any>;
     /**
      * オートロック設定 (name-based)。解錠 N 秒後に自動施錠。`seconds=0` で無効。
      *
@@ -263,7 +309,7 @@ export class SesameHub3 {
         cmd: number;
         seconds: number;
     }>;
-    get subUUID(): any;
+    get subUUID(): string | null;
     /**
      * Hub3 を学習モードに入れ、物理リモコンの 1 ボタンを学習して remote にキー登録。
      *
@@ -273,34 +319,68 @@ export class SesameHub3 {
      *   timeoutMs?: number,        // ボタン押下待ち timeout (default 60s)
      *   onPrompt?: () => void,     // 学習モード突入後に呼ばれる (ユーザに「ボタン押して」と促す)
      * }} [opts]
-     * @returns {Promise<{keyUUID: string, captured: any, saved: any}>}
+     * @returns {Promise<{keyUUID: string, captured: unknown, saved: unknown}>}
      */
     learnIR(remoteName: string, keyName: string, { timeoutMs, onPrompt }?: {
         timeoutMs?: number;
         onPrompt?: () => void;
     }): Promise<{
         keyUUID: string;
-        captured: any;
-        saved: any;
+        captured: unknown;
+        saved: unknown;
     }>;
-    listIRRemotes(type: any, { page, pageSize }?: {}): Promise<any>;
-    searchPresetIRRemotes(type: any, searchTerm: any): Promise<any>;
-    addIRRemoteServer(remoteObj: any): Promise<any>;
-    deleteIRRemoteServer(remoteName: any): Promise<any>;
-    renameIRRemote(remoteName: any, alias: any): Promise<any>;
-    deleteIRKey(remoteName: any, keyOrUUID: any): Promise<any>;
-    renameIRKey(remoteName: any, keyOrUUID: any, newName: any): Promise<any>;
-    getIRMode(hub3Name: any): Promise<any>;
-    setIRMode(hub3Name: any, mode: any): Promise<any>;
+    /**
+     * @param {number} type irType
+     * @param {{ page?: number, pageSize?: number }} [opts]
+     */
+    listIRRemotes(type: number, { page, pageSize }?: {
+        page?: number;
+        pageSize?: number;
+    }): Promise<{}>;
+    /**
+     * @param {number} type irType
+     * @param {string} searchTerm
+     */
+    searchPresetIRRemotes(type: number, searchTerm: string): Promise<{}>;
+    /** @param {object} remoteObj */
+    addIRRemoteServer(remoteObj: object): Promise<{}>;
+    /** @param {string} [remoteName] */
+    deleteIRRemoteServer(remoteName?: string): Promise<import("./transport.js").WsMessage>;
+    /**
+     * @param {string} remoteName
+     * @param {string} alias
+     */
+    renameIRRemote(remoteName: string, alias: string): Promise<import("./transport.js").WsMessage>;
+    /**
+     * @param {string} remoteName
+     * @param {string} keyOrUUID
+     */
+    deleteIRKey(remoteName: string, keyOrUUID: string): Promise<import("./transport.js").WsMessage>;
+    /**
+     * @param {string} remoteName
+     * @param {string} keyOrUUID
+     * @param {string} newName
+     */
+    renameIRKey(remoteName: string, keyOrUUID: string, newName: string): Promise<import("./transport.js").WsMessage>;
+    /** @param {string} [hub3Name] */
+    getIRMode(hub3Name?: string): Promise<unknown>;
+    /**
+     * @param {string} hub3Name
+     * @param {number} mode ir.MODE の値 (0=CONTROL, 1=REGISTER)
+     */
+    setIRMode(hub3Name: string, mode: number): Promise<import("./transport.js").WsMessage>;
+    /** @param {{ irData: string, irType: number, brandName?: string }} args */
     matchIRRemote({ irData, irType, brandName }: {
-        irData: any;
-        irType: any;
-        brandName: any;
-    }): Promise<any>;
-    _resolveHub3(name: any): any;
+        irData: string;
+        irType: number;
+        brandName?: string;
+    }): Promise<any[]>;
+    /** @param {string} [name] @returns {import("./config.js").Hub3View} */
+    _resolveHub3(name?: string): import("./config.js").Hub3View;
     /** 個人ユーザのデバイス一覧 (会社 vs 個人で別 op)。 */
     listUserDevices(): Promise<any[]>;
-    getDeviceStatus(deviceUUID: any): Promise<any>;
+    /** @param {string} deviceUUID */
+    getDeviceStatus(deviceUUID: string): Promise<object | null>;
     /**
      * 読み取った複数 IC カードをクラウド DB へ一括登録する (postCards への委譲)。
      *
@@ -316,56 +396,109 @@ export class SesameHub3 {
         cardName?: string;
         cardType?: number;
     }>): Promise<object | null>;
-    _biometricsBaseUrl(baseUrl: any): any;
+    /**
+     * biometrics REST のベース URL を解決する。引数 > config.biometricsBaseUrl > config.registerBaseUrl。
+     * @param {string} [baseUrl]
+     * @returns {string}
+     */
+    _biometricsBaseUrl(baseUrl?: string): string;
+    /** @returns {() => Promise<string>} 都度 idToken から Bearer を発行する provider */
     _biometricsAuthorizationProvider(): () => Promise<string>;
-    postAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: {}): Promise<any>;
-    putAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: {}): Promise<any>;
-    deleteAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: {}): Promise<any>;
-    updateAuthenticationName({ request, kind, baseUrl, transport, ...rest }?: {}): Promise<any>;
-    renameDevice(deviceUUID: any, deviceName: any): Promise<any>;
-    /** company から指定 UUID のデバイスを削除。 */
-    deleteDevice(deviceUUID: any): Promise<any>;
+    /** @param {import("./client.js").BiometricAuthBag} [args] */
+    postAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: import("./client.js").BiometricAuthBag): Promise<object | object[]>;
+    /** @param {import("./client.js").BiometricAuthBag} [args] */
+    putAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: import("./client.js").BiometricAuthBag): Promise<any>;
+    /** @param {import("./client.js").BiometricAuthBag} [args] */
+    deleteAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: import("./client.js").BiometricAuthBag): Promise<any>;
+    /** @param {import("./client.js").BiometricNameBag} [args] */
+    updateAuthenticationName({ request, kind, baseUrl, transport, ...rest }?: import("./client.js").BiometricNameBag): Promise<any>;
+    /**
+     * @param {string} deviceUUID
+     * @param {string} deviceName
+     */
+    renameDevice(deviceUUID: string, deviceName: string): Promise<import("./transport.js").WsMessage>;
+    /**
+     * company から指定 UUID のデバイスを削除。
+     * @param {string} deviceUUID
+     */
+    deleteDevice(deviceUUID: string): Promise<import("./transport.js").WsMessage>;
     /**
      * @deprecated `onDeviceUpdate(items, fn)` を使ってください (on* イベント命名に統一)。
      * 後方互換のため残置。内部実装は onDeviceUpdate と同一。
+     * @param {{deviceUUID:string, deviceModel?:string}[]} deviceInfos
+     * @param {(msg:any) => void} onUpdate
      */
-    subscribeDeviceUpdates(deviceInfos: any, onUpdate: any): any;
+    subscribeDeviceUpdates(deviceInfos: {
+        deviceUUID: string;
+        deviceModel?: string;
+    }[], onUpdate: (msg: any) => void): () => void;
     /**
      * ロック開閉履歴を取得。`list` はデバイス指定の配列。
      *
      * @param {Array<{deviceUUID: string}>} list 履歴を取得するデバイスの配列
-     * @param {number} [pageSize] 1ページ件数 (未指定でサーバ既定)
+     * @param {number} [pageSize] 1 ページあたりの件数 (未指定でサーバ既定)
      * @returns {Promise<any>}
      */
     getDeviceHistory(list: Array<{
         deviceUUID: string;
     }>, pageSize?: number): Promise<any>;
-    /** 開閉履歴の1エントリを非表示化 (論理削除)。timestamp は getDeviceHistory の各 record の値。 */
+    /**
+     * 開閉履歴の1エントリを非表示化 (論理削除)。timestamp は getDeviceHistory の各 record の値。
+     * @param {{ deviceUUID: string, timestamp: number }} args
+     */
     hideDeviceHistory({ deviceUUID, timestamp }: {
-        deviceUUID: any;
-        timestamp: any;
-    }): Promise<any>;
-    /** 電池履歴を取得 (1ページ)。lastEvaluatedKey でページング。 */
-    getDeviceBattery(deviceUUID: any, { lastEvaluatedKey, pageSize }?: {
-        lastEvaluatedKey?: any;
+        deviceUUID: string;
+        timestamp: number;
+    }): Promise<import("./transport.js").WsMessage>;
+    /**
+     * 電池履歴を取得 (1ページ)。lastEvaluatedKey でページング。
+     * @param {string} deviceUUID
+     * @param {{ lastEvaluatedKey?: unknown, pageSize?: number }} [opts]
+     */
+    getDeviceBattery(deviceUUID: string, { lastEvaluatedKey, pageSize }?: {
+        lastEvaluatedKey?: unknown;
         pageSize?: number;
-    }): Promise<any>;
-    /** 電池履歴の1エントリを非表示化 (論理削除)。timestampSecond は getDeviceBattery の record.ts。 */
+    }): Promise<{}>;
+    /**
+     * 電池履歴の1エントリを非表示化 (論理削除)。timestampSecond は getDeviceBattery の record.ts。
+     * @param {{ deviceUUID: string, timestampSecond: number }} args
+     */
     hideBatteryRecord({ deviceUUID, timestampSecond }: {
-        deviceUUID: any;
-        timestampSecond: any;
-    }): Promise<any>;
+        deviceUUID: string;
+        timestampSecond: number;
+    }): Promise<import("./transport.js").WsMessage>;
     listFirmware(): Promise<any[]>;
-    /** WebAPI proxy 経由で REST API を叩く。apiKeyId は config 側に保存。 */
+    /**
+     * WebAPI proxy 経由で REST API を叩く。apiKeyId は config 側に保存。
+     * @param {{ func: string, query?: object, body?: object, apiKeyId?: string }} args
+     */
     invokeWebAPI({ func, query, body, apiKeyId }: {
-        func: any;
-        query: any;
-        body: any;
-        apiKeyId: any;
-    }): Promise<any>;
-    webapiDeviceState({ deviceId, apiKeyId }?: {}): Promise<any>;
-    webapiDeviceHistory({ deviceId, page, lg, isBiz, apiKeyId }?: {}): Promise<any>;
-    webapiSendCmd({ deviceId, cmd, sign, history, apiKeyId }?: {}): Promise<any>;
+        func: string;
+        query?: object;
+        body?: object;
+        apiKeyId?: string;
+    }): Promise<unknown>;
+    /** @param {{ deviceId?: string, apiKeyId?: string }} [args] */
+    webapiDeviceState({ deviceId, apiKeyId }?: {
+        deviceId?: string;
+        apiKeyId?: string;
+    }): Promise<unknown>;
+    /** @param {{ deviceId?: string, page?: number, lg?: number, isBiz?: boolean, apiKeyId?: string }} [args] */
+    webapiDeviceHistory({ deviceId, page, lg, isBiz, apiKeyId }?: {
+        deviceId?: string;
+        page?: number;
+        lg?: number;
+        isBiz?: boolean;
+        apiKeyId?: string;
+    }): Promise<unknown>;
+    /** @param {{ deviceId?: string, cmd?: unknown, sign?: unknown, history?: unknown, apiKeyId?: string }} [args] */
+    webapiSendCmd({ deviceId, cmd, sign, history, apiKeyId }?: {
+        deviceId?: string;
+        cmd?: unknown;
+        sign?: unknown;
+        history?: unknown;
+        apiKeyId?: string;
+    }): Promise<unknown>;
     /**
      * 直接 lock 制御 (config を介さない, 任意 cmd)。`unlockDevice`/`lockDevice` 等の基底。
      * @param {{deviceUUID:string, secretKey:string, cmd:number, timeoutMs?:number}} p
@@ -460,10 +593,18 @@ export class SesameHub3 {
         name: string;
         keyUUID: string;
     }>>;
-    /** name で指定したロックの state change push を購読。戻り値は unsubscribe。 */
-    onLockStateChange(name: any, fn: any): () => void;
-    /** UUID 直指定で state change を購読。 */
-    onLockStateChangeDevice(deviceUUID: any, fn: any): () => void;
+    /**
+     * name で指定したロックの state change push を購読。戻り値は unsubscribe。
+     * @param {string|null} name
+     * @param {(msg: import("./transport.js").WsMessage)=>void} fn
+     */
+    onLockStateChange(name: string | null, fn: (msg: import("./transport.js").WsMessage) => void): () => void;
+    /**
+     * UUID 直指定で state change を購読。
+     * @param {string|undefined} deviceUUID
+     * @param {(msg: import("./transport.js").WsMessage)=>void} fn
+     */
+    onLockStateChangeDevice(deviceUUID: string | undefined, fn: (msg: import("./transport.js").WsMessage) => void): () => void;
     /**
      * IR 学習データの購読 (受け取った波形を fn に流す)。
      * 内部で setIRMode(REGISTER) → subscribeIRData を発行する。
@@ -474,7 +615,12 @@ export class SesameHub3 {
      *
      * 戻り値: async () => Promise<void>  — subscribe 解除 + setIRMode(CONTROL) 復帰
      */
-    onIRLearned(hub3Name: any, fn: any): Promise<() => Promise<void>>;
+    /**
+     * @param {string} hub3Name
+     * @param {(data: unknown)=>void} fn
+     * @returns {Promise<() => Promise<void>>}
+     */
+    onIRLearned(hub3Name: string, fn: (data: unknown) => void): Promise<() => Promise<void>>;
     /**
      * デバイス state push の購読 (複数デバイスまとめて)。
      * @param {{deviceUUID:string, deviceModel?:string}[]} items
@@ -483,39 +629,50 @@ export class SesameHub3 {
     onDeviceUpdate(items: {
         deviceUUID: string;
         deviceModel?: string;
-    }[], fn: (msg: any) => void): any;
+    }[], fn: (msg: any) => void): () => void;
 }
 /**
  * トークン永続化インターフェース。FileTokenStore がデフォルト実装。
- * 独自実装 (keychain / DB / メモリ) を渡す場合は下記 6 メソッドすべて必須。
+ * 正準定義は tokens.js にある (load/save/clear + loadPending/savePending/clearPending)。
  */
-export type TokenStore = {
-    /**
-     * 保存済みトークン {idToken, refreshToken, clientId, accessToken?, deviceKey?} を返す。無ければ null
-     */
-    load: () => (object | null);
-    /**
-     * トークンを永続化 (refresh 時に呼ばれる)
-     */
-    save: (tokens: object) => void;
-    /**
-     * トークンを破棄
-     */
-    clear: () => void;
-    /**
-     * sign-in 進行中の一時状態を返す。無ければ null
-     */
-    loadPending: () => (object | null);
-    /**
-     * sign-in 進行中の一時状態を保存
-     */
-    savePending: (state: object) => void;
-    /**
-     * sign-in 一時状態を破棄
-     */
-    clearPending: () => void;
+export type TokenStore = import("./tokens.js").TokenStore;
+/**
+ * 高レベルクライアントが扱う設定。`load()` 後は locks/hub3s が必ず存在するため
+ * LoadedConfig を採用する (LockManager もこの形を要求する)。
+ */
+export type ClientConfig = import("./config.js").LoadedConfig;
+/**
+ * getCompanyDevice 応答 1 件。正準定義は config.js の DeviceRecord。
+ */
+export type DeviceInfo = import("./config.js").DeviceRecord;
+/**
+ * IR リモコンキー 1 件 (listKeys / getIRCodes の戻り)。
+ */
+export type IRKey = {
+    name: string;
+    keyUUID: string;
+};
+/**
+ * #18 biometric REST (post/put/deleteAuthenticationData) の公開オプション袋。
+ * baseUrl/transport は client が解決して access.* に渡すため省略可。
+ */
+export type BiometricAuthBag = {
+    operation?: string | undefined;
+    deviceID?: string | undefined;
+    items?: object[] | undefined;
+    baseUrl?: string | undefined;
+    transport?: access.BiometricsTransport | undefined;
+};
+/**
+ * updateAuthenticationName の公開オプション袋。request 直指定 or kind から組み立て。
+ * 残りのフィールド (subUUID/stpDeviceUUID/name/...) は access 側へ透過する。
+ */
+export type BiometricNameBag = Omit<import("./access.js").UpdateAuthNameParams, "transport" | "baseUrl" | "authorization" | "bearerToken" | "authorizationProvider" | "fetchImpl"> & {
+    baseUrl?: string;
+    transport?: import("./access.js").BiometricsTransport;
 };
 import { ConfigStore } from "./config.js";
 import { Hub3WsClient } from "./transport.js";
 import { LockManager } from "./lock-manager.js";
+import * as access from "./access.js";
 //# sourceMappingURL=client.d.ts.map

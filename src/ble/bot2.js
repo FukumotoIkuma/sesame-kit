@@ -43,10 +43,15 @@ export const BOT_ACTION_TYPE = Object.freeze({
   SLEEP: 3,
 });
 
+/** @type {Set<number>} */
 const BOT_ACTION_VALUES = new Set(Object.values(BOT_ACTION_TYPE));
 
-/** UByte 値域 (0..255) の整数か。 */
-function isUByte(v) { return Number.isInteger(v) && v >= 0 && v <= 0xff; }
+/**
+ * UByte 値域 (0..255) の整数か。
+ * @param {unknown} v
+ * @returns {boolean}
+ */
+function isUByte(v) { return Number.isInteger(v) && typeof v === "number" && v >= 0 && v <= 0xff; }
 
 /**
  * index → click 用 itemCode (RUN_SCRIPT_0 + index)。
@@ -156,8 +161,14 @@ export function parseCurrentScript(buf) {
  *     cursor += 20 (name 領域は常に 20B)。
  *   - events の action は name/nameLength のみ (本一覧では actions を含まない)。
  *
+ * @typedef {{nameLength:number, name:Buffer}} ScriptNameEntry
+ * @typedef {{curIdx:number, eventLength:number, events:ScriptNameEntry[]}} ScriptNameList
+ */
+
+/**
+ * SCRIPT_NAME_LIST(96) 応答の parse。
  * @param {Buffer} buf
- * @returns {{curIdx:number, eventLength:number, events:Array<{nameLength:number, name:Buffer}>}|null}
+ * @returns {ScriptNameList|null}
  */
 export function parseScriptNameList(buf) {
   const b = Buffer.from(buf);
@@ -196,12 +207,13 @@ export function parseScriptNameList(buf) {
 export class Bot2Commands {
   /**
    * @param {import("./session.js").SesameBleSession} session login 済み (request が使える) session
-   * @param {(...args:any[])=>void} [historyTagBLE] 履歴タグ生成器 (protocol.historyTagBLE を注入)
+   * @param {(tag?: Buffer) => Buffer} [historyTagBLE] 履歴タグ生成器 (protocol.historyTagBLE を注入)
    */
   constructor(session, historyTagBLE) {
     this._session = session;
     this._historyTagBLE = historyTagBLE;
     // SDK の override var scripts (CHSesameBot2Device.kt:40-41 初期値 curIdx=0/eventLength=0/events=[])。
+    /** @type {ScriptNameList} */
     this.scripts = { curIdx: 0, eventLength: 0, events: [] };
   }
 
@@ -275,7 +287,7 @@ export class Bot2Commands {
    *   本 session 層は request(itemCode) を itemCode ごとのキューで多重化しており、同一 itemCode の
    *   並行 request はそれぞれ独立の応答待ちになる (SDK のマージは省く)。応答パースとキャッシュ更新は
    *   SDK と 1:1。
-   * @returns {Promise<{curIdx:number, eventLength:number, events:Array<{nameLength:number, name:Buffer}>}>}
+   * @returns {Promise<ScriptNameList>}
    */
   async getScriptNameList() {
     const res = await this._session.request(ITEM.SCRIPT_NAME_LIST, Buffer.alloc(0));

@@ -7,13 +7,17 @@
 //   - ソケットは configPaths.dir (0700) 配下に置き、ディレクトリでも二重に守る。
 
 import net from "node:net";
-import { existsSync, unlinkSync } from "node:fs";
+import { existsSync, unlinkSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { makeLineConnection } from "./ndjson.js";
 import { t } from "../../i18n.js";
 
-/** 既存ソケットが生きてれば throw、stale なら unlink して継続。 */
+/** 既存ソケットが生きてれば throw、stale なら unlink して継続。
+ * @param {string} socketPath
+ * @returns {Promise<void>}
+ */
 export function ensureFreeSocket(socketPath) {
-  return new Promise((resolve, reject) => {
+  return new Promise((/** @type {() => void} */ resolve, reject) => {
     if (!existsSync(socketPath)) return resolve();
     const probe = net.connect(socketPath);
     probe.once("connect", () => {
@@ -36,12 +40,13 @@ export function ensureFreeSocket(socketPath) {
 export async function startSocketFraming(daemon, { socketPath }) {
   await ensureFreeSocket(socketPath);
 
+  /** @type {Set<net.Socket>} */
   const socks = new Set(); // shutdown 時に能動 destroy するため接続中 socket を追跡
   const server = net.createServer((sock) => {
     socks.add(sock);
     sock.on("close", () => socks.delete(sock));
-    let conn;
-    conn = makeLineConnection(sock, sock, {
+    /** @type {import("../daemon.js").Connection} */
+    const conn = makeLineConnection(sock, sock, {
       onLine: (c, raw) => daemon.handleLine(c, raw),
       onClose: () => daemon.removeConnection(conn),
       closeWritable: true,
@@ -51,13 +56,18 @@ export async function startSocketFraming(daemon, { socketPath }) {
     sock.on("close", () => conn.close());
   });
 
+  // 既定の UDS は configPaths.dir 配下に置くが、未初期化の config dir では親が無く
+  // `listen EACCES`/ENOENT になる。HTTP フレーミングが token ファイルの親を作るのと同様、
+  // listen 前に親ディレクトリを 0700 で用意する (無ければ作る・あれば触らない)。
+  mkdirSync(dirname(socketPath), { recursive: true, mode: 0o700 });
+
   // 0600 で生成するため listen を umask で囲む (callback で必ず復元)。
   const oldUmask = process.umask(0o177);
   try {
-    await new Promise((resolve, reject) => {
+    await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
       server.once("error", reject);
       server.listen(socketPath, () => resolve());
-    });
+    }));
   } finally {
     process.umask(oldUmask);
   }
@@ -66,7 +76,7 @@ export async function startSocketFraming(daemon, { socketPath }) {
     path: socketPath,
     // 接続中の購読者がいても即終了するため socket を能動 destroy してから close
     // (これをしないと server.close は全接続が自発切断するまで callback を発火せずハングする)。
-    stop: () => new Promise((resolve) => {
+    stop: () => new Promise((/** @type {() => void} */ resolve) => {
       for (const s of socks) { try { s.destroy(); } catch { /* ignore */ } }
       server.close(() => resolve());
     }),

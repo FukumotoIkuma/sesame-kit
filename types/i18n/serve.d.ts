@@ -10,6 +10,9 @@ declare namespace _default {
         "serve.opt.grpc": string;
         "serve.opt.bind": string;
         "serve.opt.token": string;
+        "serve.opt.cors": string;
+        "serve.noFraming": string;
+        "serve.note.cors": string;
         "serve.help.after": string;
         "serve.rpc.desc": string;
         "serve.rpc.opt.params": string;
@@ -108,7 +111,6 @@ declare namespace _default {
         "serve.event.ready": string;
         "serve.http.usage": string;
         "serve.http.unauthorized": string;
-        "serve.http.unauthorizedHint": string;
         "serve.http.payloadTooLarge": string;
         "serve.http.unknownTopics": string;
         "serve.http.notFound": string;
@@ -129,6 +131,9 @@ declare namespace _default {
         "serve.opt.grpc": string;
         "serve.opt.bind": string;
         "serve.opt.token": string;
+        "serve.opt.cors": string;
+        "serve.noFraming": string;
+        "serve.note.cors": string;
         "serve.help.after": string;
         "serve.rpc.desc": string;
         "serve.rpc.opt.params": string;
@@ -227,7 +232,6 @@ declare namespace _default {
         "serve.event.ready": string;
         "serve.http.usage": string;
         "serve.http.unauthorized": string;
-        "serve.http.unauthorizedHint": string;
         "serve.http.payloadTooLarge": string;
         "serve.http.unknownTopics": string;
         "serve.http.notFound": string;

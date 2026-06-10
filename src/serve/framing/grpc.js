@@ -19,13 +19,37 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PROTO_PATH = resolve(HERE, "..", "sesame.proto");
 const MAP_PATH = resolve(HERE, "..", "grpc-methods.generated.json");
 
+/**
+ * proto-loader が動的生成する gRPC call の、本ファイルが触る面だけの最小型。
+ * proto から生成される具体型は静的に分からないため、ここで構造的に定義する。
+ * @typedef {object} GrpcCall
+ * @property {Record<string, any>} request デコード済みリクエスト message
+ * @property {{ get?: (k: string) => unknown[] }} [metadata]
+ * @property {(event: string, payload?: unknown) => void} emit
+ * @property {(event: string, cb: (...args: any[]) => void) => void} on
+ * @property {(chunk: { topic: string, json: string }) => boolean} write
+ * @property {() => void} end
+ */
+
+/**
+ * unary handler の callback (err-first)。
+ * @typedef {(err: (import("@grpc/grpc-js").ServiceError | Partial<import("@grpc/grpc-js").ServiceError>) | null, value?: { json: string }) => void} GrpcUnaryCallback
+ */
+
 /** server streaming で非 OK status を返す。grpc-js (1.14) では `call.destroy()` は status を
- *  クライアントに伝えず黙ってハングするため、`emit("error", {code, details})` で返す (実測で確認)。 */
+ *  クライアントに伝えず黙ってハングするため、`emit("error", {code, details})` で返す (実測で確認)。
+ * @param {GrpcCall} call
+ * @param {number} code
+ * @param {string} message
+ */
 function endStreamWithError(call, code, message) {
   call.emit("error", { code, details: message });
 }
 
-/** RpcError.kind → gRPC status (gRPC の作法に沿って status でエラーを返す)。 */
+/** RpcError.kind → gRPC status (gRPC の作法に沿って status でエラーを返す)。
+ * @param {string} kind
+ * @returns {number}
+ */
 function grpcStatusFor(kind) {
   switch (kind) {
     case "not_authenticated": return grpc.status.UNAUTHENTICATED;
@@ -38,6 +62,10 @@ function grpcStatusFor(kind) {
   }
 }
 
+/**
+ * @param {GrpcCall} call
+ * @returns {string}
+ */
 function metaToken(call) {
   const md = call.metadata?.get?.("authorization");
   const raw = md && md[0] ? String(md[0]) : "";
@@ -51,10 +79,15 @@ function metaToken(call) {
  */
 export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token }) {
   const pkgDef = protoLoader.loadSync(PROTO_PATH, { keepCase: true, longs: String, defaults: true });
-  const proto = grpc.loadPackageDefinition(pkgDef).sesame;
+  // loadPackageDefinition は GrpcObject を返すが各ノードの具体型は動的なので Record で受ける。
+  const proto = /** @type {Record<string, any>} */ (grpc.loadPackageDefinition(pkgDef)).sesame;
+  /** @type {Record<string, { method: string, jsonFields: string[] }>} */
   const methodMap = JSON.parse(readFileSync(MAP_PATH, "utf8")); // Pascal → {method, jsonFields}
   const server = new grpc.Server();
 
+  // handler は構造的 GrpcCall で型付けする (proto 生成の具体 call 型は静的に分からない)。
+  // grpc-js は実行時に call 形を解決するため、addService 時に UntypedServiceImplementation へ橋渡しする。
+  /** @type {Record<string, (call: GrpcCall, callback: GrpcUnaryCallback) => unknown>} */
   const impl = {};
 
   // 型付き unary メソッドを一括登録 (handler は generic に daemon.invoke へ委譲)。
@@ -66,6 +99,7 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
         if (params[f] === undefined || params[f] === "") { delete params[f]; continue; } // 空=未指定
         try { params[f] = JSON.parse(params[f]); } catch { return callback({ code: grpc.status.INVALID_ARGUMENT, message: t("serve.grpc.fieldMustBeJson", { f }) }); }
       }
+      /** @type {import("../daemon.js").Connection} */
       const conn = { id: "grpc", ephemeral: true, send() {}, close() {} };
       daemon.addConnection(conn);
       try {
@@ -75,7 +109,7 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
         // HTTP/WS/stdio と同じ単一写像 (errorFromThrow) を通す。これにより SesameError も
         // 正しい kind になり、gRPC だけ internal に潰れる穴を防ぐ。
         const norm = errorFromThrow(null, e).error;
-        const kind = norm.data?.kind || "internal";
+        const kind = String(norm.data?.kind || "internal");
         const md = new grpc.Metadata();
         md.set("kind", kind);
         if (typeof norm.data?.retryable === "boolean") md.set("retryable", String(norm.data.retryable));
@@ -89,6 +123,7 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
   // 後方互換: 任意の JSON-RPC を文字列で運ぶ。
   impl.Invoke = async (call, callback) => {
     if (!tokenMatches(metaToken(call), token)) return callback({ code: grpc.status.UNAUTHENTICATED, message: t("serve.grpc.unauthorized") });
+    /** @type {import("../daemon.js").Connection} */
     const conn = { id: "grpc", ephemeral: true, send() {}, close() {} };
     daemon.addConnection(conn);
     let out;
@@ -104,16 +139,20 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
     let buffered = 0;
     const MAX_BUFFERED = 4 * 1024 * 1024;
     call.on("drain", () => { buffered = 0; });
+    /** @type {import("../daemon.js").Connection} */
     const conn = {
       id: "grpc-sub",
+      /** @param {unknown} obj */
       send: (obj) => {
-        const topic = String(obj.method || "").replace(/^event\./, "");
-        const json = JSON.stringify(obj.params ?? null);
+        const ev = /** @type {{ method?: unknown, params?: unknown }} */ (obj);
+        const topic = String(ev.method || "").replace(/^event\./, "");
+        const json = JSON.stringify(ev.params ?? null);
         try { const ok = call.write({ topic, json }); if (!ok) { buffered += json.length; if (buffered > MAX_BUFFERED) conn.close(); } }
         catch { /* closed */ }
       },
       close: () => { try { call.end(); } catch { /* ignore */ } },
     };
+    /** @type {string[]} */
     const topics = (call.request.topics || []).filter(Boolean);
     // 不正 topic は黙殺せず INVALID_ARGUMENT でストリームを閉じる (WS/SSE と同じく拒否。
     // 黙ってハングするストリームを返すと『gRPC だけイベントが来ない』のデバッグが不能になる)。
@@ -130,23 +169,28 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
     call.on("close", () => daemon.removeConnection(conn));
   };
 
-  server.addService(proto.Sesame.service, impl);
+  // proto.Sesame.service と impl はどちらも proto-loader 由来の動的サーフェス。構造的に
+  // 型付けした impl を grpc-js の UntypedServiceImplementation へ橋渡しする (実行時に call 形を解決)。
+  server.addService(
+    proto.Sesame.service,
+    /** @type {grpc.UntypedServiceImplementation} */ (/** @type {unknown} */ (impl)),
+  );
 
-  const boundPort = await new Promise((resolve2, reject) => {
+  const boundPort = await /** @type {Promise<number>} */ (new Promise((resolve2, reject) => {
     server.bindAsync(`${bind}:${port}`, grpc.ServerCredentials.createInsecure(), (err, p) => {
       if (err) reject(err); else resolve2(p);
     });
-  });
+  }));
   return {
     port: boundPort,
     // tryShutdown は Subscribe ストリームが開いている限り待ち続けるため、まず graceful を試み、
     // 1s で畳めなければ forceShutdown で全 call を即キャンセルしてハングを断つ。
-    stop: () => new Promise((resolve2) => {
+    stop: () => /** @type {Promise<void>} */ (new Promise((resolve2) => {
       let done = false;
       const finish = () => { if (!done) { done = true; resolve2(); } };
       const t = setTimeout(() => { try { server.forceShutdown(); } catch { /* ignore */ } finish(); }, 1000);
       t.unref?.();
       server.tryShutdown(() => { clearTimeout(t); finish(); });
-    }),
+    })),
   };
 }

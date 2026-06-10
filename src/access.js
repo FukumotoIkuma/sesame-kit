@@ -44,12 +44,62 @@ const PUB_PASSCODE_LINKED_IDS = "pubPasscodeLinkedIDs";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const BIOMETRICS_PATH = "/device/v1/biometrics";
 
+/**
+ * REST /device/v1/biometrics transport の 1 リクエスト/応答。
+ * @typedef {(req:{method:string,path:string,body?:object})=>Promise<{status:number,text:string,json:any}>} BiometricsTransport
+ */
+
+/**
+ * 認証情報を含む biometrics transport 構築オプション。
+ * @typedef {object} BiometricsAuthOptions
+ * @property {BiometricsTransport} [transport] 既製 transport を注入 (テスト/IAM 環境用)。
+ * @property {string} [baseUrl] REST ルート URL (https のみ)。
+ * @property {string} [authorization] 完成済み Authorization ヘッダ値。
+ * @property {string} [bearerToken] Bearer トークン (ヘッダ未指定時)。
+ * @property {() => Promise<string>} [authorizationProvider] 都度 Authorization を解決する関数。
+ * @property {typeof fetch} [fetchImpl] fetch 実装 (テスト差し替え用)。
+ */
+
+/**
+ * postAuthenticationData/putAuthenticationData/deleteAuthenticationData の params。
+ * operation/deviceID は実行時に検証 (withSuffix が欠落で throw) するため型上は optional。
+ * @typedef {BiometricsAuthOptions & {operation?:string, deviceID?:string, items?:object[]}} AuthDataParams
+ */
+
+/**
+ * updateAuthenticationName の params。request を直接渡すか kind から組み立てる。
+ * @typedef {BiometricsAuthOptions & {
+ *   request?: object,
+ *   kind?: 'card'|'face'|'fingerPrint'|'palm'|'passcode',
+ *   timestamp?: number,
+ *   subUUID?: string,
+ *   stpDeviceUUID?: string,
+ *   name?: string,
+ *   nameUUID?: string,
+ *   op?: string,
+ *   type?: number,
+ *   cardType?: number,
+ *   cardNameUUID?: string,
+ *   cardID?: string,
+ *   faceNameUUID?: string,
+ *   faceID?: string,
+ *   fingerPrintNameUUID?: string,
+ *   fingerPrintID?: string,
+ *   palmNameUUID?: string,
+ *   palmID?: string,
+ *   keyBoardPassCodeNameUUID?: string,
+ *   keyBoardPassCode?: string,
+ * }} UpdateAuthNameParams
+ */
+
+/** @param {string} value @returns {string} */
 function stripTrailingSlashes(value) {
   let end = value.length;
   while (end > 0 && value.charCodeAt(end - 1) === 0x2f) end -= 1;
   return value.slice(0, end);
 }
 
+/** @param {unknown} baseUrl @returns {string} */
 function normalizeBiometricsBaseUrl(baseUrl) {
   let url;
   try {
@@ -65,6 +115,7 @@ function normalizeBiometricsBaseUrl(baseUrl) {
   return `${url.origin}${path === "/" ? "" : path}`;
 }
 
+/** @param {{status?:number, json?:any, text?:string}} res @param {string} op */
 function assertHttpOk(res, op) {
   const status = res?.status;
   if (typeof status !== "number" || status < 200 || status >= 300) {
@@ -80,8 +131,8 @@ function assertHttpOk(res, op) {
  * 認証ヘッダは呼び出し側が明示的に渡す。実 API Gateway が IAM SigV4 のみを要求する環境では、
  * 呼び出し側が互換 transport を注入する。
  *
- * @param {{baseUrl:string, authorization?:string, bearerToken?:string, authorizationProvider?:Function, fetchImpl?:Function}} opts
- * @returns {(req:{method:string,path:string,body?:object})=>Promise<{status:number,text:string,json:any}>}
+ * @param {BiometricsAuthOptions} opts
+ * @returns {BiometricsTransport}
  */
 export function makeBiometricsTransport({
   baseUrl,
@@ -97,8 +148,9 @@ export function makeBiometricsTransport({
   }
   const root = normalizeBiometricsBaseUrl(baseUrl);
   return async ({ method, path, body }) => {
+    // 上の guard で authorization / bearerToken / authorizationProvider のいずれかは必ず存在する。
     const auth = authorization
-      || (bearerToken ? `Bearer ${bearerToken}` : await authorizationProvider());
+      || (bearerToken ? `Bearer ${bearerToken}` : await /** @type {() => Promise<string>} */ (authorizationProvider)());
     const res = await fetchImpl(`${root}${path}`, {
       method,
       headers: {
@@ -114,16 +166,19 @@ export function makeBiometricsTransport({
   };
 }
 
+/** @param {BiometricsAuthOptions} opts @returns {BiometricsTransport} */
 function resolveBiometricsTransport({ transport, baseUrl, authorization, bearerToken, authorizationProvider, fetchImpl }) {
   if (typeof transport === "function") return transport;
   return makeBiometricsTransport({ baseUrl, authorization, bearerToken, authorizationProvider, fetchImpl });
 }
 
+/** @param {string|undefined} operation @param {string} suffix @returns {string} */
 function withSuffix(operation, suffix) {
   if (!operation) throw badRequest("access.err.operationRequired");
   return String(operation).endsWith(suffix) ? String(operation) : `${operation}${suffix}`;
 }
 
+/** @param {BiometricsTransport} transport @param {object} body @param {string} opLabel */
 async function postBiometrics(transport, body, opLabel) {
   const res = await transport({ method: "POST", path: BIOMETRICS_PATH, body });
   // injected test transports may return the already-unwrapped body.
@@ -207,16 +262,17 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs 
 function aggregate(byDevice, idKey) {
   /** @type {Record<string, Set<string>>} */
   const idMap = {};
+  /** @type {Array<Record<string, unknown>>} */
   const cards = [];
   for (const [deviceUUID, list] of Object.entries(byDevice)) {
-    for (const card of list) {
-      const id = card[idKey];
+    for (const card of /** @type {Array<Record<string, unknown>>} */ (list)) {
+      const id = String(card[idKey]);
       if (!idMap[id]) idMap[id] = new Set();
       idMap[id].add(deviceUUID);
       cards.push(card);
     }
   }
-  return cards.map((card) => ({ ...card, uuids: Array.from(idMap[card[idKey]]) }));
+  return cards.map((card) => ({ ...card, uuids: Array.from(idMap[String(card[idKey])]) }));
 }
 
 // ---------- カード: 取得 ----------
@@ -268,6 +324,10 @@ export async function getPasscodes(client, { deviceUUIDs, timeoutMs = DEFAULT_TI
  * action+op 一致の同期応答を request で待つ。biz3 は invokeCallbacks(message) で
  * コールバック発火しているだけだが (useManageAuthData.js:260-271)、CLI では
  * 応答メッセージ (reqContext 含む) を呼び出し側に返す。
+ * @param {import("./transport.js").Hub3WsClient} client
+ * @param {import("./transport.js").WsFrame} frame
+ * @param {string} opLabel
+ * @param {number} [timeoutMs]
  * @returns {Promise<object>} 応答メッセージ
  */
 async function requestOp(client, frame, opLabel, timeoutMs) {
@@ -469,9 +529,7 @@ export async function updateCardOwner(client, { cardID, ownerSubUUID, timeoutMs 
  * body = { op: `${operation}_post`, deviceID, items } を POST /device/v1/biometrics へ送る。
  *
  * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
- * @param {{operation:string, deviceID:string, items:object[], transport?:Function, baseUrl?:string,
- *          authorization?:string, bearerToken?:string, authorizationProvider?:Function,
- *          fetchImpl?:Function}} params
+ * @param {AuthDataParams} params
  * @returns {Promise<object[]|object>} SDK と同じく response.data.items があればそれを返し、無ければ応答全体
  */
 export async function postAuthenticationData(_client, params) {
@@ -488,6 +546,8 @@ export async function postAuthenticationData(_client, params) {
 /**
  * Kotlin SDK CHDataSynchronizeCapable.putAuthenticationData と同じ REST 操作。
  * body = { op: `${operation}_put`, deviceID, items }。
+ * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
+ * @param {AuthDataParams} params
  */
 export async function putAuthenticationData(_client, params) {
   const transport = resolveBiometricsTransport(params);
@@ -502,6 +562,8 @@ export async function putAuthenticationData(_client, params) {
 /**
  * Kotlin SDK CHDataSynchronizeCapable.deleteAuthenticationData と同じ REST 操作。
  * body = { op: `${operation}_delete`, deviceID, items }。
+ * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
+ * @param {AuthDataParams} params
  */
 export async function deleteAuthenticationData(_client, params) {
   const transport = resolveBiometricsTransport(params);
@@ -519,9 +581,7 @@ export async function deleteAuthenticationData(_client, params) {
  * 便利指定として `kind` を渡すと SDK companion の既定 op を補完する。
  *
  * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
- * @param {{request?:object, kind?:'card'|'face'|'fingerPrint'|'palm'|'passcode', transport?:Function,
- *          baseUrl?:string, authorization?:string, bearerToken?:string,
- *          authorizationProvider?:Function, fetchImpl?:Function, [key:string]:any}} params
+ * @param {UpdateAuthNameParams} params
  */
 export async function updateAuthenticationName(_client, params) {
   const transport = resolveBiometricsTransport(params);
@@ -529,6 +589,7 @@ export async function updateAuthenticationName(_client, params) {
   return postBiometrics(transport, body, "updateAuthenticationName");
 }
 
+/** @param {UpdateAuthNameParams} params */
 function authenticationNameRequest(params) {
   const now = params.timestamp ?? Date.now();
   const common = {
@@ -628,7 +689,7 @@ export function enrolledToCardList(records) {
 export function enrolledToPasscodeList(records) {
   if (!Array.isArray(records)) return [];
   return records.map((r) => {
-    const passwordID = r.passwordID || r.cardID;
+    const passwordID = r.passwordID || r.cardID || "";
     const nameUUID = generateUUID();
     return {
       passwordID,

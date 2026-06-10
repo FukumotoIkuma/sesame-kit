@@ -66,17 +66,15 @@ export function parseCurrentScript(buf: Buffer): {
  *     cursor += 20 (name 領域は常に 20B)。
  *   - events の action は name/nameLength のみ (本一覧では actions を含まない)。
  *
- * @param {Buffer} buf
- * @returns {{curIdx:number, eventLength:number, events:Array<{nameLength:number, name:Buffer}>}|null}
+ * @typedef {{nameLength:number, name:Buffer}} ScriptNameEntry
+ * @typedef {{curIdx:number, eventLength:number, events:ScriptNameEntry[]}} ScriptNameList
  */
-export function parseScriptNameList(buf: Buffer): {
-    curIdx: number;
-    eventLength: number;
-    events: Array<{
-        nameLength: number;
-        name: Buffer;
-    }>;
-} | null;
+/**
+ * SCRIPT_NAME_LIST(96) 応答の parse。
+ * @param {Buffer} buf
+ * @returns {ScriptNameList|null}
+ */
+export function parseScriptNameList(buf: Buffer): ScriptNameList | null;
 /**
  * 動作種別 (CHSesameBot2.kt BotActionType と 1:1)。
  * 正転 / 反転 / 停止 (惰性なし) / 睡眠 (惰性あり)。
@@ -104,14 +102,11 @@ export const BOT_ACTION_TYPE: Readonly<{
 export class Bot2Commands {
     /**
      * @param {import("./session.js").SesameBleSession} session login 済み (request が使える) session
-     * @param {(...args:any[])=>void} [historyTagBLE] 履歴タグ生成器 (protocol.historyTagBLE を注入)
+     * @param {(tag?: Buffer) => Buffer} [historyTagBLE] 履歴タグ生成器 (protocol.historyTagBLE を注入)
      */
-    constructor(session: import("./session.js").SesameBleSession, historyTagBLE?: (...args: any[]) => void);
-    scripts: {
-        curIdx: number;
-        eventLength: number;
-        events: any[];
-    };
+    constructor(session: import("./session.js").SesameBleSession, historyTagBLE?: (tag?: Buffer) => Buffer);
+    /** @type {ScriptNameList} */
+    scripts: ScriptNameList;
     /**
      * index 指定 click。CHSesameBot2Device.kt:73-97 と 1:1:
      *   index!=null → itemCode = RUN_SCRIPT_0(170)+index、index==null → click(89)。
@@ -177,16 +172,36 @@ export class Bot2Commands {
      *   本 session 層は request(itemCode) を itemCode ごとのキューで多重化しており、同一 itemCode の
      *   並行 request はそれぞれ独立の応答待ちになる (SDK のマージは省く)。応答パースとキャッシュ更新は
      *   SDK と 1:1。
-     * @returns {Promise<{curIdx:number, eventLength:number, events:Array<{nameLength:number, name:Buffer}>}>}
+     * @returns {Promise<ScriptNameList>}
      */
-    getScriptNameList(): Promise<{
-        curIdx: number;
-        eventLength: number;
-        events: Array<{
-            nameLength: number;
-            name: Buffer;
-        }>;
-    }>;
+    getScriptNameList(): Promise<ScriptNameList>;
 }
+/**
+ * SCRIPT_NAME_LIST(96) 応答の parse。CHSesamebot2Status.fromByteArray() (CHSesameBot2.kt:93-109) と 1:1。
+ *
+ * レイアウト: [curIdx 1B][eventLength 1B] (続けて eventLength 個の name エントリ)。
+ *   - curIdx = buf[0]、eventLength = buf[1]。curIdx >= eventLength なら null。
+ *   - 各エントリ: nameLength = max(buf[cursor], 1); cursor++; name = buf[cursor .. cursor+nameLength);
+ *     cursor += 20 (name 領域は常に 20B)。
+ *   - events の action は name/nameLength のみ (本一覧では actions を含まない)。
+ */
+export type ScriptNameEntry = {
+    nameLength: number;
+    name: Buffer;
+};
+/**
+ * SCRIPT_NAME_LIST(96) 応答の parse。CHSesamebot2Status.fromByteArray() (CHSesameBot2.kt:93-109) と 1:1。
+ *
+ * レイアウト: [curIdx 1B][eventLength 1B] (続けて eventLength 個の name エントリ)。
+ *   - curIdx = buf[0]、eventLength = buf[1]。curIdx >= eventLength なら null。
+ *   - 各エントリ: nameLength = max(buf[cursor], 1); cursor++; name = buf[cursor .. cursor+nameLength);
+ *     cursor += 20 (name 領域は常に 20B)。
+ *   - events の action は name/nameLength のみ (本一覧では actions を含まない)。
+ */
+export type ScriptNameList = {
+    curIdx: number;
+    eventLength: number;
+    events: ScriptNameEntry[];
+};
 import { Buffer } from "node:buffer";
 //# sourceMappingURL=bot2.d.ts.map

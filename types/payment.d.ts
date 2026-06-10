@@ -35,13 +35,13 @@ export function getClientSecret(client: import("./transport.js").Hub3WsClient, p
  * { action:'biz3ManagePayment', customerId, defaultPaymentMethod, op:'changeDefaultPayment' }
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{customerId?:string, companyID?:string, defaultPaymentMethod:string, timeoutMs?:number}} params
+ * @param {{customerId?:string, companyID?:string, defaultPaymentMethod?:string, timeoutMs?:number}} params
  * @returns {Promise<object|null>}
  */
 export function changeDefaultPayment(client: import("./transport.js").Hub3WsClient, params?: {
     customerId?: string;
     companyID?: string;
-    defaultPaymentMethod: string;
+    defaultPaymentMethod?: string;
     timeoutMs?: number;
 }): Promise<object | null>;
 /**
@@ -51,13 +51,13 @@ export function changeDefaultPayment(client: import("./transport.js").Hub3WsClie
  * { action:'biz3ManagePayment', paymentId, customerId, op:'removePayment' }
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{customerId?:string, companyID?:string, paymentId:string, timeoutMs?:number}} params
+ * @param {{customerId?:string, companyID?:string, paymentId?:string, timeoutMs?:number}} params
  * @returns {Promise<object[]|object|null>}
  */
 export function removePayment(client: import("./transport.js").Hub3WsClient, params?: {
     customerId?: string;
     companyID?: string;
-    paymentId: string;
+    paymentId?: string;
     timeoutMs?: number;
 }): Promise<object[] | object | null>;
 /**
@@ -69,7 +69,7 @@ export function removePayment(client: import("./transport.js").Hub3WsClient, par
  * `level` is the encoded biz3 level (`planIndex * 2 + yearlyBit`), not just the plan index.
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{customerId?:string, companyID?:string, subId?:string, subscriptionId?:string, level:number, isUpgrade:boolean, isCancel?:boolean, timeoutMs?:number}} params
+ * @param {{customerId?:string, companyID?:string, subId?:string, subscriptionId?:string, level?:number, isUpgrade?:boolean, isCancel?:boolean, timeoutMs?:number}} params
  * @returns {Promise<object|null>}
  */
 export function payUpdateLevel(client: import("./transport.js").Hub3WsClient, params?: {
@@ -77,8 +77,8 @@ export function payUpdateLevel(client: import("./transport.js").Hub3WsClient, pa
     companyID?: string;
     subId?: string;
     subscriptionId?: string;
-    level: number;
-    isUpgrade: boolean;
+    level?: number;
+    isUpgrade?: boolean;
     isCancel?: boolean;
     timeoutMs?: number;
 }): Promise<object | null>;
@@ -89,13 +89,13 @@ export function payUpdateLevel(client: import("./transport.js").Hub3WsClient, pa
  * { action:'biz3ManagePayment', customerId, email, op:'getDevApiInfo', update? }
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{customerId?:string, companyID?:string, email:string, update?:boolean|null, timeoutMs?:number}} params
+ * @param {{customerId?:string, companyID?:string, email?:string, update?:boolean|null, timeoutMs?:number}} params
  * @returns {Promise<{apiKeyValue?:string,apiKeyId?:string,usedCount?:number}|object|null>}
  */
 export function getDevApiInfo(client: import("./transport.js").Hub3WsClient, params?: {
     customerId?: string;
     companyID?: string;
-    email: string;
+    email?: string;
     update?: boolean | null;
     timeoutMs?: number;
 }): Promise<{

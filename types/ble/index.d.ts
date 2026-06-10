@@ -7,17 +7,45 @@ export * as hub3 from "./hub3.js";
 export * as dfu from "./dfu.js";
 export * as os2 from "./os2/index.js";
 /**
- * @typedef {object} SesameBleOptions
- * @property {string|Buffer} [secretKey] 32hex のロック共通鍵。register モードでは不要。
- * @property {string} [deviceUUID] 対象識別 (advertise 照合)。
+ * サーバ署名トランスポート (makeRegisterTransport の戻り)。signGuestKey / register に渡す。
+ * 正準型は devices.js が所有する。
+ * @typedef {import("../devices.js").RegisterTransport} RegisterTransport
+ */
+/**
+ * 発見結果に含まれる noble peripheral ハンドル。正準型は transport.js が所有する。
+ * @typedef {import("./transport.js").NoblePeripheral} NoblePeripheral
+ */
+/**
+ * SesameBle コンストラクタ opts。
+ * @typedef {Object} SesameBleOptions
+ * @property {string|Buffer} [secretKey] ロック共通鍵 (32 文字 hex、cloud の `sesame devices` で取得済み)。register モードでは不要 (工場出荷デバイスは鍵が未確定)。
+ * @property {string} [deviceUUID] 対象識別 (advertise 照合)。複数 SESAME が近接する環境で必須。
  * @property {string} [address] BLE アドレスで識別する代替。
- * @property {string|null} [model] deviceModel (例 "sesame_5" / "bot_2")。
- * @property {boolean} [registerMode] true で工場出荷デバイスの register() 用。
- * @property {boolean} [needAuthFromServer] server 認証が要るデバイスで signGuestKey login を使う。
- * @property {Function|null} [registerTransport] makeRegisterTransport の戻り。
+ * @property {string|null} [model] デバイス model 文字列 (能力テーブル参照用)。
+ * @property {boolean} [registerMode] true で工場出荷デバイスの register() 用 (secretKey 不要・session を鍵無しで構築)。
+ * @property {boolean} [needAuthFromServer] 登録済みだが server 認証が要るデバイス (ゲスト鍵等) で connect 時に signGuestKey login。
+ * @property {RegisterTransport|null} [registerTransport] makeRegisterTransport の戻り (needAuthFromServer の signGuestKey / register に使用)。
  * @property {boolean} [debug]
- * @property {number} [scanTimeoutMs]
- * @property {object} [transport] 独自 BLE transport。
+ * @property {number} [scanTimeoutMs] 既定 transport のスキャン timeout。
+ * @property {import("./session.js").BleTransport} [transport] 独自トランスポート (省略時 noble)。
+ */
+/**
+ * register() 確定結果。
+ * @typedef {Object} RegisterResult
+ * @property {string} deviceUUID
+ * @property {string} secretKey
+ * @property {string|number|undefined} productType
+ * @property {string} serverSecret
+ */
+/**
+ * listNearbyDevices() の発見結果 1 件 (advertise だけから判る属性)。
+ * @typedef {Object} DiscoveryEntry
+ * @property {string} deviceUUID
+ * @property {number} [productType]
+ * @property {string|null} [model]
+ * @property {string} [kind]
+ * @property {boolean} [isRegistered]
+ * @property {NoblePeripheral} peripheral
  */
 /**
  * 登録済み SESAME を BLE で直接操作する高レベルファサード。
@@ -34,35 +62,25 @@ export class SesameBle {
      * register モードで SesameBle を構築し、登録ハンドシェイクを実行して確定した鍵を返す。
      *
      * @param {{deviceUUID?:string, address?:string, productType?:(string|number),
-     *          registerTransport?:Function, debug?:boolean, scanTimeoutMs?:number,
-     *          transport?:object, nowMs?:number}} opts
+     *          registerTransport?:RegisterTransport, debug?:boolean, scanTimeoutMs?:number,
+     *          transport?:import("./session.js").BleTransport, nowMs?:number}} [opts]
      *   deviceUUID/address はスキャン照合用。registerTransport を渡すと register() 内で
      *   サーバ側 registerSesame5 もコールする (失敗してもログのみで継続)。
-     * @param {(result:{deviceUUID:string, secretKey:string, productType:(string|number|undefined), serverSecret:string})=>Promise<any>} [fn]
+     * @param {(result:RegisterResult)=>Promise<unknown>} [fn]
      *   登録結果を受け取る任意のコールバック (鍵の保存など)。close 前に実行される。
-     * @returns {Promise<{deviceUUID:string, secretKey:string, productType:(string|number|undefined), serverSecret:string}>}
+     * @returns {Promise<RegisterResult>}
      *   登録結果 (fn 指定時もこの結果を返す)。
      */
     static registerOnce(opts?: {
         deviceUUID?: string;
         address?: string;
         productType?: (string | number);
-        registerTransport?: Function;
+        registerTransport?: RegisterTransport;
         debug?: boolean;
         scanTimeoutMs?: number;
-        transport?: object;
+        transport?: import("./session.js").BleTransport;
         nowMs?: number;
-    }, fn?: (result: {
-        deviceUUID: string;
-        secretKey: string;
-        productType: (string | number | undefined);
-        serverSecret: string;
-    }) => Promise<any>): Promise<{
-        deviceUUID: string;
-        secretKey: string;
-        productType: (string | number | undefined);
-        serverSecret: string;
-    }>;
+    }, fn?: (result: RegisterResult) => Promise<unknown>): Promise<RegisterResult>;
     /**
      * 複数ロックに**1 回のスキャン**で同時接続する (逐次スキャンを避ける正攻法)。
      * 近接していないロックは結果に現れず即スキップ (per-device の scan timeout を払わない)。
@@ -111,17 +129,17 @@ export class SesameBle {
      * SesameBle を構築する。発見結果の peripheral・deviceUUID・model をそのまま引き継ぎ、
      * secretKey など鍵情報は呼び出し側が補う (発見段階では鍵は未知)。
      *
-     * @param {object} entry listNearbyDevices() の要素 ({deviceUUID, model, peripheral, ...})
+     * @param {DiscoveryEntry} entry listNearbyDevices() の要素 ({deviceUUID, model, peripheral, ...})
      * @param {{secretKey?:string|Buffer, registerMode?:boolean, needAuthFromServer?:boolean,
-     *          registerTransport?:Function, debug?:boolean}} [opts]
+     *          registerTransport?:RegisterTransport, debug?:boolean}} [opts]
      *   secretKey 等の鍵/モード指定。registerMode:true なら工場出荷デバイスの register() 用 (鍵不要)。
      * @returns {SesameBle}
      */
-    static fromDiscovery(entry: object, opts?: {
+    static fromDiscovery(entry: DiscoveryEntry, opts?: {
         secretKey?: string | Buffer;
         registerMode?: boolean;
         needAuthFromServer?: boolean;
-        registerTransport?: Function;
+        registerTransport?: RegisterTransport;
         debug?: boolean;
     }): SesameBle;
     /**
@@ -129,7 +147,7 @@ export class SesameBle {
      */
     constructor(opts?: SesameBleOptions);
     /** デバイスの model 文字列 (例 "sesame_5" / "bot_2")。未指定なら null。 */
-    get model(): string;
+    get model(): string | null;
     /** 型ごとの能力 { kind, os, ops, mechKind, bleSupported, label }。 */
     get capabilities(): {
         kind: string;
@@ -146,8 +164,12 @@ export class SesameBle {
         fingerprint: boolean;
         label: string;
     };
-    /** この操作を BLE で送れるか (このファサードは BLE 専用なので ble 能力で判定)。 */
-    supports(op: any): boolean;
+    /**
+     * この操作を BLE で送れるか (このファサードは BLE 専用なので ble 能力で判定)。
+     * @param {string} op
+     * @returns {boolean}
+     */
+    supports(op: string): boolean;
     /**
      * 生体・アクセス制御デバイス (Touch/Touch Pro/Face/Palm 系) の BLE 登録 API。
      *
@@ -281,8 +303,11 @@ export class SesameBle {
         payload: Buffer;
         session: object;
     }>;
-    /** BLE で送れない操作を弾く。SDK では型ごとに能力が非対称 (Bot は click のみ等)。 */
-    _assertOp(op: any): void;
+    /**
+     * BLE で送れない操作を弾く。SDK では型ごとに能力が非対称 (Bot は click のみ等)。
+     * @param {string} op
+     */
+    _assertOp(op: string): void;
     /**
      * Sesame5/6 系 OS3 ロック (LOCK5 kind) 固有の BLE コマンドを弾く。
      * SDK では magnet(17)/OPS_CONTROL(92)/SET_ADV_PRODUCT_TYPE(205)/mechSetting(80) の itemCode は
@@ -293,34 +318,24 @@ export class SesameBle {
      * @param {string} api エラー文に出すメソッド名
      */
     _assertLock5(api: string): void;
-    /** mechStatus publish を購読 (戻り値 unsubscribe)。 */
-    onStatus(fn: any): () => boolean;
+    /**
+     * mechStatus publish を購読 (戻り値 unsubscribe)。
+     * @param {(status: unknown) => void} fn
+     * @returns {() => void}
+     */
+    onStatus(fn: (status: unknown) => void): () => void;
     /** 最後に受信した mechStatus。 */
-    get lastStatus(): {
-        state: string;
-        isInLockRange: boolean;
-        target: number | null;
-        position: number | null;
-        isStop: boolean;
-        isCritical: boolean;
-        isBatteryCritical: boolean;
-        batteryRaw: number;
-        flags: number;
-    } | {
-        data: Buffer;
-        position: number;
-        target: number;
-        isInLockRange: boolean;
-        isInUnlockRange: boolean;
-        isStop: null;
-        isCritical: null;
-        isBatteryCritical: boolean;
-        batteryRaw: number | null;
-    };
+    get lastStatus(): any;
     /** 最後に受信した mechSetting (角度キャリブレーション lockPosition/unlockPosition/autoLockSecond)。未受信なら null。 */
-    get lastMechSetting(): any;
+    get lastMechSetting(): {
+        lockPosition: number;
+        unlockPosition: number;
+        autoLockSecond: number;
+    } | null;
     /** 最後に受信した opsSetting (opsLockSecond)。未受信なら null。 */
-    get lastOpsSetting(): any;
+    get lastOpsSetting(): {
+        opsLockSecond: number;
+    } | null;
     get isConnected(): boolean;
     /**
      * 接続 + login。
@@ -358,14 +373,18 @@ export class SesameBle {
     }>;
     /**
      * 施錠 (BLE item=82)。tag は履歴に残す任意ラベル。
+     * @param {Buffer} [tag] 履歴タグ (UUID バイト列)
      * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
-    lock(tag: any): Promise<{
+    lock(tag?: Buffer): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /** 解錠 (BLE item=83)。Sesame5/6 ロックと Bike2 が対応。 */
-    unlock(tag: any): Promise<{
+    /**
+     * 解錠 (BLE item=83)。Sesame5/6 ロックと Bike2 が対応。
+     * @param {Buffer} [tag] 履歴タグ (UUID バイト列)
+     */
+    unlock(tag?: Buffer): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
@@ -380,8 +399,9 @@ export class SesameBle {
     /**
      * トグル (Sesame5/6 ロックのみ)。直近の mechStatus が無ければ status() を取得してから判定。
      * locked → unlock、それ以外 → lock (CHSesame5Device.kt:128-145 準拠)。
+     * @param {Buffer} [tag] 履歴タグ (UUID バイト列)
      */
-    toggle(tag: any): Promise<{
+    toggle(tag?: Buffer): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
@@ -397,11 +417,11 @@ export class SesameBle {
     /**
      * 現在の mechStatus を返す。未受信なら publish を待つ (timeout 付き)。
      * @param {{timeoutMs?:number}} [opts]
-     * @returns {Promise<object>} parseMechStatus の結果
+     * @returns {Promise<unknown>} parseMechStatus の結果
      */
     status({ timeoutMs }?: {
         timeoutMs?: number;
-    }): Promise<object>;
+    }): Promise<unknown>;
     /**
      * mechSetting (角度キャリブレーション) を書き込む (BLE item=80)。Sesame5/6 系ロックのみ。
      * **BLE 経由のみ**で本体に反映される (クラウド経路には存在しない設定)。
@@ -495,41 +515,76 @@ export class SesameBle {
         payload: Buffer;
     }>;
 }
+/**
+ * サーバ署名トランスポート (makeRegisterTransport の戻り)。signGuestKey / register に渡す。
+ * 正準型は devices.js が所有する。
+ */
+export type RegisterTransport = import("../devices.js").RegisterTransport;
+/**
+ * 発見結果に含まれる noble peripheral ハンドル。正準型は transport.js が所有する。
+ */
+export type NoblePeripheral = import("./transport.js").NoblePeripheral;
+/**
+ * SesameBle コンストラクタ opts。
+ */
 export type SesameBleOptions = {
     /**
-     * 32hex のロック共通鍵。register モードでは不要。
+     * ロック共通鍵 (32 文字 hex、cloud の `sesame devices` で取得済み)。register モードでは不要 (工場出荷デバイスは鍵が未確定)。
      */
-    secretKey?: string | Buffer;
+    secretKey?: string | Buffer<ArrayBufferLike> | undefined;
     /**
-     * 対象識別 (advertise 照合)。
+     * 対象識別 (advertise 照合)。複数 SESAME が近接する環境で必須。
      */
-    deviceUUID?: string;
+    deviceUUID?: string | undefined;
     /**
      * BLE アドレスで識別する代替。
      */
-    address?: string;
+    address?: string | undefined;
     /**
-     * deviceModel (例 "sesame_5" / "bot_2")。
+     * デバイス model 文字列 (能力テーブル参照用)。
      */
-    model?: string | null;
+    model?: string | null | undefined;
     /**
-     * true で工場出荷デバイスの register() 用。
+     * true で工場出荷デバイスの register() 用 (secretKey 不要・session を鍵無しで構築)。
      */
-    registerMode?: boolean;
+    registerMode?: boolean | undefined;
     /**
-     * server 認証が要るデバイスで signGuestKey login を使う。
+     * 登録済みだが server 認証が要るデバイス (ゲスト鍵等) で connect 時に signGuestKey login。
      */
-    needAuthFromServer?: boolean;
+    needAuthFromServer?: boolean | undefined;
     /**
-     * makeRegisterTransport の戻り。
+     * makeRegisterTransport の戻り (needAuthFromServer の signGuestKey / register に使用)。
      */
-    registerTransport?: Function | null;
-    debug?: boolean;
-    scanTimeoutMs?: number;
+    registerTransport?: import("../devices.js").RegisterTransport | null | undefined;
+    debug?: boolean | undefined;
     /**
-     * 独自 BLE transport。
+     * 既定 transport のスキャン timeout。
      */
-    transport?: object;
+    scanTimeoutMs?: number | undefined;
+    /**
+     * 独自トランスポート (省略時 noble)。
+     */
+    transport?: import("./session.js").BleTransport | undefined;
+};
+/**
+ * register() 確定結果。
+ */
+export type RegisterResult = {
+    deviceUUID: string;
+    secretKey: string;
+    productType: string | number | undefined;
+    serverSecret: string;
+};
+/**
+ * listNearbyDevices() の発見結果 1 件 (advertise だけから判る属性)。
+ */
+export type DiscoveryEntry = {
+    deviceUUID: string;
+    productType?: number | undefined;
+    model?: string | null | undefined;
+    kind?: string | undefined;
+    isRegistered?: boolean | undefined;
+    peripheral: NoblePeripheral;
 };
 import { Buffer } from "node:buffer";
 import { BiometricCommands } from "./biometric.js";

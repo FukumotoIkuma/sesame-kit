@@ -27,12 +27,17 @@ import auth from "./i18n/auth.js";
 
 const AREAS = [session, cli, serve, org, access, iot, presetir, company, payment, schedule, domain, ble, auth];
 
+/**
+ * メッセージカタログ。キー → 文字列テンプレート。
+ * @type {{ en: Record<string, string>, ja: Record<string, string> }}
+ */
 const CATALOG = { en: {}, ja: {} };
 for (const a of AREAS) {
   if (a?.en) Object.assign(CATALOG.en, a.en);
   if (a?.ja) Object.assign(CATALOG.ja, a.ja);
 }
 
+/** @type {Locale} */
 let _locale = "en";
 
 /** @param {string} [loc] */
@@ -64,12 +69,28 @@ export function t(key, vars) {
  * @returns {Locale}
  */
 export function resolveLocale({ flag, configLang } = {}) {
-  const pick = (v) => {
-    if (!v) return null;
-    const s = String(v).toLowerCase();
-    if (s.startsWith("ja")) return "ja";
-    if (s.startsWith("en")) return "en";
-    return null;
-  };
-  return pick(flag) || pick(configLang) || "en";
+  return pickLocale(flag) || pickLocale(configLang) || "en";
+}
+
+/**
+ * 単一の言語値を "en"/"ja" へ正規化。未知/空は null。
+ * @param {string|null|undefined} v
+ * @returns {Locale|null}
+ */
+function pickLocale(v) {
+  if (!v) return null;
+  const s = String(v).toLowerCase();
+  if (s.startsWith("ja")) return "ja";
+  if (s.startsWith("en")) return "en";
+  return null;
+}
+
+/**
+ * 明示指定された言語値が認識可能 (en/ja 接頭辞) か。`--lang xx` のような未知値を
+ * 黙って英語へ落とさず警告するための判定。空/未指定は「指定なし」として true 扱い。
+ * @param {string|null|undefined} v
+ * @returns {boolean}
+ */
+export function isKnownLang(v) {
+  return !v || pickLocale(v) != null;
 }

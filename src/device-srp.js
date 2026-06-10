@@ -33,6 +33,13 @@ const N_HEX =
 const N = BigInt("0x" + N_HEX);
 const G = 2n;
 
+/**
+ * モジュラ冪剰余 base^exp mod mod。
+ * @param {bigint} base
+ * @param {bigint} exp
+ * @param {bigint} mod
+ * @returns {bigint}
+ */
 function modPow(base, exp, mod) {
   let result = 1n;
   base = ((base % mod) + mod) % mod; // 負値も正規化
@@ -44,17 +51,29 @@ function modPow(base, exp, mod) {
   return result;
 }
 
-/** SHA-256 → 64桁 hex (先頭ゼロ詰め)。amazon-cognito-identity-js の hash() 相当。 */
+/**
+ * SHA-256 → 64桁 hex (先頭ゼロ詰め)。amazon-cognito-identity-js の hash() 相当。
+ * @param {import("node:crypto").BinaryLike} data
+ * @returns {string}
+ */
 function sha256Hex(data) {
   return createHash("sha256").update(data).digest("hex").padStart(64, "0");
 }
 
-/** hex 文字列をバイト列として解釈して SHA-256。hexHash() 相当。 */
+/**
+ * hex 文字列をバイト列として解釈して SHA-256。hexHash() 相当。
+ * @param {string} hexStr
+ * @returns {string}
+ */
 function hexHash(hexStr) {
   return sha256Hex(Buffer.from(hexStr, "hex"));
 }
 
-/** BigInt → 偶数長 hex。最上位ビットが立つ場合は符号誤読防止に "00" を前置 (padHex 相当)。 */
+/**
+ * BigInt → 偶数長 hex。最上位ビットが立つ場合は符号誤読防止に "00" を前置 (padHex 相当)。
+ * @param {bigint} bigInt
+ * @returns {string}
+ */
 function padHex(bigInt) {
   let hex = bigInt.toString(16);
   if (hex.length % 2 === 1) hex = "0" + hex;
@@ -101,12 +120,22 @@ const INFO_BITS = Buffer.from("Caldera Derived Key", "utf8");
 const WEEK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** u = H(A, B)。SRP のスクランブリングパラメータ。 */
+/**
+ * u = H(A, B)。SRP のスクランブリングパラメータ。
+ * @param {bigint} A
+ * @param {bigint} B
+ * @returns {bigint}
+ */
 function calculateU(A, B) {
   return BigInt("0x" + hexHash(padHex(A) + padHex(B)));
 }
 
-/** HKDF(SHA-256) で 16 byte の鍵を導出。amazon の computehkdf 相当。 */
+/**
+ * HKDF(SHA-256) で 16 byte の鍵を導出。amazon の computehkdf 相当。
+ * @param {Buffer} ikm
+ * @param {Buffer} salt
+ * @returns {Buffer}
+ */
 function computeHkdf(ikm, salt) {
   const prk = createHmac("sha256", salt).update(ikm).digest();
   const infoBitsUpdate = Buffer.concat([INFO_BITS, Buffer.from([1])]);
@@ -130,6 +159,14 @@ export function generateEphemeralA() {
  * デバイスパスワード認証鍵 (HKDF 出力) を導出。amazon の getPasswordAuthenticationKey 相当。
  * deviceGroupKey/deviceKey はサーバ verifier 生成時と同じ "{group}{key}:{password}" を成す。
  *
+ * @param {object} args
+ * @param {string} args.deviceGroupKey
+ * @param {string} args.deviceKey
+ * @param {string} args.devicePassword
+ * @param {bigint} args.serverB サーバ公開値 B
+ * @param {bigint} args.salt
+ * @param {bigint} args.a クライアント秘密
+ * @param {bigint} args.A クライアント公開値
  * @returns {{hkdf: Buffer, sValue: bigint}} sValue はサーバ役シミュレーションでの検証用に返す。
  */
 export function deviceAuthSecrets({ deviceGroupKey, deviceKey, devicePassword, serverB, salt, a, A }) {
@@ -152,6 +189,13 @@ export function deviceAuthSecrets({ deviceGroupKey, deviceKey, devicePassword, s
 /**
  * DEVICE_PASSWORD_VERIFIER の PASSWORD_CLAIM_SIGNATURE を計算。
  * HMAC-SHA256(hkdf, deviceGroupKey || deviceKey || secretBlock || timestamp)。
+ * @param {object} args
+ * @param {Buffer} args.hkdf
+ * @param {string} args.deviceGroupKey
+ * @param {string} args.deviceKey
+ * @param {string} args.secretBlock base64 の SECRET_BLOCK
+ * @param {string} args.timestamp cognitoTimestamp() の出力
+ * @returns {string} base64 署名
  */
 export function devicePasswordSignature({ hkdf, deviceGroupKey, deviceKey, secretBlock, timestamp }) {
   const msg = Buffer.concat([
@@ -165,6 +209,7 @@ export function devicePasswordSignature({ hkdf, deviceGroupKey, deviceKey, secre
 
 /** Cognito が要求する固定書式のタイムスタンプ "ddd MMM D HH:mm:ss UTC yyyy" (UTC、日は 0 詰めしない)。 */
 export function cognitoTimestamp(d = new Date()) {
+  /** @param {number} n */
   const p = (n) => String(n).padStart(2, "0");
   return `${WEEK_DAYS[d.getUTCDay()]} ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()} ` +
     `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC ${d.getUTCFullYear()}`;

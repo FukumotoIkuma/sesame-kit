@@ -14,7 +14,7 @@
       "params": [
         {
           "name": "subUUID",
-          "required": true,
+          "required": false,
           "description": "string",
           "schema": {
             "type": "string"
@@ -45,7 +45,7 @@
       "params": [
         {
           "name": "subUUID",
-          "required": true,
+          "required": false,
           "description": "string",
           "schema": {
             "type": "string"
@@ -53,7 +53,7 @@
         },
         {
           "name": "scheduleId",
-          "required": true,
+          "required": false,
           "description": "string",
           "schema": {
             "type": "string"
@@ -116,7 +116,7 @@
         {
           "name": "timeoutMs",
           "required": false,
-          "description": "number",
+          "description": "number | undefined",
           "schema": {
             "type": "number"
           }

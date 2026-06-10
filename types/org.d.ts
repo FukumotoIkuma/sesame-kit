@@ -27,7 +27,7 @@ export function getEmployees(client: import("./transport.js").Hub3WsClient, { co
  * @returns {Promise<object>} res.data (例: { nickname, email, ... })
  */
 export function getCurrentUserInfo(client: import("./transport.js").Hub3WsClient, { timeoutMs }?: {
-    timeoutMs?: number;
+    timeoutMs?: number | undefined;
 }): Promise<object>;
 /**
  * 社員を追加する。

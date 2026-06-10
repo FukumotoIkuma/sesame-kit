@@ -1,19 +1,15 @@
 /**
  * @param {import("node:stream").Readable} readable
  * @param {import("node:stream").Writable} writable
- * @param {{ onLine:(conn:object, raw:string)=>void, onClose?:()=>void,
+ * @param {{ onLine:(conn:import("../daemon.js").Connection, raw:string)=>void, onClose?:()=>void,
  *           maxQueue?:number, maxLine?:number, closeWritable?:boolean }} opts
- * @returns {{ id:string, send:(obj:object)=>void, close:()=>void }}
+ * @returns {import("../daemon.js").Connection}
  */
 export function makeLineConnection(readable: import("node:stream").Readable, writable: import("node:stream").Writable, opts: {
-    onLine: (conn: object, raw: string) => void;
+    onLine: (conn: import("../daemon.js").Connection, raw: string) => void;
     onClose?: () => void;
     maxQueue?: number;
     maxLine?: number;
     closeWritable?: boolean;
-}): {
-    id: string;
-    send: (obj: object) => void;
-    close: () => void;
-};
+}): import("../daemon.js").Connection;
 //# sourceMappingURL=ndjson.d.ts.map

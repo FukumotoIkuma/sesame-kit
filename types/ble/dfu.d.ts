@@ -34,13 +34,13 @@ export function updateFirmware(session: import("./session.js").SesameBleSession)
  * (BLE 不可なら "BLE unavailable" で即 failure。JS では request() が notLoggedIn を弾く。)
  *
  * @param {import("./session.js").SesameBleSession} session 接続済みセッション
- * @param {{onProgress?:(progress:number|null, body:Buffer)=>void, timeoutMs?:number}} [opts]
+ * @param {{onProgress?:OtaProgressCallback, timeoutMs?:number}} [opts]
  *   onProgress: MOVE_TO publish の進捗 (payload 先頭バイト)。
  * @returns {Promise<{resultCode:number, payload:Buffer, session:object}>}
  *   MOVE_TO 応答 (resultCode==0) ＋デバイスハンドル (session)。
  */
 export function updateFirmwareBleOnly(session: import("./session.js").SesameBleSession, { onProgress, timeoutMs }?: {
-    onProgress?: (progress: number | null, body: Buffer) => void;
+    onProgress?: OtaProgressCallback;
     timeoutMs?: number;
 }): Promise<{
     resultCode: number;
@@ -64,11 +64,11 @@ export function updateFirmwareBleOnly(session: import("./session.js").SesameBleS
  *   (CHWifiModule2Device.kt:451 と 1:1)。
  *
  * @param {import("./session.js").SesameBleSession} session 接続済みセッション (WM2)
- * @param {{onProgress?:(progress:number|null, body:Buffer)=>void, timeoutMs?:number}} [opts]
+ * @param {{onProgress?:OtaProgressCallback, timeoutMs?:number}} [opts]
  * @returns {Promise<{resultCode:number, payload:Buffer, session:object}>}
  */
 export function updateFirmwareWM2(session: import("./session.js").SesameBleSession, { onProgress, timeoutMs }?: {
-    onProgress?: (progress: number | null, body: Buffer) => void;
+    onProgress?: OtaProgressCallback;
     timeoutMs?: number;
 }): Promise<{
     resultCode: number;
@@ -94,5 +94,9 @@ export function onMoveToOtaProgress(session: import("./session.js").SesameBleSes
  * @returns {() => void} unsubscribe
  */
 export function onWM2OtaProgress(session: import("./session.js").SesameBleSession, onProgress: (progress: number | null, body: Buffer) => void): () => void;
+/**
+ * OTA 進捗コールバック。
+ */
+export type OtaProgressCallback = (progress: number | null, body: Buffer) => void;
 import { Buffer } from "node:buffer";
 //# sourceMappingURL=dfu.d.ts.map

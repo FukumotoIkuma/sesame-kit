@@ -204,13 +204,21 @@ export class HXDCommandProcessor {
   }
 
   // --- setter (チェーン可・vendor:136-176) ---
+  /** @param {number} power */
   setPower(power) { this.power = power; return this; }
+  /** @param {number} temperature */
   setTemperature(temperature) { this.temperature = temperature; return this; }
+  /** @param {number} model */
   setModel(model) { this.mode = model; return this; } // vendor 名は setModel (mode を設定)
+  /** @param {number} fanSpeed */
   setFanSpeed(fanSpeed) { this.fanSpeed = fanSpeed; return this; }
+  /** @param {number} windDirection */
   setWindDirection(windDirection) { this.windDirection = windDirection; return this; }
+  /** @param {number} autoWindDirection */
   setAutoWindDirection(autoWindDirection) { this.autoWindDirection = autoWindDirection; return this; }
+  /** @param {number} key */
   setKey(key) { this.key = key; return this; }
+  /** @param {number} code */
   setCode(code) { this.code = code; return this; }
 }
 
@@ -227,7 +235,7 @@ export class HXDParametersSwapper {
   /**
    * エアコン key (HXDParametersSwapper.js:4-17)。
    * 注: UI type 'POWER_ON'/'TEMP_ADD' 等は keyMap に無く default 0x01 (ファイル冒頭トラップ参照)。
-   * @param {string} type
+   * @param {string} [type]  未指定時は default 0x01
    * @returns {number}
    */
   getAirKey(type) {
@@ -241,7 +249,7 @@ export class HXDParametersSwapper {
       WIND_DIRECTION: 0x04,
       AUTO_WIND_DIRECTION: 0x05,
     };
-    return keyMap[type] || 0x01;
+    return /** @type {Record<string, number>} */ (keyMap)[type ?? ""] || 0x01;
   }
 
   /**
@@ -250,7 +258,7 @@ export class HXDParametersSwapper {
    */
   getModeValue(index) {
     const valueMap = { 0: 0x01, 1: 0x02, 2: 0x03, 3: 0x04, 4: 0x05 };
-    return valueMap[index] || 0x01;
+    return /** @type {Record<number, number>} */ (valueMap)[index] || 0x01;
   }
 
   /**
@@ -259,7 +267,7 @@ export class HXDParametersSwapper {
    */
   getFanSpeedValue(index) {
     const valueMap = { 0: 0x01, 1: 0x02, 2: 0x03, 3: 0x04 };
-    return valueMap[index] || 0x01;
+    return /** @type {Record<number, number>} */ (valueMap)[index] || 0x01;
   }
 
   /**
@@ -268,7 +276,7 @@ export class HXDParametersSwapper {
    */
   getWindDirectionValue(index) {
     const valueMap = { 0: 0x01, 1: 0x02, 2: 0x03 };
-    return valueMap[index] || 0x02;
+    return /** @type {Record<number, number>} */ (valueMap)[index] || 0x02;
   }
 
   /**
@@ -285,7 +293,7 @@ export class HXDParametersSwapper {
       COLOR_TEMP_UP: 0x09,
       COLOR_TEMP_DOWN: 0x0a,
     };
-    return keyMap[type] || 0x01;
+    return /** @type {Record<string, number>} */ (keyMap)[type] || 0x01;
   }
 
   /**
@@ -310,7 +318,7 @@ export class HXDParametersSwapper {
       HOME: 0x1a,
       CHANNEL_DOWN: 0x04,
     };
-    return keyMap[type] || 0x01;
+    return /** @type {Record<string, number>} */ (keyMap)[type] || 0x01;
   }
 
   /**
@@ -328,7 +336,7 @@ export class HXDParametersSwapper {
       MIDDLE: 0x15,
       HIGH: 0x16,
     };
-    return keyMap[type] || 0x01;
+    return /** @type {Record<string, number>} */ (keyMap)[type] || 0x01;
   }
 
   /**

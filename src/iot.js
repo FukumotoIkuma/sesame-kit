@@ -100,7 +100,7 @@ const MATTER_PRODUCT_TYPE_MAP = Object.freeze({
 function getMatterProductTypeFromModelName(modelName) {
   const productType = getProductTypeFromModelName(modelName);
   if (productType === null) return null;
-  return MATTER_PRODUCT_TYPE_MAP[productType];
+  return /** @type {Record<number, number>} */ (MATTER_PRODUCT_TYPE_MAP)[productType];
 }
 
 /**
@@ -375,7 +375,11 @@ export async function removeSesameFromHub3(client, p) {
   return sesameItemOp(client, { ...p, cmd });
 }
 
-/** ADD/REMOVE 共通処理。device_id = hub3Id (親 Hub3 の UUID)。 */
+/**
+ * ADD/REMOVE 共通処理。device_id = hub3Id (親 Hub3 の UUID)。
+ * @param {import("./transport.js").Hub3WsClient} client
+ * @param {Parameters<typeof addSesameToHub3>[1] & {cmd: number}} p
+ */
 async function sesameItemOp(client, p) {
   const { hub3Id, secretKey, sesameId, ssmSecKa, nickName, deviceModel, cmd, timeoutMs } = p;
   if (!hub3Id) throw badRequest("iot.err.hub3IdRequired");
@@ -485,6 +489,10 @@ export async function openMatterPairingWindow(client, p) {
   return { statusCode: msg?.data?.statusCode, message: msg };
 }
 
+/**
+ * @param {string|null|undefined} s
+ * @returns {string}
+ */
 function normalizeUuid(s) {
   return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
 }

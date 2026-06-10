@@ -18,14 +18,14 @@ export function triggerLock(client: import("./transport.js").Hub3WsClient, param
     cmd: number;
     timeoutMs?: number;
 }): Promise<any>;
-/** ロックを施錠 (cmd=82)。 */
-export function lockLock(client: any, p: any): Promise<any>;
-/** ロックを解錠 (cmd=83)。 */
-export function lockUnlock(client: any, p: any): Promise<any>;
-/** ロックを反転 (cmd=88, cloud のみ)。現在状態に応じてサーバが LOCK/UNLOCK を判定。 */
-export function lockToggle(client: any, p: any): Promise<any>;
-/** SESAME Bot のボタンクリック (cmd=89)。 */
-export function botClick(client: any, p: any): Promise<any>;
+/** ロックを施錠 (cmd=82)。 @param {WsClient} client @param {LockParams} p */
+export function lockLock(client: WsClient, p: LockParams): Promise<any>;
+/** ロックを解錠 (cmd=83)。 @param {WsClient} client @param {LockParams} p */
+export function lockUnlock(client: WsClient, p: LockParams): Promise<any>;
+/** ロックを反転 (cmd=88, cloud のみ)。現在状態に応じてサーバが LOCK/UNLOCK を判定。 @param {WsClient} client @param {LockParams} p */
+export function lockToggle(client: WsClient, p: LockParams): Promise<any>;
+/** SESAME Bot のボタンクリック (cmd=89)。 @param {WsClient} client @param {LockParams} p */
+export function botClick(client: WsClient, p: LockParams): Promise<any>;
 /**
  * 任意の SESAME ItemCode をクラウド経由 (biz3TriggerLocker) で送る汎用レール。
  *
@@ -85,5 +85,18 @@ export function setAutolock(client: import("./transport.js").Hub3WsClient, { dev
     cmd: number;
     seconds: number;
 }>;
+/**
+ * 下位 WS トランスポート。
+ */
+export type WsClient = import("./transport.js").Hub3WsClient;
+/**
+ * lock/unlock/toggle/click 系コマンドの共通パラメータ (cmd は各ラッパが補う)。
+ */
+export type LockParams = {
+    deviceId: string;
+    secretKey: string;
+    subUUID: string;
+    timeoutMs?: number;
+};
 import { Buffer } from "node:buffer";
 //# sourceMappingURL=lock.d.ts.map

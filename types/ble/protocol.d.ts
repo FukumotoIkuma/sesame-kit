@@ -1,5 +1,9 @@
-/** 結果コード → 名前 (未知は unknown(N))。 */
-export function resultName(code: any): any;
+/**
+ * 結果コード → 名前 (未知は unknown(N))。
+ * @param {number} code
+ * @returns {string}
+ */
+export function resultName(code: number): string;
 /**
  * 既存 secretKey と initial token から CCM セッション鍵 (16B) を導出する。
  * token16 = AES-128-CMAC(secretKey, randomToken)  (ssm_cmd.c:43 / CHSesameOS3LockBase.kt:109)
@@ -516,6 +520,7 @@ export const RESULT: Readonly<{
  * { type, data } を返す (未完なら null)。start bit でバッファをリセット。
  */
 export class SegmentAssembler {
+    /** @type {Buffer[]} */
     /**
      * @param {Buffer} packet notify で届いた 1 パケット
      * @returns {{type:number, data:Buffer}|null} 完結時のみ {type, data}

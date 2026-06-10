@@ -36,6 +36,10 @@ import { t } from "../i18n.js";
  * throw して「未指定」と区別する (放置すると undefined になり『必要です』と誤誘導されるため)。
  * throw された Error は run() の parseAsync catch が die(1) で表示する。
  */
+/**
+ * @param {string|undefined|null} v
+ * @returns {number|undefined}
+ */
 function toInt(v) {
   if (v == null) return undefined;
   const n = parseInt(v, 10);
@@ -49,8 +53,8 @@ function toInt(v) {
  * --device 未指定時の Hub3 UUID 解決。
  * 対話可能なら listDevices() の Hub3 (deviceModel が hub_3/hub_3_lte) から選択、
  * 不可なら die(...,2) で必須を案内する (schedule.js と同じ作法)。
- * @param {object} hub
- * @param {object} ctx
+ * @param {import("../client.js").SesameHub3} hub
+ * @param {import("../cli.js").CliCtx} ctx
  * @param {string|undefined} device
  * @returns {Promise<string|undefined>} Hub3 deviceUUID
  */
@@ -61,7 +65,9 @@ async function resolveDeviceId(hub, ctx, device) {
     return undefined;
   }
   const list = await hub.listDevices();
-  const hub3s = (Array.isArray(list) ? list : []).filter((d) => isHub3Model(d.deviceModel));
+  const hub3s = (Array.isArray(list) ? list : []).filter(
+    /** @param {import("../client.js").DeviceInfo} d */ (d) => isHub3Model(d.deviceModel),
+  );
   if (hub3s.length === 0) {
     ctx.die(t("presetir.err.noHub3Found"), 1);
     return undefined;
@@ -76,7 +82,7 @@ async function resolveDeviceId(hub, ctx, device) {
 
 /**
  * @param {import("commander").Command} program
- * @param {object} ctx cli.js makeCtx() が供給する共有コンテキスト
+ * @param {import("../cli.js").CliCtx} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
 export function registerPresetIrCommands(program, ctx) {
   const presetir = program
@@ -104,6 +110,11 @@ export function registerPresetIrCommands(program, ctx) {
           return;
         }
         // 指定されたものだけ params に載せ、エアコン状態の既定は本体に委ねる。
+        /**
+         * @type {{ deviceId: string, code: number, power?: boolean,
+         *   temperature?: number, mode?: number, fanSpeed?: number,
+         *   windDirection?: number, autoSwing?: boolean }}
+         */
         const params = { deviceId, code: opts.code };
         if (opts.power) params.power = true;
         if (opts.temp != null) params.temperature = opts.temp;
@@ -112,7 +123,11 @@ export function registerPresetIrCommands(program, ctx) {
         if (opts.wind != null) params.windDirection = opts.wind;
         if (opts.swing) params.autoSwing = true;
 
-        const { command, response } = await hub.presetir.emitAir(params);
+        // hub.presetir.* は _bindNs で unknown を返す。emitAir の実戻り値形状にナロー化。
+        const { command, response } =
+          /** @type {{ command: string, response: object }} */ (
+            await hub.presetir.emitAir(params)
+          );
         ctx.out(gopts.json, () => {
           console.log(t("presetir.out.airEmitted", { deviceId }));
           console.log(t("presetir.out.command", { command }));
@@ -144,12 +159,15 @@ export function registerPresetIrCommands(program, ctx) {
           ctx.die(t("presetir.err.buttonRequired"), 2);
           return;
         }
-        const { command, response } = await hub.presetir.emitButton({
-          deviceId,
-          code: opts.code,
-          irType: opts.irtype,
-          buttonType: opts.button,
-        });
+        const { command, response } =
+          /** @type {{ command: string, response: object }} */ (
+            await hub.presetir.emitButton({
+              deviceId,
+              code: opts.code,
+              irType: opts.irtype,
+              buttonType: opts.button,
+            })
+          );
         ctx.out(gopts.json, () => {
           console.log(t("presetir.out.buttonEmitted", { deviceId }));
           console.log(t("presetir.out.command", { command }));

@@ -32,8 +32,59 @@ try:
     print("FAIL: subscribe did not raise"); sys.exit(1)
 except sc.SesameError:
     pass
+# SSE subscribe の URL に token を載せない (ヘッダ認証で漏洩防止)。urlopen を捕捉して URL を検査。
+import urllib.request as _u
+captured = {}
+_orig = _u.urlopen
+def _spy(req, *a, **k):
+    captured["url"] = req.full_url if hasattr(req, "full_url") else req
+    captured["auth"] = (req.get_header("Authorization") if hasattr(req, "get_header") else None)
+    return _orig(req, *a, **k)
+_u.urlopen = _spy
+try:
+    h.subscribe(["lockState"], lambda t, p: None)
+finally:
+    _u.urlopen = _orig
+assert "token=" not in captured.get("url", ""), ("token leaked in SSE url", captured.get("url"))
+assert token not in captured.get("url", ""), ("token value leaked in SSE url")
+assert captured.get("auth") == f"Bearer {token}", ("missing Authorization header", captured.get("auth"))
 print("PYOK")
 `;
+
+// 設定ディレクトリ解決の優先順位が CLI (src/paths.js) と一致するか:
+//   1. SESAME_KIT_HOME → そのディレクトリ直下
+//   2. XDG_CONFIG_HOME → $XDG/sesame-kit
+//   3. ~/.config/sesame-kit
+const PY_PATHS = `
+import os, sys
+import sesame_client as sc
+# 1. SESAME_KIT_HOME が最優先
+os.environ["SESAME_KIT_HOME"] = "/tmp/skh"
+os.environ["XDG_CONFIG_HOME"] = "/tmp/xdg"
+assert sc._default_socket_path() == "/tmp/skh/sesame.sock", sc._default_socket_path()
+assert sc._default_token_path() == "/tmp/skh/serve.token", sc._default_token_path()
+# 2. SESAME_KIT_HOME 無し → XDG_CONFIG_HOME/sesame-kit
+del os.environ["SESAME_KIT_HOME"]
+assert sc._default_socket_path() == "/tmp/xdg/sesame-kit/sesame.sock", sc._default_socket_path()
+assert sc._default_token_path() == "/tmp/xdg/sesame-kit/serve.token", sc._default_token_path()
+# 3. どちらも無し → ~/.config/sesame-kit
+del os.environ["XDG_CONFIG_HOME"]
+home = os.path.expanduser("~")
+assert sc._default_socket_path() == os.path.join(home, ".config", "sesame-kit", "sesame.sock"), sc._default_socket_path()
+print("PATHOK")
+`;
+
+describe.skipIf(!hasPython)("Python 同梱クライアント パス解決", () => {
+  it("SESAME_KIT_HOME → XDG_CONFIG_HOME → ~/.config の優先順位が CLI と一致する", () => {
+    // 親プロセスの env を汚さないよう、子で純粋に解決ロジックだけを検証する。
+    const env = { ...process.env, PYTHONPATH: PYDIR };
+    delete env.SESAME_KIT_HOME;
+    delete env.XDG_CONFIG_HOME;
+    const r = spawnSync("python3", ["-c", PY_PATHS], { env, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`python path assertions failed:\n${r.stdout}\n${r.stderr}`);
+    expect(r.stdout).toContain("PATHOK");
+  });
+});
 
 describe.skipIf(!hasPython)("Python 同梱クライアント e2e", () => {
   it("unix/http で status・discover・unlock が通り、不正 topic は raise", async () => {

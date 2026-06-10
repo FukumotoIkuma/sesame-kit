@@ -62,9 +62,17 @@ export class BleResultError extends Error {
 
 /**
  * @typedef {object} BleTransport BLE 無線 I/O アダプタ (transport.js のアダプタが満たす契約)。
- * @property {(onPacket:(packet:Buffer)=>void)=>Promise<void>} connect 接続+notify購読。各 notify を onPacket へ。
+ * @property {(onPacket:(packet:Buffer)=>void, onDisconnect?:(reason:any)=>void)=>Promise<void>} connect
+ *   接続+notify購読。各 notify を onPacket へ。リンク断時は onDisconnect(reason) を 1 回呼ぶ (任意)。
  * @property {(bytes:Buffer)=>void|Promise<void>} write Write Without Response。
  * @property {()=>void|Promise<void>} disconnect 切断。
+ */
+
+/**
+ * @typedef {object} Waiter ハンドシェイク待機者 (login/ready/register の Promise 制御)。
+ * @property {(value?:any)=>void} resolve
+ * @property {(err:Error)=>void} reject
+ * @property {any} timer setTimeout ハンドル。
  */
 
 export class SesameBleSession {
@@ -86,30 +94,42 @@ export class SesameBleSession {
     this._defaultTimeoutMs = defaultTimeoutMs;
 
     this._asm = new SegmentAssembler();
+    /** @type {Buffer|null} */
     this._token = null; // 4B initial token
+    /** @type {Buffer|null} */
     this._key = null; // 16B session key
     this._encCount = 0;
     this._decCount = 0;
     this._loggedIn = false;
     this._readyToRegister = false; // initial 受信時 secretKey 無しで true (CHSesameOS3.kt:468-491)
+    /** @type {import("./session.js").Waiter|null} */
     this._readyWaiter = null;      // register() 内で ReadyToRegister(=initial 受信) を待つ
+    /** @type {import("./session.js").Waiter|null} */
     this._registerWaiter = null;   // register() の REGISTRATION 応答待ち
 
-    /** @type {Map<number, Array<{resolve:Function, reject:Function, timer:any}>>} item → FIFO */
+    /** @type {Map<number, Array<{resolve:(v:{resultCode:number, payload:Buffer})=>void, reject:(e:Error)=>void, timer:any}>>} item → FIFO */
     this._pending = new Map();
+    /** @type {Set<(status:any)=>void>} */
     this._statusListeners = new Set();
+    /** @type {Set<(pub:{opCode:number, itemCode:number, body:Buffer})=>void>} */
     this._publishListeners = new Set();
+    /** @type {any} */
     this._lastStatus = null;
+    /** @type {{lockPosition:number, unlockPosition:number, autoLockSecond:number}|null} */
     this._lastMechSetting = null; // 最後に受けた mechSetting (parseMechSetting の結果)
+    /** @type {{opsLockSecond:number}|null} */
     this._lastOpsSetting = null;  // 最後に受けた opsSetting (parseOpsSetting の結果)
+    /** @type {import("./session.js").Waiter|null} */
     this._loginWaiter = null;
     // サーバ認証 login (isNeedAuthFromServer) 用の非同期 token 解決器。
     // connect({ signLogin }) で注入される。設定時は initial 受信で
     // deriveSessionKey(secretKey, token) を使わず signLogin(tokenHex) の戻り (hex) を
     // session 鍵として login する (CHSesameOS3.kt:473-487 / CHHub3Device.kt:163-174 token!=null)。
+    /** @type {((tokenHex:string)=>Promise<string>)|null} */
     this._signLogin = null;
   }
 
+  /** @param {...any} a */
   _log(...a) { if (this._debug) console.error("[ble]", ...a); }
 
   /**
@@ -137,9 +157,9 @@ export class SesameBleSession {
   /** initial(14) を受信したが secretKey 未設定で login を試みていない状態 (register 待ち)。 */
   get isReadyToRegister() { return this._readyToRegister; }
 
-  /** mechStatus publish を購読。戻り値 unsubscribe。 */
+  /** mechStatus publish を購読。戻り値 unsubscribe。 @param {(status:any)=>void} fn */
   onStatus(fn) { this._statusListeners.add(fn); return () => this._statusListeners.delete(fn); }
-  /** 任意 publish を購読 ({opCode,itemCode,body})。戻り値 unsubscribe。 */
+  /** 任意 publish を購読 ({opCode,itemCode,body})。戻り値 unsubscribe。 @param {(pub:{opCode:number, itemCode:number, body:Buffer})=>void} fn */
   onPublish(fn) { this._publishListeners.add(fn); return () => this._publishListeners.delete(fn); }
 
   /**
@@ -199,9 +219,9 @@ export class SesameBleSession {
    *   7. {deviceUUID, secretKey, productType, serverSecret(=token hex)} を返す
    *      (CHHub3Device.kt:196-208。serverSecret は mSesameToken.toHexString())。
    *
-   * @param {{deviceUUID:string, productType?:(string|number),
-   *          registerTransport?:(req)=>Promise<any>, nowMs?:number}} opts
-   *   - deviceUUID: 登録対象の UUID (戻り値・任意の registerSesame5 で使用)。
+   * @param {{deviceUUID?:string, productType?:(string|number),
+   *          registerTransport?:(req:any)=>Promise<any>, nowMs?:number}} [opts]
+   *   - deviceUUID: 登録対象の UUID (戻り値・任意の registerSesame5 で使用)。必須 (未指定は reject)。
    *   - productType: 戻り値に載せる model 名 or 数値 productType (任意)。
    *   - registerTransport: 渡された場合のみ registerSesame5 をコール (失敗はログのみ)。
    *   - nowMs: registration timestamp (テスト用に注入可、既定 Date.now())。
@@ -234,14 +254,16 @@ export class SesameBleSession {
     }
 
     // serverSecret = mSesameToken.toHexString() (CHHub3Device.kt:182)。
-    const serverSecret = this._token.toString("hex");
+    // ここまで来れば initial 受信済みで _token は必ず非 null (型のみ非 null 化)。
+    const token = /** @type {Buffer} */ (this._token);
+    const serverSecret = token.toString("hex");
 
     // 2. (任意) サーバ側 register。失敗してもログのみで継続 (CHHub3Device.kt:187-189)。
     if (typeof registerTransport === "function") {
       try {
-        await registerSesame5(registerTransport, { deviceUUID, productType, serverSecret });
+        await registerSesame5(registerTransport, { deviceUUID, productType: /** @type {string|number} */ (productType), serverSecret });
       } catch (e) {
-        this._log("registerSesame5 failed (continuing, server-side only)", e?.message);
+        this._log("registerSesame5 failed (continuing, server-side only)", /** @type {{message?:string}} */ (e)?.message);
       }
     }
 
@@ -256,6 +278,7 @@ export class SesameBleSession {
     const pubK64 = pubK65.subarray(1); // SDK EccKey.getPubK() 契約 = prefix 無し 64B
 
     // 4. REGISTRATION 応答待ちを登録してから PLAINTEXT で送る (race 防止)。
+    /** @type {Promise<Buffer>} */
     const regPromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this._registerWaiter = null;
@@ -285,7 +308,7 @@ export class SesameBleSession {
 
     // 6. sessionKey = CMAC(pre16, token4)。enc/decCount=0 で cipher 確立 (CHHub3Device.kt:202-203)。
     //    sault = 0x00 ++ token4 は CCM nonce 側で消費 (ccmNonce)。
-    this._key = deriveSessionKeyFromEcdh(pre16, this._token);
+    this._key = deriveSessionKeyFromEcdh(pre16, token);
     this._encCount = 0;
     this._decCount = 0;
     this._loggedIn = true;       // 以降のコマンドは暗号化セッションで送れる
@@ -304,6 +327,7 @@ export class SesameBleSession {
    * フィールドを null に戻す。disconnect() で 3 つを対称に解放するためのヘルパ
    * (取りこぼし防止: 待機者を追加したらここに 1 行足すだけで済む)。
    * @param {"_loginWaiter"|"_readyWaiter"|"_registerWaiter"} field
+   * @param {Error} err
    */
   _rejectWaiter(field, err) {
     const w = this[field];
@@ -369,7 +393,7 @@ export class SesameBleSession {
       }, to);
       const entry = { resolve, reject, timer };
       if (!this._pending.has(itemCode)) this._pending.set(itemCode, []);
-      this._pending.get(itemCode).push(entry);
+      /** @type {NonNullable<ReturnType<typeof this._pending.get>>} */ (this._pending.get(itemCode)).push(entry);
       // 送信は subscribe 登録後に (race 防止)
       this._sendCipher(buildSendFrame(itemCode, data));
     });
@@ -514,29 +538,35 @@ export class SesameBleSession {
    * transport→onDisconnect→_handleTransportDisconnect が pending を fail-fast する経路で行うので、
    * ここでは未処理 Promise 拒否 (unhandledRejection) を避けるためだけに握りつぶす
    * (元から fire-and-forget。送信失敗は応答 timeout / 切断通知のどちらかで必ず表面化する)。
+   * @param {Buffer} seg
    */
   _writeSeg(seg) {
     try {
       const r = this._transport.write(seg);
-      if (r && typeof r.then === "function") r.catch((e) => this._log("write rejected (handled via disconnect)", e?.message));
+      if (r && typeof r.then === "function") r.catch((/** @type {any} */ e) => this._log("write rejected (handled via disconnect)", e?.message));
     } catch (e) {
       // 同期 throw (notConnected 等) も同経路。pending は切断通知で解放される。
-      this._log("write threw (handled via disconnect)", e?.message);
+      this._log("write threw (handled via disconnect)", /** @type {{message?:string}} */ (e)?.message);
     }
   }
 
-  /** 暗号化なしで item+data を送る (login 等のハンドシェイク用低レベル)。 */
+  /** 暗号化なしで item+data を送る (login 等のハンドシェイク用低レベル)。 @param {Buffer} frame */
   _sendPlain(frame) {
     for (const seg of splitSegments(frame, SEG.PLAINTEXT)) this._writeSeg(seg);
   }
 
-  /** CCM 暗号化して送る (encCount++)。 */
+  /** CCM 暗号化して送る (encCount++)。 @param {Buffer} frame */
   _sendCipher(frame) {
-    const ct = ccmEncrypt(this._key, this._encCount, this._token, frame);
+    // login/register 後のみ呼ばれ _key/_token は非 null (型のみ非 null 化)。
+    const ct = ccmEncrypt(/** @type {Buffer} */ (this._key), this._encCount, /** @type {Buffer} */ (this._token), frame);
     this._encCount += 1;
     for (const seg of splitSegments(ct, SEG.CIPHERTEXT)) this._writeSeg(seg);
   }
 
+  /**
+   * @param {number} itemCode
+   * @param {{resolve:(v:{resultCode:number, payload:Buffer})=>void, reject:(e:Error)=>void, timer:any}} entry
+   */
   _dequeue(itemCode, entry) {
     const queue = this._pending.get(itemCode);
     if (!queue) return;
@@ -547,12 +577,14 @@ export class SesameBleSession {
 
   // ---------- 受信 ----------
 
+  /** @param {Buffer} packet */
   _onPacket(packet) {
     let assembled;
     try { assembled = this._asm.feed(Buffer.isBuffer(packet) ? packet : Buffer.from(packet)); }
     catch (e) { this._log("assemble error", e); return; }
     if (!assembled) return; // 未完
 
+    /** @type {Buffer} */
     let frame;
     if (assembled.type === SEG.CIPHERTEXT) {
       // SDK 忠実: SesameOS3BleCipher.decrypt() は doFinal() の **前** に decryptCounter を
@@ -563,10 +595,11 @@ export class SesameBleSession {
       const usedCount = this._decCount;
       this._decCount += 1;
       try {
-        frame = ccmDecrypt(this._key, usedCount, this._token, assembled.data);
+        // 暗号フレーム受信は login/register 後のみ → _key/_token は非 null (型のみ非 null 化)。
+        frame = ccmDecrypt(/** @type {Buffer} */ (this._key), usedCount, /** @type {Buffer} */ (this._token), assembled.data);
       } catch (e) {
         // この 1 フレームだけ捨てる。counter は既に進めたので後続は復号継続できる。
-        this._log("decrypt failed (corruption / dropped frame); skipping this frame", e?.message);
+        this._log("decrypt failed (corruption / dropped frame); skipping this frame", /** @type {{message?:string}} */ (e)?.message);
         return;
       }
     } else {
@@ -575,7 +608,7 @@ export class SesameBleSession {
 
     let parsed;
     try { parsed = parseRecvFrame(frame); }
-    catch (e) { this._log("parse error", e?.message); return; }
+    catch (e) { this._log("parse error", /** @type {{message?:string}} */ (e)?.message); return; }
     const { opCode, itemCode, body } = parsed;
     this._log("recv", { opCode, itemCode, len: body.length });
 
@@ -615,6 +648,7 @@ export class SesameBleSession {
     }
   }
 
+  /** @param {Buffer} token */
   _handleInitial(token) {
     if (!token || token.length < 4) { this._log("initial token too short"); return; }
     this._token = Buffer.from(token.subarray(0, 4));
@@ -652,7 +686,9 @@ export class SesameBleSession {
   async _loginViaServer() {
     let serverToken;
     try {
-      serverToken = await this._signLogin(this._token.toString("hex"));
+      // _signLogin 設定時 (initial 受信後) のみ呼ばれる → _signLogin/_token は非 null。
+      const token = /** @type {Buffer} */ (this._token);
+      serverToken = await /** @type {(tokenHex:string)=>Promise<string>} */ (this._signLogin)(token.toString("hex"));
     } catch (e) {
       this._rejectWaiter("_loginWaiter", e instanceof Error ? e : new Error(String(e)));
       return;
@@ -668,6 +704,7 @@ export class SesameBleSession {
     this._sendPlain(loginPayload(this._key)); // login は PLAINTEXT
   }
 
+  /** @param {number} resultCode @param {Buffer} payload */
   _handleRegistrationResponse(resultCode, payload) {
     if (!this._registerWaiter) return;
     const w = this._registerWaiter;
@@ -707,6 +744,7 @@ export class SesameBleSession {
     return Buffer.from(payload.subarray(13, 77));
   }
 
+  /** @param {number} resultCode @param {Buffer} payload */
   _handleLoginResponse(resultCode, payload) {
     if (!this._loginWaiter) return;
     const w = this._loginWaiter;
@@ -737,14 +775,16 @@ export class SesameBleSession {
       this._log("time drift > 3s, sending time sync", { deviceSeconds });
       this._sendCipher(buildSendFrame(ITEM.TIME, timeSyncData()));
     } catch (e) {
-      this._log("time sync failed (ignored)", e?.message);
+      this._log("time sync failed (ignored)", /** @type {{message?:string}} */ (e)?.message);
     }
   }
 
+  /** @param {number} itemCode @param {number} resultCode @param {Buffer} payload */
   _resolvePending(itemCode, resultCode, payload) {
     const queue = this._pending.get(itemCode);
     if (!queue || queue.length === 0) return; // 対応する request なし (unsolicited)
-    const entry = queue.shift();
+    // length>0 を確認済みなので shift() は必ず entry を返す (型のみ非 null 化)。
+    const entry = /** @type {NonNullable<ReturnType<typeof queue.shift>>} */ (queue.shift());
     if (queue.length === 0) this._pending.delete(itemCode);
     clearTimeout(entry.timer);
     if (resultCode === 0) entry.resolve({ resultCode, payload });

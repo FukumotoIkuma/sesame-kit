@@ -292,13 +292,6 @@ describe("parseBiometricMechStatus (CHSesameTouchProMechStatus pass-through)", (
 });
 
 describe("parsePubKeySesame (handlePubKeySesame 23B 分割)", () => {
-  // 23B チャンク組み立てヘルパ: [id(16B 任意)][filler(5B)][b21][b22(lockStatus)]。
-  const mkChunk = (bytes) => {
-    const c = Buffer.alloc(23, 0x00);
-    Buffer.from(bytes).copy(c);
-    return c;
-  };
-
   it("SS5 鍵 (it[21]==0): id=先頭16B hex, keyType=0x05, lockStatus=it[22]", () => {
     const id16 = Buffer.alloc(16, 0x11);
     const chunk = Buffer.concat([id16, Buffer.alloc(5, 0x00), Buffer.from([0x00, 0x07])]); // [21]=0, [22]=7

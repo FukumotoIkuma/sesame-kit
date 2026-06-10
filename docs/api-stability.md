@@ -75,7 +75,7 @@ confidence we hold internally and the promise we make externally stay consistent
 | Tier | Guarantee | Versioning |
 |---|---|---|
 | **stable** | Method name, params, return shape, and error `kind`s do not change incompatibly. Removal/incompatible change only on a major bump, after a deprecation period. | Covered by the API semver (`apiVersion` in `status` / `rpc.discover`). |
-| **experimental** | May change or be removed in any release, no deprecation period. SDKs surface these behind an explicit `experimental` namespace/flag. | Excluded from the semver guarantee. |
+| **experimental** | May change or be removed in any release, no deprecation period. The generated SDKs annotate these methods with a JSDoc/docstring `@experimental` marker (`@experimental unverified — may change without notice.`) on the normal namespace — there is no separate `experimental` namespace; the methods live alongside stable ones (e.g. `client.org.*`) and tooling/IDEs surface the marker. | Excluded from the semver guarantee. |
 
 The tier of every method is **machine-readable** via `rpc.discover` (planned:
 `x-stability: stable | experimental` per method) so SDKs and tools can enforce it.
@@ -143,8 +143,9 @@ with explicitly unverified response shapes (`未確認` notes in source):
 - `presetir.*` (3 ops) and `ir.send` / `ir.listKeys` — IR features
 - `schedule.*` (2 ops)
 
-These remain callable and documented, but SDKs surface them as `experimental` and
-they may change without notice.
+These remain callable and documented, but the generated SDKs tag them with a
+JSDoc/docstring `@experimental` marker (on the normal namespace, alongside stable
+methods) and they may change without notice.
 
 ## Event delivery semantics (current)
 

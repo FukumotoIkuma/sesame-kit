@@ -62,7 +62,20 @@ const DUMMY_PASSWORD = "Aa123456";
 
 const cognito = new CognitoIdentityProviderClient({ region: COGNITO_REGION });
 
-/** JWT を decode して exp を返す (秒、UNIX時間)。失敗時は 0。 */
+/**
+ * catch 節の unknown を `{ name?, message? }` として安全に読むためのナロー化。
+ * @param {unknown} e
+ * @returns {{ name?: string, message?: string }}
+ */
+function asErr(e) {
+  return /** @type {{ name?: string, message?: string }} */ (e ?? {});
+}
+
+/**
+ * JWT を decode して exp を返す (秒、UNIX時間)。失敗時は 0。
+ * @param {string} token
+ * @returns {number}
+ */
 function jwtExp(token) {
   try {
     const payload = token.split(".")[1];
@@ -73,7 +86,11 @@ function jwtExp(token) {
   }
 }
 
-/** idToken の aud claim (= clientId) を返す。 */
+/**
+ * idToken の aud claim (= clientId) を返す。
+ * @param {string} token
+ * @returns {string|null}
+ */
 function jwtAud(token) {
   try {
     const payload = token.split(".")[1];
@@ -88,6 +105,8 @@ function jwtAud(token) {
  * idToken の `sub` claim (= Cognito user UUID) を返す。
  * biz3 が `gStripe.customerInfo.subUUID` として使っている値と同じで、
  * `biz3TriggerLocker` の `history` フィールドに乗せる必要がある。
+ * @param {string} token
+ * @returns {string|null}
  */
 export function jwtSub(token) {
   try {
@@ -103,7 +122,9 @@ export function jwtSub(token) {
  * 失効していない idToken を返す。必要なら refresh する。
  * 失効まで `marginSec` 以下なら早期 refresh する (デフォルト 60秒)。
  *
- * @param {{load:Function, save:Function}} store
+ * @param {import("./tokens.js").TokenStore} store
+ * @param {{ marginSec?: number }} [opts]
+ * @returns {Promise<string>}
  */
 export async function getValidIdToken(store, { marginSec = 60 } = {}) {
   const t = store.load();
@@ -124,6 +145,7 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
   // clientId は保存値優先、無ければ idToken の aud から復元 (bootstrap/migrate で
   // clientId 欠落のまま入った token を誤った client に投げないため)。
   const clientId = t.clientId || jwtAud(t.idToken) || DEFAULT_CLIENT_ID;
+  /** @type {Record<string, string>} */
   const authParameters = { REFRESH_TOKEN: t.refreshToken };
   if (t.deviceKey) authParameters.DEVICE_KEY = t.deviceKey;
 
@@ -139,8 +161,8 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
   } catch (e) {
     // refresh token 失効 (公式アプリで再ログイン等) は再ログインで復帰する認証エラー。
     // 構造化して上位 (CLI 等) が message 文字列マッチ無しで分岐できるようにする。
-    if (e?.name === "NotAuthorizedException") {
-      throw new SesameError(String(e.message || e), { code: ERR.UNAUTHENTICATED, cause: e });
+    if (asErr(e).name === "NotAuthorizedException") {
+      throw new SesameError(String(asErr(e).message || e), { code: ERR.UNAUTHENTICATED, cause: e });
     }
     throw e;
   }
@@ -172,12 +194,15 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
  * Step 1: CUSTOM_AUTH を開始。Cognito が email に確認コードを送る。
  * 新規ユーザーの場合は SignUp してから retry。
  *
- * @param {{savePending:Function}} store
+ * @param {import("./tokens.js").TokenStore} store
+ * @param {string} username
+ * @param {{ clientId?: string }} [opts]
  */
 export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT_ID } = {}) {
   // 同じユーザーの記憶済みデバイスがあれば DEVICE_KEY を渡す (公式アプリ=Amplify と同じ)。
   // Cognito はこれを見てコード回答後に DEVICE_SRP_AUTH を要求できる。
   const existing = store.load?.();
+  /** @type {Record<string, string>} */
   const authParameters = { USERNAME: username };
   if (existing?.username === username && existing?.deviceKey) {
     authParameters.DEVICE_KEY = existing.deviceKey;
@@ -195,7 +220,7 @@ export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT
   try {
     resp = await initiate();
   } catch (e) {
-    if (e.name === "UserNotFoundException") {
+    if (asErr(e).name === "UserNotFoundException") {
       // 公式アプリと同じ自動 sign-up
       await cognito.send(
         new SignUpCommand({
@@ -226,7 +251,8 @@ export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT
  * Step 2: email で受け取ったコードで CUSTOM_CHALLENGE を回答。
  * 成功するとトークンを保存し、pending 状態を消す。
  *
- * @param {{loadPending:Function, save:Function, clearPending:Function}} store
+ * @param {import("./tokens.js").TokenStore} store
+ * @param {string} code
  */
 export async function loginVerify(store, code) {
   const s = store.loadPending();
@@ -255,6 +281,7 @@ export async function loginVerify(store, code) {
     device = await confirmDevice(r);
   } else if (resp.ChallengeName === "DEVICE_SRP_AUTH") {
     // 記憶済みデバイスの SRP 認証 (公式アプリ=Amplify と同じ device password チャレンジ)。
+    /** @type {Partial<import("./tokens.js").StoredTokens>} */
     const ex = store.load?.() || {};
     r = await deviceSrpAuth({
       clientId: s.clientId,
@@ -281,9 +308,11 @@ export async function loginVerify(store, code) {
     throw new Error(`No AuthenticationResult: ${JSON.stringify(resp)}`);
   }
 
+  /** @type {import("./tokens.js").StoredTokens} */
   const tokens = {
     clientId: s.clientId,
-    idToken: r.IdToken,
+    // r は上の分岐で必ず IdToken 付きの AuthenticationResult に確定している。
+    idToken: /** @type {string} */ (r.IdToken),
     refreshToken: r.RefreshToken,
     accessToken: r.AccessToken,
     // device は ConfirmDevice 成功時のみ非 null。確定できなかった deviceKey を保存すると
@@ -303,7 +332,7 @@ export async function loginVerify(store, code) {
  * NewDeviceMetadata を持つ認証結果に対し ConfirmDevice (+ 必要なら remembered 化) を行う。
  * デバイストラッキング無効の Pool では NewDeviceMetadata が無いので no-op。
  *
- * @param {object} authResult Cognito AuthenticationResult
+ * @param {import("@aws-sdk/client-cognito-identity-provider").AuthenticationResultType} authResult Cognito AuthenticationResult
  * @returns {Promise<{deviceKey:string, deviceGroupKey:string, devicePassword:string}|null>}
  *   確定したデバイス情報。デバイストラッキング無効 (NewDeviceMetadata 無し) なら null。
  */
@@ -351,7 +380,14 @@ async function confirmDevice(authResult) {
  * DEVICE_SRP_AUTH → DEVICE_PASSWORD_VERIFIER の 2 段チャレンジに応答してトークンを得る。
  * amazon-cognito-identity-js の device 認証フローをそのまま再現 (公式アプリと同じ)。
  *
- * @returns {Promise<object>} Cognito AuthenticationResult
+ * @param {object} args
+ * @param {string} args.clientId
+ * @param {string} args.username
+ * @param {string|null|undefined} args.deviceKey
+ * @param {string|null|undefined} args.deviceGroupKey
+ * @param {string|null|undefined} args.devicePassword
+ * @param {string|undefined} args.session
+ * @returns {Promise<import("@aws-sdk/client-cognito-identity-provider").AuthenticationResultType>} Cognito AuthenticationResult
  */
 async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, devicePassword, session }) {
   if (!deviceKey || !deviceGroupKey || !devicePassword) {
@@ -421,7 +457,7 @@ async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, de
  * サーバ呼び出しは best-effort (失敗してもローカルは必ず消す)。どちらも対象はこのセッション/
  * このデバイスのみで、公式アプリ等の別セッションには影響しない (GlobalSignOut は使わない)。
  *
- * @param {{load:Function, clear:Function, clearPending:Function, save:Function}} store
+ * @param {import("./tokens.js").TokenStore} store
  * @returns {Promise<{forgotDevice:boolean, revokedToken:boolean}>}
  */
 export async function logout(store) {
@@ -462,7 +498,9 @@ export async function logout(store) {
 /**
  * 既存の localStorage ダンプから bootstrap (互換用)。
  *
- * @param {{save:Function}} store
+ * @param {import("./tokens.js").TokenStore} store
+ * @param {Partial<import("./tokens.js").StoredTokens>} values
+ * @returns {import("./tokens.js").StoredTokens}
  */
 export function bootstrap(store, values) {
   if (!values.idToken)      throw new Error("idToken required");

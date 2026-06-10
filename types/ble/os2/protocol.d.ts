@@ -138,10 +138,10 @@ export function historyTag(tag?: Buffer | Uint8Array): Buffer;
  * ★lock/unlock/click の historyTag() (ヘッダ無し raw 透過) とは別物。
  *   configureLockPosition / Bot updateSetting は SDK 上 createHistag(...) を連結する
  *   (CHSesame2Device.kt:557 / CHSesameBotDevice.kt:421-422) ため、この 22B 構造を使う。
- * @param {Buffer|Uint8Array} [tag] 履歴タグ (バイト列)。省略時は全 0 の 22B。
+ * @param {Buffer|Uint8Array|null} [tag] 履歴タグ (バイト列)。省略/null 時は全 0 の 22B。
  * @returns {Buffer} 常に 22B
  */
-export function createHistag(tag?: Buffer | Uint8Array): Buffer;
+export function createHistag(tag?: Buffer | Uint8Array | null): Buffer;
 /**
  * SESAME2/3/4 の施錠/解錠角設定ペイロードを生成する (CHSesameLockPositionConfiguration:635-645)。
  *
@@ -171,32 +171,33 @@ export function lockPositionConfiguration(lockDeg: number, unlockDeg: number): B
  */
 export function lockPositionData(lockDeg: number, unlockDeg: number): Buffer;
 /**
+ * @typedef {object} BotMechSetting 初代 SESAME Bot の mech_setting フィールド (各値 -128..255 の 1B)。
+ * @property {number} userPrefDir
+ * @property {number} lockSec
+ * @property {number} unlockSec
+ * @property {number} clickLockSec
+ * @property {number} clickHoldSec
+ * @property {number} clickUnlockSec
+ * @property {number} buttonMode
+ */
+/**
  * 初代 SESAME Bot の mech_setting ペイロードを生成する (CHSesameBotMechSettings.data(), CHSesameBot.kt:17-20)。
  *   data = [userPrefDir, lockSec, unlockSec, clickLockSec, clickHoldSec, clickUnlockSec, buttonMode]
  *          ++ [0,0,0,0,0]   // 5B の予約 0 埋め (計 12B)
  * 各値は符号付き Byte (-128..127) として 1B で書く (Kotlin Byte)。
- * @param {{userPrefDir:number, lockSec:number, unlockSec:number, clickLockSec:number,
- *          clickHoldSec:number, clickUnlockSec:number, buttonMode:number}} setting
+ * @param {BotMechSetting} setting
  * @returns {Buffer} 12B
  */
-export function botMechSettingData(setting: {
-    userPrefDir: number;
-    lockSec: number;
-    unlockSec: number;
-    clickLockSec: number;
-    clickHoldSec: number;
-    clickUnlockSec: number;
-    buttonMode: number;
-}): Buffer;
+export function botMechSettingData(setting: BotMechSetting): Buffer;
 /**
  * 初代 SESAME Bot updateSetting の送信 data を組み立てる (CHSesameBotDevice.kt:418-422)。
  *   data = setting.data() ++ createHistag(historyTag)   (12B ++ 22B = 34B)
  * buildSendFrame(OP.UPDATE, ITEM.MECH_SETTING, ...) で送る (item=80)。
- * @param {object} setting botMechSettingData の引数
+ * @param {BotMechSetting} setting botMechSettingData の引数
  * @param {Buffer|Uint8Array} [tag] 履歴タグ
  * @returns {Buffer} 34B
  */
-export function botUpdateSettingData(setting: object, tag?: Buffer | Uint8Array): Buffer;
+export function botUpdateSettingData(setting: BotMechSetting, tag?: Buffer | Uint8Array): Buffer;
 /**
  * BLE DFU (ファームウェア更新) 開始コマンドの data。
  * SDK updateFirmware は enableDFU(7) に "01" (1B) を送る (CHSesame2Device.kt:580-599)。
@@ -427,6 +428,18 @@ export const MECH_STATE: Readonly<{
     UNLOCKED: "unlocked";
     MOVED: "moved";
 }>;
+/**
+ * 初代 SESAME Bot の mech_setting フィールド (各値 -128..255 の 1B)。
+ */
+export type BotMechSetting = {
+    userPrefDir: number;
+    lockSec: number;
+    unlockSec: number;
+    clickLockSec: number;
+    clickHoldSec: number;
+    clickUnlockSec: number;
+    buttonMode: number;
+};
 import { Buffer } from "node:buffer";
 import { OP } from "../protocol.js";
 import { SEG } from "../protocol.js";

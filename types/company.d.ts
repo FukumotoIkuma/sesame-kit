@@ -59,14 +59,14 @@ export function updateCompanyName(client: import("./transport.js").Hub3WsClient,
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{name:string, employeeEmail:string, subUUID:string, timeoutMs?:number}} params
- * @returns {Promise<object>} 新規 company オブジェクト (応答 data)
+ * @returns {Promise<object|null>} 新規 company オブジェクト (応答 data。欠落時 null)
  */
 export function addCompany(client: import("./transport.js").Hub3WsClient, { name, employeeEmail, subUUID, timeoutMs }: {
     name: string;
     employeeEmail: string;
     subUUID: string;
     timeoutMs?: number;
-}): Promise<object>;
+}): Promise<object | null>;
 /**
  * 課金レベル設定 (料金プラン設定) を取得する。
  *

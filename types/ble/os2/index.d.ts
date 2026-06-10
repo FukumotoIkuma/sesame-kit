@@ -2,46 +2,50 @@ export { makeLocalRegisterServer } from "../../crypto.js";
 export * as protocol from "./protocol.js";
 export { SesameOS2BleCipher } from "./cipher.js";
 /**
- * @typedef {object} SesameOS2BleOptions
- * @property {string|Buffer} [secretKey] 16B / 32hex ロック共通鍵。register モードでは不要。
- * @property {string|Buffer} [keyIndex] userIdx (sesame2KeyData.keyIndex)。
- * @property {string|Buffer} [ssmPublicKey] デバイス公開鍵 64B。
- * @property {string} [deviceUUID]
- * @property {string|null} [model]
- * @property {boolean} [registerMode]
- * @property {Function|null} [registerServer]
- * @property {boolean} [localServerAuth]
- * @property {boolean} [needAuthFromServer]
- * @property {(signPayloadHex:string)=>Promise<string>} [signLogin]
- * @property {boolean} [debug]
- * @property {object} transport BLE transport。OS2 facade では必須。
- */
-/**
  * 登録済み OS2 SESAME を BLE で直接操作する高レベルファサード。
  * 操作の対応関係は SDK の各 OS2 デバイスクラスに準拠:
  *   - SESAME2/3/4 : lock / unlock / toggle / autolock / history
  *   - Bot1        : click (lock/unlock も内部的に同 motor 動作だが SDK は click を主とする)
  *   - Bike1       : unlock のみ (施錠は手動)
  */
+/**
+ * SesameOS2Ble のコンストラクタ opts。
+ * @typedef {object} SesameOS2BleOptions
+ * @property {string|Buffer} [secretKey] ロック共通鍵 (16B / 32hex)。login 必須、register モードでは不要。
+ * @property {string|Buffer} [keyIndex] userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。
+ * @property {string|Buffer} [ssmPublicKey] デバイス公開鍵 (64B, sesame2KeyData.sesame2PublicKey)。login の ECDH 相手。
+ * @property {string} [deviceUUID]
+ * @property {string|null} [model] "sesame_2" / "sesame_3" / "sesame_4" / "ssmbot_1" / "bike_1"。
+ * @property {boolean} [registerMode] 工場出荷デバイスの register() 用。
+ * @property {Function|null} [registerServer] register() のサーバ登録コールバック (myDevicesRegisterSesame2Post 相当)。
+ * @property {boolean} [localServerAuth] true で registerServer をローカル getRegisterKey から自動生成 (makeLocalRegisterServer)。registerServer 明示指定時はそちらを優先。UNVERIFIED。
+ * @property {boolean} [needAuthFromServer] ゲスト鍵等: connect 時に signLogin でサーバ署名 sessionAuth を取得。
+ * @property {((signPayloadHex:string)=>Promise<string>)|null} [signLogin] needAuthFromServer の署名コールバック。
+ * @property {boolean} [debug]
+ * @property {import("../session.js").BleTransport} [transport] BLE トランスポート (OS3 と共通の transport.js を注入)。実行時必須 (未指定はコンストラクタが throw)。
+ */
 export class SesameOS2Ble {
     /**
      * connect → fn → close を自動で行うヘルパー。
-     * @param {object} opts コンストラクタ opts
+     * @param {SesameOS2BleOptions} opts コンストラクタ opts
      * @param {(lock:SesameOS2Ble)=>Promise<any>} fn
      */
-    static use(opts: object, fn: (lock: SesameOS2Ble) => Promise<any>): Promise<any>;
+    static use(opts: SesameOS2BleOptions, fn: (lock: SesameOS2Ble) => Promise<any>): Promise<any>;
     /**
      * 工場出荷デバイスを connect → register → close まで自動化する。
-     * @param {object} opts コンストラクタ opts (registerServer 必須)
+     * @param {SesameOS2BleOptions & {productType?:(string|number), ak?:Buffer}} opts コンストラクタ opts (registerServer 必須)
      * @param {(result:object)=>Promise<any>} [fn] 登録結果コールバック (鍵の保存など)
      * @returns {Promise<object>} 登録結果
      */
-    static registerOnce(opts?: object, fn?: (result: object) => Promise<any>): Promise<object>;
+    static registerOnce(opts?: SesameOS2BleOptions & {
+        productType?: (string | number);
+        ak?: Buffer;
+    }, fn?: (result: object) => Promise<any>): Promise<object>;
     /**
      * @param {SesameOS2BleOptions} [opts]
      */
     constructor(opts?: SesameOS2BleOptions);
-    get model(): string;
+    get model(): string | null;
     get isConnected(): boolean;
     get lastStatus(): any;
     /** login response (systemTime / fwVersion / historyCnt / mechSetting / mechStatus)。 */
@@ -51,8 +55,9 @@ export class SesameOS2Ble {
         historyCnt: number;
         mechSetting: Buffer;
         mechStatus: object;
-    };
-    onStatus(fn: any): () => boolean;
+    } | null;
+    /** @param {(status:any)=>void} fn */
+    onStatus(fn: (status: any) => void): () => boolean;
     /**
      * 接続 + login。needAuthFromServer=true のときは signLogin 経由でサーバ署名 sessionAuth を使う。
      */
@@ -74,26 +79,27 @@ export class SesameOS2Ble {
         sesamePublicKey: string;
         serverSecret: string;
     }>;
-    /** 施錠 (OP.async, item=82)。SESAME2/3/4。tag は履歴に残す任意バイト列。 */
-    lock(tag: any): Promise<{
+    /** 施錠 (OP.async, item=82)。SESAME2/3/4。tag は履歴に残す任意バイト列。 @param {Buffer|Uint8Array} [tag] */
+    lock(tag?: Buffer | Uint8Array): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /** 解錠 (OP.async, item=83)。SESAME2/3/4 と Bike1。 */
-    unlock(tag: any): Promise<{
+    /** 解錠 (OP.async, item=83)。SESAME2/3/4 と Bike1。 @param {Buffer|Uint8Array} [tag] */
+    unlock(tag?: Buffer | Uint8Array): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /** SESAME Bot1 のクリック (OP.async, item=89)。 */
-    click(tag: any): Promise<{
+    /** SESAME Bot1 のクリック (OP.async, item=89)。 @param {Buffer|Uint8Array} [tag] */
+    click(tag?: Buffer | Uint8Array): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
     /**
      * トグル (SESAME2/3/4)。直近の mechStatus が無ければ status() を取得してから判定。
      * locked → unlock、それ以外 → lock (CHSesame2Device.kt:165-178 / 172-176)。
+     * @param {Buffer|Uint8Array} [tag]
      */
-    toggle(tag: any): Promise<{
+    toggle(tag?: Buffer | Uint8Array): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
@@ -101,14 +107,14 @@ export class SesameOS2Ble {
      * オートロック設定 (OP.update, item=11、2byte LE 秒数 ++ historyTag。0=無効)。SESAME2/3/4。
      * **BLE 経由なら実機に反映される** (クラウドの biz3TriggerLocker では ack のみで未反映だった機能)。
      * @param {number} seconds 0..65535
-     * @param {Buffer} [tag]
+     * @param {Buffer|Uint8Array} [tag]
      */
-    autolock(seconds: number, tag?: Buffer): Promise<{
+    autolock(seconds: number, tag?: Buffer | Uint8Array): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /** オートロック無効化 (= autolock(0))。CHSesame2Device.kt:150-152。 */
-    disableAutolock(tag: any): Promise<{
+    /** オートロック無効化 (= autolock(0))。CHSesame2Device.kt:150-152。 @param {Buffer|Uint8Array} [tag] */
+    disableAutolock(tag?: Buffer | Uint8Array): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
@@ -193,31 +199,52 @@ export class SesameOS2Ble {
         payload: Buffer;
     }>;
 }
+/**
+ * SesameOS2Ble のコンストラクタ opts。
+ */
 export type SesameOS2BleOptions = {
     /**
-     * 16B / 32hex ロック共通鍵。register モードでは不要。
+     * ロック共通鍵 (16B / 32hex)。login 必須、register モードでは不要。
      */
-    secretKey?: string | Buffer;
+    secretKey?: string | Buffer<ArrayBufferLike> | undefined;
     /**
-     * userIdx (sesame2KeyData.keyIndex)。
+     * userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。
      */
-    keyIndex?: string | Buffer;
+    keyIndex?: string | Buffer<ArrayBufferLike> | undefined;
     /**
-     * デバイス公開鍵 64B。
+     * デバイス公開鍵 (64B, sesame2KeyData.sesame2PublicKey)。login の ECDH 相手。
      */
-    ssmPublicKey?: string | Buffer;
-    deviceUUID?: string;
-    model?: string | null;
-    registerMode?: boolean;
-    registerServer?: Function | null;
-    localServerAuth?: boolean;
-    needAuthFromServer?: boolean;
-    signLogin?: (signPayloadHex: string) => Promise<string>;
-    debug?: boolean;
+    ssmPublicKey?: string | Buffer<ArrayBufferLike> | undefined;
+    deviceUUID?: string | undefined;
     /**
-     * BLE transport。OS2 facade では必須。
+     * "sesame_2" / "sesame_3" / "sesame_4" / "ssmbot_1" / "bike_1"。
      */
-    transport: object;
+    model?: string | null | undefined;
+    /**
+     * 工場出荷デバイスの register() 用。
+     */
+    registerMode?: boolean | undefined;
+    /**
+     * register() のサーバ登録コールバック (myDevicesRegisterSesame2Post 相当)。
+     */
+    registerServer?: Function | null | undefined;
+    /**
+     * true で registerServer をローカル getRegisterKey から自動生成 (makeLocalRegisterServer)。registerServer 明示指定時はそちらを優先。UNVERIFIED。
+     */
+    localServerAuth?: boolean | undefined;
+    /**
+     * ゲスト鍵等: connect 時に signLogin でサーバ署名 sessionAuth を取得。
+     */
+    needAuthFromServer?: boolean | undefined;
+    /**
+     * needAuthFromServer の署名コールバック。
+     */
+    signLogin?: ((signPayloadHex: string) => Promise<string>) | null | undefined;
+    debug?: boolean | undefined;
+    /**
+     * BLE トランスポート (OS3 と共通の transport.js を注入)。実行時必須 (未指定はコンストラクタが throw)。
+     */
+    transport?: import("../session.js").BleTransport | undefined;
 };
 import { Buffer } from "node:buffer";
 export { SesameOS2BleSession, BleResultError } from "./session.js";

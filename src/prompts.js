@@ -13,7 +13,11 @@ export function isInteractive() {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
 }
 
-/** 先頭の "? " などの装飾を除いた素のメッセージ (inquirer が "? " を自前で付けるため)。 */
+/**
+ * 先頭の "? " などの装飾を除いた素のメッセージ (inquirer が "? " を自前で付けるため)。
+ * @param {string} m
+ * @returns {string}
+ */
 function plainMessage(m) {
   return String(m).replace(/^[?>\s]+/, "").trim();
 }

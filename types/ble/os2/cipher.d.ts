@@ -45,8 +45,7 @@ import { Buffer } from "node:buffer";
  * SesameOS2BleCipher.kt:36-59 の toEncryCounter()/toDecryCounter() を 1:1 で移植。
  *   - 5 回ループで `testLong.toByte()` (下位 8bit) を順に詰め、毎回 8bit 右シフト = LE 並び。
  * @param {bigint} counter 0 起点のカウンタ値 (送受信ごとに +1)。
- * @param {bigint} maskOrFlag encrypt は OR (ENCRYPT_FLAG)、decrypt は AND (DECRYPT_MASK) を適用する。
- * @param {boolean} isEncrypt true なら OR、false なら AND。
+ * @param {boolean} isEncrypt true なら OR (ENCRYPT_FLAG)、false なら AND (DECRYPT_MASK)。
  * @returns {Buffer} 5B
  */
 declare function toCounterBytes(counter: bigint, isEncrypt: boolean): Buffer;

@@ -18,15 +18,15 @@ export function setWifiPasswordData(password: string): Buffer;
  *   verification  = company + ":" + deviceId.uppercase().split('-').last()
  *                   (deviceUUID を大文字化し、最後のハイフン区切りセグメント = 末尾 12hex を採る)
  *
- * @param {{companyId:string, deviceUUID:string}} args
+ * @param {{companyId?:string, deviceUUID?:string}} [args]
  *   companyId = co.candyhouse.sesame.BuildConfig.API_GATEWAY_CLIENT_ID。SDK では Cognito の
  *     identity pool 風 "ap-northeast-1:xxxx-..." 形式で、":"/"-" を除いた英数字を company とする。
  *   deviceUUID = 接続中 WM2 の deviceId (CHDeviceUtil.deviceId)。
  * @returns {Buffer}
  */
 export function connectWifiData({ companyId, deviceUUID }?: {
-    companyId: string;
-    deviceUUID: string;
+    companyId?: string;
+    deviceUUID?: string;
 }): Buffer;
 /**
  * insertSesames: data = allKey (子 Sesame の鍵束)。CHWifiModule2Device.kt:380-401 を 1:1 移植。
@@ -44,17 +44,18 @@ export function connectWifiData({ companyId, deviceUUID }?: {
  *   ASCII bytes) は「バイト列化された文字列」であって生バイナリではない。SDK の挙動どおり文字列を
  *   そのまま UTF-8 で詰める。base64 パディング "=" は除去する (CHWifiModule2Device.kt:382)。
  *
- * @param {{deviceUUID:string, secretKey:(string|Buffer), sesame2PublicKey?:(string|Buffer),
- *          deviceModel?:string}} sesameKey 子 Sesame の鍵 (cloud の `sesame devices` 由来)。
+ * 子 Sesame の鍵 (cloud の `sesame devices` 由来)。
+ * @typedef {Object} ChildSesameKey
+ * @property {string} deviceUUID
+ * @property {string|Buffer} secretKey
+ * @property {string|Buffer} [sesame2PublicKey]
+ * @property {string} [deviceModel]
+ *
+ * @param {Partial<ChildSesameKey>} [sesameKey] 子 Sesame の鍵。runtime で必須項目を検証する。
  *   deviceModel が sesame_5/5_pro/5_us/bike_2 のとき sesame2PublicKey は無視され固定 PK が使われる。
  * @returns {Buffer} allKey
  */
-export function insertSesamesData(sesameKey?: {
-    deviceUUID: string;
-    secretKey: (string | Buffer);
-    sesame2PublicKey?: (string | Buffer);
-    deviceModel?: string;
-}): Buffer;
+export function insertSesamesData(sesameKey?: Partial<ChildSesameKey>): Buffer;
 /**
  * removeSesame: data = sesameKeyTag を大文字化した UTF-8 bytes (CHWifiModule2Device.kt:415)。
  * @param {string} sesameKeyTag 削除対象の鍵タグ。
@@ -80,10 +81,18 @@ export function parseScanWifiSSID(payload: Buffer): {
     rssi: number;
     ssid: string;
 };
-/** UPDATE_WIFI_SSID publish = 現在の SSID 文字列 (CHWifiModule2Device.kt:491-495)。 */
-export function parseWifiSSIDPublish(payload: any): string;
-/** UPDATE_WIFI_PASSWORD publish = 現在のパスワード文字列 (CHWifiModule2Device.kt:496-500)。 */
-export function parseWifiPasswordPublish(payload: any): string;
+/**
+ * UPDATE_WIFI_SSID publish = 現在の SSID 文字列 (CHWifiModule2Device.kt:491-495)。
+ * @param {Buffer} payload
+ * @returns {string}
+ */
+export function parseWifiSSIDPublish(payload: Buffer): string;
+/**
+ * UPDATE_WIFI_PASSWORD publish = 現在のパスワード文字列 (CHWifiModule2Device.kt:496-500)。
+ * @param {Buffer} payload
+ * @returns {string}
+ */
+export function parseWifiPasswordPublish(payload: Buffer): string;
 /**
  * NETWORK_STATUS publish payload[0] のビットフラグを解析 (CHWifiModule2Device.kt:502-510)。
  *   isAp           = (payload[0] and 2)  > 0   bit1
@@ -182,18 +191,24 @@ export const WM2_ACTION: Readonly<{
 }>;
 export class WifiModule2 {
     /**
-     * @param {{session:import("./session.js").SesameBleSession, companyId?:string, deviceUUID?:string}} opts
+     * @param {{session?:import("./session.js").SesameBleSession, companyId?:string, deviceUUID?:string}} [opts]
      *   session: WM2 GATT で接続/ログイン済み (もしくは register 済み) の SesameBleSession。
      *   companyId: connectWifi で使う API_GATEWAY_CLIENT_ID (省略時は connectWifi 呼び出しで要指定)。
      *   deviceUUID: connectWifi の verification 末尾に使う WM2 の deviceUUID。
      */
     constructor({ session, companyId, deviceUUID }?: {
-        session: import("./session.js").SesameBleSession;
+        session?: import("./session.js").SesameBleSession;
         companyId?: string;
         deviceUUID?: string;
     });
-    /** WM2 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。 */
-    onPublish(fn: any): () => boolean;
+    /** @type {Set<(parsed: ReturnType<typeof parseWM2Publish>) => void>} */
+    /** @type {(() => void)|null} */
+    /**
+     * WM2 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。
+     * @param {(parsed: ReturnType<typeof parseWM2Publish>) => void} fn
+     * @returns {() => void}
+     */
+    onPublish(fn: (parsed: ReturnType<typeof parseWM2Publish>) => void): () => void;
     /** 購読解除 (session の publish 中継を外す)。 */
     dispose(): void;
     /** 周辺 Wi-Fi SSID をスキャン。結果は onPublish の {kind:"scanWifiSSID"} で逐次届く。 */
@@ -201,13 +216,19 @@ export class WifiModule2 {
         resultCode: number;
         payload: Buffer;
     }>;
-    /** Wi-Fi SSID を設定。 */
-    setWifiSSID(ssid: any): Promise<{
+    /**
+     * Wi-Fi SSID を設定。
+     * @param {string} ssid
+     */
+    setWifiSSID(ssid: string): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /** Wi-Fi パスワードを設定。 */
-    setWifiPassword(password: any): Promise<{
+    /**
+     * Wi-Fi パスワードを設定。
+     * @param {string} password
+     */
+    setWifiPassword(password: string): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
@@ -229,19 +250,17 @@ export class WifiModule2 {
     }>;
     /**
      * 子 Sesame の鍵を WM2 に登録する。
-     * @param {{deviceUUID:string, secretKey:(string|Buffer), sesame2PublicKey?:(string|Buffer), deviceModel?:string}} sesameKey
+     * @param {ChildSesameKey} sesameKey
      */
-    insertSesames(sesameKey: {
-        deviceUUID: string;
-        secretKey: (string | Buffer);
-        sesame2PublicKey?: (string | Buffer);
-        deviceModel?: string;
-    }): Promise<{
+    insertSesames(sesameKey: ChildSesameKey): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /** 子 Sesame の鍵を WM2 から削除する。 */
-    removeSesame(sesameKeyTag: any): Promise<{
+    /**
+     * 子 Sesame の鍵を WM2 から削除する。
+     * @param {string} sesameKeyTag
+     */
+    removeSesame(sesameKeyTag: string): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
@@ -274,5 +293,29 @@ export class WifiModule2 {
         payload: Buffer;
     }>;
 }
+/**
+ * insertSesames: data = allKey (子 Sesame の鍵束)。CHWifiModule2Device.kt:380-401 を 1:1 移植。
+ *
+ *   noHashUUID = sesame2KeyData.deviceUUID.replace("-","")          (32hex)
+ *   b64k       = base64(hexToBytes(noHashUUID)).replace("=","")     (16B → base64, パディング除去)
+ *   ssmIRData  = b64k.toByteArray()                                  (UTF-8 = ASCII bytes)
+ *   ssmPKData  = (sesame_5/5_pro/5_us/bike_2 のとき) 固定 64B 公開鍵
+ *                それ以外は sesame2PublicKey.hexToBytes()            (64B)
+ *   ssmSecKa   = secretKey.hexToBytes()                              (16B)
+ *   ssmUUid    = deviceUUID.uppercase().toByteArray()                (ハイフン込み UUID 文字列の UTF-8)
+ *   allKey     = ssmIRData ++ ssmPKData ++ ssmSecKa ++ ssmUUid
+ *
+ * 注: ssmIRData (base64 文字列の **ASCII bytes**) と ssmUUid (ハイフン付き大文字 UUID 文字列の
+ *   ASCII bytes) は「バイト列化された文字列」であって生バイナリではない。SDK の挙動どおり文字列を
+ *   そのまま UTF-8 で詰める。base64 パディング "=" は除去する (CHWifiModule2Device.kt:382)。
+ *
+ * 子 Sesame の鍵 (cloud の `sesame devices` 由来)。
+ */
+export type ChildSesameKey = {
+    deviceUUID: string;
+    secretKey: string | Buffer;
+    sesame2PublicKey?: string | Buffer<ArrayBufferLike> | undefined;
+    deviceModel?: string | undefined;
+};
 import { Buffer } from "node:buffer";
 //# sourceMappingURL=wm2.d.ts.map

@@ -63,6 +63,22 @@ export const KIND = Object.freeze({
  *       autolock はクラウド未反映=lock.js:127-131、Hub3 の ir/relay/led=iot.js/transport.js、
  *       OS2 BLE=ble/os2/* (SesameOS2Ble facade)、biometric は制御 op なし=管理のみ)。
  */
+/**
+ * kind 1 件ぶんの能力定義。op 集合は経路ごと、それ以外の API 面フラグは任意。
+ * @typedef {Object} Caps
+ * @property {number} os 世代 (2 | 3 | 0=unknown)
+ * @property {string[]} cloud クラウド経由で送れる制御 op
+ * @property {string[]} ble BLE 直接で送れる制御 op
+ * @property {"os3lock"|"os3bot"|"os2lock"|"os2bot"|null} mechKind mechStatus の解釈方法
+ * @property {string} label 表示用の種別名
+ * @property {boolean} [biometric] 生体・アクセス制御 BLE 登録 API を持つか
+ * @property {boolean} [wifiProvisioning] WM2 の BLE プロビジョニング API を持つか
+ * @property {boolean} [hubProvisioning] Hub3 の BLE プロビジョニング API を持つか
+ * @property {boolean} [script] Bot2/Bot3 のスクリプト API を持つか
+ * @property {boolean} [fingerprint] Bike3 の指紋登録 API を持つか
+ */
+
+/** @type {Readonly<Record<string, Caps>>} */
 const CAPS = Object.freeze({
   [KIND.LOCK5]:    { os: 3, cloud: ["lock", "unlock", "toggle"], ble: ["lock", "unlock", "toggle", "autolock"], mechKind: "os3lock", label: "SESAME (lock)" },
   [KIND.BOT2]:     { os: 3, cloud: ["click"],                    ble: ["click"],                   script: true, mechKind: "os3bot",  label: "SESAME Bot" },
@@ -77,7 +93,11 @@ const CAPS = Object.freeze({
   [KIND.UNKNOWN]:  { os: 0, cloud: [],                           ble: [],                                        mechKind: null,      label: "(未知のデバイス)" },
 });
 
-/** cloud と ble の op を和集合し、自然な提示順で返す (ble 由来を先、cloud 固有を後)。 */
+/**
+ * cloud と ble の op を和集合し、自然な提示順で返す (ble 由来を先、cloud 固有を後)。
+ * @param {Caps} caps
+ * @returns {string[]}
+ */
 function unionOps(caps) {
   const seen = new Set();
   const out = [];
@@ -197,12 +217,21 @@ export function capabilitiesForModel(model) {
   return { kind, ...caps, ops: unionOps(caps), bleSupported: caps.ble.length > 0, biometric: !!caps.biometric, wifiProvisioning: !!caps.wifiProvisioning, hubProvisioning: !!caps.hubProvisioning, script: !!caps.script, fingerprint: !!caps.fingerprint };
 }
 
-/** その model が op を (いずれかの経路で) 操作できるか。 */
+/**
+ * その model が op を (いずれかの経路で) 操作できるか。
+ * @param {string|null|undefined} model
+ * @param {string} op
+ * @returns {boolean}
+ */
 export function supportsOp(model, op) {
   return capabilitiesForModel(model).ops.includes(op);
 }
 
-/** その model が (いずれかの経路で) 何か操作できるか。session の対象判定に使う。 */
+/**
+ * その model が (いずれかの経路で) 何か操作できるか。session の対象判定に使う。
+ * @param {string|null|undefined} model
+ * @returns {boolean}
+ */
 export function isOperable(model) {
   return capabilitiesForModel(model).ops.length > 0;
 }

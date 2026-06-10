@@ -27,6 +27,45 @@ import { SesameError, ERR } from "../errors.js";
 
 export const CONTRACT_VERSION = "1.2.0";
 
+/**
+ * JSON-RPC の id 型。string / number / null のいずれか。
+ * @typedef {string|number|null} RpcId
+ */
+
+/**
+ * JSON-RPC error オブジェクト (応答の `error` フィールド)。
+ * @typedef {{ code: number, message: string, data?: Record<string, unknown> }} RpcErrorObject
+ */
+
+/**
+ * JSON-RPC 成功応答エンベロープ。
+ * @typedef {{ jsonrpc: "2.0", id: RpcId, result: unknown }} RpcResultEnvelope
+ */
+
+/**
+ * JSON-RPC エラー応答エンベロープ。
+ * @typedef {{ jsonrpc: "2.0", id: RpcId, error: RpcErrorObject }} RpcErrorEnvelope
+ */
+
+/**
+ * JSON-RPC 応答エンベロープ (成功 or エラー)。
+ * @typedef {RpcResultEnvelope|RpcErrorEnvelope} RpcResponse
+ */
+
+/**
+ * サーバ発のイベント通知フレーム (id なし)。
+ * @typedef {{ jsonrpc: "2.0", method: string, params: unknown }} RpcEvent
+ */
+
+/**
+ * `classify` の分類結果。
+ * @typedef {{type:"parse-error"}
+ *          | {type:"batch"}
+ *          | {type:"invalid", id:RpcId}
+ *          | {type:"request", id:RpcId, method:string, params:unknown}
+ *          | {type:"notification", method:string, params:unknown}} ClassifyResult
+ */
+
 /** JSON-RPC 2.0 標準エラーコード + アプリ域 (-32000)。 */
 export const RPC = Object.freeze({
   PARSE_ERROR: -32700,
@@ -41,14 +80,21 @@ export const RPC = Object.freeze({
  * ドメイン/プロトコルエラー。handler はこれを throw するとそのまま JSON-RPC error になる。
  * `kind` は機械可読な分類で、`error.data.kind` に載る (クライアントが分岐できる)。
  * @param {string} message
- * @param {{ code?: number, kind?: string, data?: object }} [opts]
+ * @param {{ code?: number, kind?: string, data?: Record<string, unknown>|null }} [opts]
  */
 export class RpcError extends Error {
+  /**
+   * @param {string} message
+   * @param {{ code?: number, kind?: string, data?: Record<string, unknown>|null }} [opts]
+   */
   constructor(message, { code = RPC.APP_ERROR, kind = "internal", data = null } = {}) {
     super(message);
     this.name = "RpcError";
+    /** @type {number} */
     this.code = code;
+    /** @type {string} */
     this.kind = kind;
+    /** @type {Record<string, unknown>|null} */
     this.data = data;
   }
 }
@@ -78,6 +124,7 @@ export const KIND = Object.freeze({
 });
 
 // ライブラリの SesameError.code → JSON-RPC {kind, code} 写像 (serve は lib に依存してよい)。
+/** @type {Record<string, { kind: string, code: number }>} */
 const SESAME_TO_RPC = Object.freeze({
   [ERR.NOT_CONNECTED]: { kind: KIND.CONNECTION_LOST, code: RPC.APP_ERROR },
   [ERR.TIMEOUT]: { kind: KIND.TIMEOUT, code: RPC.APP_ERROR },
@@ -86,22 +133,42 @@ const SESAME_TO_RPC = Object.freeze({
   [ERR.UNAUTHENTICATED]: { kind: KIND.NOT_AUTHENTICATED, code: RPC.APP_ERROR },
 });
 
-/** 成功応答を組み立てる。 */
+/**
+ * 成功応答を組み立てる。
+ * @param {RpcId} id
+ * @param {unknown} result
+ * @returns {RpcResultEnvelope}
+ */
 export function makeResult(id, result) {
   return { jsonrpc: "2.0", id, result: result === undefined ? null : result };
 }
 
-/** エラー応答を組み立てる。data は kind 等のみ。inbound params は決して入れない。 */
+/**
+ * エラー応答を組み立てる。data は kind 等のみ。inbound params は決して入れない。
+ * @param {RpcId} id
+ * @param {number} code
+ * @param {string} message
+ * @param {string} [kind]
+ * @param {Record<string, unknown>|null} [data]
+ * @returns {RpcErrorEnvelope}
+ */
 export function makeError(id, code, message, kind, data = null) {
+  /** @type {Record<string, unknown>} */
   const errorData = {};
   if (data && typeof data === "object") Object.assign(errorData, data);
   if (kind) errorData.kind = kind; // kind は契約なので最後に置き、caller data に上書きさせない
+  /** @type {RpcErrorObject} */
   const error = { code, message };
   if (Object.keys(errorData).length) error.data = errorData;
   return { jsonrpc: "2.0", id, error };
 }
 
-/** 任意の throw を JSON-RPC error オブジェクトへ正規化 (params は echo しない)。 */
+/**
+ * 任意の throw を JSON-RPC error オブジェクトへ正規化 (params は echo しない)。
+ * @param {RpcId} id
+ * @param {unknown} err
+ * @returns {RpcErrorEnvelope}
+ */
 export function errorFromThrow(id, err) {
   if (err instanceof RpcError) {
     return makeError(id, err.code, err.message, err.kind, err.data);
@@ -109,34 +176,36 @@ export function errorFromThrow(id, err) {
   // ライブラリのドメインエラー: code を kind へ写像し、retryable / 付随 data を載せる
   // (internal 潰れを回避し、消費者が data.kind / data.retryable で分岐できるようにする)。
   if (err instanceof SesameError) {
-    const m = SESAME_TO_RPC[err.code] || { kind: KIND.INTERNAL, code: RPC.INTERNAL_ERROR };
+    const m = (err.code && SESAME_TO_RPC[err.code]) || { kind: KIND.INTERNAL, code: RPC.INTERNAL_ERROR };
+    /** @type {Record<string, unknown>} */
     const data = { ...(err.data || {}) };
     if (typeof err.retryable === "boolean") data.retryable = err.retryable;
     return makeError(id, m.code, String(err.message), m.kind, Object.keys(data).length ? data : null);
   }
   // 想定外の内部エラー: メッセージは出すが stack/params は出さない。
-  const message = (err && err.message) ? String(err.message) : t("serve.internalError");
+  const errMessage = (err instanceof Error) ? err.message
+    : (err && typeof err === "object" && "message" in err) ? String(/** @type {{message: unknown}} */ (err).message)
+    : "";
+  const message = errMessage ? errMessage : t("serve.internalError");
   return makeError(id, RPC.INTERNAL_ERROR, message, KIND.INTERNAL);
 }
 
 /**
  * 1 行 (1 メッセージ) を parse して分類する。
  * @param {string} raw
- * @returns {{type:"parse-error"}
- *          | {type:"batch"}
- *          | {type:"invalid", id:(string|number|null)}
- *          | {type:"request", id:(string|number), method:string, params:any}
- *          | {type:"notification", method:string, params:any}}
+ * @returns {ClassifyResult}
  */
 export function classify(raw) {
-  let msg;
+  /** @type {unknown} */
+  let parsed;
   try {
-    msg = JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     return { type: "parse-error" };
   }
-  if (Array.isArray(msg)) return { type: "batch" };
-  if (msg === null || typeof msg !== "object") return { type: "invalid", id: null };
+  if (Array.isArray(parsed)) return { type: "batch" };
+  if (parsed === null || typeof parsed !== "object") return { type: "invalid", id: null };
+  const msg = /** @type {Record<string, unknown>} */ (parsed);
   // JSON-RPC 2.0: `jsonrpc` メンバは厳密に文字列 "2.0" でなければならない。
   // 欠落/別バージョン (例 "1.0") は Invalid Request。id は取れるなら echo (応答整形用)。
   if (msg.jsonrpc !== "2.0") {
@@ -152,6 +221,10 @@ export function classify(raw) {
   return { type: "request", id: normalizeId(msg.id), method: msg.method, params };
 }
 
+/**
+ * @param {unknown} id
+ * @returns {RpcId}
+ */
 function normalizeId(id) {
   if (typeof id === "string" || typeof id === "number" || id === null) return id;
   return null; // 不正な id 型は null に丸める (応答は返せるように)
@@ -163,8 +236,8 @@ function normalizeId(id) {
  * この関数は throw しない。
  *
  * @param {string} raw 1 行の生メッセージ
- * @param {(method:string, params:any) => Promise<any>} invoke
- * @returns {Promise<object|null>} 応答 (通知なら null)
+ * @param {(method:string, params:unknown) => Promise<unknown>} invoke
+ * @returns {Promise<RpcResponse|null>} 応答 (通知なら null)
  */
 export async function handleMessage(raw, invoke) {
   const c = classify(raw);
@@ -192,7 +265,12 @@ export async function handleMessage(raw, invoke) {
   }
 }
 
-/** サーバ発のイベント通知フレームを作る (予約名 `event.<topic>`)。 */
+/**
+ * サーバ発のイベント通知フレームを作る (予約名 `event.<topic>`)。
+ * @param {string} topic
+ * @param {unknown} payload
+ * @returns {RpcEvent}
+ */
 export function makeEvent(topic, payload) {
   return { jsonrpc: "2.0", method: `event.${topic}`, params: payload };
 }

@@ -60,6 +60,18 @@ git clone https://github.com/FukumotoIkuma/sesame-kit.git
 cd sesame-kit && npm install && npm link
 ```
 
+### 依存関係とセキュリティ方針
+
+BLE 対応はネイティブパッケージ `@abandonware/noble`（`optionalDependencies` 掲載の**任意**依存）に依存します。クラウド / CLI / `sesame serve` 経路には**不要**で、ビルドに失敗しても（例: Bluetooth ツールチェーン無し）残りはインストールされ動作します。
+
+ネイティブ BLE ツールチェーンは `node-gyp` を引き込み、これが従来は脆弱な `node-tar` の transitive コピーを連れてきていました。package.json の `overrides` でパッチ版に固定しています:
+
+```json
+"overrides": { "tar": "^7.5.11" }
+```
+
+この 1 つの override で `npm audit --omit=dev` は脆弱性 **0** を報告します。パッチ版 `tar@^7.5.11` は `node-gyp` / `cacache` / `@mapbox/node-pre-gyp` が使う展開 API と互換のため、任意のネイティブビルドに影響しません。コア kit の本番（非 dev）依存に既知の advisory はありません。
+
 ---
 
 ## セットアップ
@@ -150,7 +162,7 @@ sesame serve --http 8080 --ws 8081 --grpc 50051   # ネットワーク経由 (to
 - メソッドは `rpc.discover` で機械可読に全列挙します (OpenRPC)。param 名・必須・型は実コードから抽出済みです。
 - ロック: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`。名前空間 op は `<ns>.<op>` で全公開します (`org.*` / `iot.*` / `access.*` …)。
 - イベント: `events.subscribe {topics:["lockState","deviceUpdate"]}` で以後 `event.<topic>` 通知が届きます。
-- エラーは `{error:{code, message, data:{kind}}}`。`kind` は `not_authenticated` / `connection_lost` / `timeout` / `bad_params` / `not_implemented` / `internal` の 6 種です。
+- エラーは `{error:{code, message, data:{kind}}}`。`kind` は `not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented` の 7 種です。
 
 別端末で `sesame serve` を起動しておけば、`sesame rpc` が UDS 越しにそのデーモンを叩きます:
 
@@ -177,6 +189,15 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
 sesame rpc --http status                          # 既定 URL http://127.0.0.1:8080
 sesame rpc --http http://host:8080 lock.unlock --params '{"name":"front"}'
 ```
+
+**ブラウザから呼ぶ場合 (CORS):** 別オリジンのブラウザからのリクエストは既定でブロックされます（`Access-Control-*` ヘッダ無し = 安全側）。`--cors` でオリジンを明示的に許可します:
+
+```bash
+sesame serve --http 8080 --cors https://app.example.com   # 1 オリジン許可 (カンマ区切りで複数可)
+sesame serve --http 8080 --cors '*'                       # 全オリジン許可 (開発用)
+```
+
+`OPTIONS` プリフライト処理と `/rpc`・`/events` への `Access-Control-Allow-Origin` が付きます。Bearer token は引き続き必須です — CORS はブラウザの same-origin 制限を緩めるだけで、認証ではありません。
 
 ### どちらを使う? — `sdk/` と `clients/`
 
@@ -223,7 +244,7 @@ JSON-RPC のサーフェスは**バージョン管理された機械可読な契
 - [`schema/openrpc.json`](./schema/openrpc.json) — 公開 OpenRPC ドキュメント（`rpc.discover` でも取得可）。各メソッド/イベントに `x-stability`（`stable` / `experimental`）と `x-provenance`、`apiVersion`（SemVer）は `status` / `rpc.discover` に。CI の drift gate で実装と常に一致。
 - **スキーマから生成された型付き SDK** — [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts)（`client.lock.unlock({ name })`）と [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py)（`client.lock.unlock(name=...)`、依存ゼロ）。いずれも `SesameRpcError` が `kind` / `retryable` を公開。再生成は `npm run build:sdk`。
 - **安定性:** API SemVer が守るのは `stable` コア（`lock.*` / `devices.list` / `device.history`・`battery` / `status` / `account.whoami` / `events.*`）のみ。`experimental` は予告なく変わり得ます。[docs/api-stability.md](./docs/api-stability.md) 参照。
-- **エラー**は構造化: メッセージ文字列でなく `error.data.kind`（`not_authenticated` / `connection_lost` / `timeout` / `rejected` / `bad_params` …）と `error.data.retryable` で分岐。
+- **エラー**は構造化: メッセージ文字列でなく `error.data.kind`（`not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented`）と `error.data.retryable` で分岐。
 
 ---
 

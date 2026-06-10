@@ -20,7 +20,23 @@ import { badRequest } from "./util.js";
 import { productTypeFromModelName } from "./crypto.js";
 import { modelNameByProductType } from "../vendor/biz3/constants/sesameDeviceModel.js";
 
-/** SesameOS3 判定 (biz3utils.js:103-105)。productType - 5 >= 0 で OS3。 */
+/**
+ * 共有 URL 生成に使うデバイス鍵。devices 一覧 (listDevices) の 1 要素や getDeviceStatus 応答。
+ * @typedef {Object} DeviceKey
+ * @property {string} [deviceModel] 機種名 (例 "sesame_5")
+ * @property {string} [secretKey] hex (16 byte)
+ * @property {string} [sesame2PublicKey] hex
+ * @property {string} [keyIndex] hex (2 byte)
+ * @property {string} [deviceUUID]
+ * @property {number|string} [keyLevel]
+ * @property {string} [deviceName]
+ */
+
+/**
+ * SesameOS3 判定 (biz3utils.js:103-105)。productType - 5 >= 0 で OS3。
+ * @param {number} productType
+ * @returns {boolean}
+ */
 function isSesameOs3(productType) {
   return productType - 5 >= 0;
 }
@@ -28,11 +44,11 @@ function isSesameOs3(productType) {
 /**
  * デバイス鍵から共有 URL (`ssm://UI?...`) を組み立てる。biz3 generateInviteGuestQRCodeByInfo の 1:1 移植。
  *
- * @param {object} deviceKey デバイス鍵。devices 一覧 (listDevices) の 1 要素や getDeviceStatus 応答。
+ * @param {DeviceKey} deviceKey デバイス鍵。devices 一覧 (listDevices) の 1 要素や getDeviceStatus 応答。
  *   必須: deviceModel, sesame2PublicKey(hex), keyIndex(hex), deviceUUID。
  *   secretKey は guestKeyId 未指定時に必須。
- * @param {object} opts
- * @param {number|string} opts.keyLevel 0=owner / 1=manager / 2=guest (URL の l=)
+ * @param {object} [opts]
+ * @param {number|string} [opts.keyLevel] 0=owner / 1=manager / 2=guest (URL の l=)
  * @param {string} [opts.guestKeyId] ゲスト共有時に secretKey 位置へ差し込む値 (generateGuestQR 応答)
  * @param {string} [opts.name] 表示名 (URL の n=)。省略時 deviceKey.deviceName。
  * @returns {string} `ssm://UI?t=sk&sk=<base64>&l=<lv>&n=<urlenc>`
@@ -40,7 +56,7 @@ function isSesameOs3(productType) {
 export function buildShareKeyUrl(deviceKey, { keyLevel, guestKeyId, name } = {}) {
   if (!deviceKey) throw badRequest("deviceKey required");
 
-  const productType = productTypeFromModelName(deviceKey.deviceModel);
+  const productType = productTypeFromModelName(/** @type {string} */ (deviceKey.deviceModel));
   if (productType == null) {
     throw badRequest("org.sharekey.unknownDeviceModel", { model: JSON.stringify(deviceKey.deviceModel) });
   }
@@ -124,7 +140,7 @@ export function parseShareKeyUrl(url) {
     keyIndex,
     sesame2PublicKey,
     keyLevel: lStr != null && lStr !== "" ? parseInt(lStr, 10) : null,
-    deviceModel: modelNameByProductType[productType] ?? null,
+    deviceModel: /** @type {Record<number, string>} */ (modelNameByProductType)[productType] ?? null,
     deviceName: params.get("n"),
     deviceUUID,
   };

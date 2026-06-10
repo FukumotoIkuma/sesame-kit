@@ -27,12 +27,12 @@ import { ITEM_CODES } from "../itemcodes.js";
 
 const ITEM = ITEM_CODES;
 
-/** UTF-8 bytes へ (Kotlin String.toByteArray() 相当)。 */
+/** UTF-8 bytes へ (Kotlin String.toByteArray() 相当)。 @param {unknown} s @returns {Buffer} */
 function utf8(s) {
   return Buffer.from(String(s), "utf8");
 }
 
-/** ハイフン除去 (大小は保持)。 */
+/** ハイフン除去 (大小は保持)。 @param {unknown} u @returns {string} */
 function stripDashes(u) {
   return String(u).replace(/-/g, "");
 }
@@ -166,7 +166,16 @@ export function parseMechSetting(payload) {
  * @returns {string}
  */
 function trimNullAndQuestion(buf) {
-  return buf.toString("utf8").replace(/[\x00?]+$/, "");
+  // 線形時間で末尾の 0x00 / '?' を除去する (正規表現 `/[\x00?]+$/` は crafted 入力で
+  // ポリノミアル backtracking = ReDoS のため使わない)。
+  const s = buf.toString("utf8");
+  let end = s.length;
+  while (end > 0) {
+    const c = s.charCodeAt(end - 1);
+    if (c !== 0x00 && c !== 0x3f /* "?" */) break;
+    end--;
+  }
+  return s.slice(0, end);
 }
 
 /**
@@ -261,11 +270,12 @@ export class Hub3Commands {
    * @param {{session:import("./session.js").SesameBleSession}} opts
    *   session: SESAME 既定 GATT で接続/ログイン済み (もしくは register 済み) の SesameBleSession。
    */
-  constructor({ session } = {}) {
+  constructor({ session } = /** @type {{session:import("./session.js").SesameBleSession}} */ ({})) {
     if (!session) throw new Error(t("ble.hub3SessionRequired"));
     this._session = session;
+    /** @type {Set<(parsed:any)=>void>} */
     this._publishListeners = new Set();
-    // session の生 publish を Hub3 用に正規化して中継する。
+    /** @type {(() => void)|null} session publish 中継の unsubscribe。 */
     this._off = session.onPublish((pub) => {
       let parsed;
       try { parsed = parseHub3Publish(pub); } catch { return; }
@@ -273,7 +283,7 @@ export class Hub3Commands {
     });
   }
 
-  /** Hub3 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。 */
+  /** Hub3 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。 @param {(parsed:any)=>void} fn */
   onPublish(fn) { this._publishListeners.add(fn); return () => this._publishListeners.delete(fn); }
 
   /** 購読解除 (session の publish 中継を外す)。 */
@@ -287,12 +297,12 @@ export class Hub3Commands {
     return this._session.request(ITEM.HUB3_ITEM_CODE_WIFI_SSID, scanWifiSSIDData());
   }
 
-  /** Wi-Fi SSID を設定 (CHHub3Device.kt:255-265、HUB3_UPDATE_WIFI_SSID=136)。 */
+  /** Wi-Fi SSID を設定 (CHHub3Device.kt:255-265、HUB3_UPDATE_WIFI_SSID=136)。 @param {string} ssid */
   setWifiSSID(ssid) {
     return this._session.request(ITEM.HUB3_UPDATE_WIFI_SSID, setWifiSSIDData(ssid));
   }
 
-  /** Wi-Fi パスワードを設定 (CHHub3Device.kt:246-253、HUB3_ITEM_CODE_WIFI_PASSWORD=135)。 */
+  /** Wi-Fi パスワードを設定 (CHHub3Device.kt:246-253、HUB3_ITEM_CODE_WIFI_PASSWORD=135)。 @param {string} password */
   setWifiPassword(password) {
     return this._session.request(ITEM.HUB3_ITEM_CODE_WIFI_PASSWORD, setWifiPasswordData(password));
   }

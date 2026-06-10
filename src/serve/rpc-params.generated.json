@@ -2,7 +2,7 @@
   "schedule.getScheduleList": [
     {
       "name": "subUUID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
@@ -20,7 +20,7 @@
   "schedule.cancelSchedule": [
     {
       "name": "subUUID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
@@ -28,7 +28,7 @@
     },
     {
       "name": "scheduleId",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
@@ -65,7 +65,7 @@
     {
       "name": "timeoutMs",
       "required": false,
-      "tsType": "number",
+      "tsType": "number | undefined",
       "schema": {
         "type": "number"
       }

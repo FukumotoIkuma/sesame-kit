@@ -60,6 +60,18 @@ git clone https://github.com/FukumotoIkuma/sesame-kit.git
 cd sesame-kit && npm install && npm link
 ```
 
+### Dependencies & security posture
+
+BLE support depends on the **optional** native package `@abandonware/noble` (listed under `optionalDependencies`). The cloud / CLI / `sesame serve` paths do **not** require it — if it fails to build (e.g. no Bluetooth toolchain) the rest of the kit still installs and works.
+
+The native BLE toolchain pulls in `node-gyp`, which historically dragged in vulnerable transitive copies of `node-tar`. We pin it to a patched release with a package.json `overrides` field:
+
+```json
+"overrides": { "tar": "^7.5.11" }
+```
+
+With this single override, `npm audit --omit=dev` reports **0** vulnerabilities. The patched `tar@^7.5.11` is API-compatible with the extraction surface `node-gyp` / `cacache` / `@mapbox/node-pre-gyp` use, so the optional native build is unaffected. Production (non-dev) dependencies of the core kit have no known advisories.
+
 ---
 
 ## Setup
@@ -149,7 +161,7 @@ There are five framings over the same RPC catalog. Event streams use the transpo
 - `rpc.discover` enumerates every method machine-readably (OpenRPC). Param names, requiredness, and types are extracted from the actual code.
 - Locks: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`. Namespace ops are all exposed as `<ns>.<op>` (`org.*` / `iot.*` / `access.*` …).
 - Events: `events.subscribe {topics:["lockState","deviceUpdate"]}` then `event.<topic>` notifications arrive.
-- Errors are `{error:{code, message, data:{kind}}}`. `kind` is one of six: `not_authenticated` / `connection_lost` / `timeout` / `bad_params` / `not_implemented` / `internal`.
+- Errors are `{error:{code, message, data:{kind}}}`. `kind` is one of seven: `not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented`.
 
 Start `sesame serve` in one terminal, then call it over the socket from another with `sesame rpc`:
 
@@ -176,6 +188,15 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
 sesame rpc --http status                          # default URL http://127.0.0.1:8080
 sesame rpc --http http://host:8080 lock.unlock --params '{"name":"front"}'
 ```
+
+**Calling from a browser (CORS):** cross-origin browser requests are blocked by default (no `Access-Control-*` headers, secure default). Opt in per-origin with `--cors`:
+
+```bash
+sesame serve --http 8080 --cors https://app.example.com   # allow one origin (comma-separate for several)
+sesame serve --http 8080 --cors '*'                       # allow any origin (dev only)
+```
+
+This adds `OPTIONS` preflight handling and `Access-Control-Allow-Origin` to `/rpc` and `/events`. The Bearer token is still required — CORS only relaxes the browser's same-origin check, it is not authentication.
 
 ### Which should I use? — `sdk/` vs `clients/`
 
@@ -220,7 +241,7 @@ The JSON-RPC surface is a **versioned, machine-readable contract** so you can bu
 - [`schema/openrpc.json`](./schema/openrpc.json) — the published OpenRPC document (also live via `rpc.discover`). Each method/event carries `x-stability` (`stable` | `experimental`) and `x-provenance`; `apiVersion` (SemVer) is in `status` and `rpc.discover`. A CI drift gate keeps it in lockstep with the implementation.
 - **Generated, typed SDKs** from that schema — [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) (`client.lock.unlock({ name })`) and [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py) (`client.lock.unlock(name=...)`, zero deps), both with `SesameRpcError` exposing `kind` / `retryable`. Regenerate with `npm run build:sdk`.
 - **Stability:** only the `stable` core (`lock.*`, `devices.list`, `device.history`/`battery`, `status`, `account.whoami`, `events.*`) is covered by the API SemVer; `experimental` methods may change without notice. See [docs/api-stability.md](./docs/api-stability.md).
-- **Errors** are structured: branch on `error.data.kind` (`not_authenticated` / `connection_lost` / `timeout` / `rejected` / `bad_params` / …) and `error.data.retryable`, never on message text.
+- **Errors** are structured: branch on `error.data.kind` (`not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented`) and `error.data.retryable`, never on message text.
 
 ---
 

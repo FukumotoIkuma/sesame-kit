@@ -19,6 +19,7 @@ import { assertSuccess, badRequest } from "./util.js";
 const ACT_PAYMENT = ACTION_TYPES.BIZ3_MANAGE_PAYMENT; // "biz3ManagePayment"
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+/** @param {{customerId?:string, companyID?:string}} params @returns {string|undefined} */
 function customerIdOf(params) {
   return params?.customerId || params?.companyID;
 }
@@ -58,7 +59,7 @@ export async function getClientSecret(client, params = {}) {
   if (!customerId) throw badRequest("payment.err.customerIdRequired");
   const resp = await client.request({ action: ACT_PAYMENT, customerId, op: "getClientSecret" }, timeoutMs);
   assertSuccess(resp, "getClientSecret");
-  return resp?.data ?? null;
+  return /** @type {string|null} */ (resp?.data ?? null);
 }
 
 /**
@@ -68,7 +69,7 @@ export async function getClientSecret(client, params = {}) {
  * { action:'biz3ManagePayment', customerId, defaultPaymentMethod, op:'changeDefaultPayment' }
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{customerId?:string, companyID?:string, defaultPaymentMethod:string, timeoutMs?:number}} params
+ * @param {{customerId?:string, companyID?:string, defaultPaymentMethod?:string, timeoutMs?:number}} params
  * @returns {Promise<object|null>}
  */
 export async function changeDefaultPayment(client, params = {}) {
@@ -91,7 +92,7 @@ export async function changeDefaultPayment(client, params = {}) {
  * { action:'biz3ManagePayment', paymentId, customerId, op:'removePayment' }
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{customerId?:string, companyID?:string, paymentId:string, timeoutMs?:number}} params
+ * @param {{customerId?:string, companyID?:string, paymentId?:string, timeoutMs?:number}} params
  * @returns {Promise<object[]|object|null>}
  */
 export async function removePayment(client, params = {}) {
@@ -113,7 +114,7 @@ export async function removePayment(client, params = {}) {
  * `level` is the encoded biz3 level (`planIndex * 2 + yearlyBit`), not just the plan index.
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{customerId?:string, companyID?:string, subId?:string, subscriptionId?:string, level:number, isUpgrade:boolean, isCancel?:boolean, timeoutMs?:number}} params
+ * @param {{customerId?:string, companyID?:string, subId?:string, subscriptionId?:string, level?:number, isUpgrade?:boolean, isCancel?:boolean, timeoutMs?:number}} params
  * @returns {Promise<object|null>}
  */
 export async function payUpdateLevel(client, params = {}) {
@@ -139,7 +140,7 @@ export async function payUpdateLevel(client, params = {}) {
  * { action:'biz3ManagePayment', customerId, email, op:'getDevApiInfo', update? }
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{customerId?:string, companyID?:string, email:string, update?:boolean|null, timeoutMs?:number}} params
+ * @param {{customerId?:string, companyID?:string, email?:string, update?:boolean|null, timeoutMs?:number}} params
  * @returns {Promise<{apiKeyValue?:string,apiKeyId?:string,usedCount?:number}|object|null>}
  */
 export async function getDevApiInfo(client, params = {}) {
@@ -147,6 +148,7 @@ export async function getDevApiInfo(client, params = {}) {
   const customerId = customerIdOf(params);
   if (!customerId) throw badRequest("payment.err.customerIdRequired");
   if (!email) throw badRequest("payment.err.emailRequired");
+  /** @type {{action:string, customerId:string, email:string, op:string, update?:boolean}} */
   const frame = { action: ACT_PAYMENT, customerId, email, op: "getDevApiInfo" };
   if (update !== null && update !== undefined) frame.update = !!update;
   const resp = await client.request(frame, timeoutMs);

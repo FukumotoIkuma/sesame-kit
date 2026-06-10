@@ -18,11 +18,89 @@
 //                    } }
 //   }
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { configPaths } from "./paths.js";
+import { writeSecretJson } from "./secure-fs.js";
 import { DEFAULT_IR_TYPE } from "./crypto.js";
 import { t } from "./i18n.js";
+
+/**
+ * config に格納する SESAME device レコード。サーバ応答 (getCompanyDevice 等) を
+ * ほぼ丸ごと保存するため未知フィールドも許容する。category はローカル注釈。
+ * @typedef {Object} DeviceRecord
+ * @property {string} [deviceUUID]
+ * @property {string|null} [secretKey]
+ * @property {string|null} [deviceModel]
+ * @property {string|null} [deviceName]
+ * @property {string} [category] ローカル注釈 ("lock"/"hub3" など)。view 分類の真実。
+ * @property {*} [stateInfo] sanitize で除外されるが incoming では存在しうる。
+ */
+
+/**
+ * locks{} の派生 view エントリ (旧 shape)。
+ * @typedef {Object} LockView
+ * @property {string|undefined} deviceUUID
+ * @property {string|null|undefined} secretKey
+ * @property {string|null} model
+ * @property {string|null} alias
+ */
+
+/**
+ * hub3s{} の派生 view エントリ (旧 shape)。
+ * @typedef {Object} Hub3View
+ * @property {string|undefined} deviceId
+ * @property {string} name
+ * @property {string} model
+ * @property {string|null} secretKey
+ */
+
+/**
+ * remotes{} のエントリ (IR リモコン定義)。
+ * @typedef {Object} RemoteEntry
+ * @property {string} hub3 親 Hub3 の config 名
+ * @property {string} [irDeviceUUID]
+ * @property {number} irType
+ * @property {string} irOperation
+ * @property {string|null} [alias]
+ * @property {Record<string, string>} keys キー名 → keyUUID
+ */
+
+/**
+ * default 指定。
+ * @typedef {Object} ConfigDefault
+ * @property {string|null} remote
+ * @property {string|null} lock
+ */
+
+/**
+ * config.json 全体のドメインモデル。
+ * @typedef {Object} ConfigData
+ * @property {string} [companyID]
+ * @property {string} [wsUrl]
+ * @property {string} [lang]
+ * @property {"en"|"ja"} [uiLang]
+ * @property {ConfigDefault} default
+ * @property {Record<string, DeviceRecord>} devices 単一の真実: 全 SESAME device。
+ * @property {Record<string, RemoteEntry>} remotes IR リモコン群 (device ではない子)。
+ * @property {string|null} [apiKeyId]
+ * @property {string} [biometricsBaseUrl] biometrics REST base URL (PERSISTED)。
+ * @property {string} [registerBaseUrl] register REST base URL (biometrics fallback)。
+ * @property {Record<string, LockView>} [locks] devices からの派生 view (保存しない)。
+ * @property {Record<string, Hub3View>} [hub3s] devices からの派生 view (保存しない)。
+ */
+
+/**
+ * `load()` 後の config。`load()` は `{...emptyConfig(), ...raw}` で穴埋めし、その後 `_reproject` を
+ * 必ず走らせるため、emptyConfig が必ず与えるスカラ (companyID/wsUrl/lang) と派生 view (locks/hub3s)
+ * は常に存在する。client.js など読み手はこの型を参照する。
+ * @typedef {ConfigData & {
+ *   companyID: string,
+ *   wsUrl: string,
+ *   lang: string,
+ *   locks: Record<string, LockView>,
+ *   hub3s: Record<string, Hub3View>,
+ * }} LoadedConfig
+ */
 
 // WS ステージは `/public` が公式値:
 //   - biz3 現行ソース (env_config.js:2) = `/public`
@@ -37,6 +115,7 @@ const LEGACY_WS_URL =
 const DEFAULT_LANG = "ja";
 const DEFAULT_COMPANY_ID = "ch_CandyhouseMobile";
 
+/** @returns {ConfigData} */
 function emptyConfig() {
   return {
     companyID: DEFAULT_COMPANY_ID,
@@ -59,13 +138,23 @@ const PERSISTED_KEYS = ["companyID", "wsUrl", "lang", "uiLang", "default", "devi
 
 // device レコードのうち config ローカルにだけ存在する注釈キー (サーバ応答には無い)。
 // sync 更新時にサーバ由来フィールドで丸ごと置き換えても、これらは引き継ぐ。
+/** @type {Array<keyof DeviceRecord>} */
 const LOCAL_ONLY_KEYS = ["category"];
 
-/** device レコードから lock view 用エントリ (旧 shape: deviceUUID/secretKey/model/alias)。 */
+/**
+ * device レコードから lock view 用エントリ (旧 shape: deviceUUID/secretKey/model/alias)。
+ * @param {DeviceRecord} rec
+ * @returns {LockView}
+ */
 function lockView(rec) {
   return { deviceUUID: rec.deviceUUID, secretKey: rec.secretKey, model: rec.deviceModel || null, alias: rec.deviceName || null };
 }
-/** device レコードから hub3 view 用エントリ (旧 shape: deviceId/name + model/secretKey も保持)。 */
+/**
+ * device レコードから hub3 view 用エントリ (旧 shape: deviceId/name + model/secretKey も保持)。
+ * @param {DeviceRecord} rec
+ * @param {string} name
+ * @returns {Hub3View}
+ */
 function hub3View(rec, name) {
   return { deviceId: rec.deviceUUID, name: rec.deviceName || name, model: rec.deviceModel || "hub_3", secretKey: rec.secretKey || null };
 }
@@ -75,19 +164,25 @@ function hub3View(rec, name) {
  * ConfigStore.load() を通らない embedded 利用でも、保存正準形 `devices` から
  * 互換 view の `locks` / `hub3s` を必ず再投影する。
  *
- * @param {object} raw
- * @returns {object}
+ * @param {Partial<ConfigData>} raw
+ * @returns {LoadedConfig}
  */
 export function normalizeConfig(raw = {}) {
-  const cfg = { ...emptyConfig(), ...(raw || {}) };
+  const cfg = /** @type {LoadedConfig} */ ({ ...emptyConfig(), ...(raw || {}) });
   if (!cfg.default) cfg.default = { remote: null, lock: null };
   if (cfg.default.remote === undefined) cfg.default.remote = null;
   if (cfg.default.lock === undefined) cfg.default.lock = null;
   if (!cfg.devices) cfg.devices = {};
   if (!cfg.remotes) cfg.remotes = {};
   if (cfg.wsUrl === LEGACY_WS_URL) cfg.wsUrl = DEFAULT_WS_URL;
+  /** @param {unknown} uuid */
   const hasDevice = (uuid) => Object.values(cfg.devices || {}).some((r) => normalizeUuid(r?.deviceUUID) === normalizeUuid(uuid));
-  for (const [name, lock] of Object.entries(raw?.locks || {})) {
+  // 旧 shape の locks/hub3s は派生 view より広い (deviceModel/deviceName/model/alias 等の
+  // レガシーフィールドを持ちうる) ため、移行入力は緩い型で受ける。
+  /** @typedef {Record<string, string|null|undefined>} LegacyEntry */
+  const legacyLocks = /** @type {Record<string, LegacyEntry>} */ (raw?.locks || {});
+  const legacyHub3s = /** @type {Record<string, LegacyEntry>} */ (raw?.hub3s || {});
+  for (const [name, lock] of Object.entries(legacyLocks)) {
     if (!lock?.deviceUUID || hasDevice(lock.deviceUUID)) continue;
     const { model, alias, ...rest } = lock;
     cfg.devices[name] = {
@@ -99,7 +194,7 @@ export function normalizeConfig(raw = {}) {
       category: "lock",
     };
   }
-  for (const [name, hub3] of Object.entries(raw?.hub3s || {})) {
+  for (const [name, hub3] of Object.entries(legacyHub3s)) {
     const deviceUUID = hub3?.deviceUUID || hub3?.deviceId;
     if (!deviceUUID || hasDevice(deviceUUID)) continue;
     cfg.devices[name] = {
@@ -128,23 +223,32 @@ export class ConfigStore {
   constructor(configPath) {
     if (!configPath) throw new Error(t("domain.config.configPathRequired"));
     this.configPath = configPath;
+    /** @type {ConfigData|null} */
     this.data = null;
   }
 
+  /**
+   * @param {string} configDir
+   * @returns {ConfigStore}
+   */
   static fromConfigDir(configDir) {
     return new ConfigStore(configPaths(configDir).config);
   }
 
   exists() { return existsSync(this.configPath); }
 
-  /** ファイル不在時はメモリ上で空オブジェクトを返す (保存はしない)。 */
+  /**
+   * ファイル不在時はメモリ上で空オブジェクトを返す (保存はしない)。
+   * @returns {LoadedConfig}
+   */
   load() {
-    if (this.data) return this.data;
+    if (this.data) return /** @type {LoadedConfig} */ (this.data);
     if (!existsSync(this.configPath)) {
       this.data = emptyConfig();
       this._reproject();
-      return this.data;
+      return /** @type {LoadedConfig} */ (this.data);
     }
+    /** @type {Partial<ConfigData>} */
     const raw = JSON.parse(readFileSync(this.configPath, "utf8"));
     // 安全ガード: /production は接続経路として絶対に使わせない。どこから入った値でも
     // (古い既定・手書き) /public へ強制し、ファイルからも物理的に消す。後方互換ではなく
@@ -153,12 +257,12 @@ export class ConfigStore {
     if (raw.wsUrl === LEGACY_WS_URL) forced = true;
     this.data = normalizeConfig(raw);
     if (forced) { try { this.save(); } catch { /* 読み取り専用環境では in-memory のみ */ } }
-    return this.data;
+    return /** @type {LoadedConfig} */ (this.data);
   }
 
   /** devices{} から locks{}/hub3s{} の派生 view (旧 shape) を都度組み立てる。reader 互換用。 */
   _reproject() {
-    const cfg = this.data;
+    const cfg = /** @type {ConfigData} */ (this.data);
     cfg.locks = {};
     cfg.hub3s = {};
     for (const [name, rec] of Object.entries(cfg.devices || {})) {
@@ -173,28 +277,41 @@ export class ConfigStore {
     if (!this.data) throw new Error(t("domain.config.nothingToSave"));
     this._reproject(); // 書き込み前に view を最新化 (読み手が直後に参照しても整合)
     // 永続化は正準キーのみ (派生 view の locks/hub3s は書かない)
+    /** @type {Record<string, unknown>} */
     const persist = {};
-    for (const k of PERSISTED_KEYS) if (this.data[k] !== undefined) persist[k] = this.data[k];
+    const data = /** @type {Record<string, unknown>} */ (this.data);
+    for (const k of PERSISTED_KEYS) if (data[k] !== undefined) persist[k] = data[k];
     // config.json には ロックの secretKey (32hex 平文) が入るので tokens.json 同様
-    // mode 0600 で保存する (Review M-5)。
-    // 注: POSIX 専用。Windows では mode は read-only flag になる程度。
-    // 既存ディレクトリの mode は変更されない (新規作成時のみ反映) ので、
-    // 旧バージョンで作られた場合は手動で `chmod 700 ~/.config/sesame-kit` が必要。
-    mkdirSync(dirname(this.configPath), { recursive: true, mode: 0o700 });
-    writeFileSync(this.configPath, JSON.stringify(persist, null, 2) + "\n", { mode: 0o600 });
+    // mode 0600 / 親 0700 でアトミックに保存する (secure-fs.js に一本化)。
+    writeSecretJson(this.configPath, persist);
   }
 
-  /** 空スケルトンを書き出す。既存があれば触らない。 */
-  init() {
+  /**
+   * 空スケルトンを書き出す。既存があれば触らない。
+   * @param {{uiLang?: "en"|"ja", lang?: "en"|"ja"}} [overrides]
+   *   init 時に確定している言語設定を焼き込む。`sesame --lang en init` の意図
+   *   (UI を英語に) を config に永続化し、次回以降のセッションへ引き継ぐため。
+   *   渡さなければ emptyConfig の既定 (lang:"ja", uiLang 未設定) のまま。
+   * @returns {boolean} 新規作成したら true
+   */
+  init(overrides = {}) {
     if (existsSync(this.configPath)) return false;
     this.data = emptyConfig();
+    if (overrides.uiLang) this.data.uiLang = overrides.uiLang;
+    // データ言語 (cloud 応答のロケール) も UI 言語に合わせる: `--lang en init` で
+    // config に lang:"ja" が残り「en を指定したのに ja」に見える混乱を解消する。
+    if (overrides.lang) this.data.lang = overrides.lang;
     this.save();
     return true;
   }
 
   // ---- ドメイン操作 ----
 
-  /** name 省略時は default.remote、無ければ remotes が 1 つだけならそれ。 */
+  /**
+   * name 省略時は default.remote、無ければ remotes が 1 つだけならそれ。
+   * @param {string} [name]
+   * @returns {{name: string, remote: RemoteEntry, hub3Name: string, hub3: Hub3View}}
+   */
   resolveRemote(name) {
     const cfg = this.load();
     const remotes = cfg.remotes || {};
@@ -220,6 +337,10 @@ export class ConfigStore {
     return { name: chosen, remote, hub3Name, hub3 };
   }
 
+  /**
+   * @param {string} name
+   * @param {{deviceId?: string, name?: string, model?: string, secretKey?: string|null}} hub3
+   */
   addHub3(name, hub3) {
     const cfg = this.load();
     if (!name) throw new Error(t("domain.config.hub3NameRequired"));
@@ -234,6 +355,11 @@ export class ConfigStore {
     this.save(); // save() が _reproject して cfg.hub3s view を更新する
   }
 
+  /**
+   * @param {string} name
+   * @param {{hub3?: string, irDeviceUUID?: string, irType?: number|string,
+   *          irOperation?: string, alias?: string|null, keys?: Record<string, string>}} remote
+   */
   addRemote(name, remote) {
     const cfg = this.load();
     if (!name) throw new Error(t("domain.config.remoteNameRequired"));
@@ -254,6 +380,7 @@ export class ConfigStore {
     this.save();
   }
 
+  /** @param {string} name */
   setDefaultRemote(name) {
     const cfg = this.load();
     if (!cfg.remotes[name]) throw new Error(t("domain.config.unknownRemoteName", { name }));
@@ -261,6 +388,10 @@ export class ConfigStore {
     this.save();
   }
 
+  /**
+   * @param {string} name
+   * @param {Record<string, string>} keys
+   */
   updateRemoteKeys(name, keys) {
     const cfg = this.load();
     const r = cfg.remotes[name];
@@ -271,7 +402,11 @@ export class ConfigStore {
 
   // ---- lock ----
 
-  /** name 省略時は default.lock、無ければ locks が 1 つだけならそれ。 */
+  /**
+   * name 省略時は default.lock、無ければ locks が 1 つだけならそれ。
+   * @param {string} [name]
+   * @returns {{name: string, lock: LockView}}
+   */
   resolveLock(name) {
     const cfg = this.load();
     const locks = cfg.locks || {};
@@ -285,6 +420,10 @@ export class ConfigStore {
     return { name: chosen, lock };
   }
 
+  /**
+   * @param {string} name
+   * @param {{deviceUUID?: string, secretKey?: string, model?: string|null, alias?: string|null}} lock
+   */
   addLock(name, lock) {
     const cfg = this.load();
     if (!name) throw new Error(t("domain.config.lockNameRequired"));
@@ -301,6 +440,7 @@ export class ConfigStore {
     this.save();
   }
 
+  /** @param {string} name */
   setDefaultLock(name) {
     const cfg = this.load();
     if (!cfg.locks[name]) throw new Error(t("domain.config.unknownLockName", { name }));
@@ -308,6 +448,7 @@ export class ConfigStore {
     this.save();
   }
 
+  /** @param {string} name */
   removeLock(name) {
     const cfg = this.load();
     if (!cfg.locks[name]) throw new Error(t("domain.config.unknownLockName", { name }));
@@ -322,16 +463,18 @@ export class ConfigStore {
   // (hub3 で model/secretKey を選び忘れて lock5 に化けた類のバグを構造的に防ぐ)。
 
   /**
-   * @param {Array} deviceList
-   * @param {{ accept:(d:object)=>boolean, category:"lock"|"hub3", prune?:boolean,
-   *           onFirstAdd?:(name:string)=>void, pruneProtect?:(name:string)=>boolean }} opts
+   * @param {DeviceRecord[]} deviceList
+   * @param {{ accept:(d:DeviceRecord)=>boolean, category:"lock"|"hub3", prune?:boolean,
+   *           onFirstAdd?:((name:string)=>void)|null, pruneProtect?:((name:string)=>boolean)|null }} opts
    *   accept  受理条件 (取り込む incoming device の判定)
    *   category この sync が司る view。prune はこの view に属する device だけを対象にする
    * @returns {{added:string[], updated:string[], removed:string[]}}
    */
   _syncDevices(deviceList, { accept, category, prune = false, onFirstAdd = null, pruneProtect = null }) {
     const cfg = this.load();
+    /** @type {{added:string[], updated:string[], removed:string[]}} */
     const result = { added: [], updated: [], removed: [] };
+    /** @type {Set<string>} */
     const seen = new Set();
 
     for (const d of deviceList || []) {
@@ -382,7 +525,7 @@ export class ConfigStore {
 
   /**
    * `devices` (getCompanyDevice 等) の結果からロックを取り込む (devices{} に丸ごと格納)。
-   * @param {Array} deviceList
+   * @param {DeviceRecord[]} deviceList
    * @param {{prune?:boolean}} [opts]
    * @returns {{added:string[], updated:string[], removed:string[]}}
    */
@@ -391,13 +534,16 @@ export class ConfigStore {
       accept: (d) => isLockModel(d.deviceModel) && !!d.deviceUUID && !!d.secretKey,
       category: "lock",
       prune,
-      onFirstAdd: (name) => { if (!this.data.default.lock) this.data.default.lock = name; },
+      onFirstAdd: (name) => {
+        const data = /** @type {ConfigData} */ (this.data);
+        if (!data.default.lock) data.default.lock = name;
+      },
     });
   }
 
   /**
    * `devices` の結果から Hub3 を取り込む (deviceModel が hub_3 / hub_3_lte。devices{} に丸ごと格納)。
-   * @param {Array} deviceList
+   * @param {DeviceRecord[]} deviceList
    * @param {{prune?:boolean}} [opts]
    * @returns {{added:string[], updated:string[], removed:string[]}}
    */
@@ -406,7 +552,8 @@ export class ConfigStore {
       accept: (d) => isHub3Model(d.deviceModel) && !!d.deviceUUID,
       category: "hub3",
       prune,
-      pruneProtect: (name) => Object.values(this.data.remotes).some((r) => r.hub3 === name),
+      pruneProtect: (name) =>
+        Object.values(/** @type {ConfigData} */ (this.data).remotes).some((r) => r.hub3 === name),
     });
   }
 
@@ -417,14 +564,16 @@ export class ConfigStore {
    * `{uuid, type, alias?}` 付きで持っているので、それを直接展開する。
    * 先に hub3s が登録済みである必要がある (syncHub3sFromDevices を先に呼ぶ)。
    *
-   * @param {Array} deviceList  getCompanyDevice / getUserDevice の応答
+   * @param {Array<DeviceRecord & {stateInfo?: {remoteList?: Array<{uuid?: string, irDeviceUUID?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null}>}}>} deviceList  getCompanyDevice / getUserDevice の応答
    * @returns {{added:string[], updated:string[]}}
    */
   syncRemotesFromDevices(deviceList) {
     const cfg = this.load();
+    /** @type {{added:string[], updated:string[]}} */
     const result = { added: [], updated: [] };
 
     // deviceUUID → config 上の hub3 名 の逆引き
+    /** @type {Map<string, string>} */
     const hub3ByUuid = new Map();
     for (const [name, h] of Object.entries(cfg.hub3s)) {
       hub3ByUuid.set(normalizeUuid(h.deviceId), name);
@@ -476,7 +625,7 @@ export class ConfigStore {
   /**
    * server 側 (getRemoteList) のリモコン一覧から remote 定義を取り込む (上級/代替経路)。
    * 通常は syncRemotesFromDevices で足りる。company 横断の一覧が欲しい場合のみ。
-   * @param {Array} remoteList  getRemoteList の応答 (irDeviceUUID/uuid, type, alias/name 等)
+   * @param {Array<{irDeviceUUID?: string, uuid?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null, irOperation?: string}>} remoteList  getRemoteList の応答 (irDeviceUUID/uuid, type, alias/name 等)
    * @param {string} hub3Name   これらのリモコンが属する Hub3 の config 名
    * @returns {{added:string[], updated:string[]}}
    */
@@ -485,6 +634,7 @@ export class ConfigStore {
     if (!cfg.hub3s[hub3Name]) {
       throw new Error(t("domain.config.hub3NotRegisteredSyncFirst", { hub3: hub3Name }));
     }
+    /** @type {{added:string[], updated:string[]}} */
     const result = { added: [], updated: [] };
 
     for (const r of remoteList || []) {
@@ -537,12 +687,20 @@ const LOCK_MODELS = new Set([
   "BLE_Connector_1", "bike_2", "bike_3",
 ]);
 
-/** ロック系 model か (biz3 lockModelDevices と完全一致, gUtils.js:279-294)。 */
+/**
+ * ロック系 model か (biz3 lockModelDevices と完全一致, gUtils.js:279-294)。
+ * @param {string|null|undefined} model
+ * @returns {boolean}
+ */
 export function isLockModel(model) {
-  return LOCK_MODELS.has(model);
+  return typeof model === "string" && LOCK_MODELS.has(model);
 }
 
-/** Hub3 系 model か (hub_3 / hub_3_lte)。 */
+/**
+ * Hub3 系 model か (hub_3 / hub_3_lte)。
+ * @param {string|null|undefined} model
+ * @returns {boolean}
+ */
 export function isHub3Model(model) {
   return model === "hub_3" || model === "hub_3_lte";
 }
@@ -573,23 +731,28 @@ function categoryForModel(model) {
  * @returns {"lock"|"hub3"|null}
  */
 function effectiveCategory(rec) {
-  return rec.category || categoryForModel(rec.deviceModel);
+  return /** @type {"lock"|"hub3"|null} */ (rec.category || categoryForModel(rec.deviceModel));
 }
 
 /**
  * キー順に依存しない正準 JSON 文字列。オブジェクトのキーを再帰的にソートして直列化する。
  * sync の変更判定で「値は同じだがキー順だけ違う」誤検知を防ぐために使う。
- * @param {*} value
+ * @param {unknown} value
  * @returns {string}
  */
 function canonicalize(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return "[" + value.map(canonicalize).join(",") + "]";
-  return "{" + Object.keys(value).sort()
-    .map((k) => JSON.stringify(k) + ":" + canonicalize(value[k]))
+  const obj = /** @type {Record<string, unknown>} */ (value);
+  return "{" + Object.keys(obj).sort()
+    .map((k) => JSON.stringify(k) + ":" + canonicalize(obj[k]))
     .join(",") + "}";
 }
 
+/**
+ * @param {unknown} s
+ * @returns {string}
+ */
 function normalizeUuid(s) {
   return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
 }
@@ -597,20 +760,32 @@ function normalizeUuid(s) {
 /**
  * device レコードを config 保存用に整える。フィールドは取捨選択せず**ほぼ丸ごと**残すが、
  * 巨大なネスト (stateInfo の IR remoteList 等) だけは除外する (remotes 側で扱う・config 肥大回避)。
+ * @param {DeviceRecord} d
+ * @returns {DeviceRecord}
  */
 function sanitizeDeviceRecord(d) {
   const { stateInfo, ...rest } = d; // eslint-disable-line no-unused-vars
   return { ...rest };
 }
 
-/** デバイス名 (or UUID) から config キーの素を作る。 */
+/**
+ * デバイス名 (or UUID) から config キーの素を作る。
+ * @param {string|null|undefined} displayName
+ * @param {string|null|undefined} uuid
+ * @returns {string}
+ */
 function baseName(displayName, uuid) {
   const src = (displayName || uuid || "device").toString();
   const slug = src.trim().replace(/\s+/g, "_").toLowerCase();
   return slug || "device";
 }
 
-/** existing オブジェクトのキーと衝突しないユニーク名を返す (name, name-2, name-3...)。 */
+/**
+ * existing オブジェクトのキーと衝突しないユニーク名を返す (name, name-2, name-3...)。
+ * @param {Record<string, unknown>} existing
+ * @param {string} base
+ * @returns {string}
+ */
 function uniqueName(existing, base) {
   if (!existing[base]) return base;
   let i = 2;

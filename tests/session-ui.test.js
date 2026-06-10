@@ -48,7 +48,7 @@ describe("SessionApp (Ink)", () => {
 
   it("bus 'update' で再描画され、BLE 昇格 (cloud→BLE) が反映される", async () => {
     const props = baseProps();
-    const { lastFrame, rerender } = render(h(SessionApp, props));
+    const { lastFrame } = render(h(SessionApp, props));
     expect(lastFrame()).toContain("kitchen [bot_2·cloud]");
     // 背景接続が完了したと仮定して devices を更新し、update を流す
     props.devices.get("kitchen").ble = { lastStatus: { state: "unlocked", position: 0 } };

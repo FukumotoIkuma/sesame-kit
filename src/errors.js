@@ -20,7 +20,7 @@ export const ERR = Object.freeze({
 export class SesameError extends Error {
   /**
    * @param {string} message
-   * @param {{ code: string, retryable?: boolean, data?: object|null, cause?: any }} opts
+   * @param {{ code?: string, retryable?: boolean, data?: object|null, cause?: unknown }} [opts]
    */
   constructor(message, { code, retryable = false, data = null, cause } = {}) {
     super(message);

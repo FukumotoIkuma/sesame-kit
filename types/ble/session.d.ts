@@ -6,14 +6,21 @@ export class BleResultError extends Error {
     /** @param {"login"|"command"} phase @param {number} resultCode @param {number|null} itemCode */
     constructor(phase: "login" | "command", resultCode: number, itemCode?: number | null);
     resultCode: number;
-    resultName: any;
-    itemCode: number;
+    resultName: string;
+    itemCode: number | null;
 }
 /**
  * @typedef {object} BleTransport BLE 無線 I/O アダプタ (transport.js のアダプタが満たす契約)。
- * @property {(onPacket:(packet:Buffer)=>void)=>Promise<void>} connect 接続+notify購読。各 notify を onPacket へ。
+ * @property {(onPacket:(packet:Buffer)=>void, onDisconnect?:(reason:any)=>void)=>Promise<void>} connect
+ *   接続+notify購読。各 notify を onPacket へ。リンク断時は onDisconnect(reason) を 1 回呼ぶ (任意)。
  * @property {(bytes:Buffer)=>void|Promise<void>} write Write Without Response。
  * @property {()=>void|Promise<void>} disconnect 切断。
+ */
+/**
+ * @typedef {object} Waiter ハンドシェイク待機者 (login/ready/register の Promise 制御)。
+ * @property {(value?:any)=>void} resolve
+ * @property {(err:Error)=>void} reject
+ * @property {any} timer setTimeout ハンドル。
  */
 export class SesameBleSession {
     /**
@@ -29,7 +36,19 @@ export class SesameBleSession {
         debug?: boolean;
         defaultTimeoutMs?: number;
     });
-    /** @type {Map<number, Array<{resolve:Function, reject:Function, timer:any}>>} item → FIFO */
+    /** @type {Buffer|null} */
+    /** @type {Buffer|null} */
+    /** @type {import("./session.js").Waiter|null} */
+    /** @type {import("./session.js").Waiter|null} */
+    /** @type {Map<number, Array<{resolve:(v:{resultCode:number, payload:Buffer})=>void, reject:(e:Error)=>void, timer:any}>>} item → FIFO */
+    /** @type {Set<(status:any)=>void>} */
+    /** @type {Set<(pub:{opCode:number, itemCode:number, body:Buffer})=>void>} */
+    /** @type {any} */
+    /** @type {{lockPosition:number, unlockPosition:number, autoLockSecond:number}|null} */
+    /** @type {{opsLockSecond:number}|null} */
+    /** @type {import("./session.js").Waiter|null} */
+    /** @type {((tokenHex:string)=>Promise<string>)|null} */
+    /** @param {...any} a */
     _log(...a: any[]): void;
     /**
      * connect()/register() 再入ガード。既に login 済み、または connect/register ハンドシェイク
@@ -43,38 +62,28 @@ export class SesameBleSession {
      */
     _isBusy(): boolean;
     /** 最後に受信した mechStatus (parseMechStatus の結果)。未受信なら null。 */
-    get lastStatus(): {
-        state: string;
-        isInLockRange: boolean;
-        target: number | null;
-        position: number | null;
-        isStop: boolean;
-        isCritical: boolean;
-        isBatteryCritical: boolean;
-        batteryRaw: number;
-        flags: number;
-    } | {
-        data: Buffer;
-        position: number;
-        target: number;
-        isInLockRange: boolean;
-        isInUnlockRange: boolean;
-        isStop: null;
-        isCritical: null;
-        isBatteryCritical: boolean;
-        batteryRaw: number | null;
-    };
+    get lastStatus(): any;
     /** 最後に受信した mechSetting (parseMechSetting の結果)。未受信なら null。 */
-    get lastMechSetting(): any;
+    get lastMechSetting(): {
+        lockPosition: number;
+        unlockPosition: number;
+        autoLockSecond: number;
+    } | null;
     /** 最後に受信した opsSetting (parseOpsSetting の結果)。未受信なら null。 */
-    get lastOpsSetting(): any;
+    get lastOpsSetting(): {
+        opsLockSecond: number;
+    } | null;
     get isLoggedIn(): boolean;
     /** initial(14) を受信したが secretKey 未設定で login を試みていない状態 (register 待ち)。 */
     get isReadyToRegister(): boolean;
-    /** mechStatus publish を購読。戻り値 unsubscribe。 */
-    onStatus(fn: any): () => boolean;
-    /** 任意 publish を購読 ({opCode,itemCode,body})。戻り値 unsubscribe。 */
-    onPublish(fn: any): () => boolean;
+    /** mechStatus publish を購読。戻り値 unsubscribe。 @param {(status:any)=>void} fn */
+    onStatus(fn: (status: any) => void): () => boolean;
+    /** 任意 publish を購読 ({opCode,itemCode,body})。戻り値 unsubscribe。 @param {(pub:{opCode:number, itemCode:number, body:Buffer})=>void} fn */
+    onPublish(fn: (pub: {
+        opCode: number;
+        itemCode: number;
+        body: Buffer;
+    }) => void): () => boolean;
     /**
      * 接続して login まで完了させる (登録済みデバイス用)。secretKey 必須。
      *
@@ -114,9 +123,9 @@ export class SesameBleSession {
      *   7. {deviceUUID, secretKey, productType, serverSecret(=token hex)} を返す
      *      (CHHub3Device.kt:196-208。serverSecret は mSesameToken.toHexString())。
      *
-     * @param {{deviceUUID:string, productType?:(string|number),
-     *          registerTransport?:(req)=>Promise<any>, nowMs?:number}} opts
-     *   - deviceUUID: 登録対象の UUID (戻り値・任意の registerSesame5 で使用)。
+     * @param {{deviceUUID?:string, productType?:(string|number),
+     *          registerTransport?:(req:any)=>Promise<any>, nowMs?:number}} [opts]
+     *   - deviceUUID: 登録対象の UUID (戻り値・任意の registerSesame5 で使用)。必須 (未指定は reject)。
      *   - productType: 戻り値に載せる model 名 or 数値 productType (任意)。
      *   - registerTransport: 渡された場合のみ registerSesame5 をコール (失敗はログのみ)。
      *   - nowMs: registration timestamp (テスト用に注入可、既定 Date.now())。
@@ -124,7 +133,7 @@ export class SesameBleSession {
      *                    serverSecret:string}>}
      */
     register({ deviceUUID, productType, registerTransport, nowMs }?: {
-        deviceUUID: string;
+        deviceUUID?: string;
         productType?: (string | number);
         registerTransport?: (req: any) => Promise<any>;
         nowMs?: number;
@@ -139,8 +148,9 @@ export class SesameBleSession {
      * フィールドを null に戻す。disconnect() で 3 つを対称に解放するためのヘルパ
      * (取りこぼし防止: 待機者を追加したらここに 1 行足すだけで済む)。
      * @param {"_loginWaiter"|"_readyWaiter"|"_registerWaiter"} field
+     * @param {Error} err
      */
-    _rejectWaiter(field: "_loginWaiter" | "_readyWaiter" | "_registerWaiter", err: any): void;
+    _rejectWaiter(field: "_loginWaiter" | "_readyWaiter" | "_registerWaiter", err: Error): void;
     /**
      * pending request と 3 待機者 (login/ready/register) を全て reject + timer clear し、
      * セッション状態フラグを倒す。能動 disconnect() と、transport からの非同期切断通知
@@ -300,22 +310,37 @@ export class SesameBleSession {
      * transport→onDisconnect→_handleTransportDisconnect が pending を fail-fast する経路で行うので、
      * ここでは未処理 Promise 拒否 (unhandledRejection) を避けるためだけに握りつぶす
      * (元から fire-and-forget。送信失敗は応答 timeout / 切断通知のどちらかで必ず表面化する)。
+     * @param {Buffer} seg
      */
-    _writeSeg(seg: any): void;
-    /** 暗号化なしで item+data を送る (login 等のハンドシェイク用低レベル)。 */
-    _sendPlain(frame: any): void;
-    /** CCM 暗号化して送る (encCount++)。 */
-    _sendCipher(frame: any): void;
-    _dequeue(itemCode: any, entry: any): void;
-    _onPacket(packet: any): void;
-    _handleInitial(token: any): void;
+    _writeSeg(seg: Buffer): void;
+    /** 暗号化なしで item+data を送る (login 等のハンドシェイク用低レベル)。 @param {Buffer} frame */
+    _sendPlain(frame: Buffer): void;
+    /** CCM 暗号化して送る (encCount++)。 @param {Buffer} frame */
+    _sendCipher(frame: Buffer): void;
+    /**
+     * @param {number} itemCode
+     * @param {{resolve:(v:{resultCode:number, payload:Buffer})=>void, reject:(e:Error)=>void, timer:any}} entry
+     */
+    _dequeue(itemCode: number, entry: {
+        resolve: (v: {
+            resultCode: number;
+            payload: Buffer;
+        }) => void;
+        reject: (e: Error) => void;
+        timer: any;
+    }): void;
+    /** @param {Buffer} packet */
+    _onPacket(packet: Buffer): void;
+    /** @param {Buffer} token */
+    _handleInitial(token: Buffer): void;
     /**
      * サーバ認証 login の非同期本体。signLogin(tokenHex) でサーバ署名済み session token (hex) を
      * 取得し、それを session 鍵 (16B) として平文 login を送る (CHSesameOS3.kt:474-484)。
      * signLogin が投げた場合は login 待機者を reject (connect() の await が解放される)。
      */
     _loginViaServer(): Promise<void>;
-    _handleRegistrationResponse(resultCode: any, payload: any): void;
+    /** @param {number} resultCode @param {Buffer} payload */
+    _handleRegistrationResponse(resultCode: number, payload: Buffer): void;
     /**
      * REGISTRATION 応答 payload から device の生公開鍵 64B を取り出す (機種で構造が異なるため
      * 応答長で分岐)。SS5 形 (77B) のときは先頭 13B の mechStatus(7B)/mechSetting(6B) を parse して
@@ -331,7 +356,8 @@ export class SesameBleSession {
      * @returns {Buffer} device の生公開鍵 64B (X‖Y)
      */
     _extractRegisterDevicePubK(payload: Buffer): Buffer;
-    _handleLoginResponse(resultCode: any, payload: any): void;
+    /** @param {number} resultCode @param {Buffer} payload */
+    _handleLoginResponse(resultCode: number, payload: Buffer): void;
     /**
      * login 直後の時刻同期。デバイス時刻と端末時刻の差が >3 秒なら time(8) を暗号化送出する。
      * SDK の handleLoginResponse (CHSesameOS3LockBase.kt:126-138) と同じ判定・送出。
@@ -339,16 +365,17 @@ export class SesameBleSession {
      * @param {Buffer} payload login response の payload (resultCode を除いた本体)
      */
     _maybeSyncTime(payload: Buffer): void;
-    _resolvePending(itemCode: any, resultCode: any, payload: any): void;
+    /** @param {number} itemCode @param {number} resultCode @param {Buffer} payload */
+    _resolvePending(itemCode: number, resultCode: number, payload: Buffer): void;
 }
 /**
  * BLE 無線 I/O アダプタ (transport.js のアダプタが満たす契約)。
  */
 export type BleTransport = {
     /**
-     * 接続+notify購読。各 notify を onPacket へ。
+     *   接続+notify購読。各 notify を onPacket へ。リンク断時は onDisconnect(reason) を 1 回呼ぶ (任意)。
      */
-    connect: (onPacket: (packet: Buffer) => void) => Promise<void>;
+    connect: (onPacket: (packet: Buffer) => void, onDisconnect?: (reason: any) => void) => Promise<void>;
     /**
      * Write Without Response。
      */
@@ -357,6 +384,17 @@ export type BleTransport = {
      * 切断。
      */
     disconnect: () => void | Promise<void>;
+};
+/**
+ * ハンドシェイク待機者 (login/ready/register の Promise 制御)。
+ */
+export type Waiter = {
+    resolve: (value?: any) => void;
+    reject: (err: Error) => void;
+    /**
+     * setTimeout ハンドル。
+     */
+    timer: any;
 };
 import { Buffer } from "node:buffer";
 import { SegmentAssembler } from "./protocol.js";

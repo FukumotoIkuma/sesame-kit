@@ -52,9 +52,13 @@ export const RESULT = Object.freeze({
   4: "invalidSig", 5: "notFound", 6: "unknown", 7: "busy", 8: "invalidParam", 9: "invalidAction",
 });
 
-/** 結果コード → 名前 (未知は unknown(N))。 */
+/**
+ * 結果コード → 名前 (未知は unknown(N))。
+ * @param {number} code
+ * @returns {string}
+ */
 export function resultName(code) {
-  return RESULT[code] || `unknown(${code})`;
+  return /** @type {Record<number, string>} */ (RESULT)[code] || `unknown(${code})`;
 }
 
 const CCM_TAG_LEN = 4; // candy.h:42
@@ -124,6 +128,9 @@ export function loginPayload(token16) {
 /**
  * CCM nonce (13B) = count(8B LE) ++ 0x00 ++ token(4B)。
  * (ssm.h:17-21 / SesameOS3BleCipher.kt:13 + sault=0x00++token)
+ * @param {number|bigint} count
+ * @param {Buffer} token4
+ * @returns {Buffer} 13B
  */
 function ccmNonce(count, token4) {
   const c = Buffer.alloc(8);
@@ -200,7 +207,10 @@ export function splitSegments(payload, parsingType) {
  * { type, data } を返す (未完なら null)。start bit でバッファをリセット。
  */
 export class SegmentAssembler {
-  constructor() { this._buf = []; }
+  constructor() {
+    /** @type {Buffer[]} */
+    this._buf = [];
+  }
 
   /**
    * @param {Buffer} packet notify で届いた 1 パケット
@@ -616,7 +626,10 @@ export function parseMechStatus(buf) {
   throw new Error(t("ble.mechStatusLength", { len: buf.length }));
 }
 
-/** 7B: CHSesame5MechStatus 準拠 (Sesame5/6)。 */
+/**
+ * 7B: CHSesame5MechStatus 準拠 (Sesame5/6)。
+ * @param {Buffer} buf
+ */
 function parseMechStatusLock(buf) {
   const batteryRaw = buf.readUInt16LE(0);
   const target = buf.readInt16LE(2);
@@ -636,7 +649,10 @@ function parseMechStatusLock(buf) {
   };
 }
 
-/** 3B: CHSesameBot2MechStatus / CHSesameBike2MechStatus 準拠 (Bot2/Bot3/Bike2/Bike3)。 */
+/**
+ * 3B: CHSesameBot2MechStatus / CHSesameBike2MechStatus 準拠 (Bot2/Bot3/Bike2/Bike3)。
+ * @param {Buffer} buf
+ */
 function parseMechStatusBot(buf) {
   const batteryRaw = buf.readUInt16LE(0);
   const flags = buf[2];

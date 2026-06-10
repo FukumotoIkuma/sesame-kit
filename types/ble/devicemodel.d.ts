@@ -36,10 +36,19 @@ export function capabilitiesForModel(model: string | null | undefined): {
     fingerprint: boolean;
     label: string;
 };
-/** その model が op を (いずれかの経路で) 操作できるか。 */
-export function supportsOp(model: any, op: any): boolean;
-/** その model が (いずれかの経路で) 何か操作できるか。session の対象判定に使う。 */
-export function isOperable(model: any): boolean;
+/**
+ * その model が op を (いずれかの経路で) 操作できるか。
+ * @param {string|null|undefined} model
+ * @param {string} op
+ * @returns {boolean}
+ */
+export function supportsOp(model: string | null | undefined, op: string): boolean;
+/**
+ * その model が (いずれかの経路で) 何か操作できるか。session の対象判定に使う。
+ * @param {string|null|undefined} model
+ * @returns {boolean}
+ */
+export function isOperable(model: string | null | undefined): boolean;
 /**
  * その model の op を運べる transport 一覧 (型×経路の能力テーブルから導出)。
  * 例: lock5 の autolock は ["ble"]、lock は ["ble","cloud"]、hub3 の ir は ["cloud"]。
@@ -232,4 +241,49 @@ export const PRODUCT_TYPES: Readonly<{
  * @type {readonly string[]}
  */
 export const CONTROL_OPS: readonly string[];
+/**
+ * kind 1 件ぶんの能力定義。op 集合は経路ごと、それ以外の API 面フラグは任意。
+ */
+export type Caps = {
+    /**
+     * 世代 (2 | 3 | 0=unknown)
+     */
+    os: number;
+    /**
+     * クラウド経由で送れる制御 op
+     */
+    cloud: string[];
+    /**
+     * BLE 直接で送れる制御 op
+     */
+    ble: string[];
+    /**
+     * mechStatus の解釈方法
+     */
+    mechKind: "os3lock" | "os3bot" | "os2lock" | "os2bot" | null;
+    /**
+     * 表示用の種別名
+     */
+    label: string;
+    /**
+     * 生体・アクセス制御 BLE 登録 API を持つか
+     */
+    biometric?: boolean | undefined;
+    /**
+     * WM2 の BLE プロビジョニング API を持つか
+     */
+    wifiProvisioning?: boolean | undefined;
+    /**
+     * Hub3 の BLE プロビジョニング API を持つか
+     */
+    hubProvisioning?: boolean | undefined;
+    /**
+     * Bot2/Bot3 のスクリプト API を持つか
+     */
+    script?: boolean | undefined;
+    /**
+     * Bike3 の指紋登録 API を持つか
+     */
+    fingerprint?: boolean | undefined;
+};
 //# sourceMappingURL=devicemodel.d.ts.map

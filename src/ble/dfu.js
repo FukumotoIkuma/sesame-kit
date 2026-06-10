@@ -39,11 +39,20 @@ import { WM2_ACTION_CODES } from "../itemcodes.js";
 // 結線フェーズで local const から正準ソース (WM2_ACTION_CODES.OPEN_OTA_SERVER) 参照へ昇格済み。
 const WM2_OPEN_OTA_SERVER = WM2_ACTION_CODES.OPEN_OTA_SERVER;
 
-// 進捗 payload の先頭 1 バイトが進捗値 (onOTAProgress(payload.first()))。
-// 原典は単なる UByte 1 つ (CHHub3Device.kt:317 / CHWifiModule2Device.kt:466)。
+/**
+ * 進捗 payload の先頭 1 バイトが進捗値 (onOTAProgress(payload.first()))。
+ * 原典は単なる UByte 1 つ (CHHub3Device.kt:317 / CHWifiModule2Device.kt:466)。
+ * @param {unknown} body
+ * @returns {number|null}
+ */
 function firstByteProgress(body) {
   return Buffer.isBuffer(body) && body.length > 0 ? body[0] : null;
 }
+
+/**
+ * OTA 進捗コールバック。
+ * @typedef {(progress: number|null, body: Buffer) => void} OtaProgressCallback
+ */
 
 /**
  * (B/C) 進捗 publish を購読する低レベルヘルパ。指定 itemCode の publish が来るたびに
@@ -55,12 +64,12 @@ function firstByteProgress(body) {
  *
  * @param {import("./session.js").SesameBleSession} session 接続済みセッション
  * @param {number} itemCode 進捗を載せる publish の itemCode (MOVE_TO or OPEN_OTA_SERVER)
- * @param {(progress:number|null, body:Buffer)=>void} onProgress 進捗コールバック (0..100 想定の生バイト)
+ * @param {OtaProgressCallback} [onProgress] 進捗コールバック (0..100 想定の生バイト)
  * @returns {() => void} unsubscribe
  */
 function subscribeProgress(session, itemCode, onProgress) {
   if (typeof onProgress !== "function") return () => {};
-  return session.onPublish(({ itemCode: it, body }) => {
+  return session.onPublish((/** @type {{itemCode:number, body:Buffer}} */ { itemCode: it, body }) => {
     if (it !== itemCode) return;
     try { onProgress(firstByteProgress(body), body); } catch { /* ignore listener throw */ }
   });
@@ -106,7 +115,7 @@ export function updateFirmware(session) {
  * (BLE 不可なら "BLE unavailable" で即 failure。JS では request() が notLoggedIn を弾く。)
  *
  * @param {import("./session.js").SesameBleSession} session 接続済みセッション
- * @param {{onProgress?:(progress:number|null, body:Buffer)=>void, timeoutMs?:number}} [opts]
+ * @param {{onProgress?:OtaProgressCallback, timeoutMs?:number}} [opts]
  *   onProgress: MOVE_TO publish の進捗 (payload 先頭バイト)。
  * @returns {Promise<{resultCode:number, payload:Buffer, session:object}>}
  *   MOVE_TO 応答 (resultCode==0) ＋デバイスハンドル (session)。
@@ -143,7 +152,7 @@ export async function updateFirmwareBleOnly(session, { onProgress, timeoutMs } =
  *   (CHWifiModule2Device.kt:451 と 1:1)。
  *
  * @param {import("./session.js").SesameBleSession} session 接続済みセッション (WM2)
- * @param {{onProgress?:(progress:number|null, body:Buffer)=>void, timeoutMs?:number}} [opts]
+ * @param {{onProgress?:OtaProgressCallback, timeoutMs?:number}} [opts]
  * @returns {Promise<{resultCode:number, payload:Buffer, session:object}>}
  */
 export async function updateFirmwareWM2(session, { onProgress, timeoutMs } = {}) {
