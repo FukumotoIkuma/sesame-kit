@@ -16,6 +16,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { WebSocketServer } from "ws";
 import { SesameHub3 } from "../../src/client.js";
+import { CONSUMER_CLIENT_ID } from "../../src/auth.js";
+
+const CONFIRMED_DEVICE = {
+  deviceKey: "dev-key-abc",
+  deviceGroupKey: "dev-group-abc",
+  devicePassword: "dev-password-abc",
+};
 
 /** @type {WebSocketServer | null} */
 let server = null;
@@ -42,7 +49,7 @@ function startServer(onConnection) {
 function makeIdToken({ sub = "test-sub-uuid", expOffsetSec = 60 * 60 } = {}) {
   const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64");
   const exp = Math.floor(Date.now() / 1000) + expOffsetSec;
-  const payload = Buffer.from(JSON.stringify({ sub, exp })).toString("base64");
+  const payload = Buffer.from(JSON.stringify({ aud: CONSUMER_CLIENT_ID, sub, exp })).toString("base64");
   return `${header}.${payload}.sig`;
 }
 
@@ -50,7 +57,7 @@ function makeIdToken({ sub = "test-sub-uuid", expOffsetSec = 60 * 60 } = {}) {
 function makeTokenStore(overrides = {}) {
   const idToken = overrides.idToken ?? makeIdToken();
   return {
-    load: vi.fn(() => ({ idToken, refreshToken: "r", clientId: "c", ...overrides.extra })),
+    load: vi.fn(() => ({ idToken, refreshToken: "r", clientId: CONSUMER_CLIENT_ID, ...CONFIRMED_DEVICE, ...overrides.extra })),
     save: vi.fn(),
     clear: vi.fn(),
   };

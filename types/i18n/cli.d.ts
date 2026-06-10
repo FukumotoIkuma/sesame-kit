@@ -218,6 +218,7 @@ declare namespace _default {
         "cli.okMigrated": string;
         "cli.imported": string;
         "cli.importedNone": string;
+        "cli.skipped": string;
         "cli.migrateHub3": string;
         "cli.migrateRemote": string;
         "cli.migrateOldFiles": string;
@@ -539,6 +540,7 @@ declare namespace _default {
         "cli.okMigrated": string;
         "cli.imported": string;
         "cli.importedNone": string;
+        "cli.skipped": string;
         "cli.migrateHub3": string;
         "cli.migrateRemote": string;
         "cli.migrateOldFiles": string;

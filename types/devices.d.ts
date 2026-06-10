@@ -179,6 +179,31 @@ export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl }?: {
     fetchImpl?: typeof globalThis.fetch;
 }): RegisterTransport;
 /**
+ * 既存のログイン状態から register REST transport を解決する。
+ *
+ * register / guest-key signing の REST API は BLE 経路からも使われるが、Cognito の
+ * idToken/refreshToken ライフサイクルは `sesame login` が確立した TokenStore に集約する。
+ * ここを通すことで CLI/RPC が別ログインや生 Bearer token を持たず、Consumer Client +
+ * ConfirmDevice による refreshToken 維持をそのまま再利用する。
+ *
+ * baseUrl は明示値を最優先し、無ければ config.registerBaseUrl を使う。どちらも無い場合、
+ * required=false では undefined を返して BLE-only 登録を維持し、required=true では明示エラー。
+ *
+ * @param {{baseUrl?:string|null, config?:{registerBaseUrl?:string|null}|null,
+ *          tokenStore?:import("./tokens.js").TokenStore, fetchImpl?:typeof globalThis.fetch,
+ *          required?:boolean}} [opts]
+ * @returns {RegisterTransport|undefined}
+ */
+export function resolveRegisterTransport({ baseUrl, config, tokenStore, fetchImpl, required }?: {
+    baseUrl?: string | null;
+    config?: {
+        registerBaseUrl?: string | null;
+    } | null;
+    tokenStore?: import("./tokens.js").TokenStore;
+    fetchImpl?: typeof globalThis.fetch;
+    required?: boolean;
+}): RegisterTransport | undefined;
+/**
  * guestKeysSign — 既存登録済みデバイスの再ログイン時に session token を取得する
  * (CHSesameOS3.kt:474-484, CHAPIClientBiz.kt:143-144)。
  *

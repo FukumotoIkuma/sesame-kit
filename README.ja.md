@@ -306,6 +306,7 @@ await SesameBle.use({ deviceUUID: key.deviceUUID, secretKey: key.secretKey }, (l
 
 - `new SesameBle({ registerMode: true, deviceUUID, transport }).register()` — スキャン済み / 注入済みトランスポートに対して登録する。`register()` は工場出荷デバイス専用なので、`registerMode: true`（`secretKey` 無し）で構築したファサードでのみ有効。`secretKey` 付きのファサードで呼ぶと throw する。
 - **サーバ認証**が要る登録済みデバイス（ゲスト鍵・期限付き鍵）は、ローカル導出ではなくサーバ署名済み token で login できます。`{ secretKey, deviceUUID, needAuthFromServer: true, registerTransport }` で構築すると `connect()` が `signGuestKey` を呼び、返った token で `login` します（`CHHub3Device.kt:163-174` / `CHSesameOS3.kt:473-487` の移植）。`registerTransport` は `makeRegisterTransport(...)` の戻りです。
+- CLI / RPC から `registerTransport` が必要な OS3 経路を使う場合、REST host は `--register-base-url` / RPC `registerBaseUrl` / `config.registerBaseUrl` から解決し、Bearer は `sesame login` が保存した既存 TokenStore の `getValidIdToken()` で取得します。別ログインや手入力 token は不要です。
 - **OS2 のサーバ認証登録**（サーバの `getRegisterKey` ステップが要る SESAME 2/3/4 の工場ペアリング）は、サーバ認証 login と同じコールバック注入で配線しています。`SesameOS2BleSession.register({ registerServer })` が `IRER` を読み、`registerServer({ ak, n, e, appPubK64, ... })` から `{ sig1, st, pubkey }` を受けて ECDH/登録鍵ハンドシェイクを完走します（`CHSesame2Device.kt:406-482` の移植）。サーバの役割は `CHServerAuth.getRegisterKey`（`CHServerAuth.kt:41-65`）で、これを**自分のコードからオフライン実行**（クラウド不要）するには `makeLocalRegisterServer()`（`src/crypto.js`、`sesame-kit/ble/os2` から再公開）を `registerServer` に渡すか、`SesameOS2Ble` ファサードで `localServerAuth: true` を指定して自動配線します。既定の BLE-only register は不変です（`registerServer` も `localServerAuth` も無ければ従来どおり明示エラー）。`getRegisterKey` は依然 **未照合 (UNVERIFIED) な移植**で（[既知の制限](#既知の制限)参照）、実機 SESAME 2/3/4 キャプチャとのバイト一致は未確認です。
 
 > 登録ハンドシェイクとサーバ認証 login は SDK から 1:1 で移植し mock の end-to-end テストで検証済みですが、依存するサーバ認証プリミティブと REST ホストは**実機 OS3 で未照合**です（[既知の制限](#既知の制限)参照）。実機での利用は自己責任で。
@@ -356,10 +357,10 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 
 ## トラブルシュート
 
-- `No tokens stored` / `No config at ...`: `sesame init` → `sesame login`、または `sesame migrate`。
+- `No tokens stored` / `No config at ...`: config は `sesame init` / `sesame migrate`、ログイン状態は `sesame login` で作成してください。
 - `UserNotFoundException`: 自動 SignUp は組み込み済みです。それでも出る場合は Cognito 側の特殊ケースです。
 - `Cognito refresh returned no IdToken`: refreshToken が無効化されました (公式アプリでログアウト等)。再 sign-in します。
-- 初回 refresh (ログインの約24h後) で `Invalid Refresh Token`: デバイス確認前の古いトークンです。`sesame login` で Cognito にデバイスを登録 (`ConfirmDevice`、公式アプリと同じ) するため refreshToken が有効に保たれます。一度だけ再 sign-in して移行してください。
+- 初回 refresh (ログインの約24h後) で `Invalid Refresh Token`: デバイス確認前の古いトークンです。`sesame login` で Cognito にデバイスを登録 (`ConfirmDevice`、公式アプリと同じ) するため refreshToken が有効に保たれます。一度だけ再 sign-in してください。`sesame migrate` は旧 `.tokens.json` / `.login_state.json` を意図的に取り込みません。
 - `triggerLock timeout`: `secretKey` 不一致、Hub3 オフライン、または WS の半開接続 (自動再接続で復帰)。
 - `learn timeout`: Hub3 が REGISTER に入りましたが波形を受け取れませんでした。距離を縮めるか、別のボタンを試してください。
 - `apiKeyId required`: `webapi` 系は config.json に `apiKeyId` を入れます (biz3 dev console で発行)。

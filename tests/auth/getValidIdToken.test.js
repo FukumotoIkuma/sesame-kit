@@ -44,11 +44,18 @@ vi.mock("@aws-sdk/client-cognito-identity-provider", () => {
   class SignUpCommand {
     constructor(input) { this.input = input; this.__name = "SignUpCommand"; }
   }
+  const command = (name) => class {
+    constructor(input) { this.input = input; this.__name = name; }
+  };
   return {
     CognitoIdentityProviderClient,
     InitiateAuthCommand,
     RespondToAuthChallengeCommand,
     SignUpCommand,
+    ConfirmDeviceCommand: command("ConfirmDeviceCommand"),
+    UpdateDeviceStatusCommand: command("UpdateDeviceStatusCommand"),
+    ForgetDeviceCommand: command("ForgetDeviceCommand"),
+    RevokeTokenCommand: command("RevokeTokenCommand"),
   };
 });
 
@@ -56,6 +63,12 @@ vi.mock("@aws-sdk/client-cognito-identity-provider", () => {
 const { getValidIdToken, CONSUMER_CLIENT_ID } = await import("../../src/auth.js");
 
 // --- helpers ------------------------------------------------------------------------
+
+const CONFIRMED_DEVICE = {
+  deviceKey: "dev-key-abc",
+  deviceGroupKey: "dev-group-abc",
+  devicePassword: "dev-password-abc",
+};
 
 /** base64url encode (no padding) */
 function b64url(obj) {
@@ -69,14 +82,14 @@ function b64url(obj) {
 /** dummy JWT with given exp (UNIX秒) と任意 claims */
 function makeJwt(exp, extra = {}) {
   const header  = b64url({ alg: "RS256", typ: "JWT" });
-  const payload = b64url({ exp, ...extra });
+  const payload = b64url({ aud: CONSUMER_CLIENT_ID, exp, ...extra });
   const sig     = "sigsig";
   return `${header}.${payload}.${sig}`;
 }
 
 /** in-memory TokenStore mock */
 function makeStore(initial) {
-  let state = initial ? { ...initial } : null;
+  let state = initial ? { ...CONFIRMED_DEVICE, ...initial } : null;
   return {
     load: vi.fn(() => state),
     save: vi.fn((t) => { state = { ...t }; }),
@@ -133,6 +146,25 @@ describe("getValidIdToken", () => {
       const got = await getValidIdToken(store, { marginSec: 300 }); // 5 分
 
       expect(got).toBe(idToken);
+      expect(sendMock).not.toHaveBeenCalled();
+    });
+
+    it("未失効 idToken でも ConfirmDevice 済み device credentials が無ければ拒否する", async () => {
+      const now = 1_700_000_000;
+      vi.useFakeTimers();
+      vi.setSystemTime(now * 1000);
+
+      const idToken = makeJwt(now + 3600);
+      const store = makeStore({
+        idToken,
+        refreshToken: "rt",
+        clientId: CONSUMER_CLIENT_ID,
+        deviceKey: null,
+        deviceGroupKey: null,
+        devicePassword: null,
+      });
+
+      await expect(getValidIdToken(store)).rejects.toThrow(/missing confirmed Cognito device credentials/);
       expect(sendMock).not.toHaveBeenCalled();
     });
   });
@@ -192,7 +224,7 @@ describe("getValidIdToken", () => {
       expect(cmd.input).toEqual({
         AuthFlow: "REFRESH_TOKEN_AUTH",
         ClientId: CONSUMER_CLIENT_ID,
-        AuthParameters: { REFRESH_TOKEN: "rt-old" },
+        AuthParameters: { REFRESH_TOKEN: "rt-old", DEVICE_KEY: CONFIRMED_DEVICE.deviceKey },
       });
       expect(store.save).toHaveBeenCalledTimes(1);
       expect(store._peek().idToken).toBe(newToken);
@@ -215,7 +247,7 @@ describe("getValidIdToken", () => {
       expect(sendMock).toHaveBeenCalledTimes(1);
     });
 
-    it("deviceKey があれば AuthParameters に DEVICE_KEY を含める", async () => {
+    it("ConfirmDevice 済み token は AuthParameters に DEVICE_KEY を含める", async () => {
       const now = 1_700_000_000;
       vi.useFakeTimers();
       vi.setSystemTime(now * 1000);
@@ -223,7 +255,6 @@ describe("getValidIdToken", () => {
       const store = makeStore({
         idToken: makeJwt(now - 1),
         refreshToken: "rt",
-        deviceKey: "dev-key-abc",
         clientId: CONSUMER_CLIENT_ID,
       });
       sendMock.mockResolvedValueOnce({ AuthenticationResult: { IdToken: makeJwt(now + 3600) } });
@@ -233,7 +264,7 @@ describe("getValidIdToken", () => {
       const cmd = sendMock.mock.calls[0][0];
       expect(cmd.input.AuthParameters).toEqual({
         REFRESH_TOKEN: "rt",
-        DEVICE_KEY: "dev-key-abc",
+        DEVICE_KEY: CONFIRMED_DEVICE.deviceKey,
       });
     });
 
@@ -255,22 +286,39 @@ describe("getValidIdToken", () => {
       expect(cmd.input.ClientId).toBe(CONSUMER_CLIENT_ID);
     });
 
-    it("store.clientId が指定されていればそれを優先する", async () => {
+    it("store.clientId が Consumer Client 以外なら refresh せず拒否する", async () => {
       const now = 1_700_000_000;
       vi.useFakeTimers();
       vi.setSystemTime(now * 1000);
 
       const customClient = "custom-client-id-xyz";
       const store = makeStore({
-        idToken: makeJwt(now - 1),
+        idToken: makeJwt(now - 1, { aud: CONSUMER_CLIENT_ID }),
         refreshToken: "rt",
         clientId: customClient,
       });
       sendMock.mockResolvedValueOnce({ AuthenticationResult: { IdToken: makeJwt(now + 3600) } });
 
-      await getValidIdToken(store);
+      await expect(getValidIdToken(store)).rejects.toThrow(/unsupported Cognito clientId|Only the SESAME consumer app client/);
+      expect(sendMock).not.toHaveBeenCalled();
+    });
 
-      expect(sendMock.mock.calls[0][0].input.ClientId).toBe(customClient);
+    it("refresh 前に ConfirmDevice 済み device credentials が無ければ拒否する", async () => {
+      const now = 1_700_000_000;
+      vi.useFakeTimers();
+      vi.setSystemTime(now * 1000);
+
+      const store = makeStore({
+        idToken: makeJwt(now - 1),
+        refreshToken: "rt",
+        clientId: CONSUMER_CLIENT_ID,
+        deviceKey: null,
+        deviceGroupKey: null,
+        devicePassword: null,
+      });
+
+      await expect(getValidIdToken(store)).rejects.toThrow(/missing confirmed Cognito device credentials/);
+      expect(sendMock).not.toHaveBeenCalled();
     });
 
     it("rotation: response.RefreshToken があれば store に新 refreshToken を保存する", async () => {

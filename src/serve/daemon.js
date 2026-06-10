@@ -38,8 +38,8 @@ import { t } from "../i18n.js";
  * @property {() => Promise<void>} close
  * @property {(cb: () => void) => void} [onReconnect]
  * @property {(items: Array<{deviceUUID: unknown, deviceModel: unknown}>, cb: (msg: unknown) => void) => (() => void)} onDeviceUpdate
- * @property {{ load?: () => ({ refreshToken?: unknown, idToken?: unknown }|null|undefined) }} [tokenStore]
- * @property {{ devices?: Record<string, { deviceUUID: unknown, deviceModel: unknown }> }} [config]
+ * @property {import("../tokens.js").TokenStore} [tokenStore]
+ * @property {{ devices?: Record<string, { deviceUUID: unknown, deviceModel: unknown }>, registerBaseUrl?: string|null }} [config]
  */
 
 const TOPICS = ["lockState", "deviceUpdate"];

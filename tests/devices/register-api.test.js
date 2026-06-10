@@ -25,8 +25,16 @@ import {
   signGuestKey,
   registerSesame5,
   makeRegisterTransport,
+  resolveRegisterTransport,
 } from "../../src/devices.js";
+import { CONSUMER_CLIENT_ID } from "../../src/auth.js";
 import { productTypeFromModelName } from "../../src/crypto.js";
+
+const CONFIRMED_DEVICE = {
+  deviceKey: "dev-key-abc",
+  deviceGroupKey: "dev-group-abc",
+  devicePassword: "dev-password-abc",
+};
 
 // fake transport: 受け取ったリクエストを記録し、固定応答を返す。
 function makeFakeTransport(response) {
@@ -181,11 +189,11 @@ describe("makeRegisterTransport (Cognito idToken 再利用 + fetch 注入)", () 
   // exp が十分未来の JWT を組む (署名検証はしないので header/payload のみで足りる)。
   function fakeJwt(expSec) {
     const b64u = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
-    return `${b64u({ alg: "none" })}.${b64u({ exp: expSec, sub: "u" })}.`;
+    return `${b64u({ alg: "none" })}.${b64u({ aud: CONSUMER_CLIENT_ID, exp: expSec, sub: "u" })}.`;
   }
   function makeTokenStore() {
     const far = Math.floor(Date.now() / 1000) + 3600;
-    const data = { idToken: fakeJwt(far), refreshToken: "r", clientId: "c" };
+    const data = { idToken: fakeJwt(far), refreshToken: "r", clientId: CONSUMER_CLIENT_ID, ...CONFIRMED_DEVICE };
     return { load: () => data, save: () => {} };
   }
 
@@ -241,5 +249,29 @@ describe("makeRegisterTransport (Cognito idToken 再利用 + fetch 注入)", () 
     expect(() => makeRegisterTransport({ tokenStore: {}, fetchImpl: () => {} })).toThrow(/baseUrl required/);
     expect(() => makeRegisterTransport({ baseUrl: "x", fetchImpl: () => {} })).toThrow(/tokenStore required/);
     expect(() => makeRegisterTransport({ baseUrl: "x", tokenStore: {}, fetchImpl: null })).toThrow(/fetchImpl must be a function/);
+  });
+
+  it("resolveRegisterTransport は config.registerBaseUrl と既存 TokenStore から transport を作る", async () => {
+    let captured;
+    const fetchImpl = async (url, init) => {
+      captured = { url, init };
+      return { status: 200, text: async () => "{}" };
+    };
+    const transport = resolveRegisterTransport({
+      config: { registerBaseUrl: "https://register.example.invalid/root/" },
+      tokenStore: makeTokenStore(),
+      fetchImpl,
+    });
+    expect(typeof transport).toBe("function");
+
+    await transport({ method: "POST", path: "/device/v1/sesame2/sign", body: { k: "v" } });
+    expect(captured.url).toBe("https://register.example.invalid/root/device/v1/sesame2/sign");
+    expect(captured.init.headers.authorization).toMatch(/^Bearer /);
+    expect(captured.init.body).toBe(JSON.stringify({ k: "v" }));
+  });
+
+  it("resolveRegisterTransport は baseUrl 未設定なら任意時 undefined / 必須時エラー", () => {
+    expect(resolveRegisterTransport({ config: {}, tokenStore: makeTokenStore() })).toBeUndefined();
+    expect(() => resolveRegisterTransport({ config: {}, tokenStore: makeTokenStore(), required: true })).toThrow(/baseUrl required/);
   });
 });

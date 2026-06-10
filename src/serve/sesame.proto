@@ -671,6 +671,8 @@ message BleInvokeRequest {
   string model = 6;
   double scanTimeoutMs = 7;
   bool debug = 8;
+  bool needAuthFromServer = 9;
+  string registerBaseUrl = 10;
 }
 message BleRegisterRequest {
   string deviceUUID = 1;
@@ -680,6 +682,7 @@ message BleRegisterRequest {
   double scanTimeoutMs = 5;
   bool debug = 6;
   double nowMs = 7;
+  string registerBaseUrl = 8;
 }
 message BleOs2InvokeRequest {
   string op = 1;

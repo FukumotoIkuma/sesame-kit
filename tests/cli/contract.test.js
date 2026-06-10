@@ -2,7 +2,7 @@
 // (回帰: usage エラーが exit 1 / 設定ディレクトリが 0755 / `--lang en init` で config が ja のまま)
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, statSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -45,13 +45,15 @@ describe("秘匿ファイル権限", () => {
     if (isPosix) expect(mode(dir)).toBe(0o700);
   });
 
-  it("migrate は 0644 の旧トークンを 0600 へ締めて取り込む", () => {
+  it("migrate は旧トークンを取り込まず、ConfirmDevice 付き login を要求する", () => {
     const src = join(work, "src"); mkdirSync(src);
     const old = join(src, ".tokens.json");
     writeFileSync(old, JSON.stringify({ idToken: "x", refreshToken: "y" }), { mode: 0o644 });
     const dir = join(work, "cfg");
-    expect(run(["--config-dir", dir, "migrate", src]).code).toBe(0);
-    if (isPosix) expect(mode(join(dir, "tokens.json"))).toBe(0o600);
+    const r = run(["--config-dir", dir, "migrate", src]);
+    expect(r.code).toBe(0);
+    expect(existsSync(join(dir, "tokens.json"))).toBe(false);
+    expect(r.stdout).toMatch(/Skipped: .*\.tokens\.json/);
   });
 });
 

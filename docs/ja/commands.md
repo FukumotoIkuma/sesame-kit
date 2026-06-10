@@ -282,7 +282,7 @@ sesame front autolock 0          # 無効化
 
 ```bash
 sesame ble scan [--timeout <ms>]         # 鍵なしの近接スキャン（secretKey 不要）
-sesame ble register <uuid> [--model <model>] [--save <name>]
+sesame ble register <uuid> [--model <model>] [--save <name>] [--register-base-url <url>]
 sesame ble os2-register <uuid> [--model <model>]
 sesame ble cards <device>                # 登録済み NFC カード一覧（Touch / Touch Pro）
 sesame ble passcodes <device>            # 登録済みキーパッド暗証番号一覧（Touch / Touch Pro）
@@ -293,7 +293,7 @@ sesame ble mode <device> <type>          # 現在の登録モードを取得（t
 sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧 + 現在スクリプト
 ```
 
-`<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドでは、`--secret <hex>` と `--model <model>` で config のロックに無いデバイスを対象にでき、`--timeout <ms>` で publish 収集のタイムアウト（既定 8000）を指定します。`scan` は鍵なしでどちらも不要です。
+`<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドでは、`--secret <hex>` と `--model <model>` で config のロックに無いデバイスを対象にでき、`--timeout <ms>` で publish 収集のタイムアウト（既定 8000）を指定します。`scan` は鍵なしでどちらも不要です。ゲスト鍵 / 期限付き鍵などサーバ署名 login が必要な登録済み OS3 デバイスでは `--server-auth` を付けます。このとき register REST API の host は `--register-base-url <url>` または `config.registerBaseUrl` から解決され、認証は `sesame login` が保存した既存 TokenStore の `getValidIdToken()` を使います。
 
 > これらのコマンドはライブラリ / RPC と同じ BLE コード経路で、ユニットテスト済みですが**実機未確認**です。list / mode / script は読み取り専用であり、生体登録 / モード設定 / スクリプト切替 / 書き込み / 実行は Node または BLE 汎用 RPC から呼べます。
 

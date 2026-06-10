@@ -19,6 +19,7 @@
 
 import { t } from "../i18n.js";
 import { SesameBle, SesameOS2Ble, createBleTransport, capabilitiesForModel } from "../ble/index.js";
+import { resolveRegisterTransport } from "../devices.js";
 
 /**
  * ble サブコマンドの commander options。値は string|undefined (boolean フラグは無い)。
@@ -32,6 +33,8 @@ import { SesameBle, SesameOS2Ble, createBleTransport, capabilitiesForModel } fro
  *   save?: string,
  *   localServerAuth?: boolean,
  *   ak?: string,
+ *   registerBaseUrl?: string,
+ *   serverAuth?: boolean,
  * }} BleOptions
  */
 
@@ -95,7 +98,9 @@ export function registerBleCommands(program, ctx) {
     cmd
       .option("--secret <hex>", t("ble.cli.opt.secret"))
       .option("--model <model>", t("ble.cli.opt.model"))
-      .option("--timeout <ms>", t("ble.cli.opt.timeout"));
+      .option("--timeout <ms>", t("ble.cli.opt.timeout"))
+      .option("--server-auth", t("ble.cli.opt.serverAuth"))
+      .option("--register-base-url <url>", t("ble.cli.opt.registerBaseUrl"));
 
   // ---- ble scan ----
   // 近接 SESAME を鍵無しで列挙 (listNearbyDevices)。登録済み/未登録・機種・RSSI 等を出す。
@@ -115,6 +120,7 @@ export function registerBleCommands(program, ctx) {
     .option("--product-type <type>", t("ble.cli.opt.productType"))
     .option("--timeout <ms>", t("ble.cli.opt.scanTimeout"), "8000")
     .option("--save <name>", t("ble.cli.register.opt.save"))
+    .option("--register-base-url <url>", t("ble.cli.opt.registerBaseUrl"))
     .action((deviceUUID, options) => cmdRegister(ctx, deviceUUID, options));
 
   ble
@@ -184,9 +190,10 @@ async function cmdScan(ctx, options) {
  * @param {BleOptions} options
  */
 async function cmdRegister(ctx, deviceUUID, options) {
-  const { opts, configStore } = ctx.loadCtx();
+  const { opts, configStore, tokenStore } = ctx.loadCtx();
   const timeoutMs = Number(options.timeout) || 8000;
   const model = options.model || null;
+  const registerTransport = resolveCliRegisterTransport({ configStore, tokenStore, options });
   // model は SesameBle コンストラクタへ ...ctorOpts で透過する (公開 opts 型に未掲載のため型のみ補完)。
   const result = await SesameBle.registerOnce(/** @type {Parameters<typeof SesameBle.registerOnce>[0] & {model?:string|null}} */ ({
     deviceUUID,
@@ -195,6 +202,7 @@ async function cmdRegister(ctx, deviceUUID, options) {
     productType: options.productType || model || undefined,
     scanTimeoutMs: timeoutMs,
     debug: !!opts.debug,
+    registerTransport,
   }));
   const saveName = options.save || null;
   if (saveName) {
@@ -254,14 +262,15 @@ async function cmdOS2Register(ctx, deviceUUID, options) {
  */
 async function cmdBiometricList(ctx, type, device, options) {
   const spec = /** @type {BioSpec} */ (BIO_LIST[/** @type {keyof typeof BIO_LIST} */ (type)]);
-  const { opts } = ctx.loadCtx();
+  const { opts, configStore, tokenStore } = ctx.loadCtx();
   const entry = resolveBleEntry(ctx, device, options);
   if (!entry) return;
   const caps = capabilitiesForModel(entry.model);
   const timeoutMs = Number(options.timeout) || 8000;
+  const serverAuth = resolveCliServerAuth({ configStore, tokenStore, options });
 
   await SesameBle.use(
-    { secretKey: entry.secretKey, deviceUUID: entry.deviceUUID, model: entry.model, debug: !!opts.debug },
+    { secretKey: entry.secretKey, deviceUUID: entry.deviceUUID, model: entry.model, debug: !!opts.debug, ...serverAuth },
     async (dev) => {
       const cmds = biometricView(dev, type, caps); // 非対応機種はここで明示エラー
       const records = await collectBiometricList(cmds, spec, timeoutMs);
@@ -282,13 +291,14 @@ async function cmdBiometricList(ctx, type, device, options) {
 async function cmdBiometricMode(ctx, device, type, options) {
   const method = BIO_MODE[/** @type {keyof typeof BIO_MODE} */ (type)];
   if (!method) { ctx.die(t("ble.cli.mode.badType", { type, types: Object.keys(BIO_MODE).join("/") }), 2); return; }
-  const { opts } = ctx.loadCtx();
+  const { opts, configStore, tokenStore } = ctx.loadCtx();
   const entry = resolveBleEntry(ctx, device, options);
   if (!entry) return;
   const caps = capabilitiesForModel(entry.model);
+  const serverAuth = resolveCliServerAuth({ configStore, tokenStore, options });
 
   await SesameBle.use(
-    { secretKey: entry.secretKey, deviceUUID: entry.deviceUUID, model: entry.model, debug: !!opts.debug },
+    { secretKey: entry.secretKey, deviceUUID: entry.deviceUUID, model: entry.model, debug: !!opts.debug, ...serverAuth },
     async (dev) => {
       const cmds = biometricView(dev, type, caps);
       const mode = await cmds[method]();
@@ -304,15 +314,16 @@ async function cmdBiometricMode(ctx, device, type, options) {
  * @param {BleOptions} options
  */
 async function cmdScript(ctx, device, options) {
-  const { opts } = ctx.loadCtx();
+  const { opts, configStore, tokenStore } = ctx.loadCtx();
   const entry = resolveBleEntry(ctx, device, options);
   if (!entry) return;
   const caps = capabilitiesForModel(entry.model);
   if (!caps.script) { ctx.die(t("ble.cli.script.notSupported", { name: entry.name, model: entry.model || "?" }), 2); return; }
   const index = options.index != null ? Number(options.index) : null;
+  const serverAuth = resolveCliServerAuth({ configStore, tokenStore, options });
 
   await SesameBle.use(
-    { secretKey: entry.secretKey, deviceUUID: entry.deviceUUID, model: entry.model, debug: !!opts.debug },
+    { secretKey: entry.secretKey, deviceUUID: entry.deviceUUID, model: entry.model, debug: !!opts.debug, ...serverAuth },
     async (dev) => {
       const list = await dev.script.getScriptNameList();
       const current = await dev.script.getCurrentScript(index).catch(() => null);
@@ -327,6 +338,36 @@ async function cmdScript(ctx, device, options) {
 }
 
 // ---------- ヘルパ ----------
+
+/**
+ * @param {{configStore: import("../config.js").ConfigStore,
+ *          tokenStore: import("../tokens.js").FileTokenStore,
+ *          options: BleOptions, required?: boolean}} params
+ * @returns {import("../devices.js").RegisterTransport|undefined}
+ */
+function resolveCliRegisterTransport({ configStore, tokenStore, options, required = false }) {
+  return resolveRegisterTransport({
+    baseUrl: options.registerBaseUrl,
+    config: configStore.load(),
+    tokenStore,
+    required,
+  });
+}
+
+/**
+ * @param {{configStore: import("../config.js").ConfigStore,
+ *          tokenStore: import("../tokens.js").FileTokenStore,
+ *          options: BleOptions}} params
+ * @returns {{needAuthFromServer?: true, registerTransport?: import("../devices.js").RegisterTransport}}
+ */
+function resolveCliServerAuth({ configStore, tokenStore, options }) {
+  const needAuthFromServer = !!(options.serverAuth || options.registerBaseUrl);
+  if (!needAuthFromServer) return {};
+  return {
+    needAuthFromServer: true,
+    registerTransport: resolveCliRegisterTransport({ configStore, tokenStore, options, required: true }),
+  };
+}
 
 /**
  * `<device>` (config の lock 名 or deviceUUID) を BLE entry へ解決する。

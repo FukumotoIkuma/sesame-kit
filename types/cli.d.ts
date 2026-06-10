@@ -205,11 +205,12 @@ export type SessionDevice = {
     }) | null;
 };
 /**
- * 旧構成 (.env / keys.json / .tokens.json) からの移行サマリ。
+ * 旧構成 (.env / keys.json、認証状態は skip) からの移行サマリ。
  */
 export type MigrateSummary = {
     configDir: string;
     imported: string[];
+    skipped: string[];
     hub3Added?: string | undefined;
     remoteAdded?: string | undefined;
 };

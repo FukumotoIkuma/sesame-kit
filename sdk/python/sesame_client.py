@@ -295,9 +295,9 @@ class _Ble:
     def __init__(self, c: "SesameClient") -> None:
         self._c = c
 
-    def invoke(self, *, op: str, args: list[Any] | None = None, deviceUUID: str | None = None, address: str | None = None, secretKey: str, model: str | None = None, scanTimeoutMs: float | None = None, debug: bool | None = None) -> Any:
+    def invoke(self, *, op: str, args: list[Any] | None = None, deviceUUID: str | None = None, address: str | None = None, secretKey: str, model: str | None = None, scanTimeoutMs: float | None = None, debug: bool | None = None, needAuthFromServer: bool | None = None, registerBaseUrl: str | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("ble.invoke", _omit_none({"op": op, "args": args, "deviceUUID": deviceUUID, "address": address, "secretKey": secretKey, "model": model, "scanTimeoutMs": scanTimeoutMs, "debug": debug}))
+        return self._c._call("ble.invoke", _omit_none({"op": op, "args": args, "deviceUUID": deviceUUID, "address": address, "secretKey": secretKey, "model": model, "scanTimeoutMs": scanTimeoutMs, "debug": debug, "needAuthFromServer": needAuthFromServer, "registerBaseUrl": registerBaseUrl}))
 
     def os2_invoke(self, *, op: str, args: list[Any] | None = None, deviceUUID: str | None = None, address: str | None = None, secretKey: str, keyIndex: str, ssmPublicKey: str, model: str | None = None, scanTimeoutMs: float | None = None, debug: bool | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
@@ -307,9 +307,9 @@ class _Ble:
         """@experimental (unverified) — may change without notice."""
         return self._c._call("ble.os2.register", _omit_none({"deviceUUID": deviceUUID, "address": address, "model": model, "productType": productType, "scanTimeoutMs": scanTimeoutMs, "debug": debug, "localServerAuth": localServerAuth, "ak": ak}))
 
-    def register(self, *, deviceUUID: str, address: str | None = None, model: str | None = None, productType: str | None = None, scanTimeoutMs: float | None = None, debug: bool | None = None, nowMs: float | None = None) -> Any:
+    def register(self, *, deviceUUID: str, address: str | None = None, model: str | None = None, productType: str | None = None, scanTimeoutMs: float | None = None, debug: bool | None = None, nowMs: float | None = None, registerBaseUrl: str | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("ble.register", _omit_none({"deviceUUID": deviceUUID, "address": address, "model": model, "productType": productType, "scanTimeoutMs": scanTimeoutMs, "debug": debug, "nowMs": nowMs}))
+        return self._c._call("ble.register", _omit_none({"deviceUUID": deviceUUID, "address": address, "model": model, "productType": productType, "scanTimeoutMs": scanTimeoutMs, "debug": debug, "nowMs": nowMs, "registerBaseUrl": registerBaseUrl}))
 
 
 class _Company:

@@ -1,7 +1,7 @@
 // 秘匿ファイルの安全な書き込みを 1 箇所に集約する横断ユーティリティ。
 //
 // config.json (ロックの secretKey 平文)、tokens.json (idToken/refreshToken)、
-// devices.json (secretKey)、移行した login_state.json など「鍵が入るファイル」は
+// devices.json (secretKey)、login_state.json など「鍵が入るファイル」は
 // すべて mode 0600 / 親ディレクトリ 0700 で書く必要がある。以前はこのパターンが
 // tokens.js / config.js / cli.js に個別実装で散っており、cli.js の init/devices/migrate
 // では mode 指定が漏れて world-readable (0644/0755) になっていた。ここへ一本化する。

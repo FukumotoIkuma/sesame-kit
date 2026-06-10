@@ -1,8 +1,16 @@
 // 新規配線した top-level RPC メソッドの結線テスト。
 // (device.hideHistory / device.hideBattery / webapi.invoke が hub の対応メソッドへ
 //  正しい params で委譲し、必須 param 欠落を弾くこと。subscribeIotResponse が非公開なこと。)
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { buildRegistry } from "../../src/serve/registry.js";
+import { SesameBle } from "../../src/ble/index.js";
+import { CONSUMER_CLIENT_ID } from "../../src/auth.js";
+
+const CONFIRMED_DEVICE = {
+  deviceKey: "dev-key-abc",
+  deviceGroupKey: "dev-group-abc",
+  devicePassword: "dev-password-abc",
+};
 
 // requireAuth を通すための最小 daemon。
 const daemon = { authState: "active", hub: { connected: true } };
@@ -18,6 +26,27 @@ function makeHub() {
     invokeWebAPI: rec("invokeWebAPI"),
   };
 }
+
+function fakeJwt(expSec) {
+  const b64u = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  return `${b64u({ alg: "none" })}.${b64u({ aud: CONSUMER_CLIENT_ID, exp: expSec, sub: "u" })}.`;
+}
+
+function makeAuthHub() {
+  const far = Math.floor(Date.now() / 1000) + 3600;
+  return {
+    config: { registerBaseUrl: "https://register.example.invalid/root/" },
+    tokenStore: {
+      load: () => ({ idToken: fakeJwt(far), refreshToken: "refresh", clientId: CONSUMER_CLIENT_ID, ...CONFIRMED_DEVICE }),
+      save: vi.fn(),
+    },
+  };
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("registry: 新規 top-level メソッドの結線", () => {
   const reg = buildRegistry();
@@ -57,5 +86,40 @@ describe("registry: 新規 top-level メソッドの結線", () => {
   it("iot.removeSesameFromHub3 は公開され、iot.subscribeIotResponse は非公開", () => {
     expect(reg.has("iot.removeSesameFromHub3")).toBe(true);
     expect(reg.has("iot.subscribeIotResponse")).toBe(false);
+  });
+
+  it("ble.register は hub.tokenStore + config.registerBaseUrl から registerTransport を渡す", async () => {
+    const regSpy = vi.spyOn(SesameBle, "registerOnce").mockResolvedValue({ ok: true });
+    const fetchSpy = vi.fn(async () => ({ status: 200, text: async () => "{}" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const e = reg.get("ble.register");
+    await e.handler({ hub: makeAuthHub(), daemon, params: { deviceUUID: "U", model: "sesame_5" } });
+
+    const opts = regSpy.mock.calls[0][0];
+    expect(typeof opts.registerTransport).toBe("function");
+    await opts.registerTransport({ method: "POST", path: "/device/v1/sesame5/U", body: { t: "1", pk: "s" } });
+    expect(fetchSpy.mock.calls[0][0]).toBe("https://register.example.invalid/root/device/v1/sesame5/U");
+    expect(fetchSpy.mock.calls[0][1].headers.authorization).toMatch(/^Bearer /);
+  });
+
+  it("ble.invoke の needAuthFromServer は hub.tokenStore 由来の registerTransport を SesameBle.use に渡す", async () => {
+    const useSpy = vi.spyOn(SesameBle, "use").mockResolvedValue({ ok: true });
+    const fetchSpy = vi.fn(async () => ({ status: 200, text: async () => "{}" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const e = reg.get("ble.invoke");
+    await e.handler({
+      hub: makeAuthHub(),
+      daemon,
+      params: { op: "status", secretKey: "00".repeat(16), deviceUUID: "U", needAuthFromServer: true },
+    });
+
+    const opts = useSpy.mock.calls[0][0];
+    expect(opts.needAuthFromServer).toBe(true);
+    expect(typeof opts.registerTransport).toBe("function");
+    await opts.registerTransport({ method: "POST", path: "/device/v1/sesame2/sign", body: { token: "t" } });
+    expect(fetchSpy.mock.calls[0][0]).toBe("https://register.example.invalid/root/device/v1/sesame2/sign");
+    expect(fetchSpy.mock.calls[0][1].headers.authorization).toMatch(/^Bearer /);
   });
 });

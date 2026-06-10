@@ -8,7 +8,7 @@
 
 import { createInterface } from "node:readline/promises";
 import { spawn } from "node:child_process";
-import { copyFileSync, existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
@@ -16,7 +16,7 @@ import { SesameHub3 } from "./client.js";
 import { ConfigStore, isLockModel } from "./config.js";
 import { FileTokenStore } from "./tokens.js";
 import { configPaths } from "./paths.js";
-import { ensureSecureDir, writeSecretJson, restrictSecretFile } from "./secure-fs.js";
+import { ensureSecureDir, writeSecretJson } from "./secure-fs.js";
 import { setLocale, resolveLocale, isKnownLang, t } from "./i18n.js";
 import {
   die, setJsonMode, isJsonMode, withStaleHint,
@@ -2047,10 +2047,11 @@ async function cmdAct(op, name, seconds, options, program) {
 // ---------- コマンド: migrate ----------
 
 /**
- * 旧構成 (.env / keys.json / .tokens.json) からの移行サマリ。
+ * 旧構成 (.env / keys.json、認証状態は skip) からの移行サマリ。
  * @typedef {object} MigrateSummary
  * @property {string} configDir
  * @property {string[]} imported
+ * @property {string[]} skipped
  * @property {string} [hub3Added]
  * @property {string} [remoteAdded]
  *
@@ -2059,26 +2060,23 @@ async function cmdAct(op, name, seconds, options, program) {
  * @param {Program} program
  */
 async function cmdMigrate(srcDir, _opts, program) {
-  const { opts, paths, configStore, tokenStore } = loadCtx(program);
+  const { opts, paths, configStore } = loadCtx(program);
   const src = resolve(srcDir || process.cwd());
   ensureSecureDir(paths.dir); // 0700
 
   /** @type {MigrateSummary} */
-  const summary = { configDir: paths.dir, imported: [] };
+  const summary = { configDir: paths.dir, imported: [], skipped: [] };
 
-  // 1. tokens — copyFileSync は元ファイルの mode を引き継ぐ (旧 .tokens.json が 0644 だと
-  //    移行先も 0644 になる)。idToken/refreshToken/deviceKey 入りなので copy 後に 0600 へ締める。
+  // 1. tokens — 旧 .tokens.json / .login_state.json は ConfirmDevice 済みか検証できず、
+  //    そのまま取り込むと初回 refresh で Invalid Refresh Token になる入口になる。
+  //    認証状態は移行せず、公式アプリ相当の `sesame login` で作り直す。
   const oldTokens = resolve(src, ".tokens.json");
   if (existsSync(oldTokens)) {
-    copyFileSync(oldTokens, paths.tokens);
-    restrictSecretFile(paths.tokens);
-    summary.imported.push("tokens.json");
+    summary.skipped.push(".tokens.json (run `sesame login <email>`)");
   }
   const oldPending = resolve(src, ".login_state.json");
   if (existsSync(oldPending)) {
-    copyFileSync(oldPending, paths.loginState);
-    restrictSecretFile(paths.loginState);
-    summary.imported.push("login_state.json");
+    summary.skipped.push(".login_state.json (stale sign-in state)");
   }
 
   // 2. config: .env + keys.json を統合
@@ -2129,6 +2127,7 @@ async function cmdMigrate(srcDir, _opts, program) {
   out(opts.json, () => {
     console.log(t("cli.okMigrated", { dir: paths.dir }));
     console.log(t("cli.imported", { list: summary.imported.join(", ") || t("cli.importedNone") }));
+    if (summary.skipped.length) console.log(t("cli.skipped", { list: summary.skipped.join(", ") }));
     if (summary.hub3Added)   console.log(t("cli.migrateHub3", { name: summary.hub3Added }));
     if (summary.remoteAdded) console.log(t("cli.migrateRemote", { name: summary.remoteAdded }));
     console.log(t("cli.migrateOldFiles"));
@@ -2369,7 +2368,7 @@ export async function run(argv = process.argv) {
     .option("--api-key <id>", t("cli.optWebapiApiKey"))
     .action((func, opts) => cmdWebapi(func, opts, program));
 
-  // bootstrap (互換コマンド: 既存 token を JSON で流し込み)
+  // bootstrap (互換コマンド: app-login 済み token backup の復元)
   program.command("bootstrap").description(t("cli.descBootstrap"))
     .action(async (opts) => {
       // stdin がパイプ/リダイレクトでない (TTY) のに読みに行くと無限に待つので明示拒否する。

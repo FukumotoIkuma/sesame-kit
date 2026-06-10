@@ -303,6 +303,7 @@ Lower-level building blocks are also available:
 
 - `new SesameBle({ registerMode: true, deviceUUID, transport }).register()` — register against an already-scanned/injected transport. `register()` requires a factory-reset device, so it is only valid on a facade built with `registerMode: true` (no `secretKey`); calling it on a `secretKey`-bearing facade throws.
 - Registered devices that need **server authentication** (guest keys, time-limited keys) can log in via the server-signed token instead of a locally-derived one: construct with `{ secretKey, deviceUUID, needAuthFromServer: true, registerTransport }` and `connect()` will call `signGuestKey` and `login` with the returned token (ports `CHHub3Device.kt:163-174` / `CHSesameOS3.kt:473-487`). `registerTransport` is a `makeRegisterTransport(...)` result.
+- When CLI / RPC paths need `registerTransport`, the REST host is resolved from `--register-base-url`, RPC `registerBaseUrl`, or `config.registerBaseUrl`, and the Bearer token is obtained through `getValidIdToken()` on the existing TokenStore created by `sesame login`. No separate login or manually supplied token is needed.
 - **OS2 server-auth register** (factory pairing of SESAME 2/3/4 that requires the server's `getRegisterKey` step) is wired via a callback injection that mirrors the server-auth login path. `SesameOS2BleSession.register({ registerServer })` reads `IRER`, then asks `registerServer({ ak, n, e, appPubK64, ... })` for `{ sig1, st, pubkey }` and finishes the ECDH/register-key handshake (ports `CHSesame2Device.kt:406-482`). The server's role is `CHServerAuth.getRegisterKey` (`CHServerAuth.kt:41-65`); to run it **offline from your own code** (no cloud), pass `makeLocalRegisterServer()` (in `src/crypto.js`, re-exported from `sesame-kit/ble/os2`) as `registerServer`, or set `localServerAuth: true` on the `SesameOS2Ble` facade to have it auto-wired. The default BLE-only register paths are unchanged: with neither `registerServer` nor `localServerAuth`, `register()` still throws as before. `getRegisterKey` remains an **unverified port** (see [Known limitations](#known-limitations)) — its byte-level agreement with a real SESAME 2/3/4 capture is unconfirmed.
 
 > The register handshake and server-auth login are ported 1:1 from the SDK and covered by mock end-to-end tests, but the surrounding server-auth primitives and REST host remain **unverified against a real OS3 device** (see [Known limitations](#known-limitations)). Use against real hardware at your own risk.
@@ -354,10 +355,10 @@ Full docs: **[docs/en/](./docs/en/index.md)** ([日本語](./docs/ja/index.md)).
 
 ## Troubleshooting
 
-- `No tokens stored` / `No config at ...`: `sesame init` → `sesame login`, or `sesame migrate`.
+- `No tokens stored` / `No config at ...`: `sesame init` / `sesame migrate` for config, then `sesame login`.
 - `UserNotFoundException`: auto sign-up is built in. If it still appears, it is a Cognito-side edge case.
 - `Cognito refresh returned no IdToken`: the refresh token was invalidated (e.g., logged out in the official app). Sign in again.
-- `Invalid Refresh Token` on the first refresh (≈24h after login): your tokens predate device confirmation. `sesame login` registers the device with Cognito (`ConfirmDevice`, like the official app) so the refresh token stays valid; sign in again once to migrate.
+- `Invalid Refresh Token` on the first refresh (≈24h after login): your tokens predate device confirmation. `sesame login` registers the device with Cognito (`ConfirmDevice`, like the official app) so the refresh token stays valid; sign in again once. `sesame migrate` intentionally does not import legacy `.tokens.json` / `.login_state.json`.
 - `triggerLock timeout`: wrong `secretKey`, Hub3 offline, or a half-open WS (recovers on auto-reconnect).
 - `learn timeout`: the Hub3 entered REGISTER mode but did not receive a waveform. Move closer or try a different button.
 - `apiKeyId required`: for `webapi` commands, set `apiKeyId` in config.json (issue one in the biz3 dev console).

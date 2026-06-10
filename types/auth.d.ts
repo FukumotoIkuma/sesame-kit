@@ -23,7 +23,7 @@ export function getValidIdToken(store: import("./tokens.js").TokenStore, { margi
  *
  * @param {import("./tokens.js").TokenStore} store
  * @param {string} username
- * @param {{ clientId?: string }} [opts]
+ * @param {{ clientId?: string }} [opts] 互換用。Consumer Client 以外は拒否する。
  */
 export function loginInitiate(store: import("./tokens.js").TokenStore, username: string, { clientId }?: {
     clientId?: string;
@@ -63,12 +63,10 @@ export function logout(store: import("./tokens.js").TokenStore): Promise<{
  */
 export function bootstrap(store: import("./tokens.js").TokenStore, values: Partial<import("./tokens.js").StoredTokens>): import("./tokens.js").StoredTokens;
 export const CONSUMER_CLIENT_ID: "6ialca0p8u0lsgvbmvsljfm305";
-export const BIZ_CLIENT_ID: "21u50hboia4s5q0sbk6pbdfmss";
 export namespace CONFIG_META {
     export { COGNITO_REGION as region };
     export { USER_POOL_ID as userPoolId };
     export { CONSUMER_CLIENT_ID as consumerClientId };
-    export { BIZ_CLIENT_ID as bizClientId };
 }
 declare const COGNITO_REGION: "ap-northeast-1";
 declare const USER_POOL_ID: "ap-northeast-1_bY2byhlCa";

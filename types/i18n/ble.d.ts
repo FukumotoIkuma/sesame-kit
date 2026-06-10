@@ -89,6 +89,8 @@ declare namespace _default {
         "ble.cli.opt.scanTimeout": string;
         "ble.cli.opt.address": string;
         "ble.cli.opt.productType": string;
+        "ble.cli.opt.registerBaseUrl": string;
+        "ble.cli.opt.serverAuth": string;
         "ble.cli.scan.desc": string;
         "ble.cli.scan.none": string;
         "ble.cli.scan.header": string;
@@ -208,6 +210,8 @@ declare namespace _default {
         "ble.cli.opt.scanTimeout": string;
         "ble.cli.opt.address": string;
         "ble.cli.opt.productType": string;
+        "ble.cli.opt.registerBaseUrl": string;
+        "ble.cli.opt.serverAuth": string;
         "ble.cli.scan.desc": string;
         "ble.cli.scan.none": string;
         "ble.cli.scan.header": string;
