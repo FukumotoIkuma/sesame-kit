@@ -15,7 +15,7 @@ against the schema (`tests/sdk-ts-contract.test.js`).
 ## Get the file
 
 Not published to npm (yet). It's a single self-contained file with **no runtime
-deps** (uses the global `fetch`, Node 18+ or any browser). **Vendor it**: copy
+deps** (uses the global `fetch`, Node 20+ or any browser). **Vendor it**: copy
 `sesame-client.ts` into your project, or import it from a source checkout.
 
 ## Usage

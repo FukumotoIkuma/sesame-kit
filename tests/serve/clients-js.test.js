@@ -100,6 +100,16 @@ describe("JS 同梱クライアント e2e", () => {
     await expect(c.subscribe(["bogus_topic"], () => {})).rejects.toBeInstanceOf(SesameError);
   });
 
+  it("HTTP: transport-level 413 も SesameError として kind/code を保つ", async () => {
+    const { httpUrl } = await boot();
+    const c = SesameClient.http(httpUrl, TOKEN); clients.push(c);
+    await expect(c.call("status", { big: "a".repeat(1_100_000) })).rejects.toMatchObject({
+      name: "SesameError",
+      kind: "bad_params",
+      code: 413,
+    });
+  });
+
   it("HTTP: SSE subscribe は token を URL に載せず Authorization ヘッダで認証する (ログ漏れ防止)", async () => {
     const { httpUrl } = await boot();
     // 同梱クライアントが叩く /events の URL を捕捉しつつ実リクエストは通す。

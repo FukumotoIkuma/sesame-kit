@@ -1,7 +1,7 @@
 // Unix socket フレーミングの統合テスト (fake hub の Daemon を実ソケットで叩く)。
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import net from "node:net";
-import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "../../src/serve/daemon.js";
@@ -91,6 +91,18 @@ describe("socket framing", () => {
     expect(dirMode).toBe(0o700);
     // 実際に待受できている。
     const res = await rpc(nestedPath, { jsonrpc: "2.0", id: 9, method: "status" });
+    expect(res.result).toBeDefined();
+  });
+
+  it.skipIf(process.platform === "win32")("既存の緩い親ディレクトリを 0700 に締めてから listen する", async () => {
+    const parent = join(workDir, "loose");
+    mkdirSync(parent);
+    chmodSync(parent, 0o755);
+    const nestedPath = join(parent, "sesame.sock");
+    const d = new Daemon({ hub: fakeHub() });
+    handle = await startSocketFraming(d, { socketPath: nestedPath });
+    expect(statSync(parent).mode & 0o777).toBe(0o700);
+    const res = await rpc(nestedPath, { jsonrpc: "2.0", id: 10, method: "status" });
     expect(res.result).toBeDefined();
   });
 });

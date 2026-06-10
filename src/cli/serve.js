@@ -6,11 +6,12 @@
 // 未認証/クラウド不通でも死なず degraded で待ち受ける。
 
 import net from "node:net";
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync, chmodSync, existsSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SesameHub3 } from "../client.js";
 import { configPaths } from "../paths.js";
+import { writeSecretFile } from "../secure-fs.js";
 import { Daemon } from "../serve/daemon.js";
 import { startStdioFraming } from "../serve/framing/stdio.js";
 import { startSocketFraming } from "../serve/framing/socket.js";
@@ -452,13 +453,7 @@ async function cmdServe(opts, program) {
     // token を well-known ファイルにも書く (バックグラウンド起動で stderr を見逃しても拾えるように)。
     const tokenFile = join(configPaths(program.opts().configDir).dir, "serve.token");
     try {
-      const dir = dirname(tokenFile);
-      mkdirSync(dir, { recursive: true, mode: 0o700 });
-      writeFileSync(tokenFile, token + "\n", { mode: 0o600 });
-      // writeFileSync/mkdirSync の mode は**新規作成時のみ**効く。既存の緩い権限 (他ツールが
-      // 0755 で作った dir、前回別 umask で残した 0644 の token) を確実に締めるため明示 chmod。
-      try { chmodSync(tokenFile, 0o600); } catch { /* ignore */ }
-      try { if (existsSync(dir)) chmodSync(dir, 0o700); } catch { /* ignore */ }
+      writeSecretFile(tokenFile, token + "\n");
       handles.push({ stop: () => { try { unlinkSync(tokenFile); } catch { /* ignore */ } } });
       note(t("serve.note.token", { token }));
       note(t("serve.note.tokenUse", { token }));

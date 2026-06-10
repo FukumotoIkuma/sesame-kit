@@ -1,7 +1,7 @@
 // Type declarations for the thin official JS client (`sesame-client.mjs`).
 //
 // Hand-written, zero-dependency thin client for connecting to a separately
-// running `sesame serve` daemon (Node 18+). This mirrors the public surface of
+// running `sesame serve` daemon (Node 20+). This mirrors the public surface of
 // sesame-client.mjs only; it is NOT the generated sdk/ts client.
 //
 //   import { SesameClient } from "sesame-kit/client";

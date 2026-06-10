@@ -1,4 +1,4 @@
-// sesame serve の薄い公式 JS クライアント (Node 18+, 依存ゼロ)。
+// sesame serve の薄い公式 JS クライアント (Node 20+, 依存ゼロ)。
 // 別プロセスで動いている serve デーモンに繋ぐ用途。
 //
 //   import { SesameClient } from "./sesame-client.mjs";
@@ -42,6 +42,21 @@ export class SesameError extends Error {
   constructor(message, kind, code) { super(message); this.name = "SesameError"; this.kind = kind; this.code = code; }
 }
 
+function httpKind(status) {
+  if (status === 401 || status === 403) return "not_authenticated";
+  if (status === 400 || status === 413 || status === 415) return "bad_params";
+  if (status === 404) return "not_implemented";
+  if (status === 408 || status === 429 || status >= 500) return "connection_lost";
+  return "internal";
+}
+
+function sesameErrorFromRpc(error, fallbackKind, fallbackCode) {
+  if (error && typeof error === "object") {
+    return new SesameError(error.message || "JSON-RPC error", error.data?.kind || fallbackKind, error.code ?? fallbackCode);
+  }
+  return new SesameError(String(error || "HTTP error"), fallbackKind, fallbackCode);
+}
+
 export class SesameClient {
   constructor(transport) { this._t = transport; }
 
@@ -60,7 +75,7 @@ export class SesameClient {
     // 無ければ global WebSocket (ブラウザ/Node22+) にフォールバックし URL ?token= を使う。
     const pkg = await import("ws").then((m) => m.WebSocket).catch(() => null);
     const WS = pkg || globalThis.WebSocket;
-    if (!WS) throw new SesameError("WebSocket が無い。Node 18+ で `npm i ws`、または Node 22+ が必要です", "not_implemented");
+    if (!WS) throw new SesameError("WebSocket が無い。Node 20+ で `npm i ws`、または Node 22+ が必要です", "not_implemented");
     const t = new WsTransport(WS, url, token, /* useHeader */ !!pkg);
     await t.ready();
     return new SesameClient(t);
@@ -68,7 +83,7 @@ export class SesameClient {
 
   async call(method, params = {}) {
     const resp = await this._t.request({ jsonrpc: "2.0", method, params }); // id は transport が採番
-    if (resp.error) throw new SesameError(resp.error.message, resp.error.data?.kind, resp.error.code);
+    if (resp.error) throw sesameErrorFromRpc(resp.error, "internal");
     return resp.result;
   }
   /** topics を購読。常に await すること (接続/認証/不正 topic エラーが throw で返る)。 */
@@ -210,18 +225,23 @@ class HttpTransport {
       : new SesameError(`token が見つかりません。\`sesame serve --http\` で起動すると ${defaultTokenPath()} に保存されます`, "not_authenticated", 401);
   }
   async request(msg) {
+    const id = ++this._ids;
     let r;
     try {
-      r = await fetch(`${this._base}/rpc`, { method: "POST", headers: this._headers(), body: JSON.stringify({ ...msg, id: ++this._ids }) });
+      r = await fetch(`${this._base}/rpc`, { method: "POST", headers: this._headers(), body: JSON.stringify({ ...msg, id }) });
     } catch (e) {
       throw new SesameError(`接続失敗: ${e.message}。\`sesame serve --http\` を起動しましたか?`, "connection_lost");
     }
-    if (r.status === 401) throw this._unauthorized();
-    return r.status === 204 ? { id: this._ids, result: null } : r.json();
+    if (r.status === 204) return { id, result: null };
+    let body;
+    try { body = await r.json(); } catch { body = null; }
+    if (r.status === 401 && !this._token) throw this._unauthorized();
+    if (!r.ok) throw sesameErrorFromRpc(body?.error ?? body ?? r.statusText, httpKind(r.status), r.status);
+    return body;
   }
   async subscribe(topics, onEvent) {
     // token は Authorization ヘッダ (_headers) で送る。URL クエリに載せると proxy/access ログに漏れる。
-    const url = `${this._base}/events?topics=${topics.join(",")}`;
+    const url = `${this._base}/events?topics=${encodeURIComponent(topics.join(","))}`;
     let res;
     try { res = await fetch(url, { headers: this._headers() }); }
     catch (e) { throw new SesameError(`events 接続失敗: ${e.message}`, "connection_lost"); }
