@@ -16,7 +16,7 @@ import { createECDH } from "node:crypto";
 import { SesameBleSession, BleResultError } from "../../src/ble/session.js";
 import {
   deriveSessionKeyFromEcdh, ccmEncrypt, ccmDecrypt, splitSegments, SegmentAssembler,
-  parseRecvFrame, buildSendFrame, OP, ITEM, SEG,
+  OP, ITEM, SEG,
 } from "../../src/ble/protocol.js";
 import { ecdhSecretPre16 } from "../../src/crypto.js";
 

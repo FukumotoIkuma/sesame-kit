@@ -166,7 +166,16 @@ export function parseMechSetting(payload) {
  * @returns {string}
  */
 function trimNullAndQuestion(buf) {
-  return buf.toString("utf8").replace(/[\x00?]+$/, "");
+  // 線形時間で末尾の 0x00 / '?' を除去する (正規表現 `/[\x00?]+$/` は crafted 入力で
+  // ポリノミアル backtracking = ReDoS のため使わない)。
+  const s = buf.toString("utf8");
+  let end = s.length;
+  while (end > 0) {
+    const c = s.charCodeAt(end - 1);
+    if (c !== 0x00 && c !== 0x3f /* "?" */) break;
+    end--;
+  }
+  return s.slice(0, end);
 }
 
 /**

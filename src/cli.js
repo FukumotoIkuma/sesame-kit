@@ -331,42 +331,6 @@ async function pickRemoteName(program, configStore, current) {
 /**
  * @param {Program} program
  * @param {ConfigStore} configStore
- * @param {string|undefined} current
- * @returns {Promise<string|null|undefined>}
- */
-async function pickLockName(program, configStore, current) {
-  if (current) return current;
-  const cfg = configStore.load();
-  const names = Object.keys(cfg.locks || {});
-  if (names.length === 0) die(t("cli.locksNotRegistered"), 2);
-  if (names.length === 1) return names[0];
-  if (!canPrompt(program)) return null;
-  return selectFromList(t("cli.whichLock"), names, (n) => {
-    const l = cfg.locks[n];
-    const def = n === cfg.default?.lock ? " *" : "";
-    return `${n}${def}\t${l.deviceUUID}\tmodel=${l.model || "?"}${l.alias ? `\t(${l.alias})` : ""}`;
-  });
-}
-
-/**
- * @param {Program} program
- * @param {ConfigStore} configStore
- * @param {string|undefined} current
- * @returns {Promise<string|null|undefined>}
- */
-async function pickHub3Name(program, configStore, current) {
-  if (current) return current;
-  const cfg = configStore.load();
-  const names = Object.keys(cfg.hub3s || {});
-  if (names.length === 0) die(t("cli.hub3NotRegistered"), 2);
-  if (names.length === 1) return names[0];
-  if (!canPrompt(program)) return null;
-  return selectFromList(t("cli.whichHub3"), names, (n) => `${n}\t${cfg.hub3s[n].deviceId}`);
-}
-
-/**
- * @param {Program} program
- * @param {ConfigStore} configStore
  * @param {string|null|undefined} remoteName
  * @param {string|undefined} current
  * @returns {Promise<string|null|undefined>}
@@ -1662,22 +1626,6 @@ function remotesForHub3(program, hub3Name) {
 }
 
 /**
- * 名前 (部分一致・大文字小文字無視) で entry を1つ選ぶ。曖昧/不在は null + reason。
- * @template {{ name: string }} T
- * @param {string|null|undefined} input
- * @param {T[]} entries
- * @returns {{ entry: T|null, reason?: string }}
- */
-function matchLockName(input, entries) {
-  if (!input) return { entry: null, reason: "name required" };
-  const exact = entries.find((e) => e.name === input);
-  if (exact) return { entry: exact };
-  const m = entries.filter((e) => e.name.toLowerCase().includes(String(input).toLowerCase()));
-  if (m.length === 1) return { entry: m[0] };
-  if (m.length > 1) return { entry: null, reason: `"${input}" が複数に一致: ${m.map((e) => e.name).join(", ")}` };
-  return { entry: null, reason: `"${input}" に一致するロックなし` };
-}
-
 /**
  * 統合ハンドラ。op: unlock|lock|toggle|status|autolock|bot。
  * @param {string} op

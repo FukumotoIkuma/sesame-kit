@@ -3,7 +3,7 @@
 //
 // crypto.cmacTime は時刻依存で非決定的なので、固定値 'aabbccdd' に mock して
 // payload のバイト列を決定的に検証する。
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 // cmacTime を固定値にする (sign = 4B = aa bb cc dd)。
 vi.mock("../../src/crypto.js", () => ({

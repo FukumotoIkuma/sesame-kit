@@ -39,7 +39,6 @@ const ACT_HISTORY = ACTION_TYPES.BIZ3_GET_DEVICEHISTORY;  // "biz3GetDeviceHisto
 const ACT_BATTERY = ACTION_TYPES.BIZ3_GET_BATTERY_RECORD; // "biz3GetDeviceBatteryRecord"
 const ACT_FIRMWARE = ACTION_TYPES.BIZ3_LIST_FIRMWARE;     // "biz3ListFirmware"
 const ACT_WEBAPI = ACTION_TYPES.BIZ3_INVOKE_WEBAPI;       // "biz3InvokeWebAPIs"
-const ACT_TRIGGER = ACTION_TYPES.BIZ3_TRIGGER_LOCKER;     // "biz3TriggerLocker" (state push)
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 // ---------- device CRUD (biz3ManageDevice) ----------
@@ -370,6 +369,18 @@ function assertHttpOk(res, op) {
 }
 
 /**
+ * 末尾のスラッシュを線形時間で除去する (正規表現 `/\/+$/` は crafted 入力で
+ * ポリノミアル backtracking = ReDoS のため使わない)。
+ * @param {string} s
+ * @returns {string}
+ */
+function stripTrailingSlashes(s) {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 0x2f /* "/" */) end--;
+  return s.slice(0, end);
+}
+
+/**
  * デフォルト REST transport を作る。原典は API Gateway (AWSCredentialsProvider) だが、
  * 本 kit は既存の Cognito idToken (getValidIdToken) を再利用し Authorization に乗せる。
  *
@@ -382,7 +393,7 @@ export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalT
   if (!baseUrl) throw badRequest("domain.devices.registerBaseUrlRequired");
   if (!tokenStore) throw badRequest("domain.devices.registerTokenStoreRequired");
   if (typeof fetchImpl !== "function") throw badRequest("domain.devices.registerFetchRequired");
-  const base = baseUrl.replace(/\/+$/, ""); // 末尾スラッシュ除去 (パスと二重化させない)
+  const base = stripTrailingSlashes(baseUrl); // 末尾スラッシュ除去 (パスと二重化させない)
   return async ({ method, path, body }) => {
     // path 未指定で base + undefined = '...undefined' という無効 URL を作らない (低優先の防御)。
     if (typeof path !== "string" || !path) throw badRequest("domain.devices.registerPathRequired");
