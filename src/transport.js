@@ -171,11 +171,7 @@ export class Hub3WsClient {
 
   /** @param {...unknown} args */
   log(...args) {
-    if (!this.cfg.debug) return;
-    // 改行を潰してログインジェクション (CR/LF で偽ログ行を差し込む) を防ぐ。debug 専用だが
-    // トークン/サーバ応答など外部由来の文字列が混ざりうるので無害化してから出す。
-    const safe = args.map((a) => (typeof a === "string" ? a.replace(/[\r\n]+/g, " ") : a));
-    console.error("[hub3]", ...safe);
+    if (this.cfg.debug) console.error("[hub3]", ...args);
   }
 
   // ---------- public API ----------
