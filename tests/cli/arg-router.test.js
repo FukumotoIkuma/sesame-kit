@@ -47,4 +47,24 @@ describe("デバイス主語ルーターと値オプション", () => {
     // commander の "unknown command" ではなく、デバイス op 経路のエラーであること。
     expect(r.stderr).not.toMatch(/unknown command/i);
   });
+
+  it("デバイス名の部分一致では実操作に進まない", () => {
+    run(["--config-dir", workDir, "init"]);
+    const add = run([
+      "--config-dir", workDir,
+      "locks", "add",
+      "--name", "front",
+      "--uuid", "AABBCCDD-1111-2222-3333-444455556666",
+      "--secret", "00112233445566778899aabbccddeeff",
+      "--model", "sesame_5",
+      "--json",
+    ]);
+    expect(add.code).toBe(0);
+
+    const r = run(["--config-dir", workDir, "fron", "status", "--cloud-only", "--json"]);
+    expect(r.code).toBe(2);
+    const err = JSON.parse(r.stderr);
+    expect(err.error).toContain('Lock "fron" not found');
+    expect(err.error).not.toContain("Not logged in");
+  }, 15000);
 });

@@ -103,6 +103,8 @@ export class Daemon {
   /** @param {...unknown} a */
   _log(...a) { if (this._debug) console.error("[serve]", ...a); }
 
+  openRpcDocument() { return this._openrpc; }
+
   // ---- 起動ポリシー (framing は先に上がっている前提。ここは背景で接続を試みる) ----
   start() {
     // 再接続のたびに購読を張り直す (C1: subscribe frame 再送が無いとイベントが永久に止まる)。
@@ -201,7 +203,7 @@ export class Daemon {
    * @returns {Promise<unknown>}
    */
   async invoke(method, params, conn) {
-    if (method === "rpc.discover") return this._openrpc;
+    if (method === "rpc.discover") return this.openRpcDocument();
     if (method.startsWith("rpc.")) {
       throw new RpcError(t("serve.methodNotFound", { method }), { code: RPC.METHOD_NOT_FOUND, kind: KIND.NOT_IMPLEMENTED });
     }

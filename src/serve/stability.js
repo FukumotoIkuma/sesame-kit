@@ -15,11 +15,9 @@
 // stable コア (= docs/api-stability.md の "Stable 1.0 surface")。値は provenance。
 // export しているのは整合テスト用 (全キーが実レジストリ/イベントに実在することを保証し、
 // typo/rename による無言の experimental 降格を防ぐ)。
-// 注: `rpc.discover` は daemon が特別扱いで直接処理し、レジストリ＝discover の methods 配列
-// には現れない (注釈対象外)。OpenRPC 仕様の暗黙メタとして常に存在し implicit に stable なので
-// ここには載せない (載せると整合ガードで「実在しない」と落ちる)。
 /** @type {Record<string, string>} */
 export const STABLE_METHODS = {
+  "rpc.discover": "local",
   "status": "local",
   "account.whoami": "app-core",
   "lock.lock": "app-core",

@@ -340,20 +340,12 @@ function resolveBleEntry(ctx, device, options) {
   const cfg = ctx.loadCtx().configStore.load();
   const locks = cfg.locks || {};
 
-  // 1) config の lock 名 (完全一致 → 部分一致) で引く。
+  // 1) config の lock 名 (完全一致) か deviceUUID で引く。部分一致は実操作の誤爆を招くため使わない。
   let name = device;
   let rec = locks[device];
   if (!rec) {
     const byUuid = Object.entries(locks).find(([, l]) => normUuid(l.deviceUUID) === normUuid(device));
     if (byUuid) { name = byUuid[0]; rec = byUuid[1]; }
-  }
-  if (!rec) {
-    const partial = Object.entries(locks).filter(([n]) => n.toLowerCase().includes(String(device).toLowerCase()));
-    if (partial.length === 1) { name = partial[0][0]; rec = partial[0][1]; }
-    else if (partial.length > 1) {
-      ctx.die(t("ble.cli.resolve.ambiguous", { device, names: partial.map(([n]) => n).join(", ") }), 2);
-      return null;
-    }
   }
 
   // 2) config に無くても、UUID らしき指定 + --secret があれば直接 entry を組む。

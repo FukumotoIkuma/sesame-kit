@@ -179,9 +179,6 @@
   "engines": {
     "node": ">=20"
   },
-  "overrides": {
-    "tar": "^7.5.11"
-  },
   "devDependencies": {
     "ink-testing-library": "^4.0.0",
     "typescript": "^6.0.3",
@@ -189,5 +186,12 @@
   },
   "optionalDependencies": {
     "@abandonware/noble": "^1.9.2-25"
+  },
+  "overrides": {
+    "@mapbox/node-pre-gyp": "^2.0.3",
+    "cacache": "^20.0.1",
+    "make-fetch-happen": "^15.0.6",
+    "node-gyp": "^12.4.0",
+    "tar": "^7.5.16"
   }
 }

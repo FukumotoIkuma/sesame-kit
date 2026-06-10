@@ -104,6 +104,7 @@ The message tells you which case you hit:
 - **macOS — no Bluetooth permission** (`bleCode: BLE_UNAUTHORIZED`). Grant the running terminal (Terminal, iTerm, VS Code, …) Bluetooth access in **System Settings → Privacy & Security → Bluetooth**, then re-run. On macOS the CLI also opens that settings pane for you.
 - **Linux / Raspberry Pi / headless — no adapter or insufficient privileges** (`bleCode: BLE_UNSUPPORTED`). Make sure a real Bluetooth adapter is present and the process is allowed to use it — run with privileges or grant the capability (see [Linux / Raspberry Pi](#linux--raspberry-pi) above for `setcap cap_net_raw+eip`).
 - **Bluetooth turned off** (`bleCode: BLE_POWERED_OFF`). Turn Bluetooth on and retry.
+- **Bluetooth initialization timed out** (`bleCode: BLE_INIT_TIMEOUT`). The adapter was detected, but it did not become `poweredOn` before the CLI timeout; retry after the OS Bluetooth stack finishes starting, or restart Bluetooth.
 
 ## As a library
 

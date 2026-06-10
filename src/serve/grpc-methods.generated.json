@@ -1,4 +1,8 @@
 {
+  "RpcDiscover": {
+    "method": "rpc.discover",
+    "jsonFields": []
+  },
   "ScheduleGetScheduleList": {
     "method": "schedule.getScheduleList",
     "jsonFields": []

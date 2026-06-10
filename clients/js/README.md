@@ -10,9 +10,13 @@ This is what `sesame-kit/client` (`package.json` `exports`) points at:
 import { SesameClient } from "sesame-kit/client"; // or "./sesame-client.mjs"
 
 const c = SesameClient.unix();                     // Unix socket (default)
-await c.unlock("front");                            // convenience method
-await c.call("device.history", { deviceUUID: "AB12CD34...", pageSize: 10 }); // any method
-await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // always await
+try {
+  await c.unlock("front");                          // convenience method
+  await c.call("device.history", { deviceUUID: "AB12CD34...", pageSize: 10 }); // any method
+  await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // always await
+} finally {
+  c.close();
+}
 
 // const h = SesameClient.http("http://127.0.0.1:8080");    // token auto-read from serve.token
 // const w = await SesameClient.ws("ws://127.0.0.1:8081");  // full-duplex (npm i ws for header auth)

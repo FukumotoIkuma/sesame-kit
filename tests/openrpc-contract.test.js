@@ -54,6 +54,13 @@ describe("OpenRPC contract artifact (schema/openrpc.json)", () => {
     expect(committed.info["x-apiVersion"]).toBe(CONTRACT_VERSION);
   });
 
+  it("rpc.discover 自身も公開契約に含む", () => {
+    const discover = committed.methods.find((m) => m.name === "rpc.discover");
+    expect(discover).toBeTruthy();
+    expect(discover["x-stability"]).toBe("stable");
+    expect(discover["x-provenance"]).toBe("local");
+  });
+
   it("全 method/event が x-stability / x-provenance を持つ (公開契約の完全性)", () => {
     for (const m of committed.methods) {
       expect(["stable", "experimental"]).toContain(m["x-stability"]);

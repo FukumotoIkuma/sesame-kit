@@ -33,7 +33,7 @@ Run `sesame` for the interactive menu. It lists your devices and the actions eac
 sesame      # ↑↓ move · → (or Enter) confirm · ← (or Esc) back · q quit
 ```
 
-Or run an action directly. The subject is the device: `sesame <device> <action>` (substring match).
+Or run an action directly. The subject is the exact device name from `sesame devices` or `sesame locks ls`: `sesame <device> <action>`.
 
 ```bash
 sesame front status            # current state (locked / unlocked)

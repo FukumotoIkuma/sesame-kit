@@ -5,6 +5,7 @@ syntax = "proto3";
 package sesame;
 
 service Sesame {
+  rpc RpcDiscover (RpcDiscoverRequest) returns (JsonRpc);
   rpc ScheduleGetScheduleList (ScheduleGetScheduleListRequest) returns (JsonRpc);
   rpc ScheduleCancelSchedule (ScheduleCancelScheduleRequest) returns (JsonRpc);
   rpc OrgGetEmployees (OrgGetEmployeesRequest) returns (JsonRpc);
@@ -125,6 +126,8 @@ service Sesame {
   rpc Invoke (JsonRpc) returns (JsonRpc);
 }
 
+message RpcDiscoverRequest {
+}
 message ScheduleGetScheduleListRequest {
   string subUUID = 1;
   double timeoutMs = 2;

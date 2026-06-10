@@ -104,6 +104,7 @@ BLE を起動できない場合、CLI は無言クラッシュせず、わかり
 - **macOS — Bluetooth 権限なし**（`bleCode: BLE_UNAUTHORIZED`）。実行中のターミナル（Terminal / iTerm / VS Code など）に、**システム設定 → プライバシーとセキュリティ → Bluetooth** で Bluetooth アクセスを許可して再実行してください。macOS では CLI がこの設定ペインも自動で開きます。
 - **Linux / Raspberry Pi / ヘッドレス — アダプタ無し or 権限不足**（`bleCode: BLE_UNSUPPORTED`）。実機の Bluetooth アダプタが存在し、プロセスがそれを使える状態か確認してください。十分な権限で実行するか、ケイパビリティを付与します（上記 [Linux / Raspberry Pi](#linux--raspberry-pi) の `setcap cap_net_raw+eip` を参照）。
 - **Bluetooth がオフ**（`bleCode: BLE_POWERED_OFF`）。Bluetooth をオンにして再実行してください。
+- **Bluetooth 初期化 timeout**（`bleCode: BLE_INIT_TIMEOUT`）。アダプタは検出されたものの、CLI の timeout までに `poweredOn` になりませんでした。OS の Bluetooth stack の起動完了を待って再試行するか、Bluetooth を再起動してください。
 
 ## ライブラリとして
 

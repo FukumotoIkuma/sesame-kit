@@ -9,6 +9,20 @@
   },
   "methods": [
     {
+      "name": "rpc.discover",
+      "summary": "machine-readable OpenRPC description of this daemon",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "OpenRPC document",
+          "type": "object"
+        }
+      },
+      "x-stability": "stable",
+      "x-provenance": "local"
+    },
+    {
       "name": "schedule.getScheduleList",
       "summary": "getScheduleList of schedule (auto-exposed)",
       "params": [

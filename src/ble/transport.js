@@ -353,7 +353,12 @@ function loadNoble() {
 function waitPoweredOn(noble, log = () => {}) {
   return new Promise((resolve, reject) => {
     if (noble.state === "poweredOn") return resolve();
-    const to = setTimeout(() => { noble.removeListener("stateChange", onState); reject(new Error(t("ble.bluetoothInitTimeout"))); }, 10_000);
+    const to = setTimeout(() => {
+      noble.removeListener("stateChange", onState);
+      const e = /** @type {CodedError} */ (new Error(t("ble.bluetoothInitTimeout")));
+      e.code = "BLE_INIT_TIMEOUT";
+      reject(e);
+    }, 10_000);
     /** @param {string} state */
     const onState = (state) => {
       log("noble state", state);

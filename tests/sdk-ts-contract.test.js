@@ -28,4 +28,11 @@ describe("TS SDK artifact (sdk/ts/sesame-client.ts)", () => {
     expect(committed).toContain("@experimental");
     expect(committed).toContain(`API_VERSION = "${spec.info["x-apiVersion"]}"`);
   });
+
+  it("HTTP transport errors are normalized into SesameRpcError kind/retryable", () => {
+    expect(committed).toContain("function httpErrorKind");
+    expect(committed).toContain('"not_authenticated"');
+    expect(committed).toContain('"connection_lost"');
+    expect(committed).toContain("cannot reach sesame serve");
+  });
 });

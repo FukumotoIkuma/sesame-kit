@@ -29,6 +29,7 @@ declare namespace _default {
         "serve.subscribeHttpUnsupported": string;
         "serve.rpcTimeout": string;
         "serve.badParamsJson": string;
+        "serve.rpcEventsPersistent": string;
         "serve.hint.notLoggedIn": string;
         "serve.discoverFooter": string;
         "serve.note.shuttingDown": string;
@@ -68,6 +69,8 @@ declare namespace _default {
         "serve.desc.lockNameParam": string;
         "serve.desc.deviceUUIDParam": string;
         "serve.desc.secretKeyParam": string;
+        "serve.sum.rpcDiscover": string;
+        "serve.result.openrpc": string;
         "serve.sum.status": string;
         "serve.sum.whoami": string;
         "serve.result.customerInfo": string;
@@ -150,6 +153,7 @@ declare namespace _default {
         "serve.subscribeHttpUnsupported": string;
         "serve.rpcTimeout": string;
         "serve.badParamsJson": string;
+        "serve.rpcEventsPersistent": string;
         "serve.hint.notLoggedIn": string;
         "serve.discoverFooter": string;
         "serve.note.shuttingDown": string;
@@ -189,6 +193,8 @@ declare namespace _default {
         "serve.desc.lockNameParam": string;
         "serve.desc.deviceUUIDParam": string;
         "serve.desc.secretKeyParam": string;
+        "serve.sum.rpcDiscover": string;
+        "serve.result.openrpc": string;
         "serve.sum.status": string;
         "serve.sum.whoami": string;
         "serve.result.customerInfo": string;
