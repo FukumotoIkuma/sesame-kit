@@ -97,7 +97,7 @@ function closedErr(msg) { const e = /** @type {CodedError} */ (new Error(msg)); 
  */
 function asErrMsg(e) {
   const m = e instanceof Error ? e.message : String(e);
-  return m.replace(/[\r\n]+/g, " ");
+  return m.replace(/\n|\r/g, "");
 }
 
 /**
@@ -387,7 +387,7 @@ export class Hub3WsClient {
    */
   _onClose(code, reason) {
     // reason はサーバ由来。改行を除去してログインジェクションを防ぐ (sanitizer は inline)。
-    this.log("closed", code, (reason ? reason.toString() : "").replace(/[\r\n]+/g, " "));
+    this.log("closed", code, (reason ? reason.toString() : "").replace(/\n|\r/g, ""));
     this._clearKeepalive();
     if (this.connectTimer) { clearTimeout(this.connectTimer); this.connectTimer = null; }
     const wasOpen = this.status === STATUS.OPEN;
@@ -418,7 +418,7 @@ export class Hub3WsClient {
 
   /** @param {Error} err */
   _onError(err) {
-    this.log("error", String(err?.message || err).replace(/[\r\n]+/g, " ")); // err はネットワーク由来
+    this.log("error", String(err?.message || err).replace(/\n|\r/g, "")); // err はネットワーク由来
     // error 直後に close も来るので、reconnect 判断は close 側で行う
   }
 
@@ -492,10 +492,10 @@ export class Hub3WsClient {
     try { msg = JSON.parse(text); }
     catch {
       // text はサーバ由来。改行除去でログインジェクションを防ぐ (sanitizer は inline)。
-      this.log("non-JSON message:", text.slice(0, 200).replace(/[\r\n]+/g, " "));
+      this.log("non-JSON message:", text.slice(0, 200).replace(/\n|\r/g, ""));
       return;
     }
-    this.log("recv:", (text.length > 200 ? text.slice(0, 200) + "..." : text).replace(/[\r\n]+/g, " "));
+    this.log("recv:", (text.length > 200 ? text.slice(0, 200) + "..." : text).replace(/\n|\r/g, ""));
     this.lastActiveTime = Date.now();
 
     // keepalive ack: success フィールド有無問わず pong timer をクリア (Review H-1:
@@ -564,7 +564,7 @@ export class Hub3WsClient {
   /** @param {WsFrame} payload */
   _sendOrQueue(payload) {
     if (this.ws && this.status === STATUS.OPEN) {
-      this.log("send:", JSON.stringify(payload).replace(/[\r\n]+/g, " ")); // payload は呼び出し側入力
+      this.log("send:", JSON.stringify(payload).replace(/\n|\r/g, "")); // payload は呼び出し側入力
       try {
         this.ws.send(JSON.stringify(payload));
       } catch (e) {
@@ -572,7 +572,7 @@ export class Hub3WsClient {
         this.messageQueue.push({ payload, enqueuedAt: Date.now() });
       }
     } else {
-      this.log("queued (not open):", JSON.stringify(payload).replace(/[\r\n]+/g, " "));
+      this.log("queued (not open):", JSON.stringify(payload).replace(/\n|\r/g, ""));
       this.messageQueue.push({ payload, enqueuedAt: Date.now() });
     }
   }
@@ -591,7 +591,7 @@ export class Hub3WsClient {
       const entry = this.messageQueue.shift();
       if (!entry) break;
       try {
-        this.log("flush:", JSON.stringify(entry.payload).replace(/[\r\n]+/g, " "));
+        this.log("flush:", JSON.stringify(entry.payload).replace(/\n|\r/g, ""));
         this.ws.send(JSON.stringify(entry.payload));
       } catch (e) {
         this.log("flush failed, re-queueing:", asErrMsg(e));
