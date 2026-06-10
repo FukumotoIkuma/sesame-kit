@@ -98,6 +98,31 @@ function asErrMsg(e) {
   return String(e);
 }
 
+// debug ログに出さない秘匿フィールド名 (値を伏字にする)。
+const LOG_SECRET_KEYS = "secretKey|sk|token|idToken|refreshToken|accessToken|deviceKey|deviceGroupKey|devicePassword|password";
+
+/**
+ * debug ログ用に引数を 1 行の文字列へ整形する。
+ *   - CR/LF を除去してログインジェクション (偽ログ行の差し込み) を防ぐ。
+ *   - token / secretKey 等の秘匿値を `***` に伏字化し、平文での漏えいを防ぐ
+ *     (WS payload には secretKey/token が含まれうるため)。
+ * @param {unknown[]} args
+ * @returns {string}
+ */
+function formatLogLine(args) {
+  const parts = [];
+  for (const a of args) {
+    if (typeof a === "string") parts.push(a);
+    else { try { parts.push(JSON.stringify(a)); } catch { parts.push(String(a)); } }
+  }
+  return parts.join(" ")
+    .replace(/[\r\n]+/g, " ") // log-injection 対策 (改行除去)
+    // JSON 形式 "key":"value" の秘匿値を伏字化
+    .replace(new RegExp(`("(?:${LOG_SECRET_KEYS})"\\s*:\\s*")[^"]*(")`, "gi"), "$1***$2")
+    // query/kv 形式 key=value の秘匿値を伏字化
+    .replace(new RegExp(`\\b(${LOG_SECRET_KEYS})=[^&\\s"]+`, "gi"), "$1=***");
+}
+
 /**
  * Hub3WsClient のコンストラクタ設定。
  * @typedef {object} Hub3WsClientConfig
@@ -171,7 +196,7 @@ export class Hub3WsClient {
 
   /** @param {...unknown} args */
   log(...args) {
-    if (this.cfg.debug) console.error("[hub3]", ...args);
+    if (this.cfg.debug) console.error("[hub3]", formatLogLine(args));
   }
 
   // ---------- public API ----------
@@ -317,7 +342,15 @@ export class Hub3WsClient {
 
   _initWebSocket() {
     this.status = STATUS.CONNECTING;
-    const url = `${this.cfg.wsUrl}?token=${encodeURIComponent(this.idToken)}&lang=${encodeURIComponent(this.cfg.lang)}`;
+    // URL は new URL() で構築・検証する (生文字列連結を避け、scheme を ws/wss に限定)。
+    // これにより不正な wsUrl を接続前に弾き、token/lang のエンコードも URL API に委ねる。
+    const wsBase = new URL(this.cfg.wsUrl);
+    if (wsBase.protocol !== "wss:" && wsBase.protocol !== "ws:") {
+      throw new Error(t("domain.transport.wsUrlRequired"));
+    }
+    wsBase.searchParams.set("token", this.idToken);
+    wsBase.searchParams.set("lang", this.cfg.lang);
+    const url = wsBase.href;
     this.log("connecting", this.cfg.wsUrl);
 
     if (this.ws) {
