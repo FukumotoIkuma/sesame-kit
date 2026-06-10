@@ -89,34 +89,15 @@ function timeoutErr(msg) { const e = /** @type {CodedError} */ (new Error(msg));
 function closedErr(msg) { const e = /** @type {CodedError} */ (new Error(msg)); e.code = TRANSPORT_ERR.CLOSED; return e; }
 
 /**
- * catch 節の unknown から message 文字列を安全に取り出す (log 用)。
+ * catch 節の unknown から message 文字列を取り出し、改行 (CR/LF) を除去して返す。
+ * 改行除去はログインジェクション (偽ログ行の差し込み) 対策の sanitizer を兼ねる
+ * (error message はネットワーク/上流由来でありうるため)。
  * @param {unknown} e
  * @returns {string}
  */
 function asErrMsg(e) {
-  if (e instanceof Error) return e.message;
-  return String(e);
-}
-
-// debug ログに出さない秘匿フィールド名 (値を伏字にする)。
-const LOG_SECRET_KEYS = "secretKey|sk|token|idToken|refreshToken|accessToken|deviceKey|deviceGroupKey|devicePassword|password";
-const LOG_REDACT_JSON = new RegExp(`("(?:${LOG_SECRET_KEYS})"\\s*:\\s*")[^"]*(")`, "gi");
-const LOG_REDACT_KV = new RegExp(`\\b(${LOG_SECRET_KEYS})=[^&\\s"]+`, "gi");
-
-/**
- * 外部由来 (サーバ応答 / WS payload 等) の値を debug ログへ出す前に無害化する。
- *   - CR/LF を除去してログインジェクション (偽ログ行の差し込み) を防ぐ。
- *   - token / secretKey 等の秘匿値を `***` に伏字化し、平文漏えいを防ぐ。
- * 信頼できる固定文字列には使わない (ログのノイズ回避)。
- * @param {unknown} v
- * @returns {string}
- */
-function scrub(v) {
-  let s;
-  if (typeof v === "string") s = v;
-  else { try { s = JSON.stringify(v); } catch { s = undefined; } }
-  if (typeof s !== "string") s = String(v); // undefined/null/シンボル等のフォールバック
-  return s.replace(/[\r\n]+/g, " ").replace(LOG_REDACT_JSON, "$1***$2").replace(LOG_REDACT_KV, "$1=***");
+  const m = e instanceof Error ? e.message : String(e);
+  return m.replace(/[\r\n]+/g, " ");
 }
 
 /**
@@ -405,7 +386,8 @@ export class Hub3WsClient {
    * @param {Buffer} [reason]
    */
   _onClose(code, reason) {
-    this.log("closed", code, scrub(reason?.toString())); // reason はサーバ由来 → 無害化
+    // reason はサーバ由来。改行を除去してログインジェクションを防ぐ (sanitizer は inline)。
+    this.log("closed", code, (reason ? reason.toString() : "").replace(/[\r\n]+/g, " "));
     this._clearKeepalive();
     if (this.connectTimer) { clearTimeout(this.connectTimer); this.connectTimer = null; }
     const wasOpen = this.status === STATUS.OPEN;
@@ -436,7 +418,7 @@ export class Hub3WsClient {
 
   /** @param {Error} err */
   _onError(err) {
-    this.log("error", scrub(err?.message || err)); // err はネットワーク由来 → 無害化
+    this.log("error", String(err?.message || err).replace(/[\r\n]+/g, " ")); // err はネットワーク由来
     // error 直後に close も来るので、reconnect 判断は close 側で行う
   }
 
@@ -509,10 +491,11 @@ export class Hub3WsClient {
     let msg;
     try { msg = JSON.parse(text); }
     catch {
-      this.log("non-JSON message:", scrub(text.slice(0, 200))); // text はサーバ由来 → 無害化
+      // text はサーバ由来。改行除去でログインジェクションを防ぐ (sanitizer は inline)。
+      this.log("non-JSON message:", text.slice(0, 200).replace(/[\r\n]+/g, " "));
       return;
     }
-    this.log("recv:", scrub(text.length > 200 ? text.slice(0, 200) + "..." : text)); // 同上
+    this.log("recv:", (text.length > 200 ? text.slice(0, 200) + "..." : text).replace(/[\r\n]+/g, " "));
     this.lastActiveTime = Date.now();
 
     // keepalive ack: success フィールド有無問わず pong timer をクリア (Review H-1:
@@ -527,7 +510,7 @@ export class Hub3WsClient {
     if (queue && queue.length > 0) {
       const resolver = queue.shift();
       if (queue.length === 0) this.pending.delete(key);
-      if (resolver) { try { resolver(msg); } catch (e) { this.log("resolver threw:", e); } }
+      if (resolver) { try { resolver(msg); } catch (e) { this.log("resolver threw:", asErrMsg(e)); } }
     }
 
     // 永続購読 fan-out。Set を snapshot してから iterate (Review H-6:
@@ -535,12 +518,12 @@ export class Hub3WsClient {
     const subs = this.subscribers.get(key);
     if (subs && subs.size > 0) {
       for (const fn of [...subs]) {
-        try { fn(msg); } catch (e) { this.log("subscriber threw:", e); }
+        try { fn(msg); } catch (e) { this.log("subscriber threw:", asErrMsg(e)); }
       }
     }
 
     for (const l of this.listeners) {
-      try { l(msg); } catch (e) { this.log("listener err", e); }
+      try { l(msg); } catch (e) { this.log("listener err", asErrMsg(e)); }
     }
   }
 
@@ -581,7 +564,7 @@ export class Hub3WsClient {
   /** @param {WsFrame} payload */
   _sendOrQueue(payload) {
     if (this.ws && this.status === STATUS.OPEN) {
-      this.log("send:", JSON.stringify(payload));
+      this.log("send:", JSON.stringify(payload).replace(/[\r\n]+/g, " ")); // payload は呼び出し側入力
       try {
         this.ws.send(JSON.stringify(payload));
       } catch (e) {
@@ -589,7 +572,7 @@ export class Hub3WsClient {
         this.messageQueue.push({ payload, enqueuedAt: Date.now() });
       }
     } else {
-      this.log("queued (not open):", JSON.stringify(payload));
+      this.log("queued (not open):", JSON.stringify(payload).replace(/[\r\n]+/g, " "));
       this.messageQueue.push({ payload, enqueuedAt: Date.now() });
     }
   }
@@ -608,7 +591,7 @@ export class Hub3WsClient {
       const entry = this.messageQueue.shift();
       if (!entry) break;
       try {
-        this.log("flush:", JSON.stringify(entry.payload));
+        this.log("flush:", JSON.stringify(entry.payload).replace(/[\r\n]+/g, " "));
         this.ws.send(JSON.stringify(entry.payload));
       } catch (e) {
         this.log("flush failed, re-queueing:", asErrMsg(e));
