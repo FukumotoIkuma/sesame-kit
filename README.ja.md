@@ -101,10 +101,10 @@ IR を使うには Hub3 と Remote の両方が登録済みである必要があ
 sesame                         # デバイス→操作を選ぶ。  ↑↓ 移動 · → 決定 · ← 戻る · q 終了
 ```
 
-操作を直接指定する場合、主語はデバイスです: `sesame <device> <action>`。`sesame devices` で出た自分のデバイス名を使います（部分一致。下の `front` は例）。
+操作を直接指定する場合、主語はデバイスです: `sesame <device> <action>`。`sesame devices` または `sesame locks ls` で出た正確なデバイス名を使います（下の `front` は例）。
 
 ```bash
-sesame front unlock            # 解錠 (部分一致: sesame 玄関 unlock)
+sesame front unlock            # 解錠
 sesame front lock              # 施錠
 sesame front status            # 状態 (施錠 / 解錠・位置)
 sesame front autolock 30       # オートロック (BLE 必須。0=無効)
@@ -215,9 +215,13 @@ JSON-RPC をラップした薄いクライアント（上記の `clients/` 層�
 ```js
 import { SesameClient } from "sesame-kit/client";   // npm install sesame-kit の後
 const c = SesameClient.unix();                       // 既定 Unix ソケット
-console.log(await c.unlock("front"));
-console.log(await c.call("device.history", { deviceUUID: "AB12CD34...", pageSize: 10 })); // 任意のメソッド。deviceUUID は `sesame devices` から
-await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // 常に await
+try {
+  console.log(await c.unlock("front"));
+  console.log(await c.call("device.history", { deviceUUID: "AB12CD34...", pageSize: 10 })); // 任意のメソッド。deviceUUID は `sesame devices` から
+  await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // 常に await
+} finally {
+  c.close();
+}
 ```
 
 ```python
@@ -359,7 +363,7 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 - `triggerLock timeout`: `secretKey` 不一致、Hub3 オフライン、または WS の半開接続 (自動再接続で復帰)。
 - `learn timeout`: Hub3 が REGISTER に入りましたが波形を受け取れませんでした。距離を縮めるか、別のボタンを試してください。
 - `apiKeyId required`: `webapi` 系は config.json に `apiKeyId` を入れます (biz3 dev console で発行)。
-- **BLE を初期化できない** (`sesame ble …` / `--ble-only`): CLI は無言クラッシュせず終了コード `2` とわかりやすいメッセージを出します (`--json` 時は `{ error, code, bleCode }`)。`bleCode: BLE_UNAUTHORIZED` → ターミナルに Bluetooth 権限を付与 (macOS: システム設定 → プライバシーとセキュリティ → Bluetooth)。`BLE_UNSUPPORTED` → アダプタ無し / 権限不足 (Linux / Raspberry Pi / ヘッドレス — 実機アダプタと `setcap cap_net_raw+eip` が必要)。`BLE_POWERED_OFF` → Bluetooth をオンにする。詳細は [docs/ja/ble.md](./docs/ja/ble.md#トラブルシュート)。
+- **BLE を初期化できない** (`sesame ble …` / `--ble-only`): CLI は無言クラッシュせず終了コード `2` とわかりやすいメッセージを出します (`--json` 時は `{ error, code, bleCode }`)。`bleCode: BLE_UNAUTHORIZED` → ターミナルに Bluetooth 権限を付与 (macOS: システム設定 → プライバシーとセキュリティ → Bluetooth)。`BLE_UNSUPPORTED` → アダプタ無し / 権限不足 (Linux / Raspberry Pi / ヘッドレス — 実機アダプタと `setcap cap_net_raw+eip` が必要)。`BLE_POWERED_OFF` → Bluetooth をオンにする。`BLE_INIT_TIMEOUT` → Bluetooth が時間内に ready にならなかった状態。詳細は [docs/ja/ble.md](./docs/ja/ble.md#トラブルシュート)。
 
 ## 関連
 

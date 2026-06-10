@@ -4,6 +4,14 @@ declare namespace _default {
         "cli.promptAbortedEof": string;
         "cli.invalidJsonValue": string;
         "cli.invalidJsonExample": string;
+        "cli.helpOption": string;
+        "cli.helpCommand": string;
+        "cli.helpTitleUsage": string;
+        "cli.helpTitleArguments": string;
+        "cli.helpTitleOptions": string;
+        "cli.helpTitleGlobalOptions": string;
+        "cli.helpTitleCommands": string;
+        "cli.versionOption": string;
         "cli.remotesNotRegistered": string;
         "cli.whichRemote": string;
         "cli.locksNotRegistered": string;
@@ -31,6 +39,8 @@ declare namespace _default {
         "cli.bootConnectFail": string;
         "cli.verifyCodePrompt": string;
         "cli.codeRequired": string;
+        "cli.bootstrapEmpty": string;
+        "cli.bootstrapInvalidJson": string;
         "cli.signedInAutoSetup": string;
         "cli.verifyDone": string;
         "cli.verifyExamples": string;
@@ -97,6 +107,9 @@ declare namespace _default {
         "cli.deviceUuidRequired": string;
         "cli.secretKeyPrompt": string;
         "cli.secretKeyRequired": string;
+        "cli.invalidDeviceUuid": string;
+        "cli.invalidSecretKey": string;
+        "cli.invalidLockModel": string;
         "cli.modelPrompt": string;
         "cli.aliasPrompt": string;
         "cli.okLockAdded": string;
@@ -312,6 +325,14 @@ declare namespace _default {
         "cli.promptAbortedEof": string;
         "cli.invalidJsonValue": string;
         "cli.invalidJsonExample": string;
+        "cli.helpOption": string;
+        "cli.helpCommand": string;
+        "cli.helpTitleUsage": string;
+        "cli.helpTitleArguments": string;
+        "cli.helpTitleOptions": string;
+        "cli.helpTitleGlobalOptions": string;
+        "cli.helpTitleCommands": string;
+        "cli.versionOption": string;
         "cli.remotesNotRegistered": string;
         "cli.whichRemote": string;
         "cli.locksNotRegistered": string;
@@ -339,6 +360,8 @@ declare namespace _default {
         "cli.bootConnectFail": string;
         "cli.verifyCodePrompt": string;
         "cli.codeRequired": string;
+        "cli.bootstrapEmpty": string;
+        "cli.bootstrapInvalidJson": string;
         "cli.signedInAutoSetup": string;
         "cli.verifyDone": string;
         "cli.verifyExamples": string;
@@ -405,6 +428,9 @@ declare namespace _default {
         "cli.deviceUuidRequired": string;
         "cli.secretKeyPrompt": string;
         "cli.secretKeyRequired": string;
+        "cli.invalidDeviceUuid": string;
+        "cli.invalidSecretKey": string;
+        "cli.invalidLockModel": string;
         "cli.modelPrompt": string;
         "cli.aliasPrompt": string;
         "cli.okLockAdded": string;

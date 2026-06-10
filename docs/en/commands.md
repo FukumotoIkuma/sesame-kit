@@ -10,10 +10,10 @@
 ## Device operations (device as the subject)
 
 The subject is the **device**. `sesame <device> <action>` mirrors the SDK's `device.action()` ordering.
-`device` is a name (substring match allowed). Omit `action` for that device's interactive menu; omit `device` too for the interactive menu over all devices (= `session`).
+`device` is the exact name shown by `sesame devices` or `sesame locks ls`. Omit `action` for that device's interactive menu; omit `device` too for the interactive menu over all devices (= `session`).
 
 ```bash
-sesame front unlock            # front.unlock()  (substring match: sesame 玄関 unlock)
+sesame front unlock            # front.unlock()
 sesame front lock              # lock
 sesame front toggle            # invert from current state
 sesame front status            # status (locked / unlocked, position)

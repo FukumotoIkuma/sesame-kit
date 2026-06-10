@@ -660,6 +660,14 @@ export function buildRegistry() {
   /** @type {Map<string, MethodEntry>} */
   const reg = new Map();
 
+  reg.set("rpc.discover", {
+    summary: t("serve.sum.rpcDiscover"),
+    params: [],
+    result: t("serve.result.openrpc"),
+    namespace: "rpc",
+    handler: ({ daemon }) => daemon.openRpcDocument(),
+  });
+
   // 1) 名前空間 op を NAMESPACE_OPS から自動公開。
   for (const [ns, mod] of Object.entries(NS_MODULES)) {
     const ops = Array.isArray(mod.NAMESPACE_OPS) ? mod.NAMESPACE_OPS : [];

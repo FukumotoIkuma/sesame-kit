@@ -68,6 +68,14 @@ describe("sesame rpc client (UDS, end-to-end)", () => {
     expect(parsed.connected).toBe(true);
     expect(parsed).toHaveProperty("apiVersion");
   });
+
+  it("`sesame rpc events.subscribe` は一時購読として成功させず --subscribe に誘導する", async () => {
+    await startDaemon();
+    const r = rpcClient(["events.subscribe", "--params", '{"topics":["lockState"]}']);
+    expect(r.status).toBe(2);
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toMatch(/--subscribe|persistent stream/i);
+  });
 });
 
 /** HTTP デーモンをエフェメラルポートで起動し、URL (token は serve.token に保存される) を返す。 */

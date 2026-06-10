@@ -13,7 +13,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { SesameHub3 } from "./client.js";
-import { ConfigStore } from "./config.js";
+import { ConfigStore, isLockModel } from "./config.js";
 import { FileTokenStore } from "./tokens.js";
 import { configPaths } from "./paths.js";
 import { ensureSecureDir, writeSecretJson, restrictSecretFile } from "./secure-fs.js";
@@ -151,6 +151,23 @@ function redactConfig(cfg) {
 function out(json, humanFn, jsonObj) {
   if (json) console.log(JSON.stringify(jsonObj, null, 2));
   else humanFn();
+}
+
+/**
+ * @param {unknown} v
+ * @returns {boolean}
+ */
+function isDeviceUuidLike(v) {
+  return typeof v === "string" &&
+    (/^[0-9a-f]{32}$/i.test(v) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v));
+}
+
+/**
+ * @param {unknown} v
+ * @returns {boolean}
+ */
+function isSecretKeyLike(v) {
+  return typeof v === "string" && /^[0-9a-f]{32}$/i.test(v);
 }
 
 /**
@@ -761,10 +778,7 @@ async function cmdRemoteAdd(_opts, program) {
   await withHub(program, async (hub, { opts }) => {
     await hub.syncHub3sFromDevices(); // hub3 名を確保
     const candidates = await hub.listRemotesFromDevices();
-    if (!candidates.length) {
-      console.error(t("cli.remotesNotFound"));
-      return;
-    }
+    if (!candidates.length) { die(t("cli.remotesNotFound"), 2); return; }
     const chosen = candidates.length === 1
       ? candidates[0]
       : await selectFromList(t("cli.whichRemote"), candidates,
@@ -850,10 +864,7 @@ async function cmdHub3Add(_opts, program) {
   await withHub(program, async (hub, { opts }) => {
     const list = await hub.listDevices();
     const hub3Devices = list.filter((d) => d.deviceModel === "hub_3" || d.deviceModel === "hub_3_lte");
-    if (!hub3Devices.length) {
-      console.error(t("cli.hub3NotFoundInDevices"));
-      return;
-    }
+    if (!hub3Devices.length) { die(t("cli.hub3NotFoundInDevices"), 2); return; }
     const chosen = hub3Devices.length === 1
       ? hub3Devices[0]
       : await selectFromList(t("cli.whichHub3"), hub3Devices,
@@ -890,7 +901,7 @@ async function cmdLockLs(_opts, program) {
       console.log(`${mark} ${n}\t${l.deviceUUID}\tmodel=${l.model || "?"}${l.alias ? `\t(${l.alias})` : ""}`);
     }
     console.log(t("cli.defaultMarker"));
-  }, { default: def, locks });
+  }, redactConfig({ default: def, locks }));
 }
 
 /**
@@ -947,9 +958,12 @@ async function cmdLockAdd(opts, program) {
   if (!name) die(t("cli.nameRequired"), 2);
   const deviceUUID = await ask("uuid", t("cli.deviceUuidPrompt"), true, parsed?.deviceUUID);
   if (!deviceUUID) die(t("cli.deviceUuidRequired"), 2);
+  if (!isDeviceUuidLike(deviceUUID)) die(t("cli.invalidDeviceUuid", { value: deviceUUID }), 2);
   const secretKey = await ask("secret", t("cli.secretKeyPrompt"), true, parsed?.secretKey);
   if (!secretKey) die(t("cli.secretKeyRequired"), 2);
+  if (!isSecretKeyLike(secretKey)) die(t("cli.invalidSecretKey"), 2);
   const model = await ask("model", t("cli.modelPrompt"), false, parsed?.deviceModel);
+  if (model && !isLockModel(model)) die(t("cli.invalidLockModel", { model }), 2);
   const alias = await ask("alias", t("cli.aliasPrompt"), false);
   configStore.addLock(name, {
     deviceUUID,
@@ -1422,12 +1436,11 @@ async function cmdWebapi(func, options, program) {
 
 /**
  * config からロック entry を解決する。
- * 優先: 位置引数/--name → default.lock → 単一なら自動 → 部分一致 → 対話選択。
+ * 優先: 位置引数/--name → default.lock → 単一なら自動 → 対話選択。
  * @returns {{name:string, deviceUUID:string, secretKey:string}|null} die 済みなら null
  */
 /**
  * 先頭トークンが「登録済みデバイス名」を指しているか (op へ回してよいか) を非破壊で判定する。
- * resolveLockEntry の名前解決 (完全一致 + 大文字小文字無視の部分一致) を踏襲しつつ、
  * lock 派生 view に限らず devices/hub3s の全デバイスキーを対象にする。
  * config 不在/破損時は false (= 未知コマンド扱いに委ねる)。例外は飲み込む (ルーティングを壊さない)。
  * @param {Program} program
@@ -1442,10 +1455,7 @@ function isKnownDevice(program, name) {
     const cfg = configStore.load();
     const names = Object.keys(cfg.devices || {});
     if (names.length === 0) return false;
-    if (names.includes(name)) return true; // 完全一致
-    const lower = String(name).toLowerCase();
-    // 部分一致が一意に定まるときのみデバイスとみなす (resolveLockEntry と同じ曖昧さ規則)。
-    return names.filter((n) => n.toLowerCase().includes(lower)).length >= 1;
+    return names.includes(name);
   } catch {
     return false;
   }
@@ -1469,13 +1479,7 @@ async function resolveLockEntry(program, name) {
   let chosen = null;
   if (name) {
     if (locks[name]) chosen = name; // 完全一致
-    else {
-      // 部分一致 (大文字小文字無視)
-      const matches = names.filter((n) => n.toLowerCase().includes(String(name).toLowerCase()));
-      if (matches.length === 1) chosen = matches[0];
-      else if (matches.length > 1) { die(t("cli.multipleMatch", { name, matches: matches.join(", ") }), 2); return null; }
-      else { die(t("cli.lockNotFound", { name, names: names.join(", ") }), 2); return null; }
-    }
+    else { die(t("cli.lockNotFound", { name, names: names.join(", ") }), 2); return null; }
   } else {
     chosen = cfg.default?.lock || (names.length === 1 ? names[0] : null);
     if (!chosen) {
@@ -1626,6 +1630,18 @@ function remotesForHub3(program, hub3Name) {
 }
 
 /**
+ * 名前 (完全一致) で entry を1つ選ぶ。不在は null + reason。
+ * @param {string|undefined} input
+ * @param {LockEntry[]} entries
+ * @returns {{entry: LockEntry|null, reason?: string}}
+ */
+function matchLockName(input, entries) {
+  if (!input) return { entry: null, reason: "name required" };
+  const exact = entries.find((e) => e.name === input);
+  if (exact) return { entry: exact };
+  return { entry: null, reason: `"${input}" に一致するロックなし` };
+}
+
 /**
  * 統合ハンドラ。op: unlock|lock|toggle|status|autolock|bot。
  * @param {string} op
@@ -1833,7 +1849,7 @@ function makeSessionExec(hub) {
  * 対象ロックへ BLE 接続を張ったまま保持し、runSessionMenu でメニュー操作させる。
  * 接続を維持するので 1 操作ごとの再スキャン/再接続が起きない。
  *
- * @param {string[]} names 対象ロック名 (部分一致可)。空なら config の全ロック。
+ * @param {string[]} names 対象ロック名 (完全一致)。空なら config の全ロック。
  * @param {{ bleOnly?: boolean, cloudOnly?: boolean }} options
  * @param {Program} program
  */
@@ -1851,15 +1867,15 @@ async function cmdSession(names, options, program) {
   const allDevs = /** @type {SessionEntry[]} */ (/** @type {unknown} */ ([...locks, ...hub3s]));
   if (allDevs.length === 0) { die(t("cli.noOperableDevices"), 2); return; }
 
-  // 対象を決定: 名前指定があれば部分一致で絞る、無ければ全デバイス。
+  // 対象を決定: 名前指定があれば完全一致で絞る、無ければ全デバイス。
   /** @type {SessionEntry[]} */
   let targets;
   if (Array.isArray(names) && names.length > 0) {
     targets = [];
     for (const n of names) {
-      const matches = allDevs.filter((e) => e.name.toLowerCase().includes(String(n).toLowerCase()));
-      if (matches.length === 0) { die(t("cli.deviceNotFoundCandidates", { name: n, names: allDevs.map((e) => e.name).join(", ") }), 2); return; }
-      for (const m of matches) if (!targets.some((t) => t.name === m.name)) targets.push(m);
+      const match = allDevs.find((e) => e.name === n);
+      if (!match) { die(t("cli.deviceNotFoundCandidates", { name: n, names: allDevs.map((e) => e.name).join(", ") }), 2); return; }
+      if (!targets.some((t) => t.name === match.name)) targets.push(match);
     }
   } else {
     targets = allDevs;
@@ -2175,7 +2191,7 @@ export async function run(argv = process.argv) {
   program
     .name("sesame")
     .description(t("cli.progDescription"))
-    .version(getPkgVersion(), "-V, --version")
+    .version(getPkgVersion(), "-V, --version", t("cli.versionOption"))
     // 引数不足/未知オプション時に usage を出す (commander 既定はエラー1行のみで不親切)。
     // この前に設定すると後で追加する全サブコマンドへ継承される。--json 時は writeErr 側で抑止。
     .showHelpAfterError()
@@ -2184,6 +2200,18 @@ export async function run(argv = process.argv) {
     .option("--debug", t("cli.optDebug"))
     .option("--json", t("cli.optJson"))
     .option("--lang <lang>", t("cli.optLang"));
+  program
+    .helpOption("-h, --help", t("cli.helpOption"))
+    .addHelpCommand("help [command]", t("cli.helpCommand"))
+    .configureHelp({
+      styleTitle: (str) => ({
+        "Usage:": t("cli.helpTitleUsage"),
+        "Arguments:": t("cli.helpTitleArguments"),
+        "Options:": t("cli.helpTitleOptions"),
+        "Global Options:": t("cli.helpTitleGlobalOptions"),
+        "Commands:": t("cli.helpTitleCommands"),
+      }[str] || str),
+    });
 
   program.addHelpText("before", t("cli.helpBefore"));
 
@@ -2349,7 +2377,14 @@ export async function run(argv = process.argv) {
       const { tokenStore } = loadCtx(program);
       const chunks = [];
       for await (const c of process.stdin) chunks.push(c);
-      const values = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      const input = Buffer.concat(chunks).toString("utf8").trim();
+      if (!input) die(t("cli.bootstrapEmpty"), 2);
+      let values;
+      try { values = JSON.parse(input); }
+      catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        die(t("cli.bootstrapInvalidJson", { message }), 2);
+      }
       const tok = bootstrap(tokenStore, values);
       out(isJsonMode(), () => console.log(t("cli.okBootstrapped", { clientId: /** @type {string} */ (tok.clientId) })),
         { ok: true, clientId: tok.clientId });
@@ -2441,6 +2476,7 @@ function maybeHandleBleError(err) {
     code !== "BLE_UNAUTHORIZED" &&
     code !== "BLE_UNSUPPORTED" && // Linux/RPi/headless: アダプタ無し・権限不足 (native abort 探触のマップ先)
     code !== "BLE_POWERED_OFF" &&
+    code !== "BLE_INIT_TIMEOUT" &&
     code !== "BLE_NO_ADAPTER"
   )
     return false;
@@ -2460,4 +2496,3 @@ function maybeHandleBleError(err) {
   process.exitCode = 2;
   return true;
 }
-

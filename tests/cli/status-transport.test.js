@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { ConfigStore } from "../../src/config.js";
 
 const BIN = resolve(__dirname, "..", "..", "bin", "sesame.js");
 let workDir;
@@ -53,7 +54,13 @@ describe("sesame <device> status の経路ゲート", () => {
 
   it("mech を持たない hub は status を従来どおり非対応で弾く", () => {
     runCli(["init"]);
-    expect(addLock("myhub", "hub_3").code).toBe(0);
+    // `locks add` は hub_3 を拒否するようになった。ここでは旧版/手書き由来の壊れた
+    // lock view が残っていても status の能力ゲートで止まることを直接固定する。
+    ConfigStore.fromConfigDir(workDir).addLock("myhub", {
+      deviceUUID: "AABBCCDD-1111-2222-3333-444455556666",
+      secretKey: "00112233445566778899aabbccddeeff",
+      model: "hub_3",
+    });
     const r = runCli(["myhub", "status", "--cloud-only", "--json"]);
     expect(r.code).not.toBe(0);
     const err = JSON.parse(r.stderr);

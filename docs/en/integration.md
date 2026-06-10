@@ -117,10 +117,14 @@ Thin clients wrap the above so you write `c.unlock("front")` instead of building
 import { SesameClient } from "sesame-kit/client";
 
 const c = SesameClient.unix();                          // default Unix socket
-console.log(await c.unlock("front"));                   // convenience method
-console.log(await c.call("device.history", { deviceUUID: "AB12CD34...", pageSize: 10 })); // any method
-console.log((await c.discover()).methods.map((m) => m.name));  // list methods from JS
-await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // always await
+try {
+  console.log(await c.unlock("front"));                 // convenience method
+  console.log(await c.call("device.history", { deviceUUID: "AB12CD34...", pageSize: 10 })); // any method
+  console.log((await c.discover()).methods.map((m) => m.name));  // list methods from JS
+  await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // always await
+} finally {
+  c.close();
+}
 
 // const h = SesameClient.http("http://127.0.0.1:8080");   // token auto-read from serve.token
 // const w = await SesameClient.ws("ws://127.0.0.1:8081");  // npm i ws for header auth

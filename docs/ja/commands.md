@@ -10,11 +10,11 @@
 ## デバイス操作（デバイス主語）
 
 主語は**デバイス**です。`sesame <device> <action>` は SDK の `device.action()` と同じ並びです。
-device は名前（部分一致可）。action 省略でそのデバイスの対話メニュー、device も省略で全デバイスの
+device は `sesame devices` / `sesame locks ls` に出る正確な名前。action 省略でそのデバイスの対話メニュー、device も省略で全デバイスの
 対話メニュー（＝ `session`）になります。
 
 ```bash
-sesame front unlock            # front.unlock()  (部分一致可: sesame 玄関 unlock)
+sesame front unlock            # front.unlock()
 sesame front lock              # 施錠
 sesame front toggle            # 現在状態で反転
 sesame front status            # 状態 (施錠/解錠・位置)

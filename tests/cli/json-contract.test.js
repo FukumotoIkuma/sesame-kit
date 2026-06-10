@@ -44,11 +44,12 @@ describe("CLI --json 出力契約", () => {
 
   it("locks add はフラグで非対話登録でき、stdout は純 JSON", () => {
     runCli(["init"]);
+    const secret = "00112233445566778899aabbccddeeff";
     const r = runCli([
       "locks", "add", "--json",
       "--name", "front",
       "--uuid", "AABBCCDD-1111-2222-3333-444455556666",
-      "--secret", "00112233445566778899aabbccddeeff",
+      "--secret", secret,
       "--model", "sesame_5_pro",
     ]);
     expect(r.code).toBe(0);
@@ -57,9 +58,48 @@ describe("CLI --json 出力契約", () => {
     // 登録が効いていることを locks ls --json で確認
     const ls = runCli(["locks", "ls", "--json"]);
     expect(ls.code).toBe(0);
-    expect(() => JSON.parse(ls.stdout)).not.toThrow();
+    const listed = JSON.parse(ls.stdout);
     expect(ls.stdout).toContain("front");
+    expect(ls.stdout).not.toContain(secret);
+    expect(listed.locks.front.secretKey).toMatch(/len=32/);
   }, 15000); // 並列スイート実行下で node を 3 回同期 spawn するため余裕を持たせる
+
+  it("locks add は UUID/secret/model を保存前に検証する", () => {
+    runCli(["init"]);
+    const badUuid = runCli([
+      "locks", "add", "--json",
+      "--name", "bad",
+      "--uuid", "not-a-uuid",
+      "--secret", "00112233445566778899aabbccddeeff",
+      "--model", "sesame_5",
+    ]);
+    expect(badUuid.code).toBe(2);
+    expect(JSON.parse(badUuid.stderr).error).toMatch(/deviceUUID/i);
+
+    const badSecret = runCli([
+      "locks", "add", "--json",
+      "--name", "bad",
+      "--uuid", "AABBCCDD-1111-2222-3333-444455556666",
+      "--secret", "nope",
+      "--model", "sesame_5",
+    ]);
+    expect(badSecret.code).toBe(2);
+    expect(JSON.parse(badSecret.stderr).error).toMatch(/secretKey/i);
+
+    const badModel = runCli([
+      "locks", "add", "--json",
+      "--name", "bad",
+      "--uuid", "AABBCCDD-1111-2222-3333-444455556666",
+      "--secret", "00112233445566778899aabbccddeeff",
+      "--model", "hub_3",
+    ]);
+    expect(badModel.code).toBe(2);
+    expect(JSON.parse(badModel.stderr).error).toMatch(/model/i);
+
+    const ls = runCli(["locks", "ls", "--json"]);
+    expect(ls.code).toBe(0);
+    expect(JSON.parse(ls.stdout).locks).toEqual({});
+  }, 15000);
 
   it("locks add は非対話で必須フラグ欠落なら固まらず JSON エラーで落ちる", () => {
     runCli(["init"]);
@@ -84,6 +124,23 @@ describe("CLI --json 出力契約", () => {
     expect(r.code).not.toBe(0);
     expect(() => JSON.parse(r.stderr)).not.toThrow();
     expect(JSON.parse(r.stderr).error).toBeTruthy();
+  });
+
+  it("bootstrap は空 stdin/壊れた JSON を JSON エラー封筒で落とす", () => {
+    const empty = runCli(["bootstrap", "--json"]);
+    expect(empty.code).toBe(2);
+    expect(empty.stdout).toBe("");
+    expect(JSON.parse(empty.stderr).error).toMatch(/bootstrap/i);
+  });
+
+  it("--lang ja --help は commander 由来ラベルも日本語化する", () => {
+    const r = runCli(["--lang", "ja", "--help"]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("使い方:");
+    expect(r.stdout).toContain("オプション:");
+    expect(r.stdout).toContain("ヘルプを表示");
+    expect(r.stdout).not.toContain("Usage:");
+    expect(r.stdout).not.toContain("display help for command");
   });
 
   it("非 JSON モードでは人間向けエラー (Error:/error:) を stderr に出す", () => {

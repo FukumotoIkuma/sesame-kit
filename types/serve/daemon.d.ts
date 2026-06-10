@@ -20,6 +20,7 @@ export class Daemon {
     /** @type {(() => void)|null} */
     /** @param {...unknown} a */
     _log(...a: unknown[]): void;
+    openRpcDocument(): Record<string, unknown>;
     start(): void;
     _connectLoop(): Promise<void>;
     _hasStoredTokens(): boolean;

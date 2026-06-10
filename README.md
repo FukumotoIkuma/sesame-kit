@@ -101,10 +101,10 @@ Run `sesame` with no arguments for the interactive menu. It lists your devices a
 sesame                         # pick a device, then an action.  ↑↓ move · → confirm · ← back · q quit
 ```
 
-To run an action directly, the subject is the device: `sesame <device> <action>`. Use one of your device names from `sesame devices` (matched by substring; `front` below is just an example).
+To run an action directly, the subject is the device: `sesame <device> <action>`. Use the exact device name from `sesame devices` or `sesame locks ls` (`front` below is just an example).
 
 ```bash
-sesame front unlock            # unlock (substring match: sesame 玄関 unlock)
+sesame front unlock            # unlock
 sesame front lock              # lock
 sesame front status            # state (locked / unlocked, position)
 sesame front autolock 30       # autolock (BLE only. 0 = off)
@@ -214,9 +214,13 @@ Thin clients (the `clients/` layer above) wrap the JSON-RPC so you can write `c.
 ```js
 import { SesameClient } from "sesame-kit/client";   // after: npm install sesame-kit
 const c = SesameClient.unix();                       // default Unix socket
-console.log(await c.unlock("front"));
-console.log(await c.call("device.history", { deviceUUID: "AB12CD34...", pageSize: 10 })); // any method; deviceUUID from `sesame devices`
-await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // always await
+try {
+  console.log(await c.unlock("front"));
+  console.log(await c.call("device.history", { deviceUUID: "AB12CD34...", pageSize: 10 })); // any method; deviceUUID from `sesame devices`
+  await c.subscribe(["lockState"], (topic, p) => console.log(topic, p)); // always await
+} finally {
+  c.close();
+}
 ```
 
 ```python
@@ -357,7 +361,7 @@ Full docs: **[docs/en/](./docs/en/index.md)** ([日本語](./docs/ja/index.md)).
 - `triggerLock timeout`: wrong `secretKey`, Hub3 offline, or a half-open WS (recovers on auto-reconnect).
 - `learn timeout`: the Hub3 entered REGISTER mode but did not receive a waveform. Move closer or try a different button.
 - `apiKeyId required`: for `webapi` commands, set `apiKeyId` in config.json (issue one in the biz3 dev console).
-- **BLE could not initialize** (`sesame ble …` / `--ble-only`): the CLI exits with code `2` and a friendly message (`{ error, code, bleCode }` under `--json`) instead of crashing silently. `bleCode: BLE_UNAUTHORIZED` → grant the terminal Bluetooth access (macOS: System Settings → Privacy & Security → Bluetooth); `BLE_UNSUPPORTED` → no adapter / insufficient privileges (Linux / Raspberry Pi / headless — need a real adapter and `setcap cap_net_raw+eip`); `BLE_POWERED_OFF` → turn Bluetooth on. See [docs/en/ble.md](./docs/en/ble.md#troubleshooting).
+- **BLE could not initialize** (`sesame ble …` / `--ble-only`): the CLI exits with code `2` and a friendly message (`{ error, code, bleCode }` under `--json`) instead of crashing silently. `bleCode: BLE_UNAUTHORIZED` → grant the terminal Bluetooth access (macOS: System Settings → Privacy & Security → Bluetooth); `BLE_UNSUPPORTED` → no adapter / insufficient privileges (Linux / Raspberry Pi / headless — need a real adapter and `setcap cap_net_raw+eip`); `BLE_POWERED_OFF` → turn Bluetooth on; `BLE_INIT_TIMEOUT` → Bluetooth did not become ready in time. See [docs/en/ble.md](./docs/en/ble.md#troubleshooting).
 
 ## See also
 

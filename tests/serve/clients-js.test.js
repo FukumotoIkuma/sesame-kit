@@ -2,9 +2,11 @@
 // 出荷物そのものの挙動 (HTTP/UDS/WS の正常系 + WS 誤token失敗 surface + subscribe 不正topic surface)
 // を検証する。サーバ側 framing テストとは別に、利用者が実際に import するコードを通す。
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { Daemon } from "../../src/serve/daemon.js";
 import { startSocketFraming } from "../../src/serve/framing/socket.js";
 import { startHttpFraming } from "../../src/serve/framing/http.js";
@@ -56,6 +58,19 @@ describe("JS 同梱クライアント e2e", () => {
     const { socketPath } = await boot();
     const c = SesameClient.unix(socketPath); clients.push(c);
     expect(await c.unlock("front")).toMatchObject({ ok: true, name: "front" });
+  });
+
+  it("UDS: one-shot 利用は close() 忘れでもプロセスを掴み続けない", async () => {
+    const { socketPath } = await boot();
+    const clientUrl = pathToFileURL(resolve(__dirname, "..", "..", "clients", "js", "sesame-client.mjs")).href;
+    const code = `
+      import { SesameClient } from ${JSON.stringify(clientUrl)};
+      const c = SesameClient.unix(${JSON.stringify(socketPath)});
+      console.log(JSON.stringify(await c.status()));
+    `;
+    const r = await runNode(code, 4000);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('"connected":true');
   });
 
   it("WS: 正しい token で接続でき status が引ける", async () => {
@@ -120,3 +135,24 @@ describe("JS 同梱クライアント e2e", () => {
     await expect(c.status()).rejects.toMatchObject({ kind: "connection_lost" });
   });
 });
+
+function runNode(code, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["--input-type=module", "-e", code], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`child timed out; stdout=${stdout} stderr=${stderr}`));
+    }, timeoutMs);
+    child.stdout.on("data", (d) => { stdout += d.toString(); });
+    child.stderr.on("data", (d) => { stderr += d.toString(); });
+    child.on("error", (e) => { clearTimeout(timer); reject(e); });
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      resolve({ code, signal, stdout, stderr });
+    });
+  });
+}

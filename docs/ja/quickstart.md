@@ -33,7 +33,7 @@ sesame verify               # コードを入力
 sesame      # ↑↓ 移動 · →（または Enter）決定 · ←（または Esc）戻る · q 終了
 ```
 
-やりたいことが決まっていれば直接実行することもできます。主語はデバイスです: `sesame <device> <action>`（部分一致）。
+やりたいことが決まっていれば直接実行することもできます。主語はデバイスです: `sesame <device> <action>`（`sesame devices` / `sesame locks ls` に出る正確な名前）。
 
 ```bash
 sesame front status            # 現在状態 (施錠 / 解錠)

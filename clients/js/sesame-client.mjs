@@ -13,7 +13,6 @@
 // subscribe は **常に await** すること (接続/認証エラーを取りこぼさないため)。
 
 import net from "node:net";
-import readline from "node:readline";
 import os from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -101,7 +100,7 @@ function routeMessage(self, line) {
 
 class StreamTransport {
   constructor(path) {
-    this._ids = 0; this._pending = new Map(); this._onEvent = null; this._fatal = null;
+    this._ids = 0; this._pending = new Map(); this._onEvent = null; this._fatal = null; this._subscribed = false; this._closed = false; this._buf = ""; this._idleClose = null;
     this._sock = net.connect(path);
     this._sock.on("error", (e) => {
       const msg = (e.code === "ENOENT" || e.code === "ECONNREFUSED")
@@ -110,22 +109,58 @@ class StreamTransport {
       this._fatal = new SesameError(msg, "connection_lost");
       for (const { reject } of this._pending.values()) reject(this._fatal);
       this._pending.clear();
+      this._scheduleIdleClose();
     });
-    const rl = readline.createInterface({ input: this._sock });
-    rl.on("error", () => { /* socket 'error' 側で処理 */ });
-    rl.on("line", (line) => { if (line.trim()) routeMessage(this, line); });
+    this._sock.on("data", (d) => {
+      this._buf += d.toString();
+      let nl;
+      while ((nl = this._buf.indexOf("\n")) >= 0) {
+        const line = this._buf.slice(0, nl);
+        this._buf = this._buf.slice(nl + 1);
+        if (line.trim()) routeMessage(this, line);
+      }
+    });
+    this._scheduleIdleClose({ unrefSocket: false });
+  }
+  _cancelIdleClose() {
+    if (this._idleClose) clearImmediate(this._idleClose);
+    this._idleClose = null;
+  }
+  _scheduleIdleClose({ unrefSocket = true } = {}) {
+    if (this._closed || this._subscribed || this._pending.size !== 0) return;
+    if (unrefSocket) this._sock.unref?.();
+    if (this._idleClose) return;
+    this._idleClose = setImmediate(() => {
+      this._idleClose = null;
+      if (!this._closed && !this._subscribed && this._pending.size === 0) this.close();
+    });
+    this._idleClose.unref?.();
   }
   request(msg) {
     if (this._fatal) return Promise.reject(this._fatal);
+    this._cancelIdleClose();
+    this._sock.ref?.();
     const id = ++this._ids;
     return new Promise((resolve, reject) => {
-      const to = setTimeout(() => { this._pending.delete(id); reject(new SesameError("request timed out", "timeout")); }, 20000);
-      this._pending.set(id, { resolve: (m) => { clearTimeout(to); resolve(m); }, reject: (e) => { clearTimeout(to); reject(e); } });
+      const finish = (fn, value) => {
+        clearTimeout(to);
+        this._pending.delete(id);
+        this._scheduleIdleClose();
+        fn(value);
+      };
+      const to = setTimeout(() => finish(reject, new SesameError("request timed out", "timeout")), 20000);
+      this._pending.set(id, { resolve: (m) => finish(resolve, m), reject: (e) => finish(reject, e) });
       this._sock.write(JSON.stringify({ ...msg, id }) + "\n");
     });
   }
-  subscribe(topics, onEvent) { this._onEvent = onEvent; return this.request({ jsonrpc: "2.0", method: "events.subscribe", params: { topics } }); }
-  close() { this._sock.destroy(); }
+  subscribe(topics, onEvent) {
+    this._subscribed = true;
+    this._sock.ref?.();
+    this._onEvent = onEvent;
+    return this.request({ jsonrpc: "2.0", method: "events.subscribe", params: { topics } })
+      .catch((e) => { this._subscribed = false; this._scheduleIdleClose(); throw e; });
+  }
+  close() { this._closed = true; this._cancelIdleClose(); this._sock.destroy(); }
 }
 
 class WsTransport {

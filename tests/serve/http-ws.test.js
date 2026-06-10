@@ -123,6 +123,17 @@ describe("HTTP framing", () => {
     expect(ok.headers.get("access-control-allow-origin")).toBe("https://whatever.example");
   });
 
+  it("GET / の使用例は port 0 ではなく実際の listen port を表示する", async () => {
+    const d = new Daemon({ hub: fakeHub() });
+    handle = await startHttpFraming(d, { port: 0, token: TOKEN });
+    const r = await fetch(`${handle.url}/`);
+    expect(r.status).toBe(200);
+    const text = await r.text();
+    const port = new URL(handle.url).port;
+    expect(text).toContain(`http://127.0.0.1:${port}/rpc`);
+    expect(text).not.toContain("127.0.0.1:0/rpc");
+  });
+
   it("GET /events (SSE) で購読しイベントを受信", async () => {
     const hub = fakeHub();
     const d = new Daemon({ hub }); d.authState = "ok";

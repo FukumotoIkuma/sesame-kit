@@ -175,6 +175,7 @@ function rpcSubscribe(socketPath, topics) {
         /** @type {RpcMessage} */
         let msg; try { msg = JSON.parse(line); } catch { continue; }
         if (typeof msg.method === "string" && msg.method.startsWith("event.")) {
+          if (msg.method === "event.ready") continue;
           console.log(JSON.stringify({ topic: msg.method.slice(6), payload: msg.params }));
         }
       }
@@ -330,6 +331,10 @@ async function cmdRpc(method, opts, program) {
       else console.error(msg);
       process.exit(2);
     }
+  }
+  if (m === "events.subscribe" || m === "events.unsubscribe") {
+    console.error(t("serve.rpcEventsPersistent"));
+    process.exit(2);
   }
   /** @type {unknown} */
   let result;
