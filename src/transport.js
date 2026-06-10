@@ -436,7 +436,7 @@ export class Hub3WsClient {
 
   /** @param {Error} err */
   _onError(err) {
-    this.log("error", err?.message || err);
+    this.log("error", scrub(err?.message || err)); // err はネットワーク由来 → 無害化
     // error 直後に close も来るので、reconnect 判断は close 側で行う
   }
 
