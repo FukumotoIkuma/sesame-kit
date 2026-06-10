@@ -452,7 +452,11 @@ function bufToText(v) {
   // v は Buffer/Uint8Array 等のバイト列を想定 (BLE 名前フィールド)。Buffer.from の
   // 入力許容型 (WithImplicitCoercion<ArrayLike<number>|...>) に合わせてナロー化する。
   try {
-    return Buffer.from(/** @type {Uint8Array|number[]} */ (v)).toString("utf8").replace(/\0+$/, "");
+    // 末尾の NUL を線形ループで除去 (正規表現 /\0+$/ は ReDoS 懸念のため避ける)。
+    const s = Buffer.from(/** @type {Uint8Array|number[]} */ (v)).toString("utf8");
+    let end = s.length;
+    while (end > 0 && s.charCodeAt(end - 1) === 0x00) end--;
+    return s.slice(0, end);
   } catch { return String(v); }
 }
 

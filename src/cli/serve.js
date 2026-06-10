@@ -247,7 +247,10 @@ function rpcCall(socketPath, method, params, timeoutMs = 15000) {
  * @returns {Promise<unknown>}
  */
 async function rpcCallHttp(url, token, method, params, timeoutMs = 15000) {
-  const endpoint = url.replace(/\/+$/, "") + "/rpc";
+  // 末尾スラッシュ除去は線形ループで (正規表現 /\/+$/ は ReDoS 懸念のため避ける)。
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 0x2f /* "/" */) end--;
+  const endpoint = url.slice(0, end) + "/rpc";
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), timeoutMs);
   let resp;
