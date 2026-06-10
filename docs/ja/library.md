@@ -29,12 +29,11 @@ config ファイル不要で in-memory token を使いたい (他プロジェク
 ```js
 await SesameHub3.use({
   tokenStore: {
-    // load() が返す idToken は実際の Cognito 由来の JWT である必要があります:
-    //   - exp クレーム (UNIX秒) が「現在時刻 + 60秒」より先 でないと毎回 refresh が走る
-    //   - sub クレーム が UUID 形式。ロック操作の history (誰が操作したか) に使われるため必須。
-    // → 通常は `sesame login` で取得し FileTokenStore に保存された値をそのまま使う。
-    //   独自 store は「その値を別の場所から load/save する」だけで、idToken を自作しない。
-    load() { return { idToken, refreshToken, clientId: "6ialca0p8u0lsgvbmvsljfm305" }; },
+    // `sesame login` が作った token object をそのまま返してください。
+    // SESAME Consumer Client の token で、ConfirmDevice 済みの
+    // deviceKey/deviceGroupKey/devicePassword が揃っている必要があります。
+    // 独自 store は「その値を別の場所から load/save する」だけで、旧 token を流し込んだり自作しない。
+    load() { return { idToken, refreshToken, clientId: "6ialca0p8u0lsgvbmvsljfm305", deviceKey, deviceGroupKey, devicePassword }; },
     save(t) { /* persist however */ },
     clear() {}, loadPending() { return null; }, savePending() {}, clearPending() {},
   },

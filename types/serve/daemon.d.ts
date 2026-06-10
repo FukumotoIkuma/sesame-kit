@@ -137,17 +137,13 @@ export type HubLike = {
         deviceUUID: unknown;
         deviceModel: unknown;
     }>, cb: (msg: unknown) => void) => (() => void);
-    tokenStore?: {
-        load?: () => ({
-            refreshToken?: unknown;
-            idToken?: unknown;
-        } | null | undefined);
-    } | undefined;
+    tokenStore?: import("../tokens.js").TokenStore | undefined;
     config?: {
         devices?: Record<string, {
             deviceUUID: unknown;
             deviceModel: unknown;
         }>;
+        registerBaseUrl?: string | null;
     } | undefined;
 };
 //# sourceMappingURL=daemon.d.ts.map

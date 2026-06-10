@@ -187,11 +187,13 @@ describe("ConfigStore.save()", () => {
     const store = new ConfigStore(configPath);
     const cfg = store.load();
     cfg.companyID = "saved-co";
+    cfg.registerBaseUrl = "https://register.example.invalid";
     store.save();
 
     const store2 = new ConfigStore(configPath);
     const cfg2 = store2.load();
     expect(cfg2.companyID).toBe("saved-co");
+    expect(cfg2.registerBaseUrl).toBe("https://register.example.invalid");
   });
 
   it("save() は親ディレクトリを再帰的に作成する", () => {

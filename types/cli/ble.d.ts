@@ -83,6 +83,8 @@ export type BleOptions = {
     save?: string;
     localServerAuth?: boolean;
     ak?: string;
+    registerBaseUrl?: string;
+    serverAuth?: boolean;
 };
 /**
  * resolveBleEntry の解決結果。

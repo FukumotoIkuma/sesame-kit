@@ -134,7 +134,7 @@ function emptyConfig() {
 // 永続化する正準キー (locks/hub3s は派生 view なので保存しない)。
 // これは意図的なハードホワイトリスト: ここに無いトップレベルキーは save() で落とす。
 // 将来フィールドを足すときはこの配列にも必ず追加すること (追加し忘れると黙って消える)。
-const PERSISTED_KEYS = ["companyID", "wsUrl", "lang", "uiLang", "default", "devices", "remotes", "apiKeyId", "biometricsBaseUrl"];
+const PERSISTED_KEYS = ["companyID", "wsUrl", "lang", "uiLang", "default", "devices", "remotes", "apiKeyId", "biometricsBaseUrl", "registerBaseUrl"];
 
 // device レコードのうち config ローカルにだけ存在する注釈キー (サーバ応答には無い)。
 // sync 更新時にサーバ由来フィールドで丸ごと置き換えても、これらは引き継ぐ。

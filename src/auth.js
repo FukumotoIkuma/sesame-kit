@@ -51,10 +51,6 @@ const USER_POOL_ID = "ap-northeast-1_bY2byhlCa";
 // 公式アプリ (iOS/Android Sesame, chat.candyhouse.co) と同じ client。
 // biz3 aws-exports.js:5 の userPoolWebClientId と一致 (一次資料で確認済み)。
 export const CONSUMER_CLIENT_ID = "6ialca0p8u0lsgvbmvsljfm305";
-// 注 (出所未確認): biz.candyhouse.co の管理 web client とされる値だが、
-// biz3 の現行ソース (references_web) には 1 件も現れない (旧実装由来の値)。
-// デフォルトでは使われず export のみ。biz3 web 自体も aws-exports の consumer client を使う。
-export const BIZ_CLIENT_ID = "21u50hboia4s5q0sbk6pbdfmss";
 // デフォルトは consumer (公式アプリと同じ寿命)
 const DEFAULT_CLIENT_ID = CONSUMER_CLIENT_ID;
 // 公式が新規 sign-up 時に使う ダミーパスワード (Cognito policy 通過用)
@@ -118,6 +114,48 @@ export function jwtSub(token) {
   }
 }
 
+/** @param {Partial<import("./tokens.js").StoredTokens>} tokens */
+function resolvedClientId(tokens) {
+  return tokens.clientId || (tokens.idToken ? jwtAud(tokens.idToken) : null) || DEFAULT_CLIENT_ID;
+}
+
+/** @param {Partial<import("./tokens.js").StoredTokens>} tokens */
+function tokenAud(tokens) {
+  return tokens.idToken ? jwtAud(tokens.idToken) : null;
+}
+
+/** @param {Partial<import("./tokens.js").StoredTokens>} tokens */
+function hasConfirmedDevice(tokens) {
+  return Boolean(tokens.deviceKey && tokens.deviceGroupKey && tokens.devicePassword);
+}
+
+/**
+ * この CLI/library は公式アプリ相当の Consumer Client + ConfirmDevice 済み token だけを
+ * 長期セッションとして扱う。biz/旧 localStorage dump を受け入れると refreshToken が
+ * 24h 前後で `Invalid Refresh Token` になり、このツールの「ログイン済みを維持する」
+ * 契約を破るため、入口で落とす。
+ *
+ * @param {Partial<import("./tokens.js").StoredTokens>} tokens
+ * @param {string} source
+ * @param {{ requireAud?: boolean, requireConfirmedDevice?: boolean }} [opts]
+ */
+function assertAppLoginTokens(tokens, source, { requireAud = false, requireConfirmedDevice = false } = {}) {
+  const aud = tokenAud(tokens);
+  if (requireAud && aud !== CONSUMER_CLIENT_ID) {
+    throw new SesameError(`${source} must contain an idToken issued for the SESAME consumer app client. Run \`sesame login <email>\` so the app-compatible Cognito flow runs.`, { code: ERR.UNAUTHENTICATED });
+  }
+  if (aud && aud !== CONSUMER_CLIENT_ID) {
+    throw new SesameError(`${source} was issued for a non-consumer Cognito client (${aud}). Run \`sesame login <email>\` so refresh tokens use the official app path.`, { code: ERR.UNAUTHENTICATED });
+  }
+  const clientId = resolvedClientId(tokens);
+  if (clientId !== CONSUMER_CLIENT_ID) {
+    throw new SesameError(`${source} uses unsupported Cognito clientId ${clientId}. Only the SESAME consumer app client is supported. Run \`sesame login <email>\`.`, { code: ERR.UNAUTHENTICATED });
+  }
+  if (requireConfirmedDevice && !hasConfirmedDevice(tokens)) {
+    throw new SesameError(`${source} is missing confirmed Cognito device credentials. Run \`sesame login <email>\` so ConfirmDevice stores deviceKey/deviceGroupKey/devicePassword.`, { code: ERR.UNAUTHENTICATED });
+  }
+}
+
 /**
  * 失効していない idToken を返す。必要なら refresh する。
  * 失効まで `marginSec` 以下なら早期 refresh する (デフォルト 60秒)。
@@ -131,6 +169,7 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
   if (!t) {
     throw new SesameError(tr("auth.noTokens"), { code: ERR.UNAUTHENTICATED });
   }
+  assertAppLoginTokens(t, "Stored tokens", { requireConfirmedDevice: true });
 
   const now = Math.floor(Date.now() / 1000);
   const exp = jwtExp(t.idToken);
@@ -141,10 +180,7 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
   if (!t.refreshToken) {
     throw new SesameError("idToken expired and no refreshToken. Re-run login.", { code: ERR.UNAUTHENTICATED });
   }
-
-  // clientId は保存値優先、無ければ idToken の aud から復元 (bootstrap/migrate で
-  // clientId 欠落のまま入った token を誤った client に投げないため)。
-  const clientId = t.clientId || jwtAud(t.idToken) || DEFAULT_CLIENT_ID;
+  const clientId = CONSUMER_CLIENT_ID;
   /** @type {Record<string, string>} */
   const authParameters = { REFRESH_TOKEN: t.refreshToken };
   if (t.deviceKey) authParameters.DEVICE_KEY = t.deviceKey;
@@ -196,9 +232,12 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
  *
  * @param {import("./tokens.js").TokenStore} store
  * @param {string} username
- * @param {{ clientId?: string }} [opts]
+ * @param {{ clientId?: string }} [opts] 互換用。Consumer Client 以外は拒否する。
  */
 export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT_ID } = {}) {
+  if (clientId !== CONSUMER_CLIENT_ID) {
+    throw new SesameError(`Unsupported Cognito clientId ${clientId}. Use the SESAME consumer app client via \`sesame login <email>\`.`, { code: ERR.UNAUTHENTICATED });
+  }
   // 同じユーザーの記憶済みデバイスがあれば DEVICE_KEY を渡す (公式アプリ=Amplify と同じ)。
   // Cognito はこれを見てコード回答後に DEVICE_SRP_AUTH を要求できる。
   const existing = store.load?.();
@@ -505,13 +544,15 @@ export async function logout(store) {
 export function bootstrap(store, values) {
   if (!values.idToken)      throw new Error("idToken required");
   if (!values.refreshToken) throw new Error("refreshToken required");
-  const clientId = jwtAud(values.idToken) || DEFAULT_CLIENT_ID;
+  assertAppLoginTokens(values, "bootstrap input", { requireAud: true, requireConfirmedDevice: true });
   const t = {
-    clientId,
+    clientId: CONSUMER_CLIENT_ID,
     idToken:      values.idToken,
     refreshToken: values.refreshToken,
     accessToken:  values.accessToken || null,
-    deviceKey:    values.deviceKey   || null,
+    deviceKey:    values.deviceKey,
+    deviceGroupKey: values.deviceGroupKey,
+    devicePassword: values.devicePassword,
     username:     values.username    || null,
     lastRefresh:  new Date().toISOString(),
   };
@@ -523,5 +564,4 @@ export const CONFIG_META = {
   region: COGNITO_REGION,
   userPoolId: USER_POOL_ID,
   consumerClientId: CONSUMER_CLIENT_ID,
-  bizClientId: BIZ_CLIENT_ID,
 };

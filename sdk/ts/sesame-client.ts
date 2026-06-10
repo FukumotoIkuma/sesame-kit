@@ -195,13 +195,13 @@ export class SesameClient {
 
   readonly ble = {
     /** @experimental unverified — may change without notice. */
-    invoke: (params: { op: string; args?: Array<unknown>; deviceUUID?: string; address?: string; secretKey: string; model?: string; scanTimeoutMs?: number; debug?: boolean }): Promise<unknown> => this._call("ble.invoke", params) as Promise<unknown>,
+    invoke: (params: { op: string; args?: Array<unknown>; deviceUUID?: string; address?: string; secretKey: string; model?: string; scanTimeoutMs?: number; debug?: boolean; needAuthFromServer?: boolean; registerBaseUrl?: string }): Promise<unknown> => this._call("ble.invoke", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
     "os2.invoke": (params: { op: string; args?: Array<unknown>; deviceUUID?: string; address?: string; secretKey: string; keyIndex: string; ssmPublicKey: string; model?: string; scanTimeoutMs?: number; debug?: boolean }): Promise<unknown> => this._call("ble.os2.invoke", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
     "os2.register": (params: { deviceUUID: string; address?: string; model?: string; productType?: string; scanTimeoutMs?: number; debug?: boolean; localServerAuth?: boolean; ak?: Record<string, unknown> }): Promise<unknown> => this._call("ble.os2.register", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    register: (params: { deviceUUID: string; address?: string; model?: string; productType?: string; scanTimeoutMs?: number; debug?: boolean; nowMs?: number }): Promise<unknown> => this._call("ble.register", params) as Promise<unknown>,
+    register: (params: { deviceUUID: string; address?: string; model?: string; productType?: string; scanTimeoutMs?: number; debug?: boolean; nowMs?: number; registerBaseUrl?: string }): Promise<unknown> => this._call("ble.register", params) as Promise<unknown>,
   };
 
   readonly company = {

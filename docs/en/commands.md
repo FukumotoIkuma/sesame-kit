@@ -279,7 +279,7 @@ The `ble` command group exposes keyless scan, factory registration, and read-foc
 
 ```bash
 sesame ble scan [--timeout <ms>]         # keyless nearby scan (no secretKey needed)
-sesame ble register <uuid> [--model <model>] [--save <name>]
+sesame ble register <uuid> [--model <model>] [--save <name>] [--register-base-url <url>]
 sesame ble os2-register <uuid> [--model <model>]
 sesame ble cards <device>                # list enrolled NFC cards (Touch / Touch Pro)
 sesame ble passcodes <device>            # list enrolled keypad passcodes (Touch / Touch Pro)
@@ -290,7 +290,7 @@ sesame ble mode <device> <type>          # get the current enroll mode (type: ca
 sesame ble script <device> [--index <n>] # list Bot2/Bot3 script names + the current script
 ```
 
-`<device>` is a config lock name or a deviceUUID. On the connect-based subcommands (everything except `scan`), `--secret <hex>` and `--model <model>` let you target a device that is not in your config locks, and `--timeout <ms>` sets the publish collection timeout (default 8000). `scan` is keyless and needs neither.
+`<device>` is a config lock name or a deviceUUID. On the connect-based subcommands (everything except `scan`), `--secret <hex>` and `--model <model>` let you target a device that is not in your config locks, and `--timeout <ms>` sets the publish collection timeout (default 8000). `scan` is keyless and needs neither. For registered OS3 devices that require server-signed login, such as guest or time-limited keys, pass `--server-auth`. The register REST API host is resolved from `--register-base-url <url>` or `config.registerBaseUrl`, and authentication uses `getValidIdToken()` against the existing TokenStore created by `sesame login`.
 
 > These commands are the same BLE code paths as the library/RPC surface and are unit-tested but **not yet confirmed against real hardware**. The list/mode/script commands are read-only; enrollment / mode-set / script select / write / run are available through Node or the generic BLE RPC path.
 

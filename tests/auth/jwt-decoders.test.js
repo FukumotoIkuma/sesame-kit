@@ -2,7 +2,7 @@
 //
 // 対象は src/auth.js 内の 3 関数 (密結合, 同じ base64url payload decode 路):
 //   - jwtSub  (export 済)
-//   - jwtAud  (内部 helper)  → export 関数 `bootstrap` 経由で挙動を検証
+//   - jwtAud  (内部 helper)  → export 関数 `bootstrap` の app-client guard 経由で挙動を検証
 //   - jwtExp  (内部 helper)  → export 関数 `getValidIdToken` 経由で挙動を検証
 //
 // jwtAud/jwtExp は module-private のため、観測点を「これらを使う公開関数」に置き換えて
@@ -49,6 +49,30 @@ vi.mock("@aws-sdk/client-cognito-identity-provider", () => {
         this.__type = "SignUpCommand";
       }
     },
+    ConfirmDeviceCommand: class {
+      constructor(input) {
+        this.input = input;
+        this.__type = "ConfirmDeviceCommand";
+      }
+    },
+    UpdateDeviceStatusCommand: class {
+      constructor(input) {
+        this.input = input;
+        this.__type = "UpdateDeviceStatusCommand";
+      }
+    },
+    ForgetDeviceCommand: class {
+      constructor(input) {
+        this.input = input;
+        this.__type = "ForgetDeviceCommand";
+      }
+    },
+    RevokeTokenCommand: class {
+      constructor(input) {
+        this.input = input;
+        this.__type = "RevokeTokenCommand";
+      }
+    },
   };
 });
 
@@ -58,6 +82,12 @@ const { jwtSub, bootstrap, getValidIdToken, CONSUMER_CLIENT_ID } = await import(
 );
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
+
+const CONFIRMED_DEVICE = {
+  deviceKey: "dev-key-abc",
+  deviceGroupKey: "dev-group-abc",
+  devicePassword: "dev-password-abc",
+};
 
 /** RFC 7515 base64url (padding 除去, '+/' → '-_'). Buffer.from(..., 'base64') は
  *  base64url も受け付けるので padding さえ落とせば decode 側は何もしなくて OK. */
@@ -79,7 +109,7 @@ function makeJwt(payloadObj, { header = { alg: "none", typ: "JWT" } } = {}) {
 /** in-memory token store。auth.js が要求する {load, save, loadPending, savePending,
  *  clearPending, clear} を満たす最小実装. */
 function makeMemStore(initial = null) {
-  let t = initial ? { ...initial } : null;
+  let t = initial ? { ...CONFIRMED_DEVICE, ...initial } : null;
   let pending = null;
   return {
     load: () => (t ? { ...t } : null),
@@ -183,56 +213,82 @@ describe("jwtSub", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 // jwtAud  (bootstrap 経由で観測)
 //
-// bootstrap(store, values) は idToken の aud claim を clientId として store.save する。
-// aud claim が抽出できない場合は DEFAULT_CLIENT_ID (= CONSUMER_CLIENT_ID) に fall back。
-// → 保存された clientId を見れば jwtAud の戻り値が分かる。
+// bootstrap は旧 localStorage dump の安全でない直接注入を塞ぐ互換口。idToken の aud が
+// Consumer Client で、かつ ConfirmDevice 済み device credentials が揃う場合だけ保存する。
 // ═════════════════════════════════════════════════════════════════════════════
 describe("jwtAud (via bootstrap)", () => {
-  it("aud claim をそのまま clientId として保存する", () => {
+  it("Consumer Client + ConfirmDevice 済み token set だけを保存する", () => {
     const store = makeMemStore();
-    const aud = "21u50hboia4s5q0sbk6pbdfmss"; // biz client
     bootstrap(store, {
-      idToken: makeJwt({ aud, sub: "u", exp: 9 }),
+      idToken: makeJwt({ aud: CONSUMER_CLIENT_ID, sub: "u", exp: 9 }),
       refreshToken: "rt",
+      ...CONFIRMED_DEVICE,
     });
-    expect(store._peek().clientId).toBe(aud);
+    expect(store._peek()).toMatchObject({
+      clientId: CONSUMER_CLIENT_ID,
+      ...CONFIRMED_DEVICE,
+    });
   });
 
-  it("aud claim 無しなら DEFAULT_CLIENT_ID (consumer client) に fall back", () => {
+  it("biz client aud は保存せず拒否する", () => {
     const store = makeMemStore();
-    bootstrap(store, {
+    expect(() => bootstrap(store, {
+      idToken: makeJwt({ aud: "21u50hboia4s5q0sbk6pbdfmss", sub: "u", exp: 9 }),
+      refreshToken: "rt",
+      ...CONFIRMED_DEVICE,
+    })).toThrow(/non-consumer Cognito client|consumer app client/);
+    expect(store._peek()).toBeNull();
+  });
+
+  it("aud claim 無しは保存せず拒否する", () => {
+    const store = makeMemStore();
+    expect(() => bootstrap(store, {
       idToken: makeJwt({ sub: "u", exp: 9 }), // aud なし
       refreshToken: "rt",
-    });
-    expect(store._peek().clientId).toBe(CONSUMER_CLIENT_ID);
+      ...CONFIRMED_DEVICE,
+    })).toThrow(/consumer app client/);
+    expect(store._peek()).toBeNull();
   });
 
-  it("aud が空文字なら null 扱い → DEFAULT_CLIENT_ID に fall back", () => {
+  it("aud が空文字なら保存せず拒否する", () => {
     const store = makeMemStore();
-    bootstrap(store, {
+    expect(() => bootstrap(store, {
       idToken: makeJwt({ aud: "", sub: "u" }),
       refreshToken: "rt",
-    });
-    expect(store._peek().clientId).toBe(CONSUMER_CLIENT_ID);
+      ...CONFIRMED_DEVICE,
+    })).toThrow(/consumer app client/);
+    expect(store._peek()).toBeNull();
   });
 
-  it("idToken が malformed (ドット無し) でも crash せず DEFAULT_CLIENT_ID で保存される", () => {
+  it("idToken が malformed (ドット無し) なら保存せず拒否する", () => {
     const store = makeMemStore();
-    bootstrap(store, {
+    expect(() => bootstrap(store, {
       idToken: "totally-not-a-jwt",
       refreshToken: "rt",
-    });
-    expect(store._peek().clientId).toBe(CONSUMER_CLIENT_ID);
+      ...CONFIRMED_DEVICE,
+    })).toThrow(/consumer app client/);
+    expect(store._peek()).toBeNull();
   });
 
-  it("payload が valid base64 だが invalid JSON でも DEFAULT_CLIENT_ID に fall back", () => {
+  it("payload が valid base64 だが invalid JSON なら保存せず拒否する", () => {
     const store = makeMemStore();
     const garbage = Buffer.from("xxx", "utf8").toString("base64").replace(/=+$/, "");
-    bootstrap(store, {
+    expect(() => bootstrap(store, {
       idToken: `hdr.${garbage}.sig`,
       refreshToken: "rt",
-    });
-    expect(store._peek().clientId).toBe(CONSUMER_CLIENT_ID);
+      ...CONFIRMED_DEVICE,
+    })).toThrow(/consumer app client/);
+    expect(store._peek()).toBeNull();
+  });
+
+  it("ConfirmDevice 済み device credentials が揃わなければ保存せず拒否する", () => {
+    const store = makeMemStore();
+    expect(() => bootstrap(store, {
+      idToken: makeJwt({ aud: CONSUMER_CLIENT_ID, sub: "u", exp: 9 }),
+      refreshToken: "rt",
+      deviceKey: "dev-key-only",
+    })).toThrow(/missing confirmed Cognito device credentials/);
+    expect(store._peek()).toBeNull();
   });
 });
 

@@ -245,9 +245,10 @@ export default {
     "cli.okMigrated": "OK: migrated to {dir}",
     "cli.imported": "Imported: {list}",
     "cli.importedNone": "(none)",
+    "cli.skipped": "Skipped: {list}",
     "cli.migrateHub3": "  hub3:   {name}",
     "cli.migrateRemote": "  remote: {name} (default)",
-    "cli.migrateOldFiles": "\nOld files (.env / .tokens.json / keys.json / .login_state.json) can be deleted if no longer needed.",
+    "cli.migrateOldFiles": "\nOld config files can be deleted if no longer needed. Legacy token files are intentionally not imported; run `sesame login <email>` so ConfirmDevice refresh-token protection is set up.",
 
     // ---- program description / help / options ----
     "cli.progDescription": "SESAME cloud CLI: lock control + Hub3 IR + device management",
@@ -268,7 +269,7 @@ export default {
     "cli.descDevices": "all SESAME device info (dump including secretKey)",
     "cli.descInit": "create the config directory and a config.json skeleton",
     "cli.descSetup": "re-run post-auth auto-setup (import companyID / locks / Hub3 IR from devices)",
-    "cli.descMigrate": "import legacy .env / .tokens.json / keys.json",
+    "cli.descMigrate": "import legacy .env / keys.json (tokens require sesame login)",
     "cli.descConfig": "view settings (show if omitted)",
     "cli.descConfigPath": "print the config directory path",
     "cli.descConfigShow": "print config.json / tokens.json (masked)",
@@ -337,8 +338,8 @@ export default {
     "cli.optWebapiQuery": "query params (JSON)",
     "cli.optWebapiBody": "request body (JSON)",
     "cli.optWebapiApiKey": "apiKeyId (config.apiKeyId if omitted)",
-    "cli.descBootstrap": "feed an existing idToken/refreshToken from JSON stdin",
-    "cli.bootstrapStdin": "bootstrap reads JSON from stdin: echo '{...}' | sesame bootstrap",
+    "cli.descBootstrap": "restore a full app-login token backup from JSON stdin",
+    "cli.bootstrapStdin": "bootstrap reads a full app-login token JSON from stdin: echo '{...}' | sesame bootstrap",
     "cli.okBootstrapped": "OK: bootstrapped (clientId={clientId})",
     "cli.descMeta": "show the Cognito config (region/userPoolId/clientId)",
 
@@ -599,9 +600,10 @@ export default {
     "cli.okMigrated": "OK: migrated to {dir}",
     "cli.imported": "Imported: {list}",
     "cli.importedNone": "(none)",
+    "cli.skipped": "Skipped: {list}",
     "cli.migrateHub3": "  hub3:   {name}",
     "cli.migrateRemote": "  remote: {name} (default)",
-    "cli.migrateOldFiles": "\n旧ファイル (.env / .tokens.json / keys.json / .login_state.json) は不要なら削除して構いません。",
+    "cli.migrateOldFiles": "\n旧設定ファイルは不要なら削除して構いません。旧 token ファイルは意図的に取り込みません。ConfirmDevice による refresh token 保護を設定するため `sesame login <email>` を実行してください。",
 
     // ---- program description / help / options ----
     "cli.progDescription": "SESAME クラウド CLI: ロック制御 + Hub3 IR + デバイス管理",
@@ -622,7 +624,7 @@ export default {
     "cli.descDevices": "全 SESAME デバイス情報 (secretKey 含む dump)",
     "cli.descInit": "設定ディレクトリと config.json スケルトンを作成",
     "cli.descSetup": "認証後の自動セットアップを再実行 (companyID / ロック / Hub3 IR をデバイスから取り込み)",
-    "cli.descMigrate": "旧 .env / .tokens.json / keys.json を取り込み",
+    "cli.descMigrate": "旧 .env / keys.json を取り込み (token は sesame login)",
     "cli.descConfig": "設定の参照 (省略時は show)",
     "cli.descConfigPath": "設定ディレクトリのパスを出力",
     "cli.descConfigShow": "config.json / tokens.json (masked) を出力",
@@ -691,8 +693,8 @@ export default {
     "cli.optWebapiQuery": "query params (JSON)",
     "cli.optWebapiBody": "request body (JSON)",
     "cli.optWebapiApiKey": "apiKeyId (省略時は config.apiKeyId)",
-    "cli.descBootstrap": "既存 idToken/refreshToken を JSON stdin から流し込み",
-    "cli.bootstrapStdin": "bootstrap は JSON を stdin から受け取ります: echo '{...}' | sesame bootstrap",
+    "cli.descBootstrap": "app-login 済み token backup を JSON stdin から復元",
+    "cli.bootstrapStdin": "bootstrap は app-login 済み token JSON を stdin から受け取ります: echo '{...}' | sesame bootstrap",
     "cli.okBootstrapped": "OK: bootstrapped (clientId={clientId})",
     "cli.descMeta": "Cognito 構成 (region/userPoolId/clientId) を表示",
 

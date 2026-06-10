@@ -4573,6 +4573,22 @@
           "schema": {
             "type": "boolean"
           }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
         }
       ],
       "result": {
@@ -4643,6 +4659,14 @@
           "description": "",
           "schema": {
             "type": "number"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
           }
         }
       ],

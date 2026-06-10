@@ -29,12 +29,11 @@ To use an in-memory token without a config file (e.g. embedding in another proje
 ```js
 await SesameHub3.use({
   tokenStore: {
-    // The idToken returned by load() must be a real Cognito-issued JWT:
-    //   - the exp claim (UNIX seconds) must be later than "now + 60s", or a refresh runs every time.
-    //   - the sub claim must be in UUID format. It is used for lock-operation history (who operated it), so it is required.
-    // → Normally use the value obtained via `sesame login` and saved by FileTokenStore as-is.
-    //   A custom store only "loads/saves that value from/to a different place"; it does not fabricate the idToken.
-    load() { return { idToken, refreshToken, clientId: "6ialca0p8u0lsgvbmvsljfm305" }; },
+    // Return the exact token object created by `sesame login`.
+    // It must be the SESAME consumer app client and include ConfirmDevice credentials
+    // (deviceKey/deviceGroupKey/devicePassword). A custom store only moves that object
+    // to another storage backend; it must not fabricate or import legacy tokens.
+    load() { return { idToken, refreshToken, clientId: "6ialca0p8u0lsgvbmvsljfm305", deviceKey, deviceGroupKey, devicePassword }; },
     save(t) { /* persist however */ },
     clear() {}, loadPending() { return null; }, savePending() {}, clearPending() {},
   },

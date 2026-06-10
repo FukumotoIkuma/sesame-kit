@@ -26,6 +26,7 @@ import * as access from "../access.js";
 import * as iot from "../iot.js";
 import * as presetir from "../presetir.js";
 import { SesameBle, SesameOS2Ble, createBleTransport } from "../ble/index.js";
+import { resolveRegisterTransport } from "../devices.js";
 
 /**
  * 常駐 hub。registry は (a) 明示メソッド (hub.lock 等) と (b) 名前空間 op の動的
@@ -503,10 +504,13 @@ function topLevelEntries() {
         { name: "model", required: false, schema: S },
         { name: "scanTimeoutMs", required: false, schema: N },
         { name: "debug", required: false, schema: B },
+        { name: "needAuthFromServer", required: false, schema: B },
+        { name: "registerBaseUrl", required: false, schema: S },
       ],
       result: "BLE operation result",
-      handler: async ({ params }) => {
+      handler: async ({ hub, params }) => {
         need(params, ["op", "secretKey"]);
+        const needAuthFromServer = !!(params.needAuthFromServer || params.registerBaseUrl);
         return SesameBle.use({
           deviceUUID: params.deviceUUID,
           address: params.address,
@@ -514,6 +518,15 @@ function topLevelEntries() {
           model: params.model ?? null,
           scanTimeoutMs: params.scanTimeoutMs,
           debug: !!params.debug,
+          needAuthFromServer,
+          registerTransport: needAuthFromServer
+            ? resolveRegisterTransport({
+                baseUrl: typeof params.registerBaseUrl === "string" ? params.registerBaseUrl : undefined,
+                config: hub.config,
+                tokenStore: hub.tokenStore,
+                required: true,
+              })
+            : undefined,
         }, (ble) => invokePath(ble, params.op, params.args));
       },
     },
@@ -527,9 +540,10 @@ function topLevelEntries() {
         { name: "scanTimeoutMs", required: false, schema: N },
         { name: "debug", required: false, schema: B },
         { name: "nowMs", required: false, schema: N },
+        { name: "registerBaseUrl", required: false, schema: S },
       ],
       result: "OS3 BLE registration result",
-      handler: async ({ params }) => {
+      handler: async ({ hub, params }) => {
         need(params, ["deviceUUID"]);
         // model は SesameBle コンストラクタ (能力テーブル参照) へ透過する。registerOnce の
         // 公開 opts 型には現れないが ...ctorOpts で受け渡されるため、型のみキャストで補う。
@@ -541,6 +555,11 @@ function topLevelEntries() {
           scanTimeoutMs: params.scanTimeoutMs,
           debug: !!params.debug,
           nowMs: params.nowMs,
+          registerTransport: resolveRegisterTransport({
+            baseUrl: typeof params.registerBaseUrl === "string" ? params.registerBaseUrl : undefined,
+            config: hub.config,
+            tokenStore: hub.tokenStore,
+          }),
         }));
       },
     },
