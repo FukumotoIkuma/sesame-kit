@@ -7,9 +7,10 @@
 //   - ソケットは configPaths.dir (0700) 配下に置き、ディレクトリでも二重に守る。
 
 import net from "node:net";
-import { existsSync, unlinkSync, mkdirSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import { makeLineConnection } from "./ndjson.js";
+import { ensureSecureDir } from "../../secure-fs.js";
 import { t } from "../../i18n.js";
 
 /** 既存ソケットが生きてれば throw、stale なら unlink して継続。
@@ -58,8 +59,8 @@ export async function startSocketFraming(daemon, { socketPath }) {
 
   // 既定の UDS は configPaths.dir 配下に置くが、未初期化の config dir では親が無く
   // `listen EACCES`/ENOENT になる。HTTP フレーミングが token ファイルの親を作るのと同様、
-  // listen 前に親ディレクトリを 0700 で用意する (無ければ作る・あれば触らない)。
-  mkdirSync(dirname(socketPath), { recursive: true, mode: 0o700 });
+  // listen 前に親ディレクトリを 0700 で用意し、既存の緩い権限も締め直す。
+  ensureSecureDir(dirname(socketPath));
 
   // 0600 で生成するため listen を umask で囲む (callback で必ず復元)。
   const oldUmask = process.umask(0o177);

@@ -2,7 +2,7 @@
 
 [`sesame-client.mjs`](./sesame-client.mjs) is a **hand-written, low-level transport
 client** for the `sesame serve` daemon — the *薄い公式クライアント* ("thin official
-client"). It is **not generated** from the schema. Node 18+, **zero runtime deps**.
+client"). It is **not generated** from the schema. Node 20+, **zero runtime deps**.
 
 This is what `sesame-kit/client` (`package.json` `exports`) points at:
 

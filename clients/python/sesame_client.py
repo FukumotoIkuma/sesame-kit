@@ -66,6 +66,33 @@ class SesameError(RuntimeError):
         return f"{self.message}{extra}"
 
 
+def _http_kind(status: int) -> str:
+    if status in (401, 403):
+        return "not_authenticated"
+    if status in (400, 413, 415):
+        return "bad_params"
+    if status == 404:
+        return "not_implemented"
+    if status in (408, 429) or status >= 500:
+        return "connection_lost"
+    return "internal"
+
+
+def _sesame_error_from_http(code: int, reason: str, body: bytes) -> SesameError:
+    text = body.decode("utf-8", "replace") if body else ""
+    try:
+        data = json.loads(text) if text else None
+    except json.JSONDecodeError:
+        data = None
+    err = data.get("error") if isinstance(data, dict) else None
+    if isinstance(err, dict):
+        err_data = err.get("data") or {}
+        return SesameError(err.get("message") or reason or "HTTP error", err_data.get("kind") or _http_kind(code), err.get("code", code))
+    if isinstance(err, str):
+        return SesameError(err, _http_kind(code), code)
+    return SesameError(text or f"HTTP {code}: {reason}", _http_kind(code), code)
+
+
 class SesameClient:
     """JSON-RPC over UDS / stdio / HTTP. 直接 new せず unix()/stdio()/http() を使う。"""
 
@@ -285,9 +312,10 @@ class _HttpTransport:
                 body = r.read()
                 return json.loads(body) if body else {"id": msg["id"], "result": None}
         except urllib.error.HTTPError as e:
-            if e.code == 401:
+            body = e.read()
+            if e.code == 401 and not self._token:
                 raise self._unauthorized() from None
-            raise SesameError(f"HTTP {e.code}: {e.reason}", kind="internal", code=e.code) from None
+            raise _sesame_error_from_http(e.code, str(e.reason), body) from None
         except urllib.error.URLError as e:
             raise SesameError(f"接続失敗: {e.reason}。`sesame serve --http` を起動しましたか?",
                               kind="connection_lost") from None
@@ -302,9 +330,10 @@ class _HttpTransport:
         try:
             r = urllib.request.urlopen(req)
         except urllib.error.HTTPError as e:
-            if e.code == 401:
+            body = e.read()
+            if e.code == 401 and not self._token:
                 raise self._unauthorized() from None
-            raise SesameError(f"events 購読失敗 (HTTP {e.code}): {e.reason}", kind="bad_params", code=e.code) from None
+            raise _sesame_error_from_http(e.code, str(e.reason), body) from None
         except urllib.error.URLError as e:
             raise SesameError(f"events 接続失敗: {e.reason}。`sesame serve --http` を起動しましたか?",
                               kind="connection_lost") from None

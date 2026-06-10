@@ -9,9 +9,8 @@
 // POSIX (macOS/Linux) 専用のセマンティクス:
 //   - Windows では fs の mode は read-only flag へ degrade される。
 //   - mkdirSync の mode は **新規作成時のみ** 反映される (既存ディレクトリの
-//     パーミッションは変えない)。旧バージョンで 0755 で作られたディレクトリは
-//     `chmod 700 ~/.config/sesame-kit` で手動修正が必要。
-import { chmodSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
+//     パーミッションは変えない) ため、作成後に明示 chmod して旧バージョンの 0755 も締める。
+import { chmodSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 /** 秘匿ファイルのパーミッション。鍵入りファイルは所有者のみ読み書き可。 */
@@ -26,6 +25,7 @@ export const SECRET_DIR_MODE = 0o700;
  */
 export function ensureSecureDir(dir) {
   mkdirSync(dir, { recursive: true, mode: SECRET_DIR_MODE });
+  try { chmodSync(dir, SECRET_DIR_MODE); } catch { /* 非 POSIX / 権限なし: best-effort */ }
   return dir;
 }
 
@@ -38,9 +38,16 @@ export function ensureSecureDir(dir) {
  */
 export function writeSecretFile(path, contents) {
   ensureSecureDir(dirname(path));
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, contents, { mode: SECRET_FILE_MODE });
-  renameSync(tmp, path);
+  const tmp = `${path}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+  try {
+    writeFileSync(tmp, contents, { mode: SECRET_FILE_MODE });
+    restrictSecretFile(tmp);
+    renameSync(tmp, path);
+    restrictSecretFile(path);
+  } catch (e) {
+    try { unlinkSync(tmp); } catch { /* ignore */ }
+    throw e;
+  }
 }
 
 /**

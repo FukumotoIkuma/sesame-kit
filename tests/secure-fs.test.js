@@ -1,6 +1,6 @@
 // secure-fs.js: 秘匿ファイル書き込みの mode/atomicity を検証する。
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, statSync, writeFileSync, readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -22,6 +22,14 @@ describe("secure-fs", () => {
     if (isPosix) expect(mode(sub)).toBe(SECRET_DIR_MODE);
   });
 
+  it("ensureSecureDir は既存の緩いディレクトリも 0700 へ締め直す", () => {
+    const sub = join(dir, "loose");
+    mkdirSync(sub);
+    if (isPosix) chmodSync(sub, 0o755);
+    ensureSecureDir(sub);
+    if (isPosix) expect(mode(sub)).toBe(SECRET_DIR_MODE);
+  });
+
   it("writeSecretJson はファイル 0600 / 親 0700 で書く", () => {
     const f = join(dir, "nested", "devices.json");
     writeSecretJson(f, { devices: [{ secretKey: "deadbeef" }] });
@@ -32,11 +40,28 @@ describe("secure-fs", () => {
     }
   });
 
+  it("writeSecretFile は既存の緩い親ディレクトリとファイルを締め直す", () => {
+    const parent = join(dir, "loose-parent");
+    const f = join(parent, "tokens.json");
+    mkdirSync(parent);
+    writeFileSync(f, "old\n", { mode: 0o644 });
+    if (isPosix) {
+      chmodSync(parent, 0o755);
+      chmodSync(f, 0o644);
+    }
+    writeSecretFile(f, "new\n");
+    expect(readFileSync(f, "utf8")).toBe("new\n");
+    if (isPosix) {
+      expect(mode(parent)).toBe(SECRET_DIR_MODE);
+      expect(mode(f)).toBe(SECRET_FILE_MODE);
+    }
+  });
+
   it("writeSecretFile はアトミック (一時ファイルを残さない)", () => {
     const f = join(dir, "t.json");
     writeSecretFile(f, "hello\n");
     expect(readFileSync(f, "utf8")).toBe("hello\n");
-    expect(() => statSync(`${f}.tmp`)).toThrow(); // temp は rename で消える
+    expect(readdirSync(dir).filter((name) => name.startsWith("t.json.") && name.endsWith(".tmp"))).toEqual([]);
   });
 
   it("restrictSecretFile は既存ファイルの mode を 0600 へ締める", () => {

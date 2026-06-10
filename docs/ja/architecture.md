@@ -104,7 +104,7 @@ sesame-kit/
 │   └── python/sesame_client.py   #   型付き Python クライアント (drift-gated。手編集禁止)
 ├── clients/                # 手書きの薄い公式クライアント (低レベル。上級 / カスタム連携向け)
 │   ├── python/sesame_client.py   #   UDS/stdio/HTTP/WS + イベント購読、汎用 call() (依存ゼロ)
-│   └── js/sesame-client.mjs      #   同等 (Node 18+)。sdk/ と clients/ の違いは README 参照
+│   └── js/sesame-client.mjs      #   同等 (Node 20+)。sdk/ と clients/ の違いは README 参照
 ├── vendor/
 │   └── biz3/constants/     # biz3 の import-zero 定数を逐語コピー (single source of truth)
 └── src/

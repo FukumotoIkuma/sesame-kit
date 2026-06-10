@@ -67,10 +67,10 @@ BLE 対応はネイティブパッケージ `@abandonware/noble`（`optionalDepe
 ネイティブ BLE ツールチェーンは `node-gyp` を引き込み、これが従来は脆弱な `node-tar` の transitive コピーを連れてきていました。package.json の `overrides` でパッチ版に固定しています:
 
 ```json
-"overrides": { "tar": "^7.5.11" }
+"overrides": { "tar": "^7.5.16" }
 ```
 
-この 1 つの override で `npm audit --omit=dev` は脆弱性 **0** を報告します。パッチ版 `tar@^7.5.11` は `node-gyp` / `cacache` / `@mapbox/node-pre-gyp` が使う展開 API と互換のため、任意のネイティブビルドに影響しません。コア kit の本番（非 dev）依存に既知の advisory はありません。
+この 1 つの override で `npm audit --omit=dev` は脆弱性 **0** を報告します。パッチ版 `tar@^7.5.16` は `node-gyp` / `cacache` / `@mapbox/node-pre-gyp` が使う展開 API と互換のため、任意のネイティブビルドに影響しません。コア kit の本番（非 dev）依存に既知の advisory はありません。
 
 ---
 

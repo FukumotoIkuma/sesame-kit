@@ -77,7 +77,7 @@ sesame-kit/
 │   └── python/sesame_client.py   #   typed Python client (drift-gated; do not hand-edit)
 ├── clients/                # HAND-WRITTEN thin official clients (low-level; advanced/custom integrations)
 │   ├── python/sesame_client.py   #   UDS/stdio/HTTP/WS + event subscription, generic call() (zero deps)
-│   └── js/sesame-client.mjs      #   equivalent (Node 18+); see README for sdk/ vs clients/
+│   └── js/sesame-client.mjs      #   equivalent (Node 20+); see README for sdk/ vs clients/
 ├── vendor/
 │   └── biz3/constants/     # verbatim copy of biz3's import-zero constants (single source of truth)
 └── src/

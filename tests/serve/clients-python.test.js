@@ -26,6 +26,14 @@ assert len(c.discover_names()) > 50, ("too few methods")
 assert c.unlock("front").get("ok") is True, ("unlock failed")
 h = sc.SesameClient.http(base, token)
 assert h.status().get("connected") is True, ("http status")
+# transport-level 413 も undefined/generic ではなく SesameError(kind/code) で見える
+try:
+    h.call("status", big="a" * 1100000)
+    print("FAIL: large request did not raise"); sys.exit(1)
+except sc.SesameError as e:
+    assert e.kind == "bad_params", ("kind", e.kind)
+    assert e.code == 413, ("code", e.code)
+    assert str(e), "empty error message"
 # 不正 topic の subscribe は SesameError を raise する (握り潰さない)
 try:
     h.subscribe(["bogus_topic"], lambda t, p: None)
@@ -77,7 +85,7 @@ print("PATHOK")
 describe.skipIf(!hasPython)("Python 同梱クライアント パス解決", () => {
   it("SESAME_KIT_HOME → XDG_CONFIG_HOME → ~/.config の優先順位が CLI と一致する", () => {
     // 親プロセスの env を汚さないよう、子で純粋に解決ロジックだけを検証する。
-    const env = { ...process.env, PYTHONPATH: PYDIR };
+    const env = { ...process.env, PYTHONPATH: PYDIR, PYTHONDONTWRITEBYTECODE: "1" };
     delete env.SESAME_KIT_HOME;
     delete env.XDG_CONFIG_HOME;
     const r = spawnSync("python3", ["-c", PY_PATHS], { env, encoding: "utf8" });
@@ -102,7 +110,7 @@ describe.skipIf(!hasPython)("Python 同梱クライアント e2e", () => {
     });
     const token = spawnSync("node", ["-e", `process.stdout.write(require("fs").readFileSync(require("path").join(${JSON.stringify(workDir)}, "serve.token"), "utf8").trim())`]).stdout.toString();
     const r = spawnSync("python3", ["-c", PY_ASSERT, socketPath, `http://127.0.0.1:${httpPort}`, token],
-      { env: { ...process.env, PYTHONPATH: PYDIR }, encoding: "utf8" });
+      { env: { ...process.env, PYTHONPATH: PYDIR, PYTHONDONTWRITEBYTECODE: "1" }, encoding: "utf8" });
     if (r.status !== 0) throw new Error(`python assertions failed:\n${r.stdout}\n${r.stderr}`);
     expect(r.stdout).toContain("PYOK");
   });

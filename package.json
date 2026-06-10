@@ -158,7 +158,7 @@
     "build:sdk:py": "node scripts/gen-sdk-py.mjs",
     "build:sdk": "node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
     "typecheck:sdk": "tsc -p sdk/ts/tsconfig.json",
-    "check:sdk:py": "python3 -m py_compile sdk/python/sesame_client.py",
+    "check:sdk:py": "python3 -B -m py_compile sdk/python/sesame_client.py",
     "build": "npm run build:types && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs && node scripts/gen-openrpc.mjs && node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
     "prepack": "npm run build",
     "release": "bash scripts/release.sh"

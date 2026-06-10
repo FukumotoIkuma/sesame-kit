@@ -67,10 +67,10 @@ BLE support depends on the **optional** native package `@abandonware/noble` (lis
 The native BLE toolchain pulls in `node-gyp`, which historically dragged in vulnerable transitive copies of `node-tar`. We pin it to a patched release with a package.json `overrides` field:
 
 ```json
-"overrides": { "tar": "^7.5.11" }
+"overrides": { "tar": "^7.5.16" }
 ```
 
-With this single override, `npm audit --omit=dev` reports **0** vulnerabilities. The patched `tar@^7.5.11` is API-compatible with the extraction surface `node-gyp` / `cacache` / `@mapbox/node-pre-gyp` use, so the optional native build is unaffected. Production (non-dev) dependencies of the core kit have no known advisories.
+With this single override, `npm audit --omit=dev` reports **0** vulnerabilities. The patched `tar@^7.5.16` is API-compatible with the extraction surface `node-gyp` / `cacache` / `@mapbox/node-pre-gyp` use, so the optional native build is unaffected. Production (non-dev) dependencies of the core kit have no known advisories.
 
 ---
 
