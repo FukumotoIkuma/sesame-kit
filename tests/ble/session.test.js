@@ -116,6 +116,38 @@ describe("SesameBleSession", () => {
     await expect(session.request(ITEM.LOCK)).rejects.toThrow(/not logged in/);
   });
 
+  it("BLE3-03: syncTime=false なら login 後の time(8) 自動同期を送らない (CHHub3Device.kt:167-178)", async () => {
+    // 既定 (syncTime=true): mock の login 応答 payload は systemTime=0 (遠過去) なので
+    // 差 >3 秒 → time(8) が fire-and-forget で飛ぶ (CHSesameOS3LockBase.kt:126-138)。
+    await session.connect();
+    expect(dev.lastCommand?.item).toBe(ITEM.TIME);
+    // syncTime=false (Hub3/WM2 用): 同条件でも time(8) を送らない (Hub3 の login override は
+    // handleLoginResponse を呼ばないため時刻同期が無い)。
+    const dev2 = new MockSesame();
+    const s2 = new SesameBleSession({ transport: dev2, secretKey: SECRET, syncTime: false });
+    await s2.connect();
+    expect(s2.isLoggedIn).toBe(true);
+    expect(dev2.lastCommand).toBeNull();
+  });
+
+  it("BLE3-05: initial token が 4B 超なら明示エラー (黙って切り詰めない)", async () => {
+    // CCM nonce = count(8B) ++ sault は 4B token 由来 (lock: 0x00++token4 → 13B)。4B 超を
+    // 先頭 4B に切り詰めるとデバイス側 sault と不一致になり全フレーム復号不能になるため、
+    // セッションは login 待機者を明示エラーで解放する。
+    const longToken = Buffer.from([1, 2, 3, 4, 5]);
+    const transport = {
+      connect(onPacket) {
+        for (const s of splitSegments(Buffer.concat([Buffer.from([OP.PUBLISH, ITEM.INITIAL]), longToken]), SEG.PLAINTEXT)) onPacket(s);
+        return Promise.resolve();
+      },
+      write() {},
+      disconnect() { return Promise.resolve(); },
+    };
+    const s = new SesameBleSession({ transport, secretKey: SECRET });
+    await expect(s.connect()).rejects.toThrow(/4/);
+    expect(s.isLoggedIn).toBe(false);
+  });
+
   it("復号失敗フレームでも dec カウンタを進め、後続フレームの復号が継続する (SDK 忠実: SesameOS3BleCipher.kt:23-31)", async () => {
     await session.connect();
     // device の enc カウンタを 1 進めた「対応する平文が無い/破損した」cipher フレームを注入。

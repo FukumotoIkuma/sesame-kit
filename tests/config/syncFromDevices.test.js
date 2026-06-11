@@ -277,6 +277,73 @@ describe("syncRemotesFromDevices (device-driven, irType 引数不要)", () => {
     store.syncRemotesFromDevices([hubWithRemotes("H1", "living", [{ uuid: "R1", type: 65024, alias: "AC" }])]);
     expect(store.load().default.remote).toBeTruthy();
   });
+
+  // P3-8: irOperation を irType から導出し、code/state を保存する
+  // (リモコン要素は {uuid, type, code, state, alias…} — IrRemote.kt:5-15。
+  //  プリセットは remoteEmit + HXD code — remote-air/index.js:369)。
+  describe("P3-8: irOperation 導出 + code/state 保存", () => {
+    it("自己学習 (0xFE00) は learnEmit、プリセット (0xC000 等) は remoteEmit", () => {
+      const store = new ConfigStore(configPath);
+      const devices = [
+        hubWithRemotes("H1", "living", [
+          { uuid: "R1", type: 0xfe00, alias: "学習" },
+          { uuid: "R2", type: 0xc000, alias: "エアコン", code: 1234, state: "3001AABB" },
+          { uuid: "R3", type: 0x2000, alias: "TV", code: 99 },
+        ]),
+      ];
+      store.syncHub3sFromDevices(devices);
+      store.syncRemotesFromDevices(devices);
+      const cfg = store.load();
+      const learned = Object.values(cfg.remotes).find((x) => x.irDeviceUUID === "R1");
+      const ac = Object.values(cfg.remotes).find((x) => x.irDeviceUUID === "R2");
+      const tv = Object.values(cfg.remotes).find((x) => x.irDeviceUUID === "R3");
+      expect(learned.irOperation).toBe("learnEmit");
+      expect(ac.irOperation).toBe("remoteEmit");
+      expect(tv.irOperation).toBe("remoteEmit");
+      // code/state はプリセット発射 (HXD command 生成 / state 復元) に必要
+      expect(ac.code).toBe(1234);
+      expect(ac.state).toBe("3001AABB");
+      expect(tv.code).toBe(99);
+      expect(learned.code).toBeNull();
+    });
+
+    it("code/state の変更を updated として追従する (サーバ側が真実)", () => {
+      const store = new ConfigStore(configPath);
+      store.syncHub3sFromDevices([hubWithRemotes("H1", "living", [])]);
+      store.syncRemotesFromDevices([hubWithRemotes("H1", "living", [
+        { uuid: "R1", type: 0xc000, alias: "AC", code: 1, state: "OLD" },
+      ])]);
+      const r = store.syncRemotesFromDevices([hubWithRemotes("H1", "living", [
+        { uuid: "R1", type: 0xc000, alias: "AC", code: 2, state: "NEW" },
+      ])]);
+      expect(r.updated).toHaveLength(1);
+      const rm = Object.values(store.load().remotes).find((x) => x.irDeviceUUID === "R1");
+      expect(rm.code).toBe(2);
+      expect(rm.state).toBe("NEW");
+    });
+
+    it("旧 config (learnEmit 固定で取り込んだプリセット) は再 sync で remoteEmit に矯正される", () => {
+      const store = new ConfigStore(configPath);
+      store.syncHub3sFromDevices([hubWithRemotes("H1", "living", [])]);
+      // 旧実装相当の壊れたエントリを直接作る
+      store.addRemote("ac", { hub3: "living", irDeviceUUID: "R1", irType: 0xc000, irOperation: "learnEmit" });
+      const r = store.syncRemotesFromDevices([hubWithRemotes("H1", "living", [
+        { uuid: "R1", type: 0xc000, alias: "AC", code: 7 },
+      ])]);
+      expect(r.updated).toContain("ac");
+      expect(store.load().remotes.ac.irOperation).toBe("remoteEmit");
+      expect(store.load().remotes.ac.code).toBe(7);
+    });
+
+    it("code/state が無い学習リモコンの sync は null のまま (捏造しない)", () => {
+      const store = new ConfigStore(configPath);
+      store.syncHub3sFromDevices([hubWithRemotes("H1", "living", [])]);
+      store.syncRemotesFromDevices([hubWithRemotes("H1", "living", [{ uuid: "R1", type: 0xfe00 }])]);
+      const rm = Object.values(store.load().remotes).find((x) => x.irDeviceUUID === "R1");
+      expect(rm.code).toBeNull();
+      expect(rm.state).toBeNull();
+    });
+  });
 });
 
 describe("syncRemotesFromServer", () => {
@@ -318,5 +385,25 @@ describe("syncRemotesFromServer", () => {
     const remote = Object.values(store.load().remotes).find((x) => x.irDeviceUUID === "R1");
     expect(remote.irType).toBe(65280);
     expect(remote.alias).toBe("新");
+  });
+
+  it("P3-8: プリセットは remoteEmit + code/state を保存 (irOperation は明示 > 導出)", () => {
+    const store = new ConfigStore(configPath);
+    store.syncHub3sFromDevices([hubDev("H1", "living")]);
+    const r = store.syncRemotesFromServer(
+      [
+        { irDeviceUUID: "R1", type: 0xc000, alias: "AC", code: 1234, state: "3001AABB" },
+        { irDeviceUUID: "R2", type: 0xfe00, alias: "学習" },
+        { irDeviceUUID: "R3", type: 0xc000, alias: "明示", irOperation: "learnEmit" },
+      ],
+      "living",
+    );
+    expect(r.added).toHaveLength(3);
+    const byUuid = (u) => Object.values(store.load().remotes).find((x) => x.irDeviceUUID === u);
+    expect(byUuid("R1").irOperation).toBe("remoteEmit");
+    expect(byUuid("R1").code).toBe(1234);
+    expect(byUuid("R1").state).toBe("3001AABB");
+    expect(byUuid("R2").irOperation).toBe("learnEmit");
+    expect(byUuid("R3").irOperation).toBe("learnEmit"); // 明示が導出より優先
   });
 });

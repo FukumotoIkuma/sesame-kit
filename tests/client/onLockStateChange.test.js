@@ -3,6 +3,9 @@
 // 観点:
 //   - _ensureConnected ガード (未 connect 時は throw)
 //   - subscribe key が STATE_CHANGE_KEY ("biz3TriggerLocker:pubDeviceStateChange") であること
+//   - **P3-4: サーバへ subscribeDevicesUpdate frame を送る** (pubDeviceStateChange は
+//     購読 frame を送った接続にのみ push される — useManageDevice.js:48-51,322-350)。
+//     WS 再接続時には frame を再送し、unsubscribe 後は再送しない。
 //   - **vendor 形は data.deviceUUID のみ** で照合する
 //     (biz3 web: useIotCtrl.js:20-21 が updateDeviceState(message.data)、
 //      useManageDevice.js:147 が updatedDevice.deviceUUID。アプリ側はこの WS push を
@@ -28,7 +31,11 @@ function stateMsg(deviceUUID, extra = {}) {
 
 function makeFakeWs() {
   const subscribers = new Map();
+  /** P3-4: 購読 frame (subscribeDevicesUpdate) の送信を記録する。 */
+  const sent = [];
   const ws = {
+    sent,
+    send: vi.fn((frame) => { sent.push(frame); }),
     subscribe: vi.fn((key, fn) => {
       let set = subscribers.get(key);
       if (!set) { set = new Set(); subscribers.set(key, set); }
@@ -41,7 +48,7 @@ function makeFakeWs() {
       };
     }),
   };
-  return { ws, subscribers };
+  return { ws, subscribers, sent };
 }
 
 /** connect() を経由せずに connected 状態の hub を構築するヘルパ。 */
@@ -53,10 +60,10 @@ function makeHub({ locks = {}, defaultLock = null } = {}) {
     },
     tokenStore: {},
   });
-  const { ws, subscribers } = makeFakeWs();
+  const { ws, subscribers, sent } = makeFakeWs();
   hub._ws = ws;
   hub._subUUID = "test-sub-uuid";
-  return { hub, ws, subscribers };
+  return { hub, ws, subscribers, sent };
 }
 
 function getDispatcher(subscribers, key = STATE_CHANGE_KEY) {
@@ -85,10 +92,61 @@ describe("SesameHub3.onLockStateChangeDevice", () => {
       expect(typeof ws.subscribe.mock.calls[0][1]).toBe("function");
     });
 
-    it("戻り値は _ws.subscribe の戻り unsubscribe (関数) を直接返す", () => {
+    it("戻り値は unsubscribe 関数", () => {
       const { hub } = makeHub();
       const off = hub.onLockStateChangeDevice("dev-1", vi.fn());
       expect(typeof off).toBe("function");
+    });
+  });
+
+  describe("P3-4: subscribeDevicesUpdate frame の送信", () => {
+    // pubDeviceStateChange は subscribeDevicesUpdate frame を送った接続にのみ push される
+    // (useManageDevice.js:48-51,322-350)。ローカル購読だけではイベントが永遠に来ない。
+    it("購読時にサーバへ subscribeDevicesUpdate frame を送る (useManageDevice.js:325-331 と同形)", () => {
+      const { hub, sent } = makeHub();
+      hub.onLockStateChangeDevice("AA-BB-CC", vi.fn());
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toEqual({
+        action: "biz3ManageDevice",
+        op: "subscribeDevicesUpdate",
+        items: [{ deviceUUID: "AA-BB-CC" }],
+        companyID: "co",
+      });
+    });
+
+    it("deviceModel が分かる場合は items に乗せる (vendor subscribeDevices :341-344)", () => {
+      const { hub, sent } = makeHub();
+      hub.onLockStateChangeDevice("AA-BB-CC", vi.fn(), { deviceModel: "sesame_5" });
+      expect(sent[0].items).toEqual([{ deviceUUID: "AA-BB-CC", deviceModel: "sesame_5" }]);
+    });
+
+    it("name 経由 (onLockStateChange) では config の model を items に乗せる", () => {
+      const { hub, sent } = makeHub({
+        locks: { front: { deviceUUID: "front-uuid", secretKey: "x", deviceModel: "sesame_5_pro" } },
+      });
+      hub.onLockStateChange("front", vi.fn());
+      expect(sent).toHaveLength(1);
+      expect(sent[0].op).toBe("subscribeDevicesUpdate");
+      expect(sent[0].items[0].deviceUUID).toBe("front-uuid");
+      // LockView の model は deviceModel から導出される (normalizeConfig)
+      expect(sent[0].items[0].deviceModel).toBe("sesame_5_pro");
+    });
+
+    it("WS 再接続時に frame を再送する (サーバは新接続を覚えていない)", () => {
+      const { hub, sent } = makeHub();
+      hub.onLockStateChangeDevice("dev-1", vi.fn());
+      expect(sent).toHaveLength(1);
+      hub._fireReconnect();
+      expect(sent).toHaveLength(2);
+      expect(sent[1]).toEqual(sent[0]);
+    });
+
+    it("unsubscribe 後は再接続でも frame を再送しない", () => {
+      const { hub, sent } = makeHub();
+      const off = hub.onLockStateChangeDevice("dev-1", vi.fn());
+      off();
+      hub._fireReconnect();
+      expect(sent).toHaveLength(1); // 初回のみ
     });
   });
 

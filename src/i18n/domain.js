@@ -65,6 +65,7 @@ export default {
 
     // ---- devices.js ----
     "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",
+    "domain.devices.itemsArray": "items must be an array",
     "domain.devices.listFirmwareTimeout": "listFirmware timeout",
     "domain.devices.registerAuthRequired": "tokenStore or credentialsProvider required (SigV4 signing needs Cognito Identity Pool credentials)",
     "domain.devices.registerFetchRequired": "fetchImpl must be a function (no global fetch available)",
@@ -175,6 +176,7 @@ export default {
 
     // ---- devices.js ----
     "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",
+    "domain.devices.itemsArray": "items は配列で指定してください",
     "domain.devices.listFirmwareTimeout": "listFirmware timeout",
     "domain.devices.registerAuthRequired": "tokenStore か credentialsProvider が必要です (SigV4 署名には Cognito Identity Pool の一時 credentials が要る)",
     "domain.devices.registerFetchRequired": "fetchImpl must be a function (global fetch が無い環境)",

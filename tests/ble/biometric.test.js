@@ -467,3 +467,133 @@ describe("createEnrollCollector (enroll → DB 同期ブリッジ)", () => {
     expect(batches[0].records).toEqual([{ cardID: "aa", cardName: "41", cardType: 1 }]);
   });
 });
+
+describe("createEnrollCollector — ファーム採番 nameUUID の同梱 (P3-11)", () => {
+  // 16B (=32hex) の名前フィールドを持つレコード = タップ登録時にファームが採番した nameUUID。
+  // 導出元: BLE NOTIFY の [type][idLen][id][nameLen][name] layout (CHSesameBiometricParseData.kt:10-17)
+  // の name 位置を biz3 web は nameUUID として読む (biz3utils.js:365-391 parseHexStrToCardInfo /
+  // :393-420 parseHexStrToPasscodeInfo) — nameUUIDLen=0x10、続く 16B が UUID。
+  const uuid16 = Buffer.from("368154c128bc4bcdbe62f3b15c7496d0", "hex");
+  const recWithUUID = Buffer.concat([
+    Buffer.from([0x01, 0x02, 0xaa, 0xbb, 0x10]), // type=01, idLen=02, id=aabb, nameLen=16
+    uuid16,
+  ]);
+  // 短い表示名 (rename 済み等) のレコード: nameUUID は取れないので省略される。
+  const recShortName = Buffer.from([0x01, 0x01, 0xcc, 0x02, 0x41, 0x42]);
+
+  it("card: 名前フィールドが 16B のとき record.nameUUID (32hex 小文字) を含める", () => {
+    const batches = [];
+    const delegate = createEnrollCollector({ onEnrolled: (b) => batches.push(b) });
+    handleBiometricPublish({ itemCode: ITEM.CARD_FIRST, body: Buffer.alloc(0) }, delegate);
+    handleBiometricPublish({ itemCode: ITEM.CARD_NOTIFY, body: recWithUUID }, delegate);
+    handleBiometricPublish({ itemCode: ITEM.CARD_LAST, body: Buffer.alloc(0) }, delegate);
+    expect(batches[0].records).toEqual([{
+      cardID: "aabb",
+      cardName: "368154c128bc4bcdbe62f3b15c7496d0",
+      cardType: 1,
+      nameUUID: "368154c128bc4bcdbe62f3b15c7496d0", // = web の cardInfo.nameUUID (ハイフン無し hex)
+    }]);
+  });
+
+  it("passcode でも同様に nameUUID を含める", () => {
+    const batches = [];
+    const delegate = createEnrollCollector({ onEnrolled: (b) => batches.push(b) });
+    handleBiometricPublish({ itemCode: ITEM.PASSCODE_FIRST, body: Buffer.alloc(0) }, delegate);
+    handleBiometricPublish({ itemCode: ITEM.PASSCODE_NOTIFY, body: recWithUUID }, delegate);
+    handleBiometricPublish({ itemCode: ITEM.PASSCODE_LAST, body: Buffer.alloc(0) }, delegate);
+    expect(batches[0].kind).toBe("passcode");
+    expect(batches[0].records[0].nameUUID).toBe("368154c128bc4bcdbe62f3b15c7496d0");
+  });
+
+  it("名前フィールドが 16B でない (短い表示名) ときは nameUUID を省略する", () => {
+    const batches = [];
+    const delegate = createEnrollCollector({ onEnrolled: (b) => batches.push(b) });
+    handleBiometricPublish({ itemCode: ITEM.CARD_FIRST, body: Buffer.alloc(0) }, delegate);
+    handleBiometricPublish({ itemCode: ITEM.CARD_NOTIFY, body: recShortName }, delegate);
+    handleBiometricPublish({ itemCode: ITEM.CARD_LAST, body: Buffer.alloc(0) }, delegate);
+    const rec = batches[0].records[0];
+    expect(rec.cardID).toBe("cc");
+    expect(rec.cardName).toBe("4142");
+    expect("nameUUID" in rec).toBe(false);
+  });
+});
+
+describe("handleBiometricPublish — 機種文脈の伝搬 (BLEP-09 / BLEP-11)", () => {
+  it("BLEP-09: isRemote=false なら TRIGGER_DELAYTIME(191) は処理済み扱いで delegate を呼ばない", () => {
+    // CHRemoteNanoEventHandler.kt:15-21: handled=true は常に返すが、delegate dispatch は
+    // device.isRemote() のときだけ。
+    let got = null;
+    const delegate = { onTriggerDelaySecondReceived: (_d, s) => { got = s; } };
+    const handled = handleBiometricPublish(
+      { itemCode: ITEM.REMOTE_NANO_PUB_TRIGGER_DELAYTIME, body: Buffer.from([30]) },
+      delegate, undefined, { isRemote: false },
+    );
+    expect(handled).toBe(true); // SDK の handled=true と同義
+    expect(got).toBeNull();     // dispatch は黙殺
+  });
+
+  it("BLEP-09: isRemote=true / 省略 (機種不明) は dispatch する", () => {
+    for (const opts of [{ isRemote: true }, undefined]) {
+      let got = null;
+      const delegate = { onTriggerDelaySecondReceived: (_d, s) => { got = s; } };
+      handleBiometricPublish(
+        { itemCode: ITEM.REMOTE_NANO_PUB_TRIGGER_DELAYTIME, body: Buffer.from([30]) },
+        delegate, undefined, opts,
+      );
+      expect(got).toEqual({ triggerDelaySecond: 30 });
+    }
+  });
+
+  it("BLEP-09: BiometricCommands({model}) 経由で remote_nano は dispatch / ssm_touch は黙殺", () => {
+    const run = (model) => {
+      let pub = null;
+      const session = { request: vi.fn(), onPublish: (fn) => { pub = fn; return () => {}; } };
+      const bio = new BiometricCommands(session, { model });
+      let got = null;
+      bio.registerDelegate({ onTriggerDelaySecondReceived: (_d, s) => { got = s; } });
+      pub({ itemCode: ITEM.REMOTE_NANO_PUB_TRIGGER_DELAYTIME, body: Buffer.from([7]) });
+      return got;
+    };
+    // remote/remote_nano は SDK でどちらも BiometricDeviceType.REMOTE (CHDeivceProtocols.kt:112,118)。
+    expect(run("remote_nano")).toEqual({ triggerDelaySecond: 7 });
+    expect(run("remote")).toEqual({ triggerDelaySecond: 7 });
+    expect(run("ssm_touch")).toBeNull();
+    // model 不明 (省略) は従来互換で dispatch
+    expect(run(null)).toEqual({ triggerDelaySecond: 7 });
+  });
+
+  it("BLEP-11: isOpenSensor が PUB_KEY_SESAME の空きスロット判定 (>1) に伝搬する", () => {
+    // 占有 1 スロット + 空 1 スロット: 非 OpenSensor は空きあり (slotFull=false)、
+    // OpenSensor は hub3 予約分を引いて空き無し (slotFull=true)。kt:225-231。
+    const occupied = Buffer.concat([Buffer.alloc(16, 0x11), Buffer.alloc(5), Buffer.from([0x00, 0x01])]);
+    const empty = Buffer.alloc(23);
+    const payload = Buffer.concat([occupied, empty]);
+    const run = (opts) => {
+      let got = null;
+      handleBiometricPublish(
+        { itemCode: ITEM.PUB_KEY_SESAME, body: payload },
+        { onSesameKeysReceived: (_d, keys) => { got = keys; } }, undefined, opts,
+      );
+      return got;
+    };
+    expect(run(undefined).slotFull).toBe(false);            // 既定 = 非 OpenSensor
+    expect(run({ isOpenSensor: true }).slotFull).toBe(true); // OpenSensor は >1 必要
+  });
+
+  it("BLEP-11: BiometricCommands({model:'open_sensor_1'}) 経由で isOpenSensor が確定する", () => {
+    const occupied = Buffer.concat([Buffer.alloc(16, 0x11), Buffer.alloc(5), Buffer.from([0x00, 0x01])]);
+    const empty = Buffer.alloc(23);
+    const run = (model) => {
+      let pub = null;
+      const session = { request: vi.fn(), onPublish: (fn) => { pub = fn; return () => {}; } };
+      const bio = new BiometricCommands(session, { model });
+      let got = null;
+      bio.registerDelegate({ onSesameKeysReceived: (_d, keys) => { got = keys; } });
+      pub({ itemCode: ITEM.PUB_KEY_SESAME, body: Buffer.concat([occupied, empty]) });
+      return got;
+    };
+    expect(run("open_sensor_1").slotFull).toBe(true);  // 空 1 つでは足りない (hub3 予約)
+    expect(run("open_sensor_2").slotFull).toBe(true);
+    expect(run("ssm_touch").slotFull).toBe(false);     // 通常機種は空 1 つで空きあり
+  });
+});

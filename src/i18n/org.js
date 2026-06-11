@@ -128,16 +128,19 @@ export default {
     "org.role.ls.found": "Found {n} role tag(s):",
 
     // role post
-    "org.role.post.desc": "Add/update a role tag (postTag; companyID auto-injected, data via --json)",
-    "org.role.post.opt": "JSON object (tag name etc.; depends on biz3 UI). e.g. '{\"name\":\"Admin\"}'",
-    "org.role.post.need": "data required: sesame org role post --json '{\"name\":\"Admin\"}'",
-    "org.role.post.hint": "{\"name\":\"Admin\"}",
+    // role の実フィールドは {tag, access[]} (EmployeeRoles.js:161-164)。access の値は
+    // 日本語ページ名定数 (gUtils.js pageNames。account.PAGE_NAMES として公開) そのもの。
+    "org.role.post.desc": "Add/update a role tag (postTag; companyID auto-injected, data = {tag, access[]} via --json)",
+    "org.role.post.opt": "JSON object {tag, access[]} (access values are the Japanese page-name constants, see account.PAGE_NAMES). e.g. '{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}'",
+    "org.role.post.need": "data required: sesame org role post --json '{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}'",
+    "org.role.post.hint": "{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}",
     "org.role.post.ok": "OK: role tag posted",
 
     // role rm
-    "org.role.rm.desc": "Remove a role tag (removeTag; data contents depend on biz3 UI)",
-    "org.role.rm.opt": "JSON object. e.g. '{\"id\":\"…\"}'",
-    "org.role.rm.need": "data required: sesame org role rm --json '{\"id\":\"…\"}'",
+    "org.role.rm.desc": "Remove a role tag (removeTag; data = the whole tagSetting {tag, access[]}, see DataTableColumns.js:627)",
+    "org.role.rm.opt": "JSON object: the whole tagSetting {tag, access[]}. e.g. '{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}'",
+    "org.role.rm.need": "data required: sesame org role rm --json '{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}'",
+    "org.role.rm.hint": "{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}",
     "org.role.rm.ok": "OK: role tag removed",
 
     // device-group ls
@@ -206,9 +209,11 @@ export default {
     "org.keys.shareGroup.ok": "OK: shared device group keys to employee group",
 
     // keys rm
-    "org.keys.rm.desc": "Remove an employee/guest device key (removeEmployeeDeviceKey). Guest keys require randomTag (see core JSDoc)",
-    "org.keys.rm.opt": "JSON. employee '{\"subUUID\":\"…\",\"deviceUUID\":\"…\"}' / guest '{\"guestKeyId\":\"…\",\"randomTag\":\"…\",\"deviceUUID\":\"…\"}'",
+    "org.keys.rm.desc": "Remove an employee/guest device key (removeEmployeeDeviceKey). For guest keys, randomTag is auto-computed (cmacTime of the device secretKey) when omitted",
+    "org.keys.rm.opt": "JSON. employee '{\"subUUID\":\"…\",\"deviceUUID\":\"…\"}' / guest '{\"guestKeyId\":\"…\",\"deviceUUID\":\"…\"}' (randomTag optional; auto-computed from the device secretKey via cmacTime, same as DeviceUserList.js:117-132)",
     "org.keys.rm.need": "data required: sesame org keys rm --json '{\"subUUID\":\"…\",\"deviceUUID\":\"…\"}'",
+    "org.keys.rm.deviceNotFound": "device {deviceUUID} not found in your devices (cannot auto-compute randomTag; pass randomTag explicitly)",
+    "org.keys.rm.noSecretKey": "device {deviceUUID} has no secretKey (cannot auto-compute randomTag; pass randomTag explicitly)",
     "org.keys.rm.ok": "OK: device key removed",
 
     // keys update-guest-tag
@@ -369,16 +374,19 @@ export default {
     "org.role.ls.found": "Found {n} role tag(s):",
 
     // role post
-    "org.role.post.desc": "役割タグを追加/更新 (postTag。companyID は自動注入、data は --json)",
-    "org.role.post.opt": "JSON オブジェクト (タグ名等。biz3 UI 依存)。例 '{\"name\":\"管理者\"}'",
-    "org.role.post.need": "data が必要です: sesame org role post --json '{\"name\":\"管理者\"}'",
-    "org.role.post.hint": "{\"name\":\"管理者\"}",
+    // role の実フィールドは {tag, access[]} (EmployeeRoles.js:161-164)。access の値は
+    // 日本語ページ名定数 (gUtils.js pageNames。account.PAGE_NAMES として公開) そのもの。
+    "org.role.post.desc": "役割タグを追加/更新 (postTag。companyID は自動注入、data = {tag, access[]} を --json で)",
+    "org.role.post.opt": "JSON オブジェクト {tag, access[]} (access の値は日本語ページ名定数 = account.PAGE_NAMES)。例 '{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}'",
+    "org.role.post.need": "data が必要です: sesame org role post --json '{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}'",
+    "org.role.post.hint": "{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}",
     "org.role.post.ok": "OK: role tag posted",
 
     // role rm
-    "org.role.rm.desc": "役割タグを削除 (removeTag。data 内容は biz3 UI 依存)",
-    "org.role.rm.opt": "JSON オブジェクト。例 '{\"id\":\"…\"}'",
-    "org.role.rm.need": "data が必要です: sesame org role rm --json '{\"id\":\"…\"}'",
+    "org.role.rm.desc": "役割タグを削除 (removeTag。data は tagSetting 全体 {tag, access[]}。DataTableColumns.js:627 参照)",
+    "org.role.rm.opt": "JSON オブジェクト: tagSetting 全体 {tag, access[]}。例 '{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}'",
+    "org.role.rm.need": "data が必要です: sesame org role rm --json '{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}'",
+    "org.role.rm.hint": "{\"tag\":\"Admin\",\"access\":[\"ユーザー\",\"カード管理\"]}",
     "org.role.rm.ok": "OK: role tag removed",
 
     // device-group ls
@@ -447,9 +455,11 @@ export default {
     "org.keys.shareGroup.ok": "OK: shared device group keys to employee group",
 
     // keys rm
-    "org.keys.rm.desc": "従業員/ゲストのデバイス鍵を削除 (removeEmployeeDeviceKey)。ゲスト鍵は randomTag が必要 (本体 JSDoc 参照)",
-    "org.keys.rm.opt": "JSON。従業員 '{\"subUUID\":\"…\",\"deviceUUID\":\"…\"}' / ゲスト '{\"guestKeyId\":\"…\",\"randomTag\":\"…\",\"deviceUUID\":\"…\"}'",
+    "org.keys.rm.desc": "従業員/ゲストのデバイス鍵を削除 (removeEmployeeDeviceKey)。ゲスト鍵の randomTag は未指定なら自動補完 (デバイス secretKey の cmacTime)",
+    "org.keys.rm.opt": "JSON。従業員 '{\"subUUID\":\"…\",\"deviceUUID\":\"…\"}' / ゲスト '{\"guestKeyId\":\"…\",\"deviceUUID\":\"…\"}' (randomTag は任意。未指定ならデバイス secretKey から cmacTime で自動計算 = DeviceUserList.js:117-132 と同じ)",
     "org.keys.rm.need": "data が必要です: sesame org keys rm --json '{\"subUUID\":\"…\",\"deviceUUID\":\"…\"}'",
+    "org.keys.rm.deviceNotFound": "デバイス {deviceUUID} が devices 一覧に見つかりません (randomTag を自動計算できません。randomTag を明示してください)",
+    "org.keys.rm.noSecretKey": "デバイス {deviceUUID} に secretKey がありません (randomTag を自動計算できません。randomTag を明示してください)",
     "org.keys.rm.ok": "OK: device key removed",
 
     // keys update-guest-tag

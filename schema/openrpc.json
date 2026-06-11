@@ -1846,6 +1846,14 @@
           "schema": {
             "type": "number"
           }
+        },
+        {
+          "name": "graceMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1875,6 +1883,14 @@
         },
         {
           "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "graceMs",
           "required": false,
           "description": "number",
           "schema": {
@@ -2825,6 +2841,14 @@
           }
         },
         {
+          "name": "savedState",
+          "required": false,
+          "description": "string | null",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
           "name": "power",
           "required": false,
           "description": "boolean",
@@ -3478,8 +3502,164 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "devices.add",
+      "summary": "add devices to the company (biz3ManageDevice/add; items = QR-derived key objects)",
+      "params": [
+        {
+          "name": "items",
+          "required": true,
+          "description": "QR-derived device key objects to add (biz3ManageDevice/add items)",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "manageDevice ack ('Limit Exceeded' propagates as rejected)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "devices.reorder",
+      "summary": "reorder company devices (biz3ManageDevice/reorderDevices; rank = -index is assigned)",
+      "params": [
+        {
+          "name": "items",
+          "required": true,
+          "description": "device objects in the desired order (rank = -index is assigned)",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "reordered device[] (resp.data)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "devices.notifyStatus",
+      "summary": "per-device push-notification settings (biz3ManageDevice/notifyList)",
+      "params": [
+        {
+          "name": "pushToken",
+          "required": true,
+          "description": "mobile push token (FCM etc.; carried in the biz3 notify frame)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "items",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "notify status list (resp.data)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "devices.notifyManage",
+      "summary": "switch push notification for one device (biz3ManageDevice/notifyManage)",
+      "params": [
+        {
+          "name": "pushToken",
+          "required": true,
+          "description": "mobile push token (FCM etc.; carried in the biz3 notify frame)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "enablePush",
+          "required": true,
+          "description": "1/0 or boolean",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "manageDevice ack",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "devices.switchRecharge",
+      "summary": "switch rechargeable-battery mode (biz3ManageDevice/switchRecharge)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "isRechargeBattery",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "manageDevice ack",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "access.registerCards",
-      "summary": "[experimental] bulk-register read IC cards to the cloud DB (postCards)",
+      "summary": "[experimental] register read IC cards to the cloud DB (per-record updateCardName)",
       "params": [
         {
           "name": "deviceUUID",
@@ -3492,7 +3672,7 @@
         {
           "name": "cards",
           "required": true,
-          "description": "card records to register: [{cardID, cardName, cardType}, ...]",
+          "description": "card records to register: [{cardID, cardName, cardType, nameUUID?}, ...] (nameUUID = firmware-assigned, from BLE enroll)",
           "schema": {
             "type": "array",
             "items": {
@@ -3504,7 +3684,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "postCards ack (null if cards empty)",
+          "description": "updateCardName responses (null if cards empty)",
           "type": "object"
         }
       },
@@ -3527,6 +3707,14 @@
           "name": "pageSize",
           "required": false,
           "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "lastKey",
+          "required": false,
+          "description": "paging cursor: timestamp of the last record of the previous page (DeviceHistory.js:37-44)",
           "schema": {
             "type": "number"
           }
@@ -3593,6 +3781,14 @@
           "description": "",
           "schema": {
             "type": "number"
+          }
+        },
+        {
+          "name": "lastEvaluatedKey",
+          "required": false,
+          "description": "paging cursor: lastEvaluatedKey object returned by the previous device.battery page",
+          "schema": {
+            "type": "object"
           }
         }
       ],
@@ -4363,6 +4559,69 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "ir.addRemoteToMatter",
+      "summary": "register an IR remote as a Matter on/off device on Hub3 (experimental, untested on real hardware)",
+      "params": [
+        {
+          "name": "hub3DeviceId",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irDeviceType",
+          "required": true,
+          "description": "IR remote type (irRemote.type, e.g. 49152=AC)",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "cmdOn",
+          "required": true,
+          "description": "ON command HEX emitted when Matter switches the device on",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cmdOff",
+          "required": true,
+          "description": "OFF command HEX emitted when Matter switches the device off",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irDeviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irDeviceName",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "addRemoteToMatter response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "access.postAuthenticationData",
       "summary": "Kotlin SDK biometric credential sync: postAuthenticationData",
       "params": [
@@ -5036,12 +5295,12 @@
     },
     {
       "name": "events.subscribe",
-      "summary": "subscribe to events (topics: lockState/deviceUpdate). event.<topic> notifications follow",
+      "summary": "subscribe to events (topics: lockState/deviceUpdate/deviceListChanged). event.<topic> notifications follow",
       "params": [
         {
           "name": "topics",
           "required": true,
-          "description": "topic array to subscribe (lockState/deviceUpdate)",
+          "description": "topic array to subscribe (lockState/deviceUpdate/deviceListChanged)",
           "schema": {}
         }
       ],
@@ -5113,6 +5372,12 @@
       "x-provenance": "app-core"
     },
     {
+      "name": "event.deviceListChanged",
+      "description": "device-list change push (key sharing / device add-remove; biz3 pubUserDeviceChange)",
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "event.ready",
       "description": "connection-ready notification sent once on every persistent connection (stdio/socket/ws/SSE/gRPC Subscribe)",
       "x-stability": "stable",
@@ -5121,6 +5386,7 @@
   ],
   "x-event-topics": [
     "lockState",
-    "deviceUpdate"
+    "deviceUpdate",
+    "deviceListChanged"
   ]
 }

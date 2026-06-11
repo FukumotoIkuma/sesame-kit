@@ -83,7 +83,7 @@ export class BleResultError extends Error {
 export class SesameBleSession {
   /**
    * @param {{transport:BleTransport, secretKey?:string|Buffer, debug?:boolean,
-   *          defaultTimeoutMs?:number, profile?:("lock"|"wm2")}} opts
+   *          defaultTimeoutMs?:number, profile?:("lock"|"wm2"), syncTime?:boolean}} opts
    *   secretKey は **登録済みデバイスへのログイン時のみ必須**。工場出荷 (未登録) デバイスを
    *   register() で登録する場合は secretKey を渡さずに構築する (initial 受信で login を試みず
    *   ReadyToRegister 状態へ遷移する。CHSesameOS3.kt:468-491 isRegistered=false 相当)。
@@ -95,8 +95,15 @@ export class SesameBleSession {
    *       login payload = CMAC 16B 全量、register data = pubK64 のみ、CCM sault = token4 (12B nonce)。
    *       @experimental WM2 profile は SDK Kotlin の静的読みからの移植で **実機未検証**
    *       (参照: CHWifiModule2Device.kt:279-321 / SesameOS3BleCipher.kt:8-32)。
+   *
+   *   syncTime (既定 true): login 成功後の time(8) 自動同期を行うか (BLE3-03)。
+   *     CHSesameOS3LockBase.kt:126-138 handleLoginResponse の時刻同期は **ロック系のみ** の挙動で、
+   *     Hub3 は login を override して handleLoginResponse を呼ばない (CHHub3Device.kt:167-178 —
+   *     login 応答はコールバックで deviceStatus 遷移のみ)。WM2 も同様 (CHWifiModule2Device.kt:314-321。
+   *     こちらは profile="wm2" で構造的に対象外)。ファサード (index.js) は kind が HUB3/WIFI の
+   *     とき false を渡す。
    */
-  constructor({ transport, secretKey, debug = false, defaultTimeoutMs = DEFAULT_TIMEOUT_MS, profile = "lock" }) {
+  constructor({ transport, secretKey, debug = false, defaultTimeoutMs = DEFAULT_TIMEOUT_MS, profile = "lock", syncTime = true }) {
     if (!transport) throw new Error(t("ble.transportRequired"));
     // secretKey 無し = 工場出荷デバイスの register() 用。connect()/login は secretKey を要求する。
     this._transport = transport;
@@ -107,6 +114,8 @@ export class SesameBleSession {
     this._defaultTimeoutMs = defaultTimeoutMs;
     /** @type {"lock"|"wm2"} セッション確立プロファイル (protocol.js SESSION_PROFILES)。 */
     this._profile = assertProfile(profile);
+    /** @type {boolean} login 後の time(8) 自動同期 (BLE3-03。Hub3/WM2 は false)。 */
+    this._syncTime = !!syncTime;
     // initial publish の itemCode はプロファイル依存: lock=14 / wm2=13 (CHWifiModule2Device.kt:521,540)。
     this._initialItemCode = SESSION_PROFILES[this._profile].initialItemCode;
 
@@ -683,7 +692,19 @@ export class SesameBleSession {
 
   /** @param {Buffer} token */
   _handleInitial(token) {
+    // initial token は **4B 固定** (BLE3-05)。根拠: CCM nonce = count(8B LE) ++ sault で、
+    // lock profile の sault = 0x00 ++ token4 (5B) → nonce 13B / wm2 profile の sault = token4 →
+    // nonce 12B が暗号契約 (SesameOS3BleCipher.kt:8-19,23 / CHWifiModule2Device.kt:297,317、
+    // protocol.js ccmSault も 4B を要求)。4B 超を黙って先頭 4B に切り詰めるとデバイス側の
+    // sault と不一致になり全フレームが復号不能になるため、明示エラーで待機者を解放する。
     if (!token || token.length < 4) { this._log("initial token too short"); return; }
+    if (token.length > 4) {
+      const err = new Error(t("ble.initialTokenMustBe4", { len: token.length }));
+      this._log("initial token too long (refusing to truncate)", token.length);
+      this._rejectWaiter("_loginWaiter", err);
+      this._rejectWaiter("_readyWaiter", err);
+      return;
+    }
     this._token = Buffer.from(token.subarray(0, 4));
     this._encCount = 0;
     this._decCount = 0;
@@ -833,7 +854,9 @@ export class SesameBleSession {
       // 同期送信を待たず即時に行う (SDK も同期送信は fire-and-forget で応答を待たない)。
       // wm2 profile は対象外: CHWifiModule2Device.kt:318-320 の login コールバックはログのみで、
       // 時刻同期は CHSesameOS3LockBase (ロック系) 固有の処理。
-      if (this._profile === "lock") this._maybeSyncTime(payload);
+      // syncTime=false (BLE3-03): Hub3 も login を override して handleLoginResponse を呼ばない
+      // (CHHub3Device.kt:167-178) ため、ファサードは HUB3 kind で false を渡す。
+      if (this._profile === "lock" && this._syncTime) this._maybeSyncTime(payload);
       w.resolve();
     }
     else w.reject(new BleResultError("login", resultCode));

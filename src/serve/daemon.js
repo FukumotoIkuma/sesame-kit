@@ -38,11 +38,16 @@ import { t } from "../i18n.js";
  * @property {() => Promise<void>} close
  * @property {(cb: () => void) => void} [onReconnect]
  * @property {(items: Array<{deviceUUID: unknown, deviceModel: unknown}>, cb: (msg: unknown) => void) => (() => void)} onDeviceUpdate
+ * @property {(cb: (msg: unknown) => void) => (() => void)} [onUserDeviceChange]
  * @property {import("../tokens.js").TokenStore} [tokenStore]
  * @property {{ devices?: Record<string, { deviceUUID: unknown, deviceModel: unknown }>, registerBaseUrl?: string|null }} [config]
  */
 
-const TOPICS = ["lockState", "deviceUpdate"];
+// pubDeviceStateChange を源とする state push の topic (同一ストリームの別ラベル — _fanout 参照)。
+const STATE_TOPICS = ["lockState", "deviceUpdate"];
+// 購読可能な全 topic。deviceListChanged (P3-5) は pubUserDeviceChange (デバイス増減 push) を源と
+// する**別ストリーム**なので STATE_TOPICS には含めない (registry.SUBSCRIBABLE_TOPICS と一致)。
+const TOPICS = [...STATE_TOPICS, "deviceListChanged"];
 
 /**
  * unknown な throw から安全に message を取り出す (ログ用)。
@@ -92,6 +97,8 @@ export class Daemon {
     this._subs = new Map();
     /** @type {(() => void)|null} hub 状態 push の単一購読の unsubscribe (張っている時のみ非 null) */
     this._stateUnsub = null;
+    /** @type {(() => void)|null} pubUserDeviceChange (deviceListChanged) 購読の unsubscribe (P3-5) */
+    this._deviceListUnsub = null;
     this._stopped = false;
     this._shuttingDown = false;
     /** @type {ReturnType<typeof setTimeout>|null} */
@@ -283,15 +290,27 @@ export class Daemon {
 
   /** 状態 push の単一購読を (必要なら) 張る。hub 未接続なら接続時に再試行。 */
   _ensureStateSub() {
-    if (this._stateUnsub || !this.hub.connected) return;
-    try {
-      // config 上の devices を items に (サーバへ subscribe frame を送るため)。
-      const devices = (this.hub.config && this.hub.config.devices) || {};
-      const items = Object.values(devices).map((d) => ({ deviceUUID: d.deviceUUID, deviceModel: d.deviceModel }));
-      this._stateUnsub = this.hub.onDeviceUpdate(items, (msg) => this._fanout(msg));
-      this._log("state subscription established");
-    } catch (e) {
-      this._log("state sub failed:", errMessage(e));
+    if (!this.hub.connected) return;
+    if (!this._stateUnsub) {
+      try {
+        // config 上の devices を items に (サーバへ subscribe frame を送るため)。
+        const devices = (this.hub.config && this.hub.config.devices) || {};
+        const items = Object.values(devices).map((d) => ({ deviceUUID: d.deviceUUID, deviceModel: d.deviceModel }));
+        this._stateUnsub = this.hub.onDeviceUpdate(items, (msg) => this._fanout(msg));
+        this._log("state subscription established");
+      } catch (e) {
+        this._log("state sub failed:", errMessage(e));
+      }
+    }
+    // P3-5: pubUserDeviceChange (デバイス増減 push) は購読 frame 不要のローカル購読
+    // (useIotCtrl.js:12,23-25)。topic `deviceListChanged` として fan-out する。
+    if (!this._deviceListUnsub && typeof this.hub.onUserDeviceChange === "function") {
+      try {
+        this._deviceListUnsub = this.hub.onUserDeviceChange((msg) => this._fanoutTopic("deviceListChanged", msg));
+        this._log("device-list subscription established");
+      } catch (e) {
+        this._log("device-list sub failed:", errMessage(e));
+      }
     }
   }
 
@@ -300,14 +319,21 @@ export class Daemon {
     // 旧 unsub を必ず呼んでから張り直す。呼ばないと transport の subscribers に古い fn が
     // 残り、新 fn と二重配信になる (subscribers は再接続を跨いで保持されるため)。
     if (this._stateUnsub) { try { this._stateUnsub(); } catch { /* ignore */ } this._stateUnsub = null; }
+    if (this._deviceListUnsub) { try { this._deviceListUnsub(); } catch { /* ignore */ } this._deviceListUnsub = null; }
     if (this._anySubscribers()) this._ensureStateSub();
   }
 
   _maybeTeardownStateSub() {
-    if (this._stateUnsub && !this._anySubscribers()) {
+    if (this._anySubscribers()) return;
+    if (this._stateUnsub) {
       try { this._stateUnsub(); } catch { /* ignore */ }
       this._stateUnsub = null;
       this._log("state subscription torn down");
+    }
+    if (this._deviceListUnsub) {
+      try { this._deviceListUnsub(); } catch { /* ignore */ }
+      this._deviceListUnsub = null;
+      this._log("device-list subscription torn down");
     }
   }
 
@@ -316,14 +342,28 @@ export class Daemon {
    * 注: lockState と deviceUpdate は現状どちらも biz3 の pubDeviceStateChange を源とする
    * (同一ストリームの別ラベル)。両方購読している接続には **1 回だけ** 配信する
    * (最初に購読している topic のラベルで) — 同一イベントの二重配信を避ける。
+   * deviceListChanged は別ストリーム (pubUserDeviceChange) なのでここでは配信しない
+   * (_fanoutTopic 経由)。
    */
   /** @param {unknown} msg */
   _fanout(msg) {
     for (const [conn, set] of this._subs) {
-      const topic = TOPICS.find((t) => set.has(t));
+      const topic = STATE_TOPICS.find((t) => set.has(t));
       if (topic) {
         try { conn.send(makeEvent(topic, msg)); } catch { /* framing 背圧で切断済み等 */ }
       }
+    }
+  }
+
+  /**
+   * 単一 topic のイベントを購読 Connection へ配信する (P3-5: deviceListChanged 用)。
+   * @param {string} topic
+   * @param {unknown} msg
+   */
+  _fanoutTopic(topic, msg) {
+    for (const [conn, set] of this._subs) {
+      if (!set.has(topic)) continue;
+      try { conn.send(makeEvent(topic, msg)); } catch { /* framing 背圧で切断済み等 */ }
     }
   }
 
@@ -336,6 +376,7 @@ export class Daemon {
     if (this._retryTimer) clearTimeout(this._retryTimer);
     if (this._retryResolve) { this._retryResolve(); this._retryResolve = null; } // connectLoop の sleep を即解除
     if (this._stateUnsub) { try { this._stateUnsub(); } catch { /* ignore */ } this._stateUnsub = null; }
+    if (this._deviceListUnsub) { try { this._deviceListUnsub(); } catch { /* ignore */ } this._deviceListUnsub = null; }
     try { await this.hub.close(); } catch (e) { this._log("hub.close error:", errMessage(e)); }
   }
 

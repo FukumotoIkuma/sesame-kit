@@ -66,6 +66,9 @@ export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS } 
     sendFrame: { action: ACT_MANAGE, op: "getUserDevice" },
     timeoutMs,
     onTimeout: () => timeoutError(t("domain.devices.getUserDeviceTimeout")),
+    // P3-9: 同 action の success:false (即時エラー応答) で timeout を待たず失敗確定
+    // (useManageDevice.js:27-34 の !message.success 判定)。
+    errorAction: ACT_MANAGE,
     result: () => acc,
     subscriptions: [{
       key: `${ACT_MANAGE}:PubedUserDevice`,
@@ -137,6 +140,115 @@ export async function deleteDevices(client, { companyID, items }) {
 }
 
 /**
+ * デバイスを company に追加する (biz3ManageDevice/add)。
+ * **デバイスを「増やす」唯一の経路** (del だけある現状は非対称だった — P3-1)。
+ * items は QR 由来のデバイスキーオブジェクト配列 (vendor は addSesameDevicesToBiz3 が
+ * そのまま items に乗せる — useManageDevice.js:256-268)。
+ *
+ * 失敗応答の伝搬: サーバはデバイス数上限で `{success:false, message:"Limit Exceeded"}` を
+ * 返す (useManageDevice.js:28-30)。assertSuccess(strict) がその message を含む
+ * SesameError(rejected) で throw するため、呼び出し側にそのまま伝搬する。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, items: object[]}} p
+ */
+export async function addDevices(client, { companyID, items }) {
+  if (!Array.isArray(items)) throw badRequest("domain.devices.itemsArray");
+  const resp = await client.request(
+    // frame 1:1 (useManageDevice.js:258-263): { action, op:'add', items, companyID }
+    { action: ACT_MANAGE, op: "add", items, companyID },
+    DEFAULT_TIMEOUT_MS,
+  );
+  assertSuccess(resp, "addDevices", { strict: true });
+  return resp;
+}
+
+/**
+ * デバイスの並び順を更新する (biz3ManageDevice/reorderDevices)。
+ * vendor (useManageDevice.js:270-285) は items の各要素に `rank = 0 - index` を
+ * 振ってから送る (先頭ほど大きい = 降順負値)。本関数も同じ採番を行う。
+ * 応答 data は並び替え後のデバイス一覧 (useManageDevice.js:80-81 setCompanyDevices(message.data))。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, items: object[]}} p items は並べたい順のデバイスオブジェクト配列
+ * @returns {Promise<any>} 並び替え後のデバイス一覧 (resp.data)
+ */
+export async function reorderDevices(client, { companyID, items }) {
+  if (!Array.isArray(items)) throw badRequest("domain.devices.itemsArray");
+  // rank 採番は vendor と同じ in-place (useManageDevice.js:272-274 item.rank = 0 - index)。
+  const ranked = items.map((item, index) => ({ ...item, rank: 0 - index }));
+  const resp = await client.request(
+    // frame 1:1 (useManageDevice.js:275-280): { action, op:'reorderDevices', items, companyID }
+    { action: ACT_MANAGE, op: "reorderDevices", items: ranked, companyID },
+    DEFAULT_TIMEOUT_MS,
+  );
+  assertSuccess(resp, "reorderDevices", { strict: true });
+  return resp.data;
+}
+
+/**
+ * デバイスごとの push 通知設定一覧を取得する (biz3ManageDevice/notifyList)。
+ * pushToken はモバイル push トークン (vendor は FCM 等の端末トークンを渡す)。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, pushToken: string, items: object[]}} p
+ * @returns {Promise<any>} 通知設定一覧 (resp.data)
+ */
+export async function getNotifyStatus(client, { companyID, pushToken, items }) {
+  if (!Array.isArray(items)) throw badRequest("domain.devices.itemsArray");
+  const resp = await client.request(
+    // frame 1:1 (useManageDevice.js:287-299): { action, companyID, pushToken, items, op:'notifyList' }
+    { action: ACT_MANAGE, companyID, pushToken, items, op: "notifyList" },
+    DEFAULT_TIMEOUT_MS,
+  );
+  assertSuccess(resp, "getNotifyStatus", { strict: true });
+  return resp.data;
+}
+
+/**
+ * 単機の push 通知 ON/OFF を切り替える (biz3ManageDevice/notifyManage)。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, pushToken: string, deviceUUID: string, enablePush: number|boolean}} p
+ *   enablePush: vendor はそのまま乗せる (useManageDevice.js:304-318)。boolean は 1/0 へ正規化。
+ */
+export async function switchNotify(client, { companyID, pushToken, deviceUUID, enablePush }) {
+  if (!deviceUUID) throw badRequest("domain.devices.deviceUUIDRequired");
+  const resp = await client.request(
+    // frame 1:1 (useManageDevice.js:308-315): { action, companyID, enablePush, deviceUUID, pushToken, op:'notifyManage' }
+    {
+      action: ACT_MANAGE,
+      companyID,
+      enablePush: typeof enablePush === "boolean" ? (enablePush ? 1 : 0) : enablePush,
+      deviceUUID,
+      pushToken,
+      op: "notifyManage",
+    },
+    DEFAULT_TIMEOUT_MS,
+  );
+  assertSuccess(resp, "switchNotify", { strict: true });
+  return resp;
+}
+
+/**
+ * 充電池モード (リチウム充電池使用フラグ) を切り替える (biz3ManageDevice/switchRecharge)。
+ * vendor フレームに companyID は**乗らない** (useManageDevice.js:360-372)。
+ *
+ * @param {WsClient} client
+ * @param {{deviceUUID: string, isRechargeBattery: boolean|number}} p
+ */
+export async function switchRechargeableBattery(client, { deviceUUID, isRechargeBattery }) {
+  if (!deviceUUID) throw badRequest("domain.devices.deviceUUIDRequired");
+  const resp = await client.request(
+    // frame 1:1 (useManageDevice.js:362-367): { action, deviceUUID, isRechargeBattery: 1|0, op:'switchRecharge' }
+    { action: ACT_MANAGE, deviceUUID, isRechargeBattery: isRechargeBattery ? 1 : 0, op: "switchRecharge" },
+    DEFAULT_TIMEOUT_MS,
+  );
+  assertSuccess(resp, "switchRechargeableBattery", { strict: true });
+  return resp;
+}
+
+/**
  * デバイス state push を購読。subscribeDevicesUpdate (biz3ManageDevice) を投げて購読要求し、
  * 実際の state push は **`biz3TriggerLocker:pubDeviceStateChange`** で届く。
  *
@@ -161,6 +273,25 @@ export function subscribeDevicesUpdate(client, { companyID, items, onUpdate }) {
   });
 }
 
+/**
+ * デバイス一覧の増減 push (`pubUserDeviceChange`) を購読する (P3-5)。
+ *
+ * vendor (useIotCtrl.js:12,23-25): 鍵共有・デバイス追加/削除があるとサーバが
+ * `{action:"biz3TriggerLocker", op:"pubUserDeviceChange", ...}` を push し、
+ * web はそれを受けて getCompanyDevices() でデバイス一覧を再取得する。
+ * 購読要求フレームは存在しない (pubDeviceStateChange と違い subscribe op 無しで届く) ため、
+ * 本関数はローカル購読のみを行う。再接続を跨いでも transport の subscribers は保持される。
+ *
+ * @param {WsClient} client
+ * @param {{onChange: (msg: any) => void}} p
+ * @returns {() => void} unsubscribe
+ */
+export function subscribeUserDeviceChange(client, { onChange }) {
+  return client.subscribe(`biz3TriggerLocker:pubUserDeviceChange`, (msg) => {
+    try { onChange(msg); } catch { /* ignore */ }
+  });
+}
+
 // ---------- history ----------
 
 /**
@@ -175,6 +306,41 @@ export async function getDeviceHistory(client, { companyID, list, pageSize = nul
   );
   assertSuccess(resp, "getDeviceHistory", { strict: true });
   return resp.data;
+}
+
+/**
+ * 単機の開閉履歴を全ページ自動取得する (P3-7、vendor fetchAllHistory 相当)。
+ *
+ * vendor (DeviceHistory.js:37-74 downloadDeviceHistory/fetchAllHistory):
+ *   - lastKey = 直前ページ末尾レコードの timestamp (初回は null)
+ *   - 1 ページ取得して `res.length === pageSize` なら次ページ継続、満たなければ終端
+ *   - pageSize は 100 固定 (DeviceHistory.js:56)
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, deviceUUID: string, pageSize?: number, maxPages?: number}} p
+ *   maxPages: 安全弁 (vendor には無い意図的逸脱 §0.1-2 — CLI/RPC で無限ループを防ぐ。既定 1000)。
+ * @returns {Promise<any[]>} 全ページを結合した履歴配列
+ */
+export async function getAllDeviceHistory(client, { companyID, deviceUUID, pageSize = 100, maxPages = 1000 }) {
+  if (!deviceUUID) throw badRequest("domain.devices.deviceUUIDRequired");
+  /** @type {any[]} */
+  const all = [];
+  /** @type {number|null} */
+  let lastKey = null;
+  for (let page = 0; page < maxPages; page += 1) {
+    /** @type {any[]} */
+    const res = /** @type {any[]} */ (await getDeviceHistory(client, {
+      companyID,
+      list: [{ deviceUUID, lastKey }],
+      pageSize,
+    })) || [];
+    all.push(...res);
+    // 継続条件は vendor 1:1 (DeviceHistory.js:64: res.length > 0 && res.length === pageSize)。
+    if (!(res.length > 0 && res.length === pageSize)) break;
+    lastKey = res[res.length - 1]?.timestamp ?? null;
+    if (lastKey == null) break; // timestamp 欠落時は継続不能 (vendor は undefined を渡し続けるが無限ループ防止)
+  }
+  return all;
 }
 
 /**
@@ -206,7 +372,11 @@ export async function getBatteryRecord(client, { deviceUUID, lastEvaluatedKey = 
     { action: ACT_BATTERY, op: "batch-get", deviceUUID, lastEvaluatedKey, pageSize },
     DEFAULT_TIMEOUT_MS,
   );
-  assertSuccess(resp, "getBatteryRecord", { strict: true });
+  // P3-18: vendor (MobileBatteryChart.js:39-50 getBatteryRecordCallback) は success を見ずに
+  // message.data.records を読む。strict:true だと success を省略する正常応答を例外化するため、
+  // 非 strict (success===false のみ拒否) に緩める。
+  // 注: 実応答で success フィールドの有無は未確認 (REFACTORING_PLAN §9 V9)。
+  assertSuccess(resp, "getBatteryRecord");
   return resp.data || { records: [], lastEvaluatedKey: null };
 }
 
@@ -244,7 +414,16 @@ export async function listFirmware(client) {
     subscriptions: [{
       key: `${ACT_FIRMWARE}:`,
       /** @param {any} msg @param {(err?: Error) => void} finish */
-      onMessage: (msg, finish) => { data = msg?.data || []; finish(); },
+      onMessage: (msg, finish) => {
+        // P3-9: success:false の即時エラーを空配列の成功に化けさせない
+        // (useDeveloper.js:18-31 は素通しだが、本 kit は明示失敗にする)。
+        if (msg?.success === false) {
+          finish(rejected(t("domain.util.opFailed", { op: "listFirmware", detail: msg?.message || JSON.stringify(msg) }),
+            { upstreamCode: msg?.code ?? null }));
+          return;
+        }
+        data = msg?.data || []; finish();
+      },
     }],
   });
 }
@@ -264,7 +443,11 @@ export async function invokeWebAPI(client, { func, apiKeyId, query = {}, body = 
     { action: ACT_WEBAPI, op: func, apiKeyId, query, body },
     DEFAULT_TIMEOUT_MS,
   );
-  assertSuccess(resp, `invokeWebAPI(${func})`, { strict: true });
+  // P3-18: vendor (useDeveloper.js:18-31 handleAPIInfoResponse) は success を見ずに応答を
+  // そのままコールバックへ流す。strict:true だと success を省略する正常応答を例外化するため、
+  // 非 strict (success===false のみ拒否) に緩める。
+  // 注: 実応答で success フィールドの有無は未確認 (REFACTORING_PLAN §9 V9)。
+  assertSuccess(resp, `invokeWebAPI(${func})`);
   return resp.data;
 }
 

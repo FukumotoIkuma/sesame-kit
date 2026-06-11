@@ -32,6 +32,7 @@
 import { Buffer } from "node:buffer";
 import { t } from "../i18n.js";
 import { WM2_ACTION_CODES } from "../itemcodes.js";
+import { parseNetworkStatus } from "./protocol.js";
 
 // ---------- GATT (CHWifiModule2Device.kt:533-537 Wm2Chracs) ----------
 
@@ -254,39 +255,11 @@ export function parseWifiPasswordPublish(payload) {
   return buf.toString("utf8");
 }
 
-/**
- * NETWORK_STATUS publish payload[0] のビットフラグを解析 (CHWifiModule2Device.kt:502-510)。
- *   isAp           = (payload[0] and 2)  > 0   bit1
- *   isNet          = (payload[0] and 4)  > 0   bit2
- *   isIot          = (payload[0] and 8)  > 0   bit3
- *   isAPCheck      = (payload[0] and 16) > 0   bit4
- *   isAPConnecting = (payload[0] and 32) > 0   bit5
- *   isNETConnecting= (payload[0] and 64) > 0   bit6
- *   isIOTConnecting= payload[0] < 0            (Kotlin signed Byte の最上位 bit7)
- *
- * 注: Kotlin の payload[0] は **signed Byte**。最上位 bit (0x80) が立つと負値になり、
- *   isIOTConnecting = (payload[0] < 0) はそのまま bit7 判定と等価。JS では payload[0] は
- *   0..255 の unsigned なので bit7 を (b & 0x80) で判定する (= 等価)。
- *
- * @param {Buffer} payload (>=1B)
- * @returns {{isAp:boolean, isNet:boolean, isIot:boolean, isAPCheck:boolean,
- *            isAPConnecting:boolean, isNETConnecting:boolean, isIOTConnecting:boolean, raw:number}}
- */
-export function parseNetworkStatus(payload) {
-  const buf = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
-  if (buf.length < 1) throw new Error(t("ble.wm2NetworkStatusEmpty"));
-  const b = buf[0];
-  return {
-    isAp: (b & 2) > 0,             // bit1
-    isNet: (b & 4) > 0,            // bit2
-    isIot: (b & 8) > 0,            // bit3
-    isAPCheck: (b & 16) > 0,       // bit4
-    isAPConnecting: (b & 32) > 0,  // bit5
-    isNETConnecting: (b & 64) > 0, // bit6
-    isIOTConnecting: (b & 0x80) > 0, // bit7 (Kotlin signed byte < 0 と等価)
-    raw: b,
-  };
-}
+// NETWORK_STATUS publish payload[0] のビットフラグ解析 (CHWifiModule2Device.kt:502-510)。
+// 同一 bit layout を Hub3 の mechStatus(81) publish も使う (CHHub3Device.kt:291-301) ため、
+// 実体は protocol.js (parseNetworkStatus) へ共有化した (P3-16)。後方互換のためここから再公開する
+// (import はファイル先頭、再公開は下記)。
+export { parseNetworkStatus };
 
 /**
  * SESAME_KEYS publish payload を 23B チャンクに分割し、子 Sesame の {ssm id → ロック状態} を返す
@@ -442,7 +415,16 @@ export class WifiModule2 {
     );
   }
 
-  /** WM2 に現在の network 状態を要求 (状態は onPublish の {kind:"networkStatus"} で届く)。 */
+  /**
+   * WM2 に現在の network 状態を要求する (NETWORK_STATUS=6 を空 data で送信)。
+   *
+   * 注 (BLEP-07): SDK に NETWORK_STATUS の **送信 (要求)** 経路は存在しない —
+   *   CHWifiModule2Device.kt は NETWORK_STATUS を publish 受信 (kt:502-510) でしか扱わず、
+   *   CHWifiModule2 公開 API (CHWifiModule2.kt:30-39) にも対応メソッドが無い。要求コマンドと
+   *   して空 data を送る本メソッドは kit 独自の発明であり、デバイスが応答する保証はない。
+   * @experimental 実機未検証。受信だけ必要なら onPublish の {kind:"networkStatus"} を購読すればよい
+   *   (デバイスは状態変化時に自発 publish する)。
+   */
   networkStatus() {
     return this._session.request(WM2_ACTION.NETWORK_STATUS, networkStatusData());
   }

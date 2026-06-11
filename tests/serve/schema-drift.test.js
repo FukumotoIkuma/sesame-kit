@@ -55,10 +55,14 @@ describe("生成物の drift", () => {
     const { nameMap } = await generateProto(); // { Pascal: { method, jsonFields } }
     const byMethod = Object.fromEntries(Object.values(nameMap).map((e) => [e.method, e]));
     // これらは scalar 引数のみ。jsonFields に入っていたら schema 欠落 = 型付き呼び出しが壊れる。
-    for (const m of ["lock.unlock", "lock.status", "device.history", "device.battery", "ir.send", "ir.listKeys"]) {
+    for (const m of ["lock.unlock", "lock.status", "device.history", "ir.send", "ir.listKeys"]) {
       expect(byMethod[m], `${m} が生成物に無い`).toBeTruthy();
       expect(byMethod[m].jsonFields, `${m} の scalar 引数が JSON文字列field 化している (registry に schema を付与せよ)`).toEqual([]);
     }
+    // device.battery の lastEvaluatedKey (P3-7) は DynamoDB の opaque カーソル (object) なので
+    // gRPC では JSON 文字列 field になるのが正 (scalar 欠落ではない)。他の引数は scalar のまま。
+    expect(byMethod["device.battery"], "device.battery が生成物に無い").toBeTruthy();
+    expect(byMethod["device.battery"].jsonFields).toEqual(["lastEvaluatedKey"]);
   });
 
   it("公開 op の param schema は 1 つも空でない (型不明を放置しない回帰ガード)", async () => {

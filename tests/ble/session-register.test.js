@@ -306,7 +306,10 @@ describe("SesameBleSession.register (登録ハンドシェイク)", () => {
     expect(session.lastStatus.isInLockRange).toBe(true);
     expect(session.lastStatus.state).toBe("locked");
     expect(session.lastStatus.batteryRaw).toBe(0x0c80);
-    expect(session.lastStatus.position).toBeNull(); // Bot/Bike に position/target は無い
+    // Bot/Bike の position/target は interface 既定の 0 (CHDeivceProtocols.kt:335-338。BLE3-04)。
+    expect(session.lastStatus.position).toBe(0);
+    expect(session.lastStatus.target).toBe(0);
+    expect(session.lastStatus.isCritical).toBeNull();
     // mechSetting は同梱されない (67B 形に mechSetting 領域は無い)。
     expect(session.lastMechSetting).toBeNull();
 

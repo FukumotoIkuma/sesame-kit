@@ -7,6 +7,7 @@ export default {
     "presetir.cmd.send.desc": "Emit a pre-built HEX command as-is (sendIR). Low-level use",
 
     "presetir.opt.device": "Hub3 deviceUUID (interactive selection when omitted / required in non-interactive mode)",
+    "presetir.opt.remote": "config remote name (resolves deviceId/code/irType/state saved by sync; explicit flags win)",
     "presetir.opt.code": "Preset remote.code (number)",
     "presetir.opt.power": "Power ON (OFF when omitted)",
     "presetir.opt.temp": "Temperature (UI value, e.g. 25)",
@@ -30,6 +31,7 @@ export default {
     "presetir.err.deviceRequiredNonInteractive": "--device <hub3uuid> is required (non-interactive mode)",
     "presetir.err.noHub3Found": "No available Hub3 found.",
     "presetir.err.codeRequired": "--code <n> is required (preset remote.code)",
+    "presetir.err.remoteNoCode": "remote \"{name}\" has no saved code (preset remotes only; re-run `sesame remote sync-from-devices`)",
     "presetir.err.irtypeRequired": "--irtype <n> is required (remote.type actual value)",
     "presetir.err.buttonRequired": "--button <type> is required (button type)",
     "presetir.err.commandOptRequired": "--command <hex> is required (HEX command string)",
@@ -48,6 +50,7 @@ export default {
     "presetir.cmd.send.desc": "生成済み HEX command をそのまま発射 (sendIR)。低レベル用途",
 
     "presetir.opt.device": "Hub3 deviceUUID (省略時は対話選択 / 非対話は必須)",
+    "presetir.opt.remote": "config の remote 名 (sync で保存した deviceId/code/irType/state を解決。明示フラグ優先)",
     "presetir.opt.code": "プリセット remote.code (数値)",
     "presetir.opt.power": "電源 ON (省略時 OFF)",
     "presetir.opt.temp": "温度 (UI 値, 例 25)",
@@ -71,6 +74,7 @@ export default {
     "presetir.err.deviceRequiredNonInteractive": "--device <hub3uuid> が必要です (非対話モード)",
     "presetir.err.noHub3Found": "利用可能な Hub3 が見つかりません。",
     "presetir.err.codeRequired": "--code <n> が必要です (プリセット remote.code)",
+    "presetir.err.remoteNoCode": "remote \"{name}\" に code が保存されていません (プリセットのみ対応。`sesame remote sync-from-devices` を再実行してください)",
     "presetir.err.irtypeRequired": "--irtype <n> が必要です (remote.type 実値)",
     "presetir.err.buttonRequired": "--button <type> が必要です (ボタン種別)",
     "presetir.err.commandOptRequired": "--command <hex> が必要です (HEX command 文字列)",

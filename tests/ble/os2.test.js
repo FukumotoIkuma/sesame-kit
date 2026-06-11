@@ -232,18 +232,71 @@ describe("OS2 protocol — data builders & parsers", () => {
     expect(stopped.isStop).toBe(true);   // flags bit0=0 → 停止
   });
 
-  it("parseLoginResponse: systemTime BE, fw/historyCnt, 12B setting, 8B status", () => {
+  it("parseMechStatus: positionDeg/targetDeg = raw*360/1024 を併記 (CHSesame2.kt:32-33、BLE2-08)", () => {
+    // raw: target=256 (90°), position=512 (180°)。SDK は度数を公開し raw は持たないが、
+    // kit は wire 検証用に raw を維持し *Deg を併記する。
+    const buf = Buffer.alloc(8);
+    buf.writeInt16LE(256, 2);  // target raw
+    buf.writeInt16LE(512, 4);  // position raw
+    const s = parseMechStatus(buf);
+    expect(s.target).toBe(256);
+    expect(s.position).toBe(512);
+    expect(s.targetDeg).toBe(90);
+    expect(s.positionDeg).toBe(180);
+    // 負角は Kotlin Int 除算 (0 方向切り捨て) と一致: -512 raw → -180°
+    const neg = Buffer.alloc(8);
+    neg.writeInt16LE(-512, 4);
+    expect(parseMechStatus(neg).positionDeg).toBe(-180);
+    // 端数: 300 raw → 300*360/1024 = 105.46… → 105 (truncate)
+    const frac = Buffer.alloc(8);
+    frac.writeInt16LE(300, 4);
+    expect(parseMechStatus(frac).positionDeg).toBe(105);
+    // target=-32768 (未設定) は raw/deg とも null
+    const unset = Buffer.alloc(8);
+    unset.writeInt16LE(-32768, 2);
+    expect(parseMechStatus(unset).target).toBeNull();
+    expect(parseMechStatus(unset).targetDeg).toBeNull();
+  });
+
+  it("parseLoginResponse: systemTime LE (toBigLong), fw/historyCnt, 12B setting, 8B status", () => {
     const buf = Buffer.alloc(28);
-    buf.writeUInt32BE(1600000000, 0); // systemTime
+    // 導出元: SSM2LoginResponsePayload (CHSesame2Device.kt:627) の systemTime は
+    // sliceArray(0..3).toBigLong()。toBigLong (DataExtention.kt:69-71) = reversedArray を
+    // hex parse = **little-endian** 読み。デバイス送信は LE 4B なので mock も LE で書く
+    // (旧テストは writeUInt32BE で誤エンディアンを保護していた)。
+    buf.writeUInt32LE(1600000000, 0); // systemTime
     buf[4] = 3;  // fw
     buf[6] = 7;  // historyCnt
+    // mech_setting_t (payload[8..19]): lock=0x0100(256raw=90deg), unlock=0x0000 → isConfigured=true
+    buf.writeInt16LE(256, 8);
+    buf.writeInt16LE(0, 10);
     buf[20 + 7] = 0x02; // mech_status flags は byte7 (CHSesame2.kt:37) → locked
     const lr = parseLoginResponse(buf);
     expect(lr.systemTime).toBe(1600000000);
     expect(lr.fwVersion).toBe(3);
     expect(lr.historyCnt).toBe(7);
-    expect(lr.mechSetting.length).toBe(12);
+    // BLE2-07: mechSetting は CHSesame2MechSettings 解析済み (度数 = raw*360/1024、CHSesame2.kt:24-28)。
+    expect(lr.mechSettingBytes.length).toBe(12);
+    expect(lr.mechSetting).toMatchObject({
+      lockPosition: 90, unlockPosition: 0, isConfigured: true,
+      lockPositionRaw: 256, unlockPositionRaw: 0,
+    });
+    expect(lr.isConfigured).toBe(true);
+    // Bot 形 (CHSesameBikeDevice.kt:520): mech_setting_t[0..6] が 7 フィールド (Kotlin Byte)。
+    expect(lr.mechSettingBot).toEqual({
+      userPrefDir: 0, lockSec: 1, unlockSec: 0, clickLockSec: 0,
+      clickHoldSec: 0, clickUnlockSec: 0, buttonMode: 0,
+    });
     expect(lr.mechStatus.state).toBe(MECH_STATE.LOCKED);
+  });
+
+  it("parseLoginResponse: lock==unlock 角は isConfigured=false (NoSettings、CHSesame2Device.kt:268)", () => {
+    const buf = Buffer.alloc(28);
+    buf.writeUInt32LE(1600000000, 0);
+    // lock=unlock=0 → 未キャリブレーション。
+    const lr = parseLoginResponse(buf);
+    expect(lr.mechSetting.isConfigured).toBe(false);
+    expect(lr.isConfigured).toBe(false);
   });
 
   it("timePhoneData divides ms by 1000 then LE 4B (SDK fa89b85f vector)", () => {

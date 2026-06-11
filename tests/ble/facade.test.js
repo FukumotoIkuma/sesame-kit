@@ -409,3 +409,90 @@ describe("SesameBle facade", () => {
     await ble.close();
   });
 });
+
+describe("SesameBle facade — biometric の機種別 capability ゲート (P3-15)", () => {
+  it("ssm_touch: card+fingerprint のみ (passcode/face/palm 系メソッドは見えない — DeviceProfiles.SESAME_TOUCH)", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, model: "ssm_touch", transport: dev });
+    const bio = ble.biometric;
+    // 集合内 (CHSesameBiometricDevice.kt:45 = {CARD, FINGERPRINT})
+    expect(typeof bio.cardModeSet).toBe("function");
+    expect(typeof bio.cardBatchAdd).toBe("function");
+    expect(typeof bio.fingerPrintModeSet).toBe("function");
+    // 集合外: passcode/face/palm は持たない
+    expect(bio.passcodeModeSet).toBeUndefined();
+    expect(bio.passcodeAdd).toBeUndefined();
+    expect(bio.passcodeBatchAdd).toBeUndefined();
+    expect(bio.faceModeSet).toBeUndefined();
+    expect(bio.palmModeSet).toBeUndefined();
+    // 共通 API (CHSesameConnector / delegate 結線) は常に載る
+    expect(typeof bio.insertSesame).toBe("function");
+    expect(typeof bio.removeSesame).toBe("function");
+    expect(typeof bio.registerDelegate).toBe("function");
+    expect(typeof bio.onEnroll).toBe("function");
+    // 遅延キャッシュ (同一インスタンス)
+    expect(ble.biometric).toBe(ble.biometric);
+    // 実際に card コマンドが送れる (connect 後)
+    await ble.connect();
+    await bio.cardModeSet(1);
+    expect(dev.lastCommand.item).toBe(ITEM.CARD_MODE_SET);
+    await ble.close();
+  });
+
+  it("ssm_touch_pro: passcode 系が見える (DeviceProfiles.SESAME_TOUCH_PRO)", () => {
+    const ble = new SesameBle({ secretKey: SECRET, model: "ssm_touch_pro", transport: new MockSesame() });
+    const bio = ble.biometric;
+    expect(typeof bio.passcodeModeSet).toBe("function");
+    expect(typeof bio.cardModeSet).toBe("function");
+    expect(typeof bio.fingerPrintModeSet).toBe("function");
+    // face/palm は無い
+    expect(bio.faceModeSet).toBeUndefined();
+    expect(bio.palmModeSet).toBeUndefined();
+  });
+
+  it("sesame_face_ai: palm+face のみ (card/fingerprint/passcode は見えない — DeviceProfiles.SESAME_FACE_AI)", () => {
+    const ble = new SesameBle({ secretKey: SECRET, model: "sesame_face_ai", transport: new MockSesame() });
+    const bio = ble.biometric;
+    expect(typeof bio.faceModeSet).toBe("function");
+    expect(typeof bio.palmModeSet).toBe("function");
+    expect(bio.cardModeSet).toBeUndefined();
+    expect(bio.cardAdd).toBeUndefined();
+    expect(bio.fingerPrintModeSet).toBeUndefined();
+    expect(bio.passcodeModeSet).toBeUndefined();
+  });
+
+  it("sesame_face_Pro: 全 capability (DeviceProfiles.SESAME_FACE_PRO)", () => {
+    const ble = new SesameBle({ secretKey: SECRET, model: "sesame_face_Pro", transport: new MockSesame() });
+    const bio = ble.biometric;
+    for (const m of ["cardModeSet", "fingerPrintModeSet", "passcodeModeSet", "faceModeSet", "palmModeSet"]) {
+      expect(typeof bio[m]).toBe("function");
+    }
+  });
+
+  it("空集合機種 (open_sensor_1/open_sensor_2/remote/remote_nano) は biometric ゲッタが throw", () => {
+    // CHDeivceProtocols.kt:81,112,118,172: deviceFactory(..., setOf()) — enroll API を一切持たない。
+    for (const model of ["open_sensor_1", "open_sensor_2", "remote", "remote_nano"]) {
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+      expect(() => ble.biometric).toThrow(/capability/);
+    }
+  });
+
+  it("BLE3-03: Hub3/biometric は login 後の time(8) 自動同期を送らない (CHHub3Device.kt:167-178 / CHSesameBiometricDeviceImpl.kt:258-277)", async () => {
+    // lock (既定 model): mock の login 応答 systemTime=0 (遠過去) → time(8) が飛ぶ。
+    const lockDev = new MockSesame();
+    const lock = new SesameBle({ secretKey: SECRET, transport: lockDev });
+    await lock.connect();
+    expect(lockDev.lastCommand?.item).toBe(ITEM.TIME);
+    await lock.close();
+    // Hub3/biometric: login override は handleLoginResponse (時刻同期) を呼ばないため
+    // 同条件でも何も送られない (CHSesameBiometricDeviceImpl は CHSesameOS3 直継承)。
+    for (const model of ["hub_3", "ssm_touch"]) {
+      const dev = new MockSesame();
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: dev });
+      await ble.connect();
+      expect(ble.isConnected).toBe(true);
+      expect(dev.lastCommand).toBeNull();
+      await ble.close();
+    }
+  });
+});

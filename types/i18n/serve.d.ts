@@ -90,6 +90,14 @@ declare namespace _default {
         "serve.sum.deviceHideBattery": string;
         "serve.desc.historyTimestamp": string;
         "serve.desc.batteryTimestamp": string;
+        "serve.desc.historyLastKey": string;
+        "serve.desc.batteryLastEvaluatedKey": string;
+        "serve.desc.devicesAddItems": string;
+        "serve.desc.devicesReorderItems": string;
+        "serve.desc.pushToken": string;
+        "serve.desc.irDeviceType": string;
+        "serve.desc.matterCmdOn": string;
+        "serve.desc.matterCmdOff": string;
         "serve.sum.webapiInvoke": string;
         "serve.desc.webapiFunc": string;
         "serve.desc.webapiQuery": string;
@@ -111,6 +119,7 @@ declare namespace _default {
         "serve.openrpc.description": string;
         "serve.event.lockState": string;
         "serve.event.deviceUpdate": string;
+        "serve.event.deviceListChanged": string;
         "serve.event.ready": string;
         "serve.http.usage": string;
         "serve.http.unauthorized": string;
@@ -214,6 +223,14 @@ declare namespace _default {
         "serve.sum.deviceHideBattery": string;
         "serve.desc.historyTimestamp": string;
         "serve.desc.batteryTimestamp": string;
+        "serve.desc.historyLastKey": string;
+        "serve.desc.batteryLastEvaluatedKey": string;
+        "serve.desc.devicesAddItems": string;
+        "serve.desc.devicesReorderItems": string;
+        "serve.desc.pushToken": string;
+        "serve.desc.irDeviceType": string;
+        "serve.desc.matterCmdOn": string;
+        "serve.desc.matterCmdOff": string;
         "serve.sum.webapiInvoke": string;
         "serve.desc.webapiFunc": string;
         "serve.desc.webapiQuery": string;
@@ -235,6 +252,7 @@ declare namespace _default {
         "serve.openrpc.description": string;
         "serve.event.lockState": string;
         "serve.event.deviceUpdate": string;
+        "serve.event.deviceListChanged": string;
         "serve.event.ready": string;
         "serve.http.usage": string;
         "serve.http.unauthorized": string;

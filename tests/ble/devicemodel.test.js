@@ -2,6 +2,7 @@
 import { describe, it, expect } from "vitest";
 import {
   KIND, PRODUCT_TYPES, kindForModel, capabilitiesForModel, supportsOp, CONTROL_OPS,
+  BIO_CAPABILITY, bioCapsForModel,
 } from "../../src/ble/devicemodel.js";
 
 describe("CONTROL_OPS (制御 op 語彙の単一真実源)", () => {
@@ -171,5 +172,71 @@ describe("PRODUCT_TYPES", () => {
   });
   it("pType 12 は欠番", () => {
     expect(PRODUCT_TYPES[12]).toBeUndefined();
+  });
+});
+
+describe("bioCaps — DeviceProfiles の 1:1 移植 (P3-15, CHSesameBiometricDevice.kt:44-57)", () => {
+  const sorted = (a) => [...a].sort();
+
+  it("TOUCH = {card, fingerprint} (ssm_touch / ssm_touch_2)", () => {
+    for (const m of ["ssm_touch", "ssm_touch_2"]) {
+      expect(sorted(bioCapsForModel(m))).toEqual(["card", "fingerprint"]);
+    }
+  });
+
+  it("TOUCH_PRO = {card, fingerprint, passcode} (ssm_touch_pro / ssm_touch_2_pro)", () => {
+    for (const m of ["ssm_touch_pro", "ssm_touch_2_pro"]) {
+      expect(sorted(bioCapsForModel(m))).toEqual(["card", "fingerprint", "passcode"]);
+    }
+  });
+
+  it("FACE = {card, fingerprint, palm, face} (sesame_face / sesame_face_2)", () => {
+    for (const m of ["sesame_face", "sesame_face_2"]) {
+      expect(sorted(bioCapsForModel(m))).toEqual(["card", "face", "fingerprint", "palm"]);
+    }
+  });
+
+  it("FACE_AI = {palm, face} のみ (sesame_face_ai / sesame_face_2_ai)", () => {
+    for (const m of ["sesame_face_ai", "sesame_face_2_ai"]) {
+      expect(sorted(bioCapsForModel(m))).toEqual(["face", "palm"]);
+      expect(bioCapsForModel(m)).not.toContain(BIO_CAPABILITY.CARD);
+    }
+  });
+
+  it("FACE_PRO = 全部 (sesame_face_Pro / ssm_face_2_pro)", () => {
+    for (const m of ["sesame_face_Pro", "ssm_face_2_pro"]) {
+      expect(sorted(bioCapsForModel(m))).toEqual(["card", "face", "fingerprint", "palm", "passcode"]);
+    }
+  });
+
+  it("FACE_PRO_AI = {passcode, palm, face} (sesame_face_pro_ai / sesame_face_2_pro_ai)", () => {
+    for (const m of ["sesame_face_pro_ai", "sesame_face_2_pro_ai"]) {
+      expect(sorted(bioCapsForModel(m))).toEqual(["face", "palm", "passcode"]);
+    }
+  });
+
+  it("OpenSensor/OpenSensor2/Remote/RemoteNano は空集合 (CHDeivceProtocols.kt:81,112,118,172)", () => {
+    for (const m of ["open_sensor_1", "open_sensor_2", "remote", "remote_nano"]) {
+      expect(bioCapsForModel(m)).toEqual([]);
+      expect(capabilitiesForModel(m).biometric).toBe(true); // kind は BIOMETRIC のまま
+    }
+  });
+
+  it("isOpenSensor / isRemote の機種フラグ (BLEP-09 / BLEP-11)", () => {
+    expect(capabilitiesForModel("open_sensor_1").isOpenSensor).toBe(true);
+    expect(capabilitiesForModel("open_sensor_2").isOpenSensor).toBe(true);
+    expect(capabilitiesForModel("ssm_touch").isOpenSensor).toBe(false);
+    // remote と remote_nano は SDK でどちらも BiometricDeviceType.REMOTE
+    // (CHDeivceProtocols.kt:112,118) → isRemote() が両方で真。
+    expect(capabilitiesForModel("remote").isRemote).toBe(true);
+    expect(capabilitiesForModel("remote_nano").isRemote).toBe(true);
+    expect(capabilitiesForModel("ssm_touch").isRemote).toBe(false);
+    expect(capabilitiesForModel("sesame_5").isRemote).toBe(false);
+  });
+
+  it("非 biometric / 未知 model は空集合", () => {
+    expect(bioCapsForModel("sesame_5")).toEqual([]);
+    expect(bioCapsForModel("no_such_model")).toEqual([]);
+    expect(bioCapsForModel(null)).toEqual([]);
   });
 });

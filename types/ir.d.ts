@@ -67,6 +67,49 @@ export function updateRemoteAlias(client: WsClient, { hub3DeviceId, uuid, alias,
     companyID: string;
 }): Promise<import("./transport.js").WsMessage>;
 /**
+ * リモコンの保存 state (最後に発射した command HEX) をサーバへ永続化する (P3-2)。
+ *
+ * vendor (useRemoteCtrl.js:493-514 updateRemoteState):
+ *   frame = { action, op:'updateRemoteState', deviceId: hub3DeviceId, uuid: remoteId,
+ *             state, companyID }
+ * フィールド名トラップ: Hub3 は **deviceId**、リモコンは **uuid** (alias 系と同じ命名)。
+ * state はエアコン等の「最後に送った command HEX 文字列」 (remote-air/index.js:371-377 が
+ * sendIR 成功後に cmd をそのまま渡す)。次回はこの state から復元する
+ * (remote-air/index.js:108-113 → presetir.restoreAirState)。
+ *
+ * @param {WsClient} client
+ * @param {{hub3DeviceId: string, uuid: string, state: string, companyID: string}} p
+ */
+export function updateRemoteState(client: WsClient, { hub3DeviceId, uuid, state, companyID }: {
+    hub3DeviceId: string;
+    uuid: string;
+    state: string;
+    companyID: string;
+}): Promise<import("./transport.js").WsMessage>;
+/**
+ * リモコンを Matter デバイスとして Hub3 に登録する (P3-3)。
+ *
+ * vendor (useRemoteCtrl.js:933-955 addRemoteToMatter) のフィールド 1:1:
+ *   frame = { action, op:'addRemoteToMatter', hub3DeviceId, irDeviceType: irRemote.type,
+ *             cmdOn, cmdOff, irDeviceUUID: irRemote.uuid, irDeviceName: irRemote.alias, companyID }
+ * Matter ペアリング窓 (iot.js:466-490) の開放後に呼ぶことで、リモコンが Matter の
+ * On/Off デバイスとして見えるようになる (cmdOn/cmdOff は発射 command HEX)。
+ *
+ * @experimental 実機未検証 (参照: useRemoteCtrl.js:933-955)。
+ * @param {WsClient} client
+ * @param {{hub3DeviceId: string, irDeviceType: number, cmdOn: string, cmdOff: string,
+ *          irDeviceUUID: string, irDeviceName: string, companyID: string}} p
+ */
+export function addRemoteToMatter(client: WsClient, { hub3DeviceId, irDeviceType, cmdOn, cmdOff, irDeviceUUID, irDeviceName, companyID }: {
+    hub3DeviceId: string;
+    irDeviceType: number;
+    cmdOn: string;
+    cmdOff: string;
+    irDeviceUUID: string;
+    irDeviceName: string;
+    companyID: string;
+}): Promise<import("./transport.js").WsMessage>;
+/**
  * IR キー (ボタン) を追加。学習フロー (learnIRKey) から呼ばれることが多い。
  * `irCode` の形は biz3 がオブジェクトをそのまま乗せるので、
  * 呼び出し側で {hub3DeviceId, remoteId, name, irData, irWaveLength, irType, ...} を入れる。

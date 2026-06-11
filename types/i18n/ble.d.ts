@@ -5,6 +5,7 @@ declare namespace _default {
         "ble.opNotSupported": string;
         "ble.noBleLockOps": string;
         "ble.biometricNotSupported": string;
+        "ble.biometricNoCaps": string;
         "ble.txPowerNotSupported": string;
         "ble.lock5OnlyNotSupported": string;
         "ble.resetNotSupported": string;
@@ -13,6 +14,7 @@ declare namespace _default {
         "ble.ecdhSecretMustBe16": string;
         "ble.pubKMustBe64": string;
         "ble.tokenMustBe4Byte": string;
+        "ble.initialTokenMustBe4": string;
         "ble.ciphertextTooShort": string;
         "ble.frameTooShort": string;
         "ble.historyTagBuffer": string;
@@ -128,6 +130,7 @@ declare namespace _default {
         "ble.opNotSupported": string;
         "ble.noBleLockOps": string;
         "ble.biometricNotSupported": string;
+        "ble.biometricNoCaps": string;
         "ble.txPowerNotSupported": string;
         "ble.lock5OnlyNotSupported": string;
         "ble.resetNotSupported": string;
@@ -136,6 +139,7 @@ declare namespace _default {
         "ble.ecdhSecretMustBe16": string;
         "ble.pubKMustBe64": string;
         "ble.tokenMustBe4Byte": string;
+        "ble.initialTokenMustBe4": string;
         "ble.ciphertextTooShort": string;
         "ble.frameTooShort": string;
         "ble.historyTagBuffer": string;

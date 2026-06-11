@@ -383,6 +383,32 @@
     "method": "devices.userList",
     "jsonFields": []
   },
+  "DevicesAdd": {
+    "method": "devices.add",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "DevicesReorder": {
+    "method": "devices.reorder",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "DevicesNotifyStatus": {
+    "method": "devices.notifyStatus",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "DevicesNotifyManage": {
+    "method": "devices.notifyManage",
+    "jsonFields": []
+  },
+  "DevicesSwitchRecharge": {
+    "method": "devices.switchRecharge",
+    "jsonFields": []
+  },
   "AccessRegisterCards": {
     "method": "access.registerCards",
     "jsonFields": [
@@ -395,7 +421,9 @@
   },
   "DeviceBattery": {
     "method": "device.battery",
-    "jsonFields": []
+    "jsonFields": [
+      "lastEvaluatedKey"
+    ]
   },
   "DeviceHideHistory": {
     "method": "device.hideHistory",
@@ -488,6 +516,10 @@
   },
   "IrMatchRemote": {
     "method": "ir.matchRemote",
+    "jsonFields": []
+  },
+  "IrAddRemoteToMatter": {
+    "method": "ir.addRemoteToMatter",
     "jsonFields": []
   },
   "AccessPostAuthenticationData": {

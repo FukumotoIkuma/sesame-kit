@@ -269,7 +269,7 @@ WM2 commands ride the `WM2ActionCode` enum (`WM2_ACTION` / `WM2_ACTION_CODES` in
 
 ### Wi-Fi provisioning & network type (Hub3)
 
-A Hub3 (`hub_3` / `hub_3_lte`) also has no lock operation; it exposes a BLE provisioning API over `lock.hub3()` (a `Hub3Commands` instance over the same session). The getter is gated on the device capability table — accessing it on any non-Hub3 model throws. Unlike WM2, **Hub3 lives on the default SESAME GATT** (`fd81`), so no special GATT wiring is needed (it inherits the OS3 stack, `CHHub3Device : CHSesameOS3`). The Wi-Fi commands ride `SesameItemCode` directly (Hub3-specific codes 131–136 / 209 in `src/itemcodes.js`), not a separate enum — that is the SDK's own layout for Hub3.
+A Hub3 (`hub_3` / `hub_3_lte`) also has no lock operation; it exposes a BLE provisioning API over `lock.hub3()` (a `Hub3Commands` instance over the same session). The getter is gated on the device capability table — accessing it on any non-Hub3 model throws. Unlike WM2, **Hub3 lives on the default SESAME GATT** (`fd81`), so no special GATT wiring is needed (it inherits the OS3 stack, `CHHub3Device : CHSesameOS3`). The Wi-Fi commands ride `SesameItemCode` directly (Hub3-specific codes 131–136 in `src/itemcodes.js`), not a separate enum — that is the SDK's own layout for Hub3. The network-type code 209 is **not** part of that layout: `SesameItemCode` ends at 208 and `CHHub3Device.kt` has no handler for it. It is inferred from the biz3 web native-bridge behavior (`references_web/src/components/MobileWifiModule.js:219-235`) and lives in the separate `UNVERIFIED_ITEM_CODES` table (experimental, unverified on hardware).
 
 ```js
 await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
@@ -283,12 +283,12 @@ await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
   await hub.setWifiSSID("my-ap");            // HUB3_UPDATE_WIFI_SSID (136)
   await hub.setWifiPassword("secret");       // HUB3_ITEM_CODE_WIFI_PASSWORD (135)
   await hub.removeSesame(childUUID);         // REMOVE_SESAME (103); data = the dash-stripped UUID as raw 16 B
-  hub.networkType();                         // arrives as { kind: "networkType", isWifiConnected, isLTEConnected }
+  hub.networkType();                         // EXPERIMENTAL (item 209 is not in the Android SDK; inferred from the biz3 web bridge)
   off();
 });
 ```
 
-Hub3 has no BLE lock-control ops, but it does inherit the shared OS3 paths: `connect`/`login`, `register` (`SesameBle.register()`), `reset()` (`Reset(104)`), and `updateFirmware()` (`MOVE_TO(84)`, see below) all work. The pure data builders and publish parsers (`setWifiSSIDData`, `parseHub3Publish`, `parseNetworkType`, …) are also exported from `sesame-kit/ble` (`ble.hub3.*`) for custom wiring. **Not yet confirmed against real hardware** (the `networkType` *request* in particular is only confirmed as a publish in the SDK, not a send command).
+Hub3 has no BLE lock-control ops, but it does inherit the shared OS3 paths: `connect`/`login`, `register` (`SesameBle.register()`), `reset()` (`Reset(104)`), and `updateFirmware()` (`MOVE_TO(84)`, see below) all work. The pure data builders and publish parsers (`setWifiSSIDData`, `parseHub3Publish`, `parseNetworkType`, …) are also exported from `sesame-kit/ble` (`ble.hub3.*`) for custom wiring. **Not yet confirmed against real hardware.** The whole `networkType` path (item code 209, request *and* publish, and the `[wifi 1B][lte 1B]` payload guess) has **no primary source in the Android SDK** — it is inferred from the biz3 web native bridge and may be removed if it cannot be confirmed.
 
 ### Firmware update over BLE (DFU / OTA)
 

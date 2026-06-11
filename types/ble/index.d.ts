@@ -7,6 +7,21 @@ export * as hub3 from "./hub3.js";
 export * as dfu from "./dfu.js";
 export * as os2 from "./os2/index.js";
 /**
+ * biometric ゲッタが返す限定ビューの型。
+ *
+ * ★型は全 capability のメソッドを持つが、**実行時は bioCaps 集合内のメソッドだけが存在する**
+ * (集合外は undefined — DeviceProfiles で機種ごとに静的に決まるため、モデルごとの部分型を
+ * 静的に表現できない以上、型は上限・実体は機種別部分集合という関係になる)。集合外メソッドの
+ * 呼び出しは TypeError になる (op を捏造して実機に送ることはない)。
+ * @typedef {Pick<BiometricCommands,
+ *   "cardModeSet"|"cardModeGet"|"cardGet"|"cardAdd"|"cardDelete"|"cardMove"|"cardChange"|"cardChangeValue"|"cardBatchAdd"
+ *   |"fingerPrintModeSet"|"fingerPrintModeGet"|"fingerPrints"|"fingerPrintDelete"|"fingerPrintChange"
+ *   |"passcodeModeSet"|"passcodeModeGet"|"passcodeGet"|"passcodeAdd"|"passcodeDelete"|"passcodeMove"|"passcodeChange"|"passcodeBatchAdd"
+ *   |"faceModeSet"|"faceModeGet"|"faceListGet"|"faceChange"|"faceDelete"
+ *   |"palmModeSet"|"palmModeGet"|"palmListGet"|"palmDelete"
+ *   |"insertSesame"|"removeSesame"|"setRadarSensitivity"|"registerDelegate"|"onEnroll">} BiometricView
+ */
+/**
  * サーバ署名トランスポート (makeRegisterTransport の戻り)。signGuestKey / register に渡す。
  * 正準型は devices.js が所有する。
  * @typedef {import("../devices.js").RegisterTransport} RegisterTransport
@@ -158,6 +173,9 @@ export class SesameBle {
         mechKind: string | null;
         bleSupported: boolean;
         biometric: boolean;
+        bioCaps: readonly string[];
+        isOpenSensor: boolean;
+        isRemote: boolean;
         wifiProvisioning: boolean;
         hubProvisioning: boolean;
         script: boolean;
@@ -173,17 +191,31 @@ export class SesameBle {
     /**
      * 生体・アクセス制御デバイス (Touch/Touch Pro/Face/Palm 系) の BLE 登録 API。
      *
-     * card/finger/passcode/face/palm の ModeSet/Get・Add/Delete/Change・batchAdd と、publish
-     * 受信を delegate に流す registerDelegate() を持つ BiometricCommands を返す
-     * (実体は src/ble/biometric.js、契約は session.request / session.onPublish に乗る)。
+     * **機種別の capability 集合 (DeviceProfiles) で絞った限定ビュー** を返す (P3-15)。
+     * SDK では capability 集合が機種ごとに deviceFactory() で固定され
+     * (CHSesameBiometricDevice.kt:44-57 / CHDeivceProtocols.kt:77-216)、集合外の操作は存在しない。
+     * kit でも bioCaps 集合内の capability のメソッド群 (BIO_VIEW_METHODS) だけを bind した
+     * ビューを返す (既存 fingerPrint ゲッタと同型):
+     *   - ssm_touch       → card + fingerprint (passcode 系は **見えない**)
+     *   - ssm_touch_pro   → card + fingerprint + passcode
+     *   - sesame_face     → card + fingerprint + palm + face
+     *   - sesame_face_ai  → palm + face のみ (card 系は **見えない**)
+     *   - sesame_face_Pro → 全部 / sesame_face_pro_ai → passcode + palm + face
+     * 集合に依らない共通 API (CHSesameConnector / delegate 結線) は常に載る:
+     *   insertSesame / removeSesame / setRadarSensitivity / registerDelegate / onEnroll
+     *   (onEnroll の card/passcode 既定値は集合から導出され、集合外 kind は集約しない)。
      *
      * capabilitiesForModel(model).biometric が true の機種でのみ露出する。それ以外 (ロック/Bot/
      * Bike/Hub3/WiFi/未知) で参照すると enroll 非対応として明示エラーを投げる (op を捏造しない)。
+     * **bioCaps が空集合の機種 (open_sensor_1/2, remote, remote_nano — CHDeivceProtocols.kt:81,112,
+     * 118,172 で setOf()) でも明示エラーを投げる** (P3-15)。これらの connector 操作
+     * (insertSesame 等) が必要な場合は BiometricCommands(session, {model}) を直接構築すること。
      * connect() 前でも参照できる (session.request は connect 後に login 済みを要求する)。
      *
-     * @returns {BiometricCommands}
+     * @returns {BiometricView} bioCaps で絞った BiometricCommands の限定ビュー
+     *   (型は全 capability の上限。実行時に存在するのは集合内メソッドのみ — BiometricView 参照)
      */
-    get biometric(): BiometricCommands;
+    get biometric(): BiometricView;
     /**
      * SESAME Bike3 の指紋登録 API (CHSesameBike3Device.kt:20-24 が mixin する CHFingerPrintCapable と 1:1)。
      *
@@ -510,6 +542,15 @@ export class SesameBle {
     }>;
 }
 /**
+ * biometric ゲッタが返す限定ビューの型。
+ *
+ * ★型は全 capability のメソッドを持つが、**実行時は bioCaps 集合内のメソッドだけが存在する**
+ * (集合外は undefined — DeviceProfiles で機種ごとに静的に決まるため、モデルごとの部分型を
+ * 静的に表現できない以上、型は上限・実体は機種別部分集合という関係になる)。集合外メソッドの
+ * 呼び出しは TypeError になる (op を捏造して実機に送ることはない)。
+ */
+export type BiometricView = Pick<BiometricCommands, "cardModeSet" | "cardModeGet" | "cardGet" | "cardAdd" | "cardDelete" | "cardMove" | "cardChange" | "cardChangeValue" | "cardBatchAdd" | "fingerPrintModeSet" | "fingerPrintModeGet" | "fingerPrints" | "fingerPrintDelete" | "fingerPrintChange" | "passcodeModeSet" | "passcodeModeGet" | "passcodeGet" | "passcodeAdd" | "passcodeDelete" | "passcodeMove" | "passcodeChange" | "passcodeBatchAdd" | "faceModeSet" | "faceModeGet" | "faceListGet" | "faceChange" | "faceDelete" | "palmModeSet" | "palmModeGet" | "palmListGet" | "palmDelete" | "insertSesame" | "removeSesame" | "setRadarSensitivity" | "registerDelegate" | "onEnroll">;
+/**
  * サーバ署名トランスポート (makeRegisterTransport の戻り)。signGuestKey / register に渡す。
  * 正準型は devices.js が所有する。
  */
@@ -581,14 +622,14 @@ export type DiscoveryEntry = {
     peripheral: NoblePeripheral;
 };
 import { Buffer } from "node:buffer";
-import { BiometricCommands } from "./biometric.js";
 import { Bot2Commands } from "./bot2.js";
 import { WifiModule2 } from "./wm2.js";
 import { Hub3Commands } from "./hub3.js";
+import { BiometricCommands } from "./biometric.js";
 export { SesameBleSession, BleResultError } from "./session.js";
 export { RESULT as SESAME_RESULT_CODES, resultName } from "./protocol.js";
 export { NobleTransport, createBleTransport, advToDeviceUUID, parseAdvertisement, scanSesames, listNearbyDevices, peripheralToDiscovery } from "./transport.js";
-export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, CONTROL_OPS, KIND, PRODUCT_TYPES } from "./devicemodel.js";
+export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, CONTROL_OPS, KIND, PRODUCT_TYPES, BIO_CAPABILITY, bioCapsForModel } from "./devicemodel.js";
 export { BiometricCommands, handleBiometricPublish, parseTouchCard, parseTouchFace, parseRemoteNanoTrigger, remoteNanoTriggerDelayData, radarSensitivityData, insertSesameData as biometricInsertSesameData, removeSesameData as biometricRemoveSesameData, createEnrollCollector } from "./biometric.js";
 export { Bot2Commands, BOT_ACTION_TYPE, clickItemCode, bot2ActionToBytes, scriptToBytes, parseCurrentScript, parseScriptNameList } from "./bot2.js";
 export { WifiModule2, WM2_GATT, WM2_ACTION, scanWifiSSIDData, setWifiSSIDData, setWifiPasswordData, connectWifiData, insertSesamesData, removeSesameData, networkStatusData, parseScanWifiSSID, parseWifiSSIDPublish, parseWifiPasswordPublish, parseNetworkStatus, parseSesameKeys, parseWM2Publish } from "./wm2.js";

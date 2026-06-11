@@ -1341,8 +1341,111 @@ async function cmdDeviceRm(uuid, options, program) {
 }
 
 /**
+ * `sesame device add [json]` — デバイスを company に追加 (P3-1, biz3ManageDevice/add)。
+ * items は QR 由来のデバイスキーオブジェクト (配列または単体 JSON)。
+ * 上限超過はサーバの "Limit Exceeded" がそのまま表示される (useManageDevice.js:28-30)。
+ * @param {string|undefined} json
+ * @param {CmdOpts} _opts
+ * @param {Program} program
+ */
+async function cmdDeviceAdd(json, _opts, program) {
+  if (!json) die(t("cli.deviceAddJsonRequired"), 2);
+  /** @type {any} */
+  let items;
+  try { items = JSON.parse(/** @type {string} */ (json)); }
+  catch (e) { die(t("cli.invalidJsonItems", { message: /** @type {CliError} */ (e).message }), 2); }
+  if (!Array.isArray(items)) items = [items];
+  await withHub(program, async (hub, { opts }) => {
+    const resp = await hub.addDevices(items);
+    out(opts.json, () => console.log(t("cli.okAddedDevices", { count: items.length })),
+      { ok: true, count: items.length, response: resp });
+  });
+}
+
+/**
+ * `sesame device reorder <uuid...>` — 並び順更新 (P3-1, biz3ManageDevice/reorderDevices)。
+ * 指定 UUID を先頭から並べ、未指定のデバイスは現在順のまま末尾に続ける
+ * (vendor はデバイス一覧全体を並べ替えて送る — useManageDevice.js:270-285。rank は lib が採番)。
+ * @param {string[]} uuids
+ * @param {CmdOpts} _opts
+ * @param {Program} program
+ */
+async function cmdDeviceReorder(uuids, _opts, program) {
+  if (!uuids || uuids.length === 0) die(t("cli.deviceReorderUuidsRequired"), 2);
+  await withHub(program, async (hub, { opts }) => {
+    const list = /** @type {DeviceInfo[]} */ (await hub.listDevices());
+    const norm = (/** @type {string|undefined} */ s) => (s || "").replace(/-/g, "").toLowerCase();
+    /** @type {DeviceInfo[]} */
+    const ordered = [];
+    for (const u of uuids) {
+      const d = list.find((x) => norm(x.deviceUUID) === norm(u));
+      if (!d) { die(t("cli.deviceReorderUnknownUuid", { uuid: u }), 2); return; }
+      ordered.push(d);
+    }
+    for (const d of list) if (!ordered.includes(d)) ordered.push(d);
+    const data = await hub.reorderDevices(ordered);
+    out(opts.json, () => {
+      console.log(t("cli.okReorderedDevices", { count: ordered.length }));
+      for (const d of ordered) console.log(`  ${d.deviceName || "(no name)"}\t${d.deviceUUID || ""}`);
+    }, { ok: true, order: ordered.map((d) => d.deviceUUID), devices: data });
+  });
+}
+
+/**
+ * `sesame device notify [uuid]` — push 通知設定 (P3-1, notifyList / notifyManage)。
+ * --on/--off 指定時は単機の切り替え (notifyManage)、無指定時は一覧 (notifyList)。
+ * --token はモバイル push トークン (vendor は端末の FCM トークン — useManageDevice.js:287-318)。
+ * @param {string|undefined} uuid
+ * @param {{ token?: string, on?: boolean, off?: boolean }} options
+ * @param {Program} program
+ */
+async function cmdDeviceNotify(uuid, options, program) {
+  if (!options.token) die(t("cli.pushTokenRequired"), 2);
+  if (options.on && options.off) die(t("cli.notifyOnOffExclusive"), 2);
+  await withHub(program, async (hub, { opts }) => {
+    const pushToken = /** @type {string} */ (options.token);
+    if (options.on || options.off) {
+      uuid = await pickDeviceUUID(program, hub, uuid, { message: t("cli.whichDeviceNotify") }) || uuid;
+      if (!uuid) die(t("cli.deviceUuidRequired"), 2);
+      const enablePush = options.on ? 1 : 0;
+      const resp = await hub.switchDeviceNotify({ pushToken, deviceUUID: /** @type {string} */ (uuid), enablePush });
+      out(opts.json, () => console.log(t("cli.okNotifySwitched", { uuid: /** @type {string} */ (uuid), state: options.on ? "on" : "off" })),
+        { ok: true, deviceUUID: uuid, enablePush, response: resp });
+      return;
+    }
+    // 一覧 (notifyList): uuid 指定ならその 1 台、無指定なら全デバイス。
+    const list = /** @type {DeviceInfo[]} */ (await hub.listDevices());
+    const target = uuid ? uuid.replace(/-/g, "").toLowerCase() : null;
+    const items = (target
+      ? list.filter((d) => (d.deviceUUID || "").replace(/-/g, "").toLowerCase() === target)
+      : list
+    ).map((d) => ({ deviceUUID: d.deviceUUID, deviceModel: d.deviceModel }));
+    const data = await hub.getDevicesNotifyStatus({ pushToken, items });
+    out(opts.json, () => console.log(JSON.stringify(data, null, 2)), { notifyStatus: data });
+  });
+}
+
+/**
+ * `sesame device recharge [uuid] --on|--off` — 充電池モード切替 (P3-1, switchRecharge)。
+ * @param {string|undefined} uuid
+ * @param {{ on?: boolean, off?: boolean }} options
+ * @param {Program} program
+ */
+async function cmdDeviceRecharge(uuid, options, program) {
+  if (!!options.on === !!options.off) die(t("cli.rechargeOnOffRequired"), 2);
+  await withHub(program, async (hub, { opts }) => {
+    uuid = await pickDeviceUUID(program, hub, uuid, { message: t("cli.whichDeviceRecharge") }) || uuid;
+    if (!uuid) die(t("cli.deviceUuidRequired"), 2);
+    const isRechargeBattery = !!options.on;
+    const resp = await hub.switchRechargeableBattery({ deviceUUID: /** @type {string} */ (uuid), isRechargeBattery });
+    out(opts.json, () => console.log(t("cli.okRechargeSwitched", { uuid: /** @type {string} */ (uuid), state: isRechargeBattery ? "on" : "off" })),
+      { ok: true, deviceUUID: uuid, isRechargeBattery, response: resp });
+  });
+}
+
+/**
  * @param {string|undefined} deviceUUID
- * @param {{ delete?: string, pageSize?: string }} options
+ * @param {{ delete?: string, pageSize?: string, lastKey?: string, all?: boolean }} options
  * @param {Program} program
  */
 async function cmdHistory(deviceUUID, options, program) {
@@ -1361,14 +1464,29 @@ async function cmdHistory(deviceUUID, options, program) {
       return;
     }
     const pageSize = options.pageSize ? Number(options.pageSize) : null;
-    const data = await hub.getDeviceHistory([{ deviceUUID }], /** @type {number} */ (pageSize));
+    // --all (P3-7): vendor fetchAllHistory 相当の自動ページング
+    // (res.length===pageSize で継続、lastKey=末尾 timestamp — DeviceHistory.js:37-74)。
+    if (options.all) {
+      if (options.lastKey != null) die(t("cli.historyAllLastKeyExclusive"), 2);
+      const data = await hub.getAllDeviceHistory(deviceUUID, { pageSize: pageSize ?? 100 });
+      out(opts.json, () => console.log(JSON.stringify(data, null, 2)), { data, count: data.length });
+      return;
+    }
+    // --last-key (P3-7): 直前ページ末尾レコードの timestamp で次ページを取る。
+    /** @type {number|null} */
+    let lastKey = null;
+    if (options.lastKey != null) {
+      lastKey = Number(options.lastKey);
+      if (!Number.isFinite(lastKey)) { die(t("cli.historyLastKeyInvalid", { value: options.lastKey }), 2); return; }
+    }
+    const data = await hub.getDeviceHistory([{ deviceUUID, lastKey }], /** @type {number} */ (pageSize));
     out(opts.json, () => console.log(JSON.stringify(data, null, 2)), { data });
   });
 }
 
 /**
  * @param {string|undefined} deviceUUID
- * @param {{ delete?: string, pageSize?: string }} options
+ * @param {{ delete?: string, pageSize?: string, lastKey?: string }} options
  * @param {Program} program
  */
 async function cmdBattery(deviceUUID, options, program) {
@@ -1387,7 +1505,15 @@ async function cmdBattery(deviceUUID, options, program) {
       return;
     }
     const pageSize = options.pageSize ? Number(options.pageSize) : 100;
-    const data = /** @type {{ records?: Array<{ts?:number, light?:number, heavy?:number, lightPercentage?:number, heavyPercentage?:number}>, lastEvaluatedKey?: unknown }} */ (await hub.getDeviceBattery(deviceUUID, { pageSize }));
+    // --last-key (P3-7): 前回応答の lastEvaluatedKey (JSON) をそのまま渡して次ページを取る
+    // (MobileBatteryChart.js:40-50。中身は DynamoDB の opaque カーソル)。
+    /** @type {unknown} */
+    let lastEvaluatedKey = null;
+    if (options.lastKey != null) {
+      try { lastEvaluatedKey = JSON.parse(options.lastKey); }
+      catch (e) { die(t("cli.batteryLastKeyInvalid", { message: /** @type {CliError} */ (e).message }), 2); return; }
+    }
+    const data = /** @type {{ records?: Array<{ts?:number, light?:number, heavy?:number, lightPercentage?:number, heavyPercentage?:number}>, lastEvaluatedKey?: unknown }} */ (await hub.getDeviceBattery(deviceUUID, { pageSize, lastEvaluatedKey }));
     out(opts.json, () => {
       const recs = data.records || [];
       console.log(t("cli.batteryRecords", { count: recs.length }));
@@ -2355,14 +2481,31 @@ export async function run(argv = process.argv) {
   devCmd.command("rm [uuid]").description(t("cli.descDeviceRm"))
     .option("--yes", t("cli.optYes"))
     .action((uuid, opts) => cmdDeviceRm(uuid, opts, program));
+  // P3-1: biz3ManageDevice 残り op (add/reorder/notify/recharge)
+  devCmd.command("add [json]").description(t("cli.descDeviceAdd"))
+    .action((json, opts) => cmdDeviceAdd(json, opts, program));
+  devCmd.command("reorder <uuids...>").description(t("cli.descDeviceReorder"))
+    .action((uuids, opts) => cmdDeviceReorder(uuids, opts, program));
+  devCmd.command("notify [uuid]").description(t("cli.descDeviceNotify"))
+    .option("--token <pushToken>", t("cli.optPushToken"))
+    .option("--on", t("cli.optNotifyOn"))
+    .option("--off", t("cli.optNotifyOff"))
+    .action((uuid, opts) => cmdDeviceNotify(uuid, opts, program));
+  devCmd.command("recharge [uuid]").description(t("cli.descDeviceRecharge"))
+    .option("--on", t("cli.optRechargeOn"))
+    .option("--off", t("cli.optRechargeOff"))
+    .action((uuid, opts) => cmdDeviceRecharge(uuid, opts, program));
 
   program.command("history [deviceUUID]").description(t("cli.descHistory"))
     .option("--page-size <n>", t("cli.optPageSize"))
     .option("--delete <timestamp>", t("cli.optHistoryDelete"))
+    .option("--last-key <timestamp>", t("cli.optHistoryLastKey"))
+    .option("--all", t("cli.optHistoryAll"))
     .action((uuid, opts) => cmdHistory(uuid, opts, program));
   program.command("battery [deviceUUID]").description(t("cli.descBattery"))
     .option("--page-size <n>", t("cli.optPageSize100"))
     .option("--delete <ts>", t("cli.optBatteryDelete"))
+    .option("--last-key <json>", t("cli.optBatteryLastKey"))
     .action((uuid, opts) => cmdBattery(uuid, opts, program));
   program.command("firmware").description(t("cli.descFirmware"))
     .action((opts) => cmdFirmware(opts, program));

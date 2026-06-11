@@ -185,11 +185,17 @@ describe("parseMechStatus (OS3 / CHSesame5MechStatus 準拠)", () => {
     buf.writeInt16LE(-32768, 2);
     expect(parseMechStatus(buf).target).toBeNull();
   });
-  it("3B (Bot2/Bike2) は data[2] flags で施錠判定。position/target は null", () => {
+  it("3B (Bot2/Bike2) は data[2] flags で施錠判定。position/target=0, isCritical=null (interface 既定)", () => {
+    // CHSesameBot2MechStatus/CHSesameBike2MechStatus は isInLockRange/isStop しか override しない
+    // (CHSesameBot2.kt:123-127 / CHSesameBike2.kt:14-18)。残りは CHSesameProtocolMechStatus の
+    // interface 既定値 (CHDeivceProtocols.kt:334-351): position=0, target=0, isCritical=null,
+    // isBatteryCritical=false (BLE3-04)。
     const locked = parseMechStatus(Buffer.from([0x10, 0x0c, 0b0000_0010])); // 電圧2B + flags
     expect(locked.state).toBe(MECH_STATE.LOCKED);
-    expect(locked.position).toBeNull();
-    expect(locked.target).toBeNull();
+    expect(locked.position).toBe(0);
+    expect(locked.target).toBe(0);
+    expect(locked.isCritical).toBeNull();
+    expect(locked.isBatteryCritical).toBe(false);
     const unlocked = parseMechStatus(Buffer.from([0x10, 0x0c, 0b0000_0000]));
     expect(unlocked.state).toBe(MECH_STATE.UNLOCKED);
     expect(parseMechStatus(Buffer.from([0, 0, 0b0000_0100])).isStop).toBe(true); // bit2 = stop

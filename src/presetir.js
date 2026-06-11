@@ -32,6 +32,7 @@
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { assertSuccess, badRequest } from "./util.js";
+import { updateRemoteState } from "./ir.js";
 
 const ACTION = ACTION_TYPES.BIZ3_IR_REMOTE; // "biz3IRRemote" (vendor 由来)
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -253,12 +254,30 @@ export class HXDParametersSwapper {
   }
 
   /**
+   * mode HXD 値 → index (vendor:34-43)。{0x01:自動,0x02:制冷,0x03:除湿,0x04:送風,0x05:制熱}。default 0。
+   * @param {number} value @returns {number}
+   */
+  getModeIndex(value) {
+    const modeMap = { 0x01: 0, 0x02: 1, 0x03: 2, 0x04: 3, 0x05: 4 };
+    return /** @type {Record<number, number>} */ (modeMap)[value] || 0;
+  }
+
+  /**
    * mode index → HXD 値 (vendor:45-54)。{0:自動,1:制冷,2:除湿,3:送風,4:制熱}
    * @param {number} index @returns {number}
    */
   getModeValue(index) {
     const valueMap = { 0: 0x01, 1: 0x02, 2: 0x03, 3: 0x04, 4: 0x05 };
     return /** @type {Record<number, number>} */ (valueMap)[index] || 0x01;
+  }
+
+  /**
+   * fanSpeed HXD 値 → index (vendor:57-65)。default 0。
+   * @param {number} value @returns {number}
+   */
+  getFanSpeedIndex(value) {
+    const speedMap = { 0x01: 0, 0x02: 1, 0x03: 2, 0x04: 3 };
+    return /** @type {Record<number, number>} */ (speedMap)[value] || 0;
   }
 
   /**
@@ -271,12 +290,41 @@ export class HXDParametersSwapper {
   }
 
   /**
+   * windDirection HXD 値 → index (vendor:78-85)。default 0。
+   * @param {number} value @returns {number}
+   */
+  getWindDirectionIndex(value) {
+    const directionMap = { 0x01: 0, 0x02: 1, 0x03: 2 };
+    return /** @type {Record<number, number>} */ (directionMap)[value] || 0;
+  }
+
+  /**
    * windDirection index → HXD 値 (vendor:87-94)。{0:上,1:中,2:下}。default 0x02。
    * @param {number} index @returns {number}
    */
   getWindDirectionValue(index) {
     const valueMap = { 0: 0x01, 1: 0x02, 2: 0x03 };
     return /** @type {Record<number, number>} */ (valueMap)[index] || 0x02;
+  }
+
+  /**
+   * parseAirCommand の HXD 状態 → UI state (vendor:221-242 convertToUIState)。
+   * emitAir の入力 (power:boolean, temperature, mode/fanSpeed/windDirection index, autoSwing) と同形。
+   * @param {{power:number, temperature:number, mode:number, fanSpeed:number,
+   *          windDirection:number, autoWindDirection:number}|null} parsedState
+   * @returns {{power:boolean, temperature:number, mode:number, fanSpeed:number,
+   *            windDirection:number, autoSwing:boolean}|null}
+   */
+  convertToUIState(parsedState) {
+    if (!parsedState) return null;
+    return {
+      power: parsedState.power === 0x01,
+      temperature: parsedState.temperature,
+      mode: this.getModeIndex(parsedState.mode),
+      fanSpeed: this.getFanSpeedIndex(parsedState.fanSpeed),
+      windDirection: this.getWindDirectionIndex(parsedState.windDirection),
+      autoSwing: parsedState.autoWindDirection === 0x01,
+    };
   }
 
   /**
@@ -404,6 +452,25 @@ export function buildAirCommandHex(state) {
 }
 
 /**
+ * 保存済み state (updateRemoteState で永続化した command HEX) から emitAir 入力の
+ * UI state を復元する (P3-2、vendor restoreStateFromRemote 相当)。
+ *
+ * vendor (remote-air/index.js:108-113,564-581): remote.state があれば
+ * parseAirCommand(remote.state) → convertToUIState で UI 状態に戻す。
+ * 不正/空 HEX は null (vendor も復元せず既定値のまま)。
+ *
+ * @param {string|null|undefined} stateHex 保存済み command HEX (remote.state)
+ * @returns {{power:boolean, temperature:number, mode:number, fanSpeed:number,
+ *            windDirection:number, autoSwing:boolean}|null}
+ */
+export function restoreAirState(stateHex) {
+  if (!stateHex) return null;
+  const proc = new HXDCommandProcessor();
+  const swapper = new HXDParametersSwapper();
+  return swapper.convertToUIState(proc.parseAirCommand(stateHex));
+}
+
+/**
  * 非エアコン (TV/ライト/扇風機) の発射 command (HEX 文字列) を生成。
  * biz3 buildCommand を再現 (remote-non-air/index.js:113-124, 呼び出しフロー extraLogic D)。
  *
@@ -473,18 +540,59 @@ export async function sendIR(client, p) {
 }
 
 /**
+ * sendIR 成功後の state 自動保存 (P3-2)。
+ *
+ * vendor (remote-air/index.js:371-383 / remote-non-air/index.js:158-166):
+ * `if (remote.uuid) updateRemoteState(hub3DeviceId, remote.uuid, cmd, …)` — 発射した
+ * command HEX をそのまま state として保存する。保存失敗は console.error のみで
+ * 発射自体は成功扱い (vendor 同様、本関数も throw せず結果を返す)。
+ *
+ * @param {import("./transport.js").Hub3WsClient} client
+ * @param {{deviceId:string, irDeviceUUID?:string, command:string, companyID:string}} p
+ * @returns {Promise<{saved:boolean, error?:string}>}
+ */
+async function saveRemoteStateAfterEmit(client, { deviceId, irDeviceUUID, command, companyID }) {
+  if (!irDeviceUUID) return { saved: false }; // 未保存リモコン (remote.uuid 空) は保存しない (vendor 同等)
+  try {
+    await updateRemoteState(client, { hub3DeviceId: deviceId, uuid: irDeviceUUID, state: command, companyID });
+    return { saved: true };
+  } catch (e) {
+    // vendor は update 失敗を console.error で流すだけで発射は成功扱い (remote-air:376-378)。
+    return { saved: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
  * エアコン: 状態から command を生成してそのまま発射する複合関数。
+ *
+ * state 復元 (P3-2): `savedState` (updateRemoteState で保存した command HEX。サーバの
+ * remote.state) を渡すと、そこから復元した値を既定値として使い、明示指定の項目だけ上書きする
+ * (vendor remote-air/index.js:108-113 restoreStateFromRemote → ユーザ操作で部分更新、と同じ流れ)。
+ * 発射成功後、irDeviceUUID があれば command を state として自動保存する
+ * (remote-air/index.js:371-383)。
+ *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{
  *   deviceId: string, companyID: string, code: number,
- *   irDeviceUUID?: string, timeoutMs?: number,
+ *   irDeviceUUID?: string, timeoutMs?: number, savedState?: string|null,
  *   power?: boolean, temperature?: number, mode?: number,
  *   fanSpeed?: number, windDirection?: number, autoSwing?: boolean, keyType?: string,
  * }} p
- * @returns {Promise<{command:string, response:object}>}
+ * @returns {Promise<{command:string, response:object, stateSaved:boolean}>}
  */
 export async function emitAir(client, p) {
-  const command = buildAirCommandHex(p);
+  // savedState からの復元値を既定に、呼び出し側の明示指定で上書き (undefined は上書きしない)。
+  const restored = restoreAirState(p.savedState);
+  const state = restored ? {
+    ...p,
+    power: p.power ?? restored.power,
+    temperature: p.temperature ?? restored.temperature,
+    mode: p.mode ?? restored.mode,
+    fanSpeed: p.fanSpeed ?? restored.fanSpeed,
+    windDirection: p.windDirection ?? restored.windDirection,
+    autoSwing: p.autoSwing ?? restored.autoSwing,
+  } : p;
+  const command = buildAirCommandHex(state);
   const response = await sendIR(client, {
     deviceId: p.deviceId,
     command,
@@ -493,18 +601,24 @@ export async function emitAir(client, p) {
     irDeviceUUID: p.irDeviceUUID ?? "",
     timeoutMs: p.timeoutMs,
   });
-  return { command, response };
+  // 成功後の state 自動保存 (sendIR は strict なのでここに来た時点で成功確定)。
+  const { saved } = await saveRemoteStateAfterEmit(client, {
+    deviceId: p.deviceId, irDeviceUUID: p.irDeviceUUID, command, companyID: p.companyID,
+  });
+  return { command, response, stateSaved: saved };
 }
 
 /**
  * 非エアコン (TV/ライト/扇風機): ボタン押下を生成して発射する複合関数。
+ * 発射成功後、irDeviceUUID があれば command を state として自動保存する (P3-2、
+ * remote-non-air/index.js:158-166)。
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{
  *   deviceId: string, companyID: string, code: number,
  *   irType: number, buttonType: string,
  *   irDeviceUUID?: string, timeoutMs?: number,
  * }} p
- * @returns {Promise<{command:string, response:object}>}
+ * @returns {Promise<{command:string, response:object, stateSaved:boolean}>}
  */
 export async function emitButton(client, p) {
   const command = buildNonAirCommandHex({
@@ -520,7 +634,10 @@ export async function emitButton(client, p) {
     irDeviceUUID: p.irDeviceUUID ?? "",
     timeoutMs: p.timeoutMs,
   });
-  return { command, response };
+  const { saved } = await saveRemoteStateAfterEmit(client, {
+    deviceId: p.deviceId, irDeviceUUID: p.irDeviceUUID, command, companyID: p.companyID,
+  });
+  return { command, response, stateSaved: saved };
 }
 
 /**

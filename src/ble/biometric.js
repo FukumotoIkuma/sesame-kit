@@ -23,6 +23,7 @@
 
 import { Buffer } from "node:buffer";
 import { ITEM_CODES, STP_ITEM_CODES } from "../itemcodes.js";
+import { capabilitiesForModel } from "./devicemodel.js";
 
 const ITEM = ITEM_CODES;
 const STP_ITEM = STP_ITEM_CODES;
@@ -649,6 +650,14 @@ export function batchAddPacket(data, dataIndex) {
  * @param {BiometricPublishPacket} pkt    publish パケット (session.onPublish の引数)
  * @param {BiometricDelegate} delegate  下記コールバックの一部または全部を持つオブジェクト
  * @param {unknown} [device]     コールバックへ素通しする識別子 (省略可)
+ * @param {{isRemote?:(boolean|null), isOpenSensor?:boolean}} [opts] 機種文脈 (P3-15 の model 伝搬):
+ *   - isRemote: Remote/Remote Nano 系か。SDK は TRIGGER_DELAYTIME(191) publish を
+ *     device.isRemote() のときだけ delegate へ流す (CHRemoteNanoEventHandler.kt:15-21。BLEP-09)。
+ *     false を渡すと 191 は「処理済み・dispatch 無し」(SDK の handled=true と同義)。
+ *     省略 (null) 時は機種不明として従来どおり dispatch する (後方互換。ファサード経由では
+ *     BiometricCommands が model から確定値を渡す)。
+ *   - isOpenSensor: OpenSensor 系か。PUB_KEY_SESAME(102) の空きスロット判定が >1 になる
+ *     (CHSesameBiometricDeviceImpl.kt:225-231。BLEP-11)。既定 false。
  * @returns {boolean} 生体 capability として処理したら true
  *
  * delegate コールバック (SDK CH*Delegate.kt 1:1):
@@ -663,13 +672,12 @@ export function batchAddPacket(data, dataIndex) {
  *                  (CHSesameBiometricDeviceImpl.kt:214-217 handleMechStatus + CHDeviceStatusDelegate.onMechStatus)
  *   pubKey:      onSesameKeysReceived({keys,slotFull,emptySlotCount})
  *                  (kt:219-255 handlePubKeySesame + ObservableMutableMap.setSlotFull)。
- *                  ※ slotFull は既定 (非 OpenSensor) 判定。OpenSensor 判定が要る場合は
- *                    呼び出し側で parsePubKeySesame(payload,{isOpenSensor:true}) を直接使う。
+ *                  ※ slotFull の OpenSensor 判定 (>1) は opts.isOpenSensor で切り替わる (BLEP-11)。
  *   battery:     onBatteryVoltageReceived(payloadHex)  (kt:185-187 reportBatteryData(payload.toHexString()))
  *   support:     onSupportChanged(false)               (kt:189-192 setSupport(false))
  *   bleTxPower:  onBleTxPowerReceive(txPower)           (kt:194-197 bleTxPower=payload[0]、符号付き 1B)
  */
-export function handleBiometricPublish(pkt, delegate, device) {
+export function handleBiometricPublish(pkt, delegate, device, { isRemote = null, isOpenSensor = false } = {}) {
   if (!pkt || !delegate) return false;
   const { itemCode } = pkt;
   const payload = Buffer.from(pkt.body ?? pkt.payload ?? Buffer.alloc(0));
@@ -805,9 +813,12 @@ export function handleBiometricPublish(pkt, delegate, device) {
     // ---- remoteNano (trigger delay) ----
     case ITEM.REMOTE_NANO_PUB_TRIGGER_DELAYTIME: {
       // CHRemoteNanoEventHandler.kt:15-21: payload を CHRemoteNanoTriggerSettings.fromData で
-      // parse し onTriggerDelaySecondReceived へ。SDK は device.isRemote() ガードを掛けるが、
-      // kit は device 文脈を持たない (呼び出し側が device トークンを渡すだけ) ため、ここでは
-      // itemCode 一致で常に dispatch する (機種判定はファサード/呼び出し側の責務)。
+      // parse し、**device.isRemote() のときだけ** onTriggerDelaySecondReceived へ流す
+      // (isRemote() は remote と remote_nano の両機種で真 — どちらも BiometricDeviceType.REMOTE
+      // で生成される。CHDeivceProtocols.kt:112,118)。handled は機種に関わらず true (kt:21)。
+      // opts.isRemote === false (= 機種確定で非 Remote) なら dispatch を黙殺する (BLEP-09)。
+      // 機種不明 (null) は従来互換で dispatch する (ファサードは model から確定値を渡す)。
+      if (isRemote === false) return true;
       const setting = parseRemoteNanoTrigger(payload);
       call(delegate.onTriggerDelaySecondReceived, setting);
       return true;
@@ -830,9 +841,10 @@ export function handleBiometricPublish(pkt, delegate, device) {
     // ---- 子鍵束 (HUB3/WM2 が保持する子 Sesame 鍵の push) ----
     case ITEM.PUB_KEY_SESAME:
       // CHSesameBiometricDeviceImpl.kt:171-174,219-255 handlePubKeySesame。
-      // slotFull は既定 (非 OpenSensor) 判定。OpenSensor 機の正確な判定は呼び出し側が
-      // parsePubKeySesame(payload,{isOpenSensor:true}) を直接呼ぶこと (delegate は model 文脈を持たない)。
-      call(delegate.onSesameKeysReceived, parsePubKeySesame(payload));
+      // 空きスロット判定は opts.isOpenSensor で確定する (OpenSensor/OpenSensor2 は hub3 用に
+      // 1 スロット予約するため「全ゼロチャンク >1」で空きあり。kt:225-231。BLEP-11)。
+      // ファサード経由では BiometricCommands が model から確定値を渡す。既定 false (非 OpenSensor)。
+      call(delegate.onSesameKeysReceived, parsePubKeySesame(payload, { isOpenSensor }));
       return true;
 
     // ---- 電池電圧 publish ----
@@ -879,12 +891,25 @@ export class BiometricCommands {
   /**
    * @param {BiometricSession} session SesameBleSession 互換 (request(itemCode,data)→Promise<{resultCode,payload}> と
    *                         onPublish(fn)→unsubscribe を持つこと)。
+   * @param {{model?:(string|null)}} [opts] model: デバイス model 文字列 (例 "remote_nano")。
+   *   渡すと publish ディスパッチに機種文脈が伝搬する (P3-15 の model 伝搬):
+   *     - isRemote: TRIGGER_DELAYTIME(191) を remote/remote_nano 以外で黙殺 (BLEP-09、
+   *       CHRemoteNanoEventHandler.kt:15-21)
+   *     - isOpenSensor: PUB_KEY_SESAME の空きスロット判定を >1 に (BLEP-11、
+   *       CHSesameBiometricDeviceImpl.kt:225-231)
+   *   省略時は機種不明として従来挙動 (191 dispatch あり / 非 OpenSensor 判定)。
    */
-  constructor(session) {
+  constructor(session, { model = null } = {}) {
     if (!session || typeof session.request !== "function") {
       throw new Error("biometric: session with request() is required");
     }
     this._session = session;
+    this._model = model;
+    const caps = model ? capabilitiesForModel(model) : null;
+    /** @type {boolean|null} 機種不明 (model 省略) は null = 従来互換で dispatch。 */
+    this._isRemote = caps ? caps.isRemote : null;
+    /** @type {boolean} */
+    this._isOpenSensor = caps ? caps.isOpenSensor : false;
   }
 
   /**
@@ -1040,13 +1065,16 @@ export class BiometricCommands {
 
   /**
    * publish 受信を delegate に結線する (session.onPublish へ handleBiometricPublish を登録)。
+   * コンストラクタへ渡した model から確定した機種文脈 (isRemote / isOpenSensor) を
+   * handleBiometricPublish へ伝搬する (BLEP-09 / BLEP-11)。
    * @param {BiometricDelegate} delegate handleBiometricPublish の delegate
    * @param {unknown} [device] コールバックへ素通しする識別子
    * @returns {() => void} unsubscribe (session.onPublish が無ければ no-op)
    */
   registerDelegate(delegate, device) {
     if (typeof this._session.onPublish !== "function") return () => {};
-    return this._session.onPublish((/** @type {BiometricPublishPacket} */ pkt) => { handleBiometricPublish(pkt, delegate, device); });
+    const opts = { isRemote: this._isRemote, isOpenSensor: this._isOpenSensor };
+    return this._session.onPublish((/** @type {BiometricPublishPacket} */ pkt) => { handleBiometricPublish(pkt, delegate, device, opts); });
   }
 
   /**
@@ -1090,7 +1118,24 @@ export class BiometricCommands {
  * (*_LAST) で sink へ渡す delegate を生成する。戻り値は BiometricCommands.registerDelegate /
  * handleBiometricPublish にそのまま渡せる delegate オブジェクト。
  *
- * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値)。
+ * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値) に、
+ * 取れる場合は **ファームウェア採番の nameUUID** を加えた 4 値 (P3-11)。
+ *
+ * nameUUID の出典トレース:
+ *   - BLE NOTIFY/ack payload の「名前」位置 ([type 1B][idLen 1B][id idLen B][nameLen 1B][name nameLen B]、
+ *     CHSesameBiometricParseData.kt:10-17 CHSesameTouchCard) に、ファームはタップ登録時に
+ *     **自前で採番した 16B UUID** を載せる。biz3 web は同じ位置のフィールドを `nameUUID` として
+ *     読み (references_web/src/utils/biz3utils.js:365-391 parseHexStrToCardInfo: id の後の
+ *     [nameUUIDLen 1B][nameUUID 16B]。passcode は :393-420 parseHexStrToPasscodeInfo で id 枠 16B
+ *     固定の後に同形)、タップ登録の ack ではこの値を updateCardName へそのまま渡して DB と
+ *     ファームの nameUUID を一致させる (references_web/src/pages/biz/cards/index.js:104-136)。
+ *   - よって BLE 側では parseTouchCard の cardName (hex) が名前位置のフィールドであり、
+ *     それが 16B (= 32 hex) のとき「ファーム採番の nameUUID」とみなして record.nameUUID に載せる。
+ *     16B でない場合 (ユーザーが短い表示名へ rename 済み等) は省略する (取れない種別では省略可)。
+ *   - 値は parseTouchFace と同じ方針で **ハイフン無し hex (小文字)** のまま返す。web の表示は
+ *     insertUUIDIsolationCharacter (biz3utils.js:236-238) でハイフン整形しているだけで、識別子と
+ *     しての値は hex と同値 (ハイフン整形は消費側 access.js の責務)。
+ *
  * sink には kind ('card'|'passcode') と集約配列を渡すだけで、DB へどう載せるか
  * (access.toPostCardList → access.postCards 等) は呼び出し側が決める。
  *
@@ -1099,6 +1144,9 @@ export class BiometricCommands {
  * @property {string} cardID
  * @property {string} cardName
  * @property {number} cardType
+ * @property {string} [nameUUID] ファームウェア採番の nameUUID (32hex 小文字・ハイフン無し)。
+ *   NOTIFY の名前フィールドが 16B のときのみ存在 (P3-11。access.js 側が postCards/updateCardName
+ *   の同期に消費する)。
  *
  * @typedef {Object} EnrollBatch
  * @property {'card'|'passcode'} kind
@@ -1127,6 +1175,16 @@ export function createEnrollCollector({ onEnrolled, card = true, passcode = true
   const start = (kind) => { buf[kind] = []; };
   /** @param {'card'|'passcode'} kind @param {EnrollRecord} rec */
   const push = (kind, rec) => { buf[kind].push(rec); };
+  /**
+   * NOTIFY の名前フィールド (parseTouchCard の cardName, hex) からファーム採番の nameUUID を導く。
+   * 16B (= 32 hex) のときのみ nameUUID とみなす (ファームのタップ登録採番は 16B UUID 固定 —
+   * references_web/src/utils/biz3utils.js:378-385 nameUUIDLen=16 / cards/index.js:104-136)。
+   * @param {string} cardName parseTouchCard の cardName (hex)
+   * @returns {{nameUUID?: string}} 16B でなければ空オブジェクト (record へ spread して省略)
+   */
+  const nameUUIDOf = (cardName) => (
+    /^[0-9a-f]{32}$/.test(cardName) ? { nameUUID: cardName } : {}
+  );
   /** @param {'card'|'passcode'} kind */
   const end = (kind) => {
     const records = buf[kind];
@@ -1144,12 +1202,12 @@ export function createEnrollCollector({ onEnrolled, card = true, passcode = true
   const delegate = {};
   if (card) {
     delegate.onCardReceiveStart = cap(() => start("card"));
-    delegate.onCardReceive = cap((cardID, cardName, cardType) => push("card", { cardID, cardName, cardType }));
+    delegate.onCardReceive = cap((cardID, cardName, cardType) => push("card", { cardID, cardName, cardType, ...nameUUIDOf(cardName) }));
     delegate.onCardReceiveEnd = cap(() => end("card"));
   }
   if (passcode) {
     delegate.onKeyBoardReceiveStart = cap(() => start("passcode"));
-    delegate.onKeyBoardReceive = cap((cardID, cardName, cardType) => push("passcode", { cardID, cardName, cardType }));
+    delegate.onKeyBoardReceive = cap((cardID, cardName, cardType) => push("passcode", { cardID, cardName, cardType, ...nameUUIDOf(cardName) }));
     delegate.onKeyBoardReceiveEnd = cap(() => end("passcode"));
   }
   return delegate;

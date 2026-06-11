@@ -37,7 +37,7 @@ export { RESULT as SESAME_RESULT_CODES, resultName } from "./protocol.js";
 export { NobleTransport, createBleTransport, advToDeviceUUID, parseAdvertisement, scanSesames, listNearbyDevices, peripheralToDiscovery } from "./transport.js";
 export * as protocol from "./protocol.js";
 export * as devicemodel from "./devicemodel.js";
-export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, CONTROL_OPS, KIND, PRODUCT_TYPES } from "./devicemodel.js";
+export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, CONTROL_OPS, KIND, PRODUCT_TYPES, BIO_CAPABILITY, bioCapsForModel } from "./devicemodel.js";
 
 // 生体・アクセス制御デバイス (Touch/Touch Pro/Face/Palm) の BLE 登録。BiometricCommands は
 // SesameBle.biometric ゲッタ経由でも露出するが、純関数のペイロード生成器/publish ハンドラを
@@ -108,6 +108,40 @@ function normId(u) { return String(u).replace(/-/g, "").toLowerCase(); }
 
 const STATUS_WAIT_MS = 4_000;
 
+// 生体 capability → BiometricCommands のメソッド群 (P3-15)。
+// SDK では capability ごとに CH*Capable インタフェースが分かれ、DeviceProfiles の集合に
+// 含まれる capability のメソッドだけが機種に生える (CHSesameBiometricDevice.kt:28-57 /
+// hasBiometricCapability)。kit ではこの表で BiometricCommands を「集合内のメソッドだけを持つ
+// 限定ビュー」に絞る (既存 fingerPrint ゲッタと同型)。キーは devicemodel.js BIO_CAPABILITY の値。
+const BIO_VIEW_METHODS = Object.freeze({
+  // CHCardCapable (card 系 + batchAdd)
+  card: Object.freeze(["cardModeSet", "cardModeGet", "cardGet", "cardAdd", "cardDelete", "cardMove", "cardChange", "cardChangeValue", "cardBatchAdd"]),
+  // CHFingerPrintCapable
+  fingerprint: Object.freeze(["fingerPrintModeSet", "fingerPrintModeGet", "fingerPrints", "fingerPrintDelete", "fingerPrintChange"]),
+  // CHPassCodeCapable (passcode 系 + batchAdd)
+  passcode: Object.freeze(["passcodeModeSet", "passcodeModeGet", "passcodeGet", "passcodeAdd", "passcodeDelete", "passcodeMove", "passcodeChange", "passcodeBatchAdd"]),
+  // CHFaceCapable
+  face: Object.freeze(["faceModeSet", "faceModeGet", "faceListGet", "faceChange", "faceDelete"]),
+  // CHPalmCapable (palmChange は kit 未実装のため表に無い — 実装したらここへ追加)
+  palm: Object.freeze(["palmModeSet", "palmModeGet", "palmListGet", "palmDelete"]),
+});
+
+/**
+ * biometric ゲッタが返す限定ビューの型。
+ *
+ * ★型は全 capability のメソッドを持つが、**実行時は bioCaps 集合内のメソッドだけが存在する**
+ * (集合外は undefined — DeviceProfiles で機種ごとに静的に決まるため、モデルごとの部分型を
+ * 静的に表現できない以上、型は上限・実体は機種別部分集合という関係になる)。集合外メソッドの
+ * 呼び出しは TypeError になる (op を捏造して実機に送ることはない)。
+ * @typedef {Pick<BiometricCommands,
+ *   "cardModeSet"|"cardModeGet"|"cardGet"|"cardAdd"|"cardDelete"|"cardMove"|"cardChange"|"cardChangeValue"|"cardBatchAdd"
+ *   |"fingerPrintModeSet"|"fingerPrintModeGet"|"fingerPrints"|"fingerPrintDelete"|"fingerPrintChange"
+ *   |"passcodeModeSet"|"passcodeModeGet"|"passcodeGet"|"passcodeAdd"|"passcodeDelete"|"passcodeMove"|"passcodeChange"|"passcodeBatchAdd"
+ *   |"faceModeSet"|"faceModeGet"|"faceListGet"|"faceChange"|"faceDelete"
+ *   |"palmModeSet"|"palmModeGet"|"palmListGet"|"palmDelete"
+ *   |"insertSesame"|"removeSesame"|"setRadarSensitivity"|"registerDelegate"|"onEnroll">} BiometricView
+ */
+
 /**
  * サーバ署名トランスポート (makeRegisterTransport の戻り)。signGuestKey / register に渡す。
  * 正準型は devices.js が所有する。
@@ -172,21 +206,32 @@ export class SesameBle {
     // register モードは secretKey 無しで session を構築 (SesameBleSession.register() の契約)。
     // WM2 (kind===WIFI) はセッション確立がロックと非互換 (initial=13 / 鍵=生16B / sault=token4。
     // CHWifiModule2Device.kt:279-321,521-528) のため profile "wm2" を渡す (P1-6)。
+    const caps = capabilitiesForModel(model); // 型ごとの能力 (SDK CHProductModel 準拠)
     this._session = new SesameBleSession({
       transport: this._transport,
       secretKey: registerMode ? undefined : secretKey,
       debug,
       profile: isWm2 ? "wm2" : "lock",
+      // BLE3-03: login 後の time(8) 自動同期はロック系 (CHSesameOS3LockBase.kt:126-138) のみ。
+      // handleLoginResponse (時刻同期) を持つのは CHSesameOS3LockBase 系
+      // (SS5/Bot2/Bike2/Bike3 — CHSesame5Device.kt:34 / CHSesameBot2Device.kt:38 /
+      // CHSesameBike2Device.kt:35)。次は login を override して時刻同期しない:
+      //   - Hub3 (CHHub3Device.kt:167-178)
+      //   - WM2 (CHWifiModule2Device.kt:314-321。profile="wm2" でも構造的に対象外だが明示)
+      //   - 生体・アクセス制御 (CHSesameBiometricDeviceImpl.kt:67 は CHSesameOS3 直継承で
+      //     :258-277 の login override はコールバックで deviceStatus 遷移のみ)
+      syncTime: !(caps.kind === KIND.HUB3 || caps.kind === KIND.WIFI || caps.kind === KIND.BIOMETRIC),
     });
     this._model = model;
-    this._caps = capabilitiesForModel(model); // 型ごとの能力 (SDK CHProductModel 準拠)
+    this._caps = caps;
     this._deviceUUID = deviceUUID;
     this._registerMode = registerMode;
     this._secretKey = secretKey;
     this._needAuthFromServer = !!needAuthFromServer;
     this._registerTransport = registerTransport;
     this._debug = debug;
-    this._biometric = null; // BiometricCommands の遅延生成キャッシュ (biometric ゲッタ)
+    /** @type {BiometricView|null} bioCaps 限定ビューの遅延生成キャッシュ (biometric ゲッタ)。 */
+    this._biometric = null;
     this._bot2 = null;      // Bot2Commands の遅延生成キャッシュ (script ゲッタ)
     this._wifi = null;      // WifiModule2 の遅延生成キャッシュ (wifi ゲッタ)
     this._hub3 = null;      // Hub3Commands の遅延生成キャッシュ (hub3 ゲッタ)
@@ -207,15 +252,29 @@ export class SesameBle {
   /**
    * 生体・アクセス制御デバイス (Touch/Touch Pro/Face/Palm 系) の BLE 登録 API。
    *
-   * card/finger/passcode/face/palm の ModeSet/Get・Add/Delete/Change・batchAdd と、publish
-   * 受信を delegate に流す registerDelegate() を持つ BiometricCommands を返す
-   * (実体は src/ble/biometric.js、契約は session.request / session.onPublish に乗る)。
+   * **機種別の capability 集合 (DeviceProfiles) で絞った限定ビュー** を返す (P3-15)。
+   * SDK では capability 集合が機種ごとに deviceFactory() で固定され
+   * (CHSesameBiometricDevice.kt:44-57 / CHDeivceProtocols.kt:77-216)、集合外の操作は存在しない。
+   * kit でも bioCaps 集合内の capability のメソッド群 (BIO_VIEW_METHODS) だけを bind した
+   * ビューを返す (既存 fingerPrint ゲッタと同型):
+   *   - ssm_touch       → card + fingerprint (passcode 系は **見えない**)
+   *   - ssm_touch_pro   → card + fingerprint + passcode
+   *   - sesame_face     → card + fingerprint + palm + face
+   *   - sesame_face_ai  → palm + face のみ (card 系は **見えない**)
+   *   - sesame_face_Pro → 全部 / sesame_face_pro_ai → passcode + palm + face
+   * 集合に依らない共通 API (CHSesameConnector / delegate 結線) は常に載る:
+   *   insertSesame / removeSesame / setRadarSensitivity / registerDelegate / onEnroll
+   *   (onEnroll の card/passcode 既定値は集合から導出され、集合外 kind は集約しない)。
    *
    * capabilitiesForModel(model).biometric が true の機種でのみ露出する。それ以外 (ロック/Bot/
    * Bike/Hub3/WiFi/未知) で参照すると enroll 非対応として明示エラーを投げる (op を捏造しない)。
+   * **bioCaps が空集合の機種 (open_sensor_1/2, remote, remote_nano — CHDeivceProtocols.kt:81,112,
+   * 118,172 で setOf()) でも明示エラーを投げる** (P3-15)。これらの connector 操作
+   * (insertSesame 等) が必要な場合は BiometricCommands(session, {model}) を直接構築すること。
    * connect() 前でも参照できる (session.request は connect 後に login 済みを要求する)。
    *
-   * @returns {BiometricCommands}
+   * @returns {BiometricView} bioCaps で絞った BiometricCommands の限定ビュー
+   *   (型は全 capability の上限。実行時に存在するのは集合内メソッドのみ — BiometricView 参照)
    */
   get biometric() {
     if (!this._caps.biometric) {
@@ -224,7 +283,41 @@ export class SesameBle {
         modelSuffix: this._model ? ` (${this._model})` : "",
       }));
     }
-    if (!this._biometric) this._biometric = new BiometricCommands(this._session);
+    // 空集合機種 (open sensor / remote 系) は enroll API を一切持たない (DeviceProfiles の
+    // setOf()) ため、何も持たないビューを返さず明示エラーにする (P3-15)。
+    if (this._caps.bioCaps.length === 0) {
+      throw new Error(t("ble.biometricNoCaps", {
+        label: this._caps.label,
+        modelSuffix: this._model ? ` (${this._model})` : "",
+      }));
+    }
+    if (!this._biometric) {
+      // model を渡して publish ディスパッチへ機種文脈を伝搬する (BLEP-09/BLEP-11)。
+      const c = new BiometricCommands(this._session, { model: this._model });
+      const caps = new Set(this._caps.bioCaps);
+      /** @type {Record<string, Function>} */
+      const view = {};
+      for (const [capName, methods] of Object.entries(BIO_VIEW_METHODS)) {
+        if (!caps.has(capName)) continue; // 集合外 capability のメソッドは持たせない
+        for (const m of methods) view[m] = /** @type {any} */ (c)[m].bind(c);
+      }
+      // capability 非依存の共通 API (CHSesameConnector / CHDeviceConnectCapable / delegate 結線)。
+      view.insertSesame = c.insertSesame.bind(c);
+      view.removeSesame = c.removeSesame.bind(c);
+      view.setRadarSensitivity = c.setRadarSensitivity.bind(c);
+      view.registerDelegate = c.registerDelegate.bind(c);
+      // onEnroll: 集合外 kind は集約しない (既定値を bioCaps から導出。明示指定があっても
+      // 集合外は false に強制する — 集合に無い enroll publish は実機から来ない前提の安全側)。
+      const hasCard = caps.has("card");
+      const hasPasscode = caps.has("passcode");
+      view.onEnroll = (/** @type {any} */ onEnrolled, /** @type {any} */ opts = {}) => c.onEnroll(onEnrolled, {
+        ...opts,
+        card: hasCard && (opts.card ?? true),
+        passcode: hasPasscode && (opts.passcode ?? true),
+      });
+      // 動的に組んだ部分集合を BiometricView (型上限) へ確定する (実行時集合は bioCaps 準拠)。
+      this._biometric = /** @type {BiometricView} */ (/** @type {unknown} */ (view));
+    }
     return this._biometric;
   }
 
@@ -254,7 +347,9 @@ export class SesameBle {
     if (!this._fingerPrint) {
       // BiometricCommands を共用しつつ、指紋系メソッドだけを bind した限定ビューを返す
       // (card/passcode/face/palm を露出しないことで Bike3 の能力を SDK 通り絞る)。
-      const c = new BiometricCommands(this._session);
+      // model を渡して publish ディスパッチへ機種文脈を伝搬 (BLEP-09: Bike3 は非 Remote なので
+      // TRIGGER_DELAYTIME(191) は黙殺される)。
+      const c = new BiometricCommands(this._session, { model: this._model });
       this._fingerPrint = {
         fingerPrints: c.fingerPrints.bind(c),
         fingerPrintDelete: c.fingerPrintDelete.bind(c),

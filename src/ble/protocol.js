@@ -32,6 +32,9 @@ export const COMPANY_ID = 0x055a;
 export const OP = Object.freeze({
   CREATE: 0x01, READ: 0x02, UPDATE: 0x03, DELETE: 0x04,
   SYNC: 0x05, ASYNC: 0x06, RESPONSE: 0x07, PUBLISH: 0x08,
+  // undefine(0x10) — SesameProtocols.kt:55-57 SSM2OpCode の終端メンバ。SDK 内で送受信に使われない
+  // **未使用センチネル** (enum 完全性のためにのみ移植。ルーティングに使わないこと)。
+  UNDEFINE: 0x10,
 });
 
 /** item_code。クラウドと共通の正準ソース (src/itemcodes.js) を参照する (重複定義を避ける)。 */
@@ -685,14 +688,14 @@ export const MECH_STATE = Object.freeze({ LOCKED: "locked", UNLOCKED: "unlocked"
  *   3B = CHSesameBot2MechStatus / CHSesameBike2MechStatus (Bot2/Bot3/Bike2/Bike3)
  *     data[0..1]: 電池電圧 ADC 生値 (LE)
  *     data[2]   : flags — bit1 isInLockRange / bit2 stop
- *     position/target の概念なし (null)
+ *     position/target は override されず interface 既定の 0 (CHDeivceProtocols.kt:334-351)
  *
  * 施錠/解錠は **isInLockRange の有無のみ** で判定する。OS3 に unlock-range ビットも中間 (moved) も無い
  * (CHSesame5.kt:24-32 / CHSesameBot2.kt:123-126: isInUnlockRange = !isInLockRange)。
  *
  * @param {Buffer} buf 3B (bot/bike) または 7B 以上 (lock)
  * @returns {{state:string, isInLockRange:boolean, target:number|null, position:number|null,
- *            isStop:boolean, isCritical:boolean, isBatteryCritical:boolean, batteryRaw:number, flags:number}}
+ *            isStop:boolean, isCritical:boolean|null, isBatteryCritical:boolean, batteryRaw:number, flags:number}}
  */
 export function parseMechStatus(buf) {
   if (!Buffer.isBuffer(buf)) throw new Error(t("ble.mechStatusMustBeBuffer"));
@@ -726,6 +729,12 @@ function parseMechStatusLock(buf) {
 
 /**
  * 3B: CHSesameBot2MechStatus / CHSesameBike2MechStatus 準拠 (Bot2/Bot3/Bike2/Bike3)。
+ *
+ * Bot2/Bike2 の MechStatus クラスは isInLockRange / isStop しか override しないため、
+ * 他フィールドは CHSesameProtocolMechStatus の interface 既定値に落ちる
+ * (CHDeivceProtocols.kt:334-351): position=0, target=0, isStop=null, isCritical=null,
+ * isBatteryCritical=false。旧実装の position/target=null・isCritical=false は SDK 既定と
+ * 不一致だった (BLE3-04)。
  * @param {Buffer} buf
  */
 function parseMechStatusBot(buf) {
@@ -735,12 +744,56 @@ function parseMechStatusBot(buf) {
   return {
     state: isInLockRange ? MECH_STATE.LOCKED : MECH_STATE.UNLOCKED,
     isInLockRange,
-    target: null,
-    position: null,
-    isCritical: false,
+    // interface 既定 (CHDeivceProtocols.kt:335-338): position=0 / target=0。
+    target: 0,
+    position: 0,
+    // interface 既定 (CHDeivceProtocols.kt:345-348): isCritical=null。
+    isCritical: null,
     isStop: !!(flags & 0b0000_0100),            // flags and 4
-    isBatteryCritical: false,
+    isBatteryCritical: false,                   // interface 既定 (CHDeivceProtocols.kt:339-340)
     batteryRaw,
     flags,
+  };
+}
+
+// ---------- ネットワーク状態 bit フラグ (WM2 / Hub3 共通) ----------
+
+/**
+ * ネットワーク状態 publish の payload[0] bit フラグを解析する (WM2 / Hub3 共通)。
+ *
+ * 同一 bit layout を 2 箇所が使う:
+ *   - WM2 : NETWORK_STATUS(6) publish (CHWifiModule2Device.kt:502-510)
+ *   - Hub3: mechStatus(81) publish — Hub3 では 81 がロック機構状態ではなく
+ *           CHWifiModule2NetWorkStatus として読まれる (CHHub3Device.kt:291-301)
+ *
+ *   isAp           = (payload[0] and 2)  > 0   bit1
+ *   isNet          = (payload[0] and 4)  > 0   bit2
+ *   isIot          = (payload[0] and 8)  > 0   bit3
+ *   isAPCheck      = (payload[0] and 16) > 0   bit4
+ *   isAPConnecting = (payload[0] and 32) > 0   bit5
+ *   isNETConnecting= (payload[0] and 64) > 0   bit6
+ *   isIOTConnecting= payload[0] < 0            (Kotlin signed Byte の最上位 bit7)
+ *
+ * 注: Kotlin の payload[0] は **signed Byte**。最上位 bit (0x80) が立つと負値になり、
+ *   isIOTConnecting = (payload[0] < 0) はそのまま bit7 判定と等価。JS では payload[0] は
+ *   0..255 の unsigned なので bit7 を (b & 0x80) で判定する (= 等価)。
+ *
+ * @param {Buffer} payload (>=1B)
+ * @returns {{isAp:boolean, isNet:boolean, isIot:boolean, isAPCheck:boolean,
+ *            isAPConnecting:boolean, isNETConnecting:boolean, isIOTConnecting:boolean, raw:number}}
+ */
+export function parseNetworkStatus(payload) {
+  const buf = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
+  if (buf.length < 1) throw new Error(t("ble.wm2NetworkStatusEmpty"));
+  const b = buf[0];
+  return {
+    isAp: (b & 2) > 0,             // bit1
+    isNet: (b & 4) > 0,            // bit2
+    isIot: (b & 8) > 0,            // bit3
+    isAPCheck: (b & 16) > 0,       // bit4
+    isAPConnecting: (b & 32) > 0,  // bit5
+    isNETConnecting: (b & 64) > 0, // bit6
+    isIOTConnecting: (b & 0x80) > 0, // bit7 (Kotlin signed byte < 0 と等価)
+    raw: b,
   };
 }

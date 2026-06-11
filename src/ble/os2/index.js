@@ -95,7 +95,14 @@ export class SesameOS2Ble {
   get model() { return this._model; }
   get isConnected() { return this._session.isLoggedIn; }
   get lastStatus() { return this._session.lastStatus; }
-  /** login response (systemTime / fwVersion / historyCnt / mechSetting / mechStatus)。 */
+  /**
+   * login response (systemTime / fwVersion / historyCnt / mechSetting / mechSettingBot /
+   * mechSettingBytes / isConfigured / mechStatus)。BLE2-07 で mechSetting は解析済みオブジェクト
+   * (Sesame2: {lockPosition, unlockPosition, isConfigured} — 度数、CHSesame2.kt:24-28 /
+   * Bot1 は mechSettingBot の 7 フィールド — CHSesameBikeDevice.kt:520)。
+   * `loginInfo.isConfigured === false` は角度未キャリブレーション (SDK の NoSettings 状態、
+   * CHSesame2Device.kt:268)。
+   */
   get loginInfo() { return this._session.lastLoginResponse; }
 
   /** @param {(status:any)=>void} fn */

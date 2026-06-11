@@ -351,14 +351,14 @@ export function registrationData(pubK: Buffer | string, nowMs?: number, profile?
  *   3B = CHSesameBot2MechStatus / CHSesameBike2MechStatus (Bot2/Bot3/Bike2/Bike3)
  *     data[0..1]: 電池電圧 ADC 生値 (LE)
  *     data[2]   : flags — bit1 isInLockRange / bit2 stop
- *     position/target の概念なし (null)
+ *     position/target は override されず interface 既定の 0 (CHDeivceProtocols.kt:334-351)
  *
  * 施錠/解錠は **isInLockRange の有無のみ** で判定する。OS3 に unlock-range ビットも中間 (moved) も無い
  * (CHSesame5.kt:24-32 / CHSesameBot2.kt:123-126: isInUnlockRange = !isInLockRange)。
  *
  * @param {Buffer} buf 3B (bot/bike) または 7B 以上 (lock)
  * @returns {{state:string, isInLockRange:boolean, target:number|null, position:number|null,
- *            isStop:boolean, isCritical:boolean, isBatteryCritical:boolean, batteryRaw:number, flags:number}}
+ *            isStop:boolean, isCritical:boolean|null, isBatteryCritical:boolean, batteryRaw:number, flags:number}}
  */
 export function parseMechStatus(buf: Buffer): {
     state: string;
@@ -366,10 +366,44 @@ export function parseMechStatus(buf: Buffer): {
     target: number | null;
     position: number | null;
     isStop: boolean;
-    isCritical: boolean;
+    isCritical: boolean | null;
     isBatteryCritical: boolean;
     batteryRaw: number;
     flags: number;
+};
+/**
+ * ネットワーク状態 publish の payload[0] bit フラグを解析する (WM2 / Hub3 共通)。
+ *
+ * 同一 bit layout を 2 箇所が使う:
+ *   - WM2 : NETWORK_STATUS(6) publish (CHWifiModule2Device.kt:502-510)
+ *   - Hub3: mechStatus(81) publish — Hub3 では 81 がロック機構状態ではなく
+ *           CHWifiModule2NetWorkStatus として読まれる (CHHub3Device.kt:291-301)
+ *
+ *   isAp           = (payload[0] and 2)  > 0   bit1
+ *   isNet          = (payload[0] and 4)  > 0   bit2
+ *   isIot          = (payload[0] and 8)  > 0   bit3
+ *   isAPCheck      = (payload[0] and 16) > 0   bit4
+ *   isAPConnecting = (payload[0] and 32) > 0   bit5
+ *   isNETConnecting= (payload[0] and 64) > 0   bit6
+ *   isIOTConnecting= payload[0] < 0            (Kotlin signed Byte の最上位 bit7)
+ *
+ * 注: Kotlin の payload[0] は **signed Byte**。最上位 bit (0x80) が立つと負値になり、
+ *   isIOTConnecting = (payload[0] < 0) はそのまま bit7 判定と等価。JS では payload[0] は
+ *   0..255 の unsigned なので bit7 を (b & 0x80) で判定する (= 等価)。
+ *
+ * @param {Buffer} payload (>=1B)
+ * @returns {{isAp:boolean, isNet:boolean, isIot:boolean, isAPCheck:boolean,
+ *            isAPConnecting:boolean, isNETConnecting:boolean, isIOTConnecting:boolean, raw:number}}
+ */
+export function parseNetworkStatus(payload: Buffer): {
+    isAp: boolean;
+    isNet: boolean;
+    isIot: boolean;
+    isAPCheck: boolean;
+    isAPConnecting: boolean;
+    isNETConnecting: boolean;
+    isIOTConnecting: boolean;
+    raw: number;
 };
 /** GATT (blecent.c:13-15 / SesameProtocols.kt:80-83)。 */
 export const GATT: Readonly<{
@@ -389,6 +423,7 @@ export const OP: Readonly<{
     ASYNC: 6;
     RESPONSE: 7;
     PUBLISH: 8;
+    UNDEFINE: 16;
 }>;
 /** item_code。クラウドと共通の正準ソース (src/itemcodes.js) を参照する (重複定義を避ける)。 */
 export const ITEM: Readonly<{
@@ -512,7 +547,7 @@ export const ITEM: Readonly<{
     HUB3_UPDATE_WIFI_SSID: 136;
     HUB3_MATTER_PAIRING_CODE: 137;
     HUB3_ITEM_CODE_RELAY_SWITCH: 208;
-    HUB3_ITEM_CODE_NETWORK_TYPE: 209;
+    STP_ITEM_CODE_DEVICE_STATUS: 183;
     REMOTE_NANO_SET_TRIGGER_DELAYTIME: 190;
     REMOTE_NANO_PUB_TRIGGER_DELAYTIME: 191;
     SSM_OS3_RADAR_PARAM_SET: 200;

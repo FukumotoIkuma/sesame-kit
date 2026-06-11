@@ -1222,6 +1222,14 @@
       "schema": {
         "type": "number"
       }
+    },
+    {
+      "name": "graceMs",
+      "required": false,
+      "tsType": "number",
+      "schema": {
+        "type": "number"
+      }
     }
   ],
   "access.getPasscodes": [
@@ -1238,6 +1246,14 @@
     },
     {
       "name": "timeoutMs",
+      "required": false,
+      "tsType": "number",
+      "schema": {
+        "type": "number"
+      }
+    },
+    {
+      "name": "graceMs",
       "required": false,
       "tsType": "number",
       "schema": {
@@ -1912,6 +1928,14 @@
       "tsType": "number",
       "schema": {
         "type": "number"
+      }
+    },
+    {
+      "name": "savedState",
+      "required": false,
+      "tsType": "string | null",
+      "schema": {
+        "type": "string"
       }
     },
     {

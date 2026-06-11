@@ -864,6 +864,21 @@ export class SesameHub3 {
     return ir.matchRemote(ws, { irData, irType, brandName, companyID: this._companyID });
   }
 
+  /**
+   * リモコンを Matter デバイスとして Hub3 に登録 (P3-3、useRemoteCtrl.js:933-955 フィールド 1:1)。
+   * Matter ペアリング窓 (iot.js) の開放とセットで使う。
+   * @experimental 実機未検証 (参照: useRemoteCtrl.js:933-955)。
+   * @param {{hub3DeviceId: string, irDeviceType: number, cmdOn: string, cmdOff: string,
+   *          irDeviceUUID: string, irDeviceName: string}} p
+   */
+  async addRemoteToMatter({ hub3DeviceId, irDeviceType, cmdOn, cmdOff, irDeviceUUID, irDeviceName }) {
+    const ws = this._ensureConnected();
+    return ir.addRemoteToMatter(ws, {
+      hub3DeviceId, irDeviceType, cmdOn, cmdOff, irDeviceUUID, irDeviceName,
+      companyID: this._companyID,
+    });
+  }
+
   /** @param {string} [name] @returns {import("./config.js").Hub3View} */
   _resolveHub3(name) {
     const cfg = this._config;
@@ -891,14 +906,16 @@ export class SesameHub3 {
   }
 
   /**
-   * 読み取った複数 IC カードをクラウド DB へ一括登録する (postCards への委譲)。
+   * 読み取った複数 IC カードをクラウド DB へ登録する。
    *
    * BLE enroll (`sesame access cards enroll`) で集約した records をそのまま渡せる。
-   * cards 要素は BLE 読み取り形 `{cardID, cardName, cardType}` (access.enrolledToCardList が
-   * postCards の list 形へ写像する)。既に postCards の list 形を持つ場合は access.postCards を直接使う。
+   * cards 要素は BLE 読み取り形 `{cardID, cardName, cardType, nameUUID?}`。タップ登録経路は
+   * vendor (cards/index.js:104-136) と同じくレコード毎の updateCardName 委譲で DB 同期する
+   * (nameUUID はファーム採番値を透過。P3-11)。postCards の list 形を既に持つ一括投入は
+   * access.postCards / syncEnrolledCards({list}) を直接使う。
    * @param {string} deviceUUID 対象 Touch の deviceUUID
-   * @param {Array<{cardID:string, cardName?:string, cardType?:number}>} cards
-   * @returns {Promise<object|null>} postCards 応答 (cards 空なら null)
+   * @param {Array<{cardID:string, cardName?:string, cardType?:number, nameUUID?:string}>} cards
+   * @returns {Promise<object|null>} updateCardName 応答の配列 (cards 空なら null)
    */
   async registerCards(deviceUUID, cards) {
     const ws = this._ensureConnected();
@@ -1014,6 +1031,54 @@ export class SesameHub3 {
   }
 
   /**
+   * デバイスを company に追加する (P3-1)。items は QR 由来のデバイスキーオブジェクト配列
+   * (useManageDevice.js:256-268)。上限超過時はサーバの "Limit Exceeded" がそのまま throw される。
+   * @param {object[]} items
+   */
+  async addDevices(items) {
+    const ws = this._ensureConnected();
+    return devices.addDevices(ws, { companyID: this._companyID, items });
+  }
+
+  /**
+   * デバイスの並び順を更新 (P3-1)。items は並べたい順のデバイスオブジェクト配列
+   * (rank は lib 側が vendor と同じ -index で採番する — useManageDevice.js:270-285)。
+   * @param {object[]} items
+   * @returns {Promise<any>} 並び替え後のデバイス一覧
+   */
+  async reorderDevices(items) {
+    const ws = this._ensureConnected();
+    return devices.reorderDevices(ws, { companyID: this._companyID, items });
+  }
+
+  /**
+   * デバイスごとの push 通知設定一覧 (P3-1, useManageDevice.js:287-302)。
+   * @param {{pushToken: string, items: object[]}} p
+   */
+  async getDevicesNotifyStatus({ pushToken, items }) {
+    const ws = this._ensureConnected();
+    return devices.getNotifyStatus(ws, { companyID: this._companyID, pushToken, items });
+  }
+
+  /**
+   * 単機の push 通知 ON/OFF 切り替え (P3-1, useManageDevice.js:304-320)。
+   * @param {{pushToken: string, deviceUUID: string, enablePush: boolean|number}} p
+   */
+  async switchDeviceNotify({ pushToken, deviceUUID, enablePush }) {
+    const ws = this._ensureConnected();
+    return devices.switchNotify(ws, { companyID: this._companyID, pushToken, deviceUUID, enablePush });
+  }
+
+  /**
+   * 充電池モード切り替え (P3-1, useManageDevice.js:360-372。frame に companyID は乗らない)。
+   * @param {{deviceUUID: string, isRechargeBattery: boolean|number}} p
+   */
+  async switchRechargeableBattery({ deviceUUID, isRechargeBattery }) {
+    const ws = this._ensureConnected();
+    return devices.switchRechargeableBattery(ws, { deviceUUID, isRechargeBattery });
+  }
+
+  /**
    * @deprecated `onDeviceUpdate(items, fn)` を使ってください (on* イベント命名に統一)。
    * 後方互換のため残置。内部実装は onDeviceUpdate と同一。
    * @param {{deviceUUID:string, deviceModel?:string}[]} deviceInfos
@@ -1025,8 +1090,10 @@ export class SesameHub3 {
 
   /**
    * ロック開閉履歴を取得。`list` はデバイス指定の配列。
+   * 要素の `lastKey` (直前ページ末尾レコードの timestamp) でページングできる (P3-7、
+   * DeviceHistory.js:37-44 — vendor は常に {deviceUUID, lastKey} を送る)。
    *
-   * @param {Array<{deviceUUID: string}>} list 履歴を取得するデバイスの配列
+   * @param {Array<{deviceUUID: string, lastKey?: number|null}>} list 履歴を取得するデバイスの配列
    * @param {number} [pageSize] 1 ページあたりの件数 (未指定でサーバ既定)
    * @returns {Promise<any>}
    */
@@ -1036,6 +1103,23 @@ export class SesameHub3 {
       companyID: this._companyID,
       list,
       pageSize,
+    });
+  }
+
+  /**
+   * 単機の開閉履歴を全ページ自動取得 (P3-7、vendor fetchAllHistory 相当 —
+   * DeviceHistory.js:37-74: res.length===pageSize の間 lastKey=末尾 timestamp で継続)。
+   * @param {string} deviceUUID
+   * @param {{ pageSize?: number, maxPages?: number }} [opts]
+   * @returns {Promise<any[]>}
+   */
+  async getAllDeviceHistory(deviceUUID, { pageSize, maxPages } = {}) {
+    const ws = this._ensureConnected();
+    return devices.getAllDeviceHistory(ws, {
+      companyID: this._companyID,
+      deviceUUID,
+      pageSize,
+      maxPages,
     });
   }
 
@@ -1203,18 +1287,47 @@ export class SesameHub3 {
   onLockStateChange(name, fn) {
     this._ensureConnected();
     const { lock } = this.resolveLock(name);
-    return this.onLockStateChangeDevice(lock.deviceUUID, fn);
+    // config 上の model が分かるので購読 frame の items に乗せる
+    // (vendor subscribeDevices は {deviceUUID, deviceModel} を送る — useManageDevice.js:341-344)。
+    return this.onLockStateChangeDevice(lock.deviceUUID, fn, { deviceModel: lock.model ?? undefined });
   }
 
   /**
    * UUID 直指定で state change を購読。
+   *
+   * P3-4: `pubDeviceStateChange` は **`subscribeDevicesUpdate` frame を送った接続にのみ**
+   * push される (useManageDevice.js:48-51,322-350)。旧実装はローカル購読だけでサーバへ
+   * 購読 frame を送っておらず、ライブラリ利用者が onLockStateChange() だけ呼ぶとイベントが
+   * 永遠に来なかった (serve daemon は onDeviceUpdate 経由で frame を送るため正常だった)。
+   * 本メソッドは対象デバイスの購読 frame を送信し、WS 再接続時にも再送する
+   * (サーバは新接続を覚えていないため再送が必須)。
+   *
+   * 既知の制限: biz3 に unsubscribe op は無いため、unsubscribe() はローカル購読の解除と
+   * 再送停止のみ (サーバ側 push は接続が生きている限り続き、ローカルで無視される)。
+   *
    * @param {string|undefined} deviceUUID
    * @param {(msg: import("./transport.js").WsMessage)=>void} fn
+   * @param {{ deviceModel?: string }} [opts] 購読 frame の items に乗せる deviceModel (分かる場合)
+   * @returns {() => void} unsubscribe
    */
-  onLockStateChangeDevice(deviceUUID, fn) {
+  onLockStateChangeDevice(deviceUUID, fn, { deviceModel } = {}) {
     const ws = this._ensureConnected();
     const target = normalizeUuid(deviceUUID);
-    return ws.subscribe(STATE_CHANGE_KEY, (msg) => {
+    // 購読 frame (useManageDevice.js:325-331 と同形)。vendor は {deviceUUID, deviceModel} を
+    // 送る (:341-344) が、model 不明の direct 経路では deviceUUID のみ送る。
+    const item = deviceModel ? { deviceUUID, deviceModel } : { deviceUUID };
+    const sendSubscribeFrame = () => {
+      ws.send({
+        action: ACTION_TYPES.BIZ3_MANAGE_DEVICE,
+        op: "subscribeDevicesUpdate",
+        items: [item],
+        companyID: this._companyID,
+      });
+    };
+    sendSubscribeFrame();
+    // 再接続時はサーバ側購読が消えるため frame を再送する (P3-4)。
+    const offReconnect = this.onReconnect(sendSubscribeFrame);
+    const offSub = ws.subscribe(STATE_CHANGE_KEY, (msg) => {
       // pubDeviceStateChange の本体は message.data、識別は data.deviceUUID
       // (vendor 確認: useIotCtrl.js:20-21 が updateDeviceState(message.data)、
       //  useManageDevice.js:147 が updatedDevice.deviceUUID)。単一フィールドのみ。
@@ -1223,6 +1336,19 @@ export class SesameHub3 {
       if (incoming !== target) return;
       try { fn(msg); } catch { /* ignore */ }
     });
+    return () => { offReconnect(); offSub(); };
+  }
+
+  /**
+   * デバイス一覧の増減 push (`pubUserDeviceChange`) を購読 (P3-5)。
+   * 鍵共有・デバイス追加/削除があるとサーバが push する。vendor はこれを受けて
+   * デバイス一覧を再取得する (useIotCtrl.js:12,23-25)。購読 frame は不要 (vendor も送らない)。
+   * @param {(msg: import("./transport.js").WsMessage)=>void} fn
+   * @returns {() => void} unsubscribe
+   */
+  onUserDeviceChange(fn) {
+    const ws = this._ensureConnected();
+    return devices.subscribeUserDeviceChange(ws, { onChange: fn });
   }
 
   /**

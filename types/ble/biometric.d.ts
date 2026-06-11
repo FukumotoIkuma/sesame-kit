@@ -361,6 +361,14 @@ export function batchAddPacket(data: Buffer, dataIndex: number): {
  * @param {BiometricPublishPacket} pkt    publish パケット (session.onPublish の引数)
  * @param {BiometricDelegate} delegate  下記コールバックの一部または全部を持つオブジェクト
  * @param {unknown} [device]     コールバックへ素通しする識別子 (省略可)
+ * @param {{isRemote?:(boolean|null), isOpenSensor?:boolean}} [opts] 機種文脈 (P3-15 の model 伝搬):
+ *   - isRemote: Remote/Remote Nano 系か。SDK は TRIGGER_DELAYTIME(191) publish を
+ *     device.isRemote() のときだけ delegate へ流す (CHRemoteNanoEventHandler.kt:15-21。BLEP-09)。
+ *     false を渡すと 191 は「処理済み・dispatch 無し」(SDK の handled=true と同義)。
+ *     省略 (null) 時は機種不明として従来どおり dispatch する (後方互換。ファサード経由では
+ *     BiometricCommands が model から確定値を渡す)。
+ *   - isOpenSensor: OpenSensor 系か。PUB_KEY_SESAME(102) の空きスロット判定が >1 になる
+ *     (CHSesameBiometricDeviceImpl.kt:225-231。BLEP-11)。既定 false。
  * @returns {boolean} 生体 capability として処理したら true
  *
  * delegate コールバック (SDK CH*Delegate.kt 1:1):
@@ -375,19 +383,38 @@ export function batchAddPacket(data: Buffer, dataIndex: number): {
  *                  (CHSesameBiometricDeviceImpl.kt:214-217 handleMechStatus + CHDeviceStatusDelegate.onMechStatus)
  *   pubKey:      onSesameKeysReceived({keys,slotFull,emptySlotCount})
  *                  (kt:219-255 handlePubKeySesame + ObservableMutableMap.setSlotFull)。
- *                  ※ slotFull は既定 (非 OpenSensor) 判定。OpenSensor 判定が要る場合は
- *                    呼び出し側で parsePubKeySesame(payload,{isOpenSensor:true}) を直接使う。
+ *                  ※ slotFull の OpenSensor 判定 (>1) は opts.isOpenSensor で切り替わる (BLEP-11)。
  *   battery:     onBatteryVoltageReceived(payloadHex)  (kt:185-187 reportBatteryData(payload.toHexString()))
  *   support:     onSupportChanged(false)               (kt:189-192 setSupport(false))
  *   bleTxPower:  onBleTxPowerReceive(txPower)           (kt:194-197 bleTxPower=payload[0]、符号付き 1B)
  */
-export function handleBiometricPublish(pkt: BiometricPublishPacket, delegate: BiometricDelegate, device?: unknown): boolean;
+export function handleBiometricPublish(pkt: BiometricPublishPacket, delegate: BiometricDelegate, device?: unknown, { isRemote, isOpenSensor }?: {
+    isRemote?: (boolean | null);
+    isOpenSensor?: boolean;
+}): boolean;
 /**
  * card / passcode の enroll publish を 1 登録セッション単位に集約し、セッション終端
  * (*_LAST) で sink へ渡す delegate を生成する。戻り値は BiometricCommands.registerDelegate /
  * handleBiometricPublish にそのまま渡せる delegate オブジェクト。
  *
- * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値)。
+ * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値) に、
+ * 取れる場合は **ファームウェア採番の nameUUID** を加えた 4 値 (P3-11)。
+ *
+ * nameUUID の出典トレース:
+ *   - BLE NOTIFY/ack payload の「名前」位置 ([type 1B][idLen 1B][id idLen B][nameLen 1B][name nameLen B]、
+ *     CHSesameBiometricParseData.kt:10-17 CHSesameTouchCard) に、ファームはタップ登録時に
+ *     **自前で採番した 16B UUID** を載せる。biz3 web は同じ位置のフィールドを `nameUUID` として
+ *     読み (references_web/src/utils/biz3utils.js:365-391 parseHexStrToCardInfo: id の後の
+ *     [nameUUIDLen 1B][nameUUID 16B]。passcode は :393-420 parseHexStrToPasscodeInfo で id 枠 16B
+ *     固定の後に同形)、タップ登録の ack ではこの値を updateCardName へそのまま渡して DB と
+ *     ファームの nameUUID を一致させる (references_web/src/pages/biz/cards/index.js:104-136)。
+ *   - よって BLE 側では parseTouchCard の cardName (hex) が名前位置のフィールドであり、
+ *     それが 16B (= 32 hex) のとき「ファーム採番の nameUUID」とみなして record.nameUUID に載せる。
+ *     16B でない場合 (ユーザーが短い表示名へ rename 済み等) は省略する (取れない種別では省略可)。
+ *   - 値は parseTouchFace と同じ方針で **ハイフン無し hex (小文字)** のまま返す。web の表示は
+ *     insertUUIDIsolationCharacter (biz3utils.js:236-238) でハイフン整形しているだけで、識別子と
+ *     しての値は hex と同値 (ハイフン整形は消費側 access.js の責務)。
+ *
  * sink には kind ('card'|'passcode') と集約配列を渡すだけで、DB へどう載せるか
  * (access.toPostCardList → access.postCards 等) は呼び出し側が決める。
  *
@@ -396,6 +423,9 @@ export function handleBiometricPublish(pkt: BiometricPublishPacket, delegate: Bi
  * @property {string} cardID
  * @property {string} cardName
  * @property {number} cardType
+ * @property {string} [nameUUID] ファームウェア採番の nameUUID (32hex 小文字・ハイフン無し)。
+ *   NOTIFY の名前フィールドが 16B のときのみ存在 (P3-11。access.js 側が postCards/updateCardName
+ *   の同期に消費する)。
  *
  * @typedef {Object} EnrollBatch
  * @property {'card'|'passcode'} kind
@@ -422,8 +452,17 @@ export class BiometricCommands {
     /**
      * @param {BiometricSession} session SesameBleSession 互換 (request(itemCode,data)→Promise<{resultCode,payload}> と
      *                         onPublish(fn)→unsubscribe を持つこと)。
+     * @param {{model?:(string|null)}} [opts] model: デバイス model 文字列 (例 "remote_nano")。
+     *   渡すと publish ディスパッチに機種文脈が伝搬する (P3-15 の model 伝搬):
+     *     - isRemote: TRIGGER_DELAYTIME(191) を remote/remote_nano 以外で黙殺 (BLEP-09、
+     *       CHRemoteNanoEventHandler.kt:15-21)
+     *     - isOpenSensor: PUB_KEY_SESAME の空きスロット判定を >1 に (BLEP-11、
+     *       CHSesameBiometricDeviceImpl.kt:225-231)
+     *   省略時は機種不明として従来挙動 (191 dispatch あり / 非 OpenSensor 判定)。
      */
-    constructor(session: BiometricSession);
+    constructor(session: BiometricSession, { model }?: {
+        model?: (string | null);
+    });
     /**
      * 登録モード設定。応答後にデバイスが CARD_FIRST/NOTIFY/LAST を push する。
      * @param {number} mode
@@ -528,6 +567,8 @@ export class BiometricCommands {
     }>;
     /**
      * publish 受信を delegate に結線する (session.onPublish へ handleBiometricPublish を登録)。
+     * コンストラクタへ渡した model から確定した機種文脈 (isRemote / isOpenSensor) を
+     * handleBiometricPublish へ伝搬する (BLEP-09 / BLEP-11)。
      * @param {BiometricDelegate} delegate handleBiometricPublish の delegate
      * @param {unknown} [device] コールバックへ素通しする識別子
      * @returns {() => void} unsubscribe (session.onPublish が無ければ no-op)
@@ -606,7 +647,24 @@ export type BiometricDelegate = {
  * (*_LAST) で sink へ渡す delegate を生成する。戻り値は BiometricCommands.registerDelegate /
  * handleBiometricPublish にそのまま渡せる delegate オブジェクト。
  *
- * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値)。
+ * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値) に、
+ * 取れる場合は **ファームウェア採番の nameUUID** を加えた 4 値 (P3-11)。
+ *
+ * nameUUID の出典トレース:
+ *   - BLE NOTIFY/ack payload の「名前」位置 ([type 1B][idLen 1B][id idLen B][nameLen 1B][name nameLen B]、
+ *     CHSesameBiometricParseData.kt:10-17 CHSesameTouchCard) に、ファームはタップ登録時に
+ *     **自前で採番した 16B UUID** を載せる。biz3 web は同じ位置のフィールドを `nameUUID` として
+ *     読み (references_web/src/utils/biz3utils.js:365-391 parseHexStrToCardInfo: id の後の
+ *     [nameUUIDLen 1B][nameUUID 16B]。passcode は :393-420 parseHexStrToPasscodeInfo で id 枠 16B
+ *     固定の後に同形)、タップ登録の ack ではこの値を updateCardName へそのまま渡して DB と
+ *     ファームの nameUUID を一致させる (references_web/src/pages/biz/cards/index.js:104-136)。
+ *   - よって BLE 側では parseTouchCard の cardName (hex) が名前位置のフィールドであり、
+ *     それが 16B (= 32 hex) のとき「ファーム採番の nameUUID」とみなして record.nameUUID に載せる。
+ *     16B でない場合 (ユーザーが短い表示名へ rename 済み等) は省略する (取れない種別では省略可)。
+ *   - 値は parseTouchFace と同じ方針で **ハイフン無し hex (小文字)** のまま返す。web の表示は
+ *     insertUUIDIsolationCharacter (biz3utils.js:236-238) でハイフン整形しているだけで、識別子と
+ *     しての値は hex と同値 (ハイフン整形は消費側 access.js の責務)。
+ *
  * sink には kind ('card'|'passcode') と集約配列を渡すだけで、DB へどう載せるか
  * (access.toPostCardList → access.postCards 等) は呼び出し側が決める。
  *
@@ -616,13 +674,36 @@ export type EnrollRecord = {
     cardID: string;
     cardName: string;
     cardType: number;
+    /**
+     * ファームウェア採番の nameUUID (32hex 小文字・ハイフン無し)。
+     * NOTIFY の名前フィールドが 16B のときのみ存在 (P3-11。access.js 側が postCards/updateCardName
+     * の同期に消費する)。
+     */
+    nameUUID?: string | undefined;
 };
 /**
  * card / passcode の enroll publish を 1 登録セッション単位に集約し、セッション終端
  * (*_LAST) で sink へ渡す delegate を生成する。戻り値は BiometricCommands.registerDelegate /
  * handleBiometricPublish にそのまま渡せる delegate オブジェクト。
  *
- * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値)。
+ * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値) に、
+ * 取れる場合は **ファームウェア採番の nameUUID** を加えた 4 値 (P3-11)。
+ *
+ * nameUUID の出典トレース:
+ *   - BLE NOTIFY/ack payload の「名前」位置 ([type 1B][idLen 1B][id idLen B][nameLen 1B][name nameLen B]、
+ *     CHSesameBiometricParseData.kt:10-17 CHSesameTouchCard) に、ファームはタップ登録時に
+ *     **自前で採番した 16B UUID** を載せる。biz3 web は同じ位置のフィールドを `nameUUID` として
+ *     読み (references_web/src/utils/biz3utils.js:365-391 parseHexStrToCardInfo: id の後の
+ *     [nameUUIDLen 1B][nameUUID 16B]。passcode は :393-420 parseHexStrToPasscodeInfo で id 枠 16B
+ *     固定の後に同形)、タップ登録の ack ではこの値を updateCardName へそのまま渡して DB と
+ *     ファームの nameUUID を一致させる (references_web/src/pages/biz/cards/index.js:104-136)。
+ *   - よって BLE 側では parseTouchCard の cardName (hex) が名前位置のフィールドであり、
+ *     それが 16B (= 32 hex) のとき「ファーム採番の nameUUID」とみなして record.nameUUID に載せる。
+ *     16B でない場合 (ユーザーが短い表示名へ rename 済み等) は省略する (取れない種別では省略可)。
+ *   - 値は parseTouchFace と同じ方針で **ハイフン無し hex (小文字)** のまま返す。web の表示は
+ *     insertUUIDIsolationCharacter (biz3utils.js:236-238) でハイフン整形しているだけで、識別子と
+ *     しての値は hex と同値 (ハイフン整形は消費側 access.js の責務)。
+ *
  * sink には kind ('card'|'passcode') と集約配列を渡すだけで、DB へどう載せるか
  * (access.toPostCardList → access.postCards 等) は呼び出し側が決める。
  *

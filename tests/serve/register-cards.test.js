@@ -1,7 +1,10 @@
-// access.registerCards (クラウド一括登録) — hub.registerCards 委譲 + serve registry handler。
+// access.registerCards (クラウド登録) — hub.registerCards 委譲 + serve registry handler。
 //
-// 設計: 読み取り (BLE) record をクラウド DB へ一括登録する convenience。新 WS op は捏造せず
-// vendor 検証済 postCards へ委譲する (hub.registerCards → access.syncEnrolledCards → postCards)。
+// 設計: 読み取り (BLE) record をクラウド DB へ登録する convenience。新 WS op は捏造せず、
+// タップ登録は vendor 検証済の「レコード毎 updateCardName」へ委譲する (P3-11:
+// hub.registerCards → access.syncEnrolledCards(records) → updateCardName ×N、
+// cards/index.js:104-136)。postCards はファームへ同一 nameUUID を書いた後の一括投入
+// (list 指定) 専用。
 import { describe, it, expect, vi } from "vitest";
 import { SesameHub3 } from "../../src/client.js";
 import { buildRegistry } from "../../src/serve/registry.js";
@@ -9,7 +12,7 @@ import { buildRegistry } from "../../src/serve/registry.js";
 const ACTION = "biz3ManageAccessCtlAuthData";
 
 /** request(frame) を記録して固定応答を返す fake _ws。 */
-function makeHubWithWs(reply = { action: ACTION, op: "postCards", code: 200, success: true, data: {} }) {
+function makeHubWithWs(reply = { action: ACTION, op: "updateCardName", code: 200, success: true, data: {} }) {
   const hub = new SesameHub3({
     config: { companyID: "co", wsUrl: "ws://unused", lang: "ja", default: {}, hub3s: {}, remotes: {}, locks: {} },
     tokenStore: {},
@@ -20,7 +23,7 @@ function makeHubWithWs(reply = { action: ACTION, op: "postCards", code: 200, suc
 }
 
 describe("SesameHub3.registerCards", () => {
-  it("BLE 読み取り record を postCards の list 形へ写像して送る", async () => {
+  it("BLE 読み取り record をレコード毎の updateCardName へ写像して送る", async () => {
     const { hub, sent } = makeHubWithWs();
     const records = [
       { cardID: "AA11", cardName: "4e616d65", cardType: 1 },
@@ -28,18 +31,17 @@ describe("SesameHub3.registerCards", () => {
     ];
     await hub.registerCards("dev-1", records);
 
-    expect(sent).toHaveLength(1);
-    const frame = sent[0];
-    expect(frame.op).toBe("postCards");
-    expect(frame.deviceUUID).toBe("dev-1");
-    expect(frame.list).toHaveLength(2);
-    // enrolledToCardList: {cardID, name(=cardName), cardType, nameUUID(生成)}。
-    expect(frame.list[0]).toMatchObject({ cardID: "AA11", name: "4e616d65", cardType: 1 });
-    expect(typeof frame.list[0].nameUUID).toBe("string");
-    expect(frame.list[1]).toMatchObject({ cardID: "BB22", cardType: 0 });
+    // vendor のタップ登録は 1 record = 1 updateCardName (cards/index.js:116-124)。
+    expect(sent).toHaveLength(2);
+    for (const frame of sent) expect(frame.op).toBe("updateCardName");
+    // item 形: {cardID, name, cardNameUUID, timestamp, cardType, stpDeviceUUID}。
+    expect(sent[0].obj).toMatchObject({ cardID: "AA11", name: "4e616d65", cardType: 1, stpDeviceUUID: "dev-1" });
+    expect(typeof sent[0].obj.cardNameUUID).toBe("string");
+    expect(typeof sent[0].obj.timestamp).toBe("number");
+    expect(sent[1].obj).toMatchObject({ cardID: "BB22", cardType: 0, stpDeviceUUID: "dev-1" });
   });
 
-  it("空配列なら何も送らず null を返す (postCards の no-op 契約)", async () => {
+  it("空配列なら何も送らず null を返す (no-op 契約)", async () => {
     const { hub, sent } = makeHubWithWs();
     expect(await hub.registerCards("dev-1", [])).toBeNull();
     expect(sent).toHaveLength(0);

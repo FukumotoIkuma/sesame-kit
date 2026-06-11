@@ -80,14 +80,15 @@ describe("gRPC 型付きメソッド", () => {
     handle = await startGrpcFraming(d, { port: 0, token: TOKEN });
     client = makeClient(handle.port);
     const r = await unary(client, "DeviceHistory", { deviceUUID: "u1", pageSize: 5 }, bearer(TOKEN));
-    // P1-11: lib 層へ渡る list はオブジェクト配列 [{deviceUUID}] (DeviceHistory.js:37)。
+    // P1-11: lib 層へ渡る list はオブジェクト配列 [{deviceUUID, lastKey}] (DeviceHistory.js:37)。
     // 裸文字列 ["u1"] を期待していた旧テストはバグを保護していた。
-    expect(hub.getDeviceHistory).toHaveBeenCalledWith([{ deviceUUID: "u1" }], 5);
+    // P3-7: vendor は常に lastKey を同梱する (初回は null)。
+    expect(hub.getDeviceHistory).toHaveBeenCalledWith([{ deviceUUID: "u1", lastKey: null }], 5);
     const sentList = hub.getDeviceHistory.mock.calls[0][0];
     expect(sentList).toHaveLength(1);
     expect(typeof sentList[0]).toBe("object");
     expect(sentList[0].deviceUUID).toBe("u1");
-    expect(JSON.parse(r.json)).toMatchObject({ list: [{ deviceUUID: "u1" }], pageSize: 5 });
+    expect(JSON.parse(r.json)).toMatchObject({ list: [{ deviceUUID: "u1", lastKey: null }], pageSize: 5 });
   });
 
   it("型付き IrSend({remote, key}) がプレーン引数で通る", async () => {

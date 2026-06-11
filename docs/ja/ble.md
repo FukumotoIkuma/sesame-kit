@@ -269,7 +269,7 @@ WM2 コマンドは `WM2ActionCode` enum（`src/itemcodes.js` の `WM2_ACTION` /
 
 ### Wi-Fi プロビジョニング・接続種別（Hub3）
 
-Hub3（`hub_3` / `hub_3_lte`）もロック操作を持たず、`lock.hub3()`（同一 session 上の `Hub3Commands` インスタンス）として BLE プロビジョニング API を公開します。このゲッタは能力テーブルでゲートされており、Hub3 以外の機種で参照すると throw します。WM2 と違い **Hub3 は既定 SESAME GATT**（`fd81`）上にあるため特別な GATT 結線は不要です（`CHHub3Device : CHSesameOS3` で OS3 スタックを継承）。Wi-Fi コマンドは別 enum ではなく **`SesameItemCode` に直接**乗ります（`src/itemcodes.js` の Hub3 固有コード 131–136 / 209）。これは SDK 自体の Hub3 のレイアウトです。
+Hub3（`hub_3` / `hub_3_lte`）もロック操作を持たず、`lock.hub3()`（同一 session 上の `Hub3Commands` インスタンス）として BLE プロビジョニング API を公開します。このゲッタは能力テーブルでゲートされており、Hub3 以外の機種で参照すると throw します。WM2 と違い **Hub3 は既定 SESAME GATT**（`fd81`）上にあるため特別な GATT 結線は不要です（`CHHub3Device : CHSesameOS3` で OS3 スタックを継承）。Wi-Fi コマンドは別 enum ではなく **`SesameItemCode` に直接**乗ります（`src/itemcodes.js` の Hub3 固有コード 131–136）。これは SDK 自体の Hub3 のレイアウトです。接続種別の 209 は **このレイアウトに含まれません**: `SesameItemCode` は 208 で終端し、`CHHub3Device.kt` にも 209 のハンドラはありません。biz3 web の native ブリッジ挙動（`references_web/src/components/MobileWifiModule.js:219-235`）からの推定として、別表 `UNVERIFIED_ITEM_CODES` に隔離しています（experimental・実機未検証）。
 
 ```js
 await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
@@ -283,12 +283,12 @@ await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
   await hub.setWifiSSID("my-ap");            // HUB3_UPDATE_WIFI_SSID (136)
   await hub.setWifiPassword("secret");       // HUB3_ITEM_CODE_WIFI_PASSWORD (135)
   await hub.removeSesame(childUUID);         // REMOVE_SESAME (103); data = dash 除去 UUID を decode した生 16B
-  hub.networkType();                         // { kind: "networkType", isWifiConnected, isLTEConnected } で届く
+  hub.networkType();                         // EXPERIMENTAL（item 209 は Android SDK に無い。biz3 web ブリッジからの推定）
   off();
 });
 ```
 
-Hub3 は BLE のロック制御 op を持ちませんが、共通の OS3 経路は継承します。`connect`/`login`・`register`（`SesameBle.register()`）・`reset()`（`Reset(104)`）・`updateFirmware()`（`MOVE_TO(84)`、後述）はいずれも動作します。純関数の data builder / publish parser（`setWifiSSIDData`・`parseHub3Publish`・`parseNetworkType` など）も `sesame-kit/ble`（`ble.hub3.*`）から export されており、独自結線に利用できます。**実機未確認**です（特に `networkType` の *要求* は SDK では publish 受信のみ確認でき、送信コマンドとしては未確認）。
+Hub3 は BLE のロック制御 op を持ちませんが、共通の OS3 経路は継承します。`connect`/`login`・`register`（`SesameBle.register()`）・`reset()`（`Reset(104)`）・`updateFirmware()`（`MOVE_TO(84)`、後述）はいずれも動作します。純関数の data builder / publish parser（`setWifiSSIDData`・`parseHub3Publish`・`parseNetworkType` など）も `sesame-kit/ble`（`ble.hub3.*`）から export されており、独自結線に利用できます。**実機未確認**です。特に `networkType` 経路（item code 209、要求・publish の両方と `[wifi 1B][lte 1B]` という payload 解釈）は **Android SDK に一次ソースが無く**、biz3 web の native ブリッジからの推定です（確証が得られなければ削除を検討）。
 
 ### BLE 経由ファームウェア更新（DFU / OTA）
 

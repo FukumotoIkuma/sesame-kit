@@ -167,6 +167,65 @@ export async function updateRemoteAlias(client, { hub3DeviceId, uuid, alias, com
   return resp;
 }
 
+/**
+ * リモコンの保存 state (最後に発射した command HEX) をサーバへ永続化する (P3-2)。
+ *
+ * vendor (useRemoteCtrl.js:493-514 updateRemoteState):
+ *   frame = { action, op:'updateRemoteState', deviceId: hub3DeviceId, uuid: remoteId,
+ *             state, companyID }
+ * フィールド名トラップ: Hub3 は **deviceId**、リモコンは **uuid** (alias 系と同じ命名)。
+ * state はエアコン等の「最後に送った command HEX 文字列」 (remote-air/index.js:371-377 が
+ * sendIR 成功後に cmd をそのまま渡す)。次回はこの state から復元する
+ * (remote-air/index.js:108-113 → presetir.restoreAirState)。
+ *
+ * @param {WsClient} client
+ * @param {{hub3DeviceId: string, uuid: string, state: string, companyID: string}} p
+ */
+export async function updateRemoteState(client, { hub3DeviceId, uuid, state, companyID }) {
+  const frame = {
+    action: ACTION,
+    op: "updateRemoteState",
+    deviceId: hub3DeviceId, // vendor 命名: ここは deviceId (useRemoteCtrl.js:501)
+    uuid,
+    state,
+    companyID,
+  };
+  const resp = await client.request(frame, DEFAULT_TIMEOUT_MS);
+  assertSuccess(resp, "updateRemoteState", { strict: true });
+  return resp;
+}
+
+/**
+ * リモコンを Matter デバイスとして Hub3 に登録する (P3-3)。
+ *
+ * vendor (useRemoteCtrl.js:933-955 addRemoteToMatter) のフィールド 1:1:
+ *   frame = { action, op:'addRemoteToMatter', hub3DeviceId, irDeviceType: irRemote.type,
+ *             cmdOn, cmdOff, irDeviceUUID: irRemote.uuid, irDeviceName: irRemote.alias, companyID }
+ * Matter ペアリング窓 (iot.js:466-490) の開放後に呼ぶことで、リモコンが Matter の
+ * On/Off デバイスとして見えるようになる (cmdOn/cmdOff は発射 command HEX)。
+ *
+ * @experimental 実機未検証 (参照: useRemoteCtrl.js:933-955)。
+ * @param {WsClient} client
+ * @param {{hub3DeviceId: string, irDeviceType: number, cmdOn: string, cmdOff: string,
+ *          irDeviceUUID: string, irDeviceName: string, companyID: string}} p
+ */
+export async function addRemoteToMatter(client, { hub3DeviceId, irDeviceType, cmdOn, cmdOff, irDeviceUUID, irDeviceName, companyID }) {
+  const frame = {
+    action: ACTION,
+    op: "addRemoteToMatter",
+    hub3DeviceId,
+    irDeviceType,
+    cmdOn,
+    cmdOff,
+    irDeviceUUID,
+    irDeviceName,
+    companyID,
+  };
+  const resp = await client.request(frame, DEFAULT_TIMEOUT_MS);
+  assertSuccess(resp, "addRemoteToMatter", { strict: true });
+  return resp;
+}
+
 // ---------- key CRUD ----------
 
 /**

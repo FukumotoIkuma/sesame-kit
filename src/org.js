@@ -192,7 +192,10 @@ export async function queryByCS(client, { keyword, timeoutMs = DEFAULT_TIMEOUT_M
       return {
         list: inner.list ?? [],
         page: inner.page ?? 1,
-        totalPage: top.totalPage ?? 1,
+        // P3-9: totalPage 欠落時に `?? 1` で補うと結果が静かに切り詰められる。参照
+        // (useManageEmployee.js:405-412) は page===totalPage が成立するまで完了しない
+        // (= 欠落時は完了せず待つ) ので、undefined のまま返して timeout に倒す (安全側)。
+        totalPage: top.totalPage,
       };
     },
   }));
@@ -759,6 +762,10 @@ function collectChunks(client, cfg) {
     sendFrame,
     timeoutMs,
     onTimeout: () => timeoutError(`${action}:${pubOp} timeout`),
+    // P3-9: 要求 op で返る即時エラー (同 action の success:false) も失敗として検知する
+    // (useManageEmployee.js:405-412 は pub 側 chunk の success:false しか見ないが、
+    //  useManageDevice.js:27-34 は action 全体で !message.success を失敗扱いするのが vendor 規範)。
+    errorAction: action,
     result: () => (returnListOnly ? acc : { count: total ?? acc.length, list: acc }),
     subscriptions: [{
       key: `${action}:${pubOp}`,

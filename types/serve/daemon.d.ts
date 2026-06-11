@@ -66,6 +66,8 @@ export class Daemon {
      * 注: lockState と deviceUpdate は現状どちらも biz3 の pubDeviceStateChange を源とする
      * (同一ストリームの別ラベル)。両方購読している接続には **1 回だけ** 配信する
      * (最初に購読している topic のラベルで) — 同一イベントの二重配信を避ける。
+     * deviceListChanged は別ストリーム (pubUserDeviceChange) なのでここでは配信しない
+     * (_fanoutTopic 経由)。
      */
     /** 冪等。受付停止 → hub.close()(=_pendingCleanups 実行) → 解決。 */
     shutdown(): Promise<void>;
@@ -109,6 +111,7 @@ export type HubLike = {
         deviceUUID: unknown;
         deviceModel: unknown;
     }>, cb: (msg: unknown) => void) => (() => void);
+    onUserDeviceChange?: ((cb: (msg: unknown) => void) => (() => void)) | undefined;
     tokenStore?: import("../tokens.js").TokenStore | undefined;
     config?: {
         devices?: Record<string, {

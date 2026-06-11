@@ -26,13 +26,15 @@ export function makeBiometricsTransport({ baseUrl, credentialsProvider, getIdTok
  * 内部で集約してから完了通知 or timeout で確定する (useManageAuthData.js:50-191)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUIDs:string[], timeoutMs?:number}} params
+ * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number}} params
+ *   graceMs: 完了通知が pub より先行した場合の残 push 吸収猶予 (既定 300ms。テスト注入用)。
  * @returns {Promise<{byDevice: Record<string, object[]>, items: object[]}>}
  *   items の各要素: { cardID, nameUUID, name, cardType, subUUID, ..., uuids:string[] }
  */
-export function getCards(client: import("./transport.js").Hub3WsClient, { deviceUUIDs, timeoutMs }: {
+export function getCards(client: import("./transport.js").Hub3WsClient, { deviceUUIDs, timeoutMs, graceMs }: {
     deviceUUIDs: string[];
     timeoutMs?: number;
+    graceMs?: number;
 }): Promise<{
     byDevice: Record<string, object[]>;
     items: object[];
@@ -42,13 +44,15 @@ export function getCards(client: import("./transport.js").Hub3WsClient, { device
  * 応答データ本体は op='pubPasscodeLinkedIDs' で届く (useManageAuthData.js:189-191)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUIDs:string[], timeoutMs?:number}} params
+ * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number}} params
+ *   graceMs: 完了通知が pub より先行した場合の残 push 吸収猶予 (既定 300ms。テスト注入用)。
  * @returns {Promise<{byDevice: Record<string, object[]>, items: object[]}>}
  *   items の各要素: { passwordID, keyBoardPassCode, keyBoardPassCodeNameUUID, name, nameUUID, subUUID, ..., uuids:string[] }
  */
-export function getPasscodes(client: import("./transport.js").Hub3WsClient, { deviceUUIDs, timeoutMs }: {
+export function getPasscodes(client: import("./transport.js").Hub3WsClient, { deviceUUIDs, timeoutMs, graceMs }: {
     deviceUUIDs: string[];
     timeoutMs?: number;
+    graceMs?: number;
 }): Promise<{
     byDevice: Record<string, object[]>;
     items: object[];
@@ -247,21 +251,28 @@ export function deleteAuthenticationData(_client: import("./transport.js").Hub3W
  */
 export function updateAuthenticationName(_client: import("./transport.js").Hub3WsClient | null, params: UpdateAuthNameParams): Promise<any>;
 /**
- * createEnrollCollector の records ({cardID, cardName, cardType}) を postCards/postPasscodes の
+ * createEnrollCollector の records ({cardID, cardName, cardType, nameUUID?}) を DB 同期用の
  * list 要素 ({ cardID, name, cardType, nameUUID }) へ写像する純関数。
  *
- * ⚠️ 未確認 (実機検証要): NOTIFY 由来の cardName は hex 文字列で届くため、ここでは
- *   name にはそのまま cardName を載せる。DB が要求する nameUUID は BLE publish には含まれない
- *   ため、欠落時は v4 UUID を新規採番する (updateCardName の v4 要件と同じ流儀)。
- *   表示名や既存 nameUUID との突き合わせが必要な運用では呼び出し側で list を補正すること。
+ * nameUUID は record.nameUUID (= BLE NOTIFY 由来の **ファームウェア採番値**。
+ * cards/index.js:264-295 の不変条件「ファームと DB の nameUUID 一致」の根拠) があれば
+ * それを正規化して使う。
  *
- * @param {Array<{cardID:string, cardName:string, cardType:number}>} records
+ * ⚠️ record.nameUUID 欠落時のみ v4 UUID を新規採番する (旧 BLE collector との後方互換)。
+ *   この場合 DB の nameUUID はファームウェア側の採番値と **不一致になる可能性** があり、
+ *   以後の名前更新 (updateCardName の v4 化分岐) 等で齟齬が出得る。nameUUID を含む
+ *   collector (src/ble/biometric.js) との併用を推奨。
+ * ⚠️ 未確認 (実機検証要): NOTIFY 由来の cardName は hex 文字列で届くため、name には
+ *   そのまま cardName を載せる。表示名の補正が必要な運用では呼び出し側で list を補正すること。
+ *
+ * @param {Array<{cardID:string, cardName:string, cardType:number, nameUUID?:string}>} [records]
  * @returns {Array<{cardID:string, name:string, cardType:number, nameUUID:string}>}
  */
-export function enrolledToCardList(records: Array<{
+export function enrolledToCardList(records?: Array<{
     cardID: string;
     cardName: string;
     cardType: number;
+    nameUUID?: string;
 }>): Array<{
     cardID: string;
     name: string;
@@ -270,65 +281,79 @@ export function enrolledToCardList(records: Array<{
 }>;
 /**
  * enroll records を postPasscodes 用 list に写像する。
- * 参照元 UI は passcode identity に `passwordID` を使い、名前更新では
- * `keyBoardPassCode` / `keyBoardPassCodeNameUUID` を使う。カード形状は流用しない。
+ * 要素は {passwordID, name, nameUUID} のみ (passwords.js:101-113 で postPasscodes に渡る
+ * serverList = buildNameUUIDMappedDataList 由来の {passwordID, name} + nameUUID。
+ * keyBoardPassCode / keyBoardPassCodeNameUUID / type は **送らない** — それらは
+ * updatePasscodeName 等の別 op のフィールドで、postPasscodes の参照経路には現れない)。
  *
- * @param {Array<{cardID?:string,passwordID?:string,cardName?:string,name?:string,cardType?:number,type?:number}>} records
- * @returns {Array<{passwordID:string,keyBoardPassCode:string,name:string,nameUUID:string,keyBoardPassCodeNameUUID:string,type:number}>}
+ * nameUUID は record.nameUUID (ファームウェア採番。NOTIFY 由来) を優先し、欠落時のみ
+ * v4 UUID を採番する (enrolledToCardList と同じ注意 — ファーム不一致の可能性あり)。
+ *
+ * @param {Array<{cardID?:string,passwordID?:string,cardName?:string,name?:string,nameUUID?:string}>} [records]
+ * @returns {Array<{passwordID:string,name:string,nameUUID:string}>}
  */
-export function enrolledToPasscodeList(records: Array<{
+export function enrolledToPasscodeList(records?: Array<{
     cardID?: string;
     passwordID?: string;
     cardName?: string;
     name?: string;
-    cardType?: number;
-    type?: number;
+    nameUUID?: string;
 }>): Array<{
     passwordID: string;
-    keyBoardPassCode: string;
     name: string;
     nameUUID: string;
-    keyBoardPassCodeNameUUID: string;
-    type: number;
 }>;
 /**
- * BLE で実機登録 (タップ) されたカードの集約結果を DB へ同期する (postCards への委譲)。
+ * BLE で実機登録 (タップ) されたカードの集約結果を DB へ同期する。
  * BiometricCommands.onEnroll の onEnrolled({kind:'card', records}) からそのまま呼べる。
  *
+ * 経路は引数で分かれる (公開シグネチャは従来どおり):
+ *   - records (タップ登録): biz3 のタップ登録 (cards/index.js:104-136) と同じく、レコード
+ *     1 件ごとに **updateCardName** で DB を追従させる。cardNameUUID には BLE ack 由来の
+ *     ファームウェア採番 nameUUID (enrolledToCardList が解決) を載せる。
+ *   - list (一括投入): **postCards 委譲**。これは「ファームへ同一 nameUUID を書き込んだ後の
+ *     一括投入」(cards/index.js:264-295) 専用。呼び出し側がファームに書いたものと同じ
+ *     nameUUID を list 要素に入れて渡すこと (ここでは採番しない)。
+ *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUID:string, records:Array<{cardID:string,cardName:string,cardType:number}>, list?:object[], timeoutMs?:number}} params
- *   list を渡せば変換をスキップしてそのまま postCards へ流す (呼び出し側で補正したい場合)。
- *   省略時は records を enrolledToCardList で変換する。
- * @returns {Promise<object|null>} postCards の戻り (list 空のときは null)
+ * @param {{deviceUUID:string, records?:Array<{cardID:string,cardName:string,cardType:number,nameUUID?:string}>, list?:object[], timeoutMs?:number}} params
+ *   list を渡すと records を無視して postCards へそのまま流す (一括投入経路)。
+ * @returns {Promise<object[]|object|null>}
+ *   records 経路: updateCardName 応答の配列 (records 空のときは null)。
+ *   list 経路:   postCards の戻り (list 空のときは null)。
  */
 export function syncEnrolledCards(client: import("./transport.js").Hub3WsClient, { deviceUUID, records, list, timeoutMs }: {
     deviceUUID: string;
-    records: Array<{
+    records?: Array<{
         cardID: string;
         cardName: string;
         cardType: number;
+        nameUUID?: string;
     }>;
     list?: object[];
     timeoutMs?: number;
-}): Promise<object | null>;
+}): Promise<object[] | object | null>;
 /**
  * BLE で実機登録された暗証番号の集約結果を DB へ同期する (postPasscodes への委譲)。
- * syncEnrolledCards と同型。
  *
- * ⚠️ postPasscodes の list 要素は biz3 上未確認 (access.js:222 参照) のため、records からの
- *   自動変換は **誇張せず** enrolledToCardList と同じ最小写像に留める。確実な運用には
- *   呼び出し側が list を組み立てて渡すこと。
+ * passcode の参照 (passwords.js:94-115) には card のような「タップ登録 → updateCardName」の
+ * DB 同期経路が無く、postPasscodes は一括投入 (ファームへ書いた nameUUID と同一の list を
+ * 送る) のみ。よって本関数は postPasscodes 委譲のままとし、records からの自動変換は
+ * record.nameUUID (ファームウェア採番) を透過する {passwordID, name, nameUUID} の最小写像
+ * (enrolledToPasscodeList) に留める。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUID:string, records:Array<{cardID:string,cardName:string,cardType:number}>, list?:object[], timeoutMs?:number}} params
+ * @param {{deviceUUID:string, records?:Array<{cardID?:string,passwordID?:string,cardName?:string,nameUUID?:string}>, list?:object[], timeoutMs?:number}} params
+ *   list を渡せば変換をスキップしてそのまま postPasscodes へ流す (一括投入経路)。
  * @returns {Promise<object|null>}
  */
 export function syncEnrolledPasscodes(client: import("./transport.js").Hub3WsClient, { deviceUUID, records, list, timeoutMs }: {
     deviceUUID: string;
-    records: Array<{
-        cardID: string;
-        cardName: string;
-        cardType: number;
+    records?: Array<{
+        cardID?: string;
+        passwordID?: string;
+        cardName?: string;
+        nameUUID?: string;
     }>;
     list?: object[];
     timeoutMs?: number;

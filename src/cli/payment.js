@@ -2,6 +2,13 @@
 //
 // Payment mutation commands are intentionally guarded with --yes because they call the same
 // biz3ManagePayment operations that change billing/payment state in the web app.
+//
+// 既定 customerId の解決 (BIZ-11): --customer-id 未指定時は namespace (hub.payment.*) が
+// config.companyID (refreshAccount 済みの実値) を自動注入する。「config.companyID 既定、
+// --customer-id 上書き」の現状を維持し、--priority 等のフラグは増やさない。web (biz3) と
+// 同じ「優先会社」(rootUser / feeLevel 最大) を customerId にしたい場合は、ライブラリの
+// account.priorityCompany(customerInfo, companies) / priorityCompanyId()
+// (useStripeInfo.js:41-67 の 1:1 移植) で companyID を選定し --customer-id に渡すこと。
 
 import { t } from "../i18n.js";
 

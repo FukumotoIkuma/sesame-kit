@@ -639,12 +639,21 @@ export class SesameOS2BleSession {
     }
   }
 
-  /** login response の systemTime と現在時刻の差が大きければ timePhone を送る (CHSesame2Device.kt:259-264)。 */
+  /** login response の systemTime と現在時刻の差が大きければ timePhone を送る (CHSesame2Device.kt:259-265)。 */
   _maybeSyncTime() {
     const lr = this._lastLoginResponse;
     if (!lr) return;
     const nowSec = Math.floor(Date.now() / 1000);
     if (Math.abs(nowSec - lr.systemTime) > 3) {
+      // ★fwVersion >= 1 ガード (BLE2-09): SESAME2/3/4 は時刻差があっても fw_version >= 1 の
+      //   ときだけ timePhone を送る (CHSesame2Device.kt:262 `if (loginResponse.fw_version >= 1)`)。
+      //   旧ファーム (fw_version=0) は timePhone(16) 未対応のため送らない。
+      //   逸脱注記: 初代 Bot/Bike の SDK 経路 (CHSesameBotDevice.kt:460-467) はこのガードを
+      //   持たないが、kit は OS2 セッションを 1 クラスで共用するため安全側 (送らない) に倒す。
+      if (lr.fwVersion < 1) {
+        this._log("timePhone sync skipped (fw_version < 1)", { fwVersion: lr.fwVersion });
+        return;
+      }
       // ★OS2 は TIME(8) ではなく timePhone(16) で時刻同期する (CHSesame2Device.kt:263)。
       try { this._sendCipher(buildSendFrame(OP.UPDATE, ITEM.TIMEPHONE, timePhoneData())); }
       catch (e) { this._log("timePhone sync failed", /** @type {{message?:string}} */ (e)?.message); }

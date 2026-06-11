@@ -460,8 +460,8 @@ export const MECH_STATE = Object.freeze({ LOCKED: "locked", UNLOCKED: "unlocked"
  *
  * @param {Buffer} buf mech_status_t (8B。Kotlin は data[7] まで読む固定レイアウト)
  * @returns {{state:string, isInLockRange:boolean, isInUnlockRange:boolean, isBatteryCritical:boolean,
- *            target:number|null, position:number|null, batteryRaw:number, retCode:number, flags:number,
- *            motorStatus:number, isStop:boolean}}
+ *            target:number|null, position:number|null, targetDeg:number|null, positionDeg:number,
+ *            batteryRaw:number, retCode:number, flags:number, motorStatus:number, isStop:boolean}}
  */
 export function parseMechStatus(buf) {
   if (!Buffer.isBuffer(buf)) throw new Error("mechStatus must be a Buffer");
@@ -481,8 +481,13 @@ export function parseMechStatus(buf) {
     isInLockRange,
     isInUnlockRange,
     isBatteryCritical,
+    // raw はエンコーダ生値 (符号付き 16bit、1024 = 360°)。SDK の position/target はこれを
+    // **度数換算した値** (raw*360/1024) で公開する (CHSesame2.kt:32-33)。kit は wire 値検証の
+    // ため raw を維持しつつ、SDK と同じ度数を *Deg で併記する (BLE2-08。単位: 度)。
     target: target === -32768 ? null : target,
     position,
+    targetDeg: target === -32768 ? null : os2RawToDeg(target),
+    positionDeg: os2RawToDeg(position),
     batteryRaw,
     retCode,
     flags,
@@ -495,32 +500,116 @@ export function parseMechStatus(buf) {
 }
 
 /**
+ * OS2 エンコーダ生値 → 度数 (SDK の `(raw.toInt() * 360 / 1024).toShort()` と同値)。
+ * Kotlin の Int 除算は 0 方向への切り捨てなので Math.trunc で揃える (負角でも一致)。
+ * 出典: CHSesame2.kt:25-26 (mechSetting), :32-33 (mechStatus position/target)。
+ * @param {number} raw 符号付き 16bit エンコーダ生値
+ * @returns {number} 度数 (整数、0 方向切り捨て)
+ */
+function os2RawToDeg(raw) {
+  return Math.trunc((raw * 360) / 1024);
+}
+
+/**
+ * OS2 の mech_setting (12B) を SESAME2/3/4 として解析する (BLE2-07)。
+ * CHSesame2MechSettings (open/devices/CHSesame2.kt:24-28) を 1:1 で移植:
+ *   lockPosition   = (bytesToShort(data[0], data[1]).toInt() * 360 / 1024).toShort()   — 度数
+ *   unlockPosition = (bytesToShort(data[2], data[3]).toInt() * 360 / 1024).toShort()   — 度数
+ *   isConfigured   = (lockPosition != unlockPosition)
+ * bytesToShort は符号付き LE (DataExtention.kt:99-102)。raw (エンコーダ生値) も併記する。
+ * @param {Buffer} buf mech_setting_t (4B 以上。login 応答では 12B が来る)
+ * @returns {{lockPosition:number, unlockPosition:number, isConfigured:boolean,
+ *            lockPositionRaw:number, unlockPositionRaw:number}}
+ */
+export function parseMechSettingSesame2(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 4) {
+    throw new Error(`OS2 mechSetting must be >= 4 bytes (got ${Buffer.isBuffer(buf) ? buf.length : "non-buffer"})`);
+  }
+  const lockPositionRaw = buf.readInt16LE(0);
+  const unlockPositionRaw = buf.readInt16LE(2);
+  const lockPosition = os2RawToDeg(lockPositionRaw);
+  const unlockPosition = os2RawToDeg(unlockPositionRaw);
+  return {
+    lockPosition,
+    unlockPosition,
+    // 施錠角 == 解錠角は「未キャリブレーション」(SDK は NoSettings 状態へ遷移。CHSesame2.kt:27 /
+    // CHSesame2Device.kt:268)。
+    isConfigured: lockPosition !== unlockPosition,
+    lockPositionRaw,
+    unlockPositionRaw,
+  };
+}
+
+/**
+ * OS2 の mech_setting (12B) を初代 SESAME Bot として解析する (BLE2-07)。
+ * SSMBotLoginResponsePayload (CHSesameBikeDevice.kt:520) は mech_setting_t[0..6] の 7 バイトを
+ * そのまま CHSesameBotMechSettings の 7 フィールド (CHSesameBot.kt:17 — すべて Kotlin Byte =
+ * 符号付き 1B) に渡す。残り 5B は予約 0 埋め (CHSesameBot.kt:19 data() の対称)。
+ * @param {Buffer} buf mech_setting_t (7B 以上)
+ * @returns {{userPrefDir:number, lockSec:number, unlockSec:number, clickLockSec:number,
+ *            clickHoldSec:number, clickUnlockSec:number, buttonMode:number}}
+ */
+export function parseMechSettingBot(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 7) {
+    throw new Error(`OS2 Bot mechSetting must be >= 7 bytes (got ${Buffer.isBuffer(buf) ? buf.length : "non-buffer"})`);
+  }
+  // Kotlin Byte は符号付き 1B。readInt8 で意味論を揃える (CHSesameBot.kt:17)。
+  return {
+    userPrefDir: buf.readInt8(0),
+    lockSec: buf.readInt8(1),
+    unlockSec: buf.readInt8(2),
+    clickLockSec: buf.readInt8(3),
+    clickHoldSec: buf.readInt8(4),
+    clickUnlockSec: buf.readInt8(5),
+    buttonMode: buf.readInt8(6),
+  };
+}
+
+/**
  * OS2 login 応答ペイロードを解析する。
  * SSM2LoginResponsePayload (CHSesame2Device.kt:626-634) / SSMBotLoginResponsePayload
  * (CHSesameBikeDevice.kt:513-521) を 1:1 で移植。
- *   payload[0..3] : systemTime (BE, toBigLong)
+ *   payload[0..3] : systemTime (toBigLong = reversedArray を hex parse → **little-endian** u32。
+ *                   DataExtention.kt:69-71。旧実装の readUInt32BE は逆読みで、時刻差判定が常に
+ *                   発火する誤りだった)
  *   payload[4]    : fw_version
  *   payload[6]    : historyCnt
  *   payload[8..19]: mech_setting_t (12B)
  *   payload[20..27]: mech_status_t (8B、Sesame2)。Bot/Bike も同レイアウトを使用。
+ *
+ * mech_setting は機種でクラスが分かれる (BLE2-07):
+ *   - Sesame2/3/4: CHSesame2MechSettings (CHSesame2.kt:24-28) → mechSetting
+ *   - Bot1       : CHSesameBotMechSettings の 7 フィールド (CHSesameBikeDevice.kt:520) → mechSettingBot
+ * 呼び出し側は機種に応じてどちらかを読む (両方とも常に解析して返す。生バイトは mechSettingBytes)。
+ * isConfigured は Sesame2 形の判定 (lock != unlock) をトップレベルへ併記する
+ * (CHSesame2Device.kt:268 の NoSettings 判定に対応)。
+ *
  * @param {Buffer} payload login response の payload (resultCode は含まない)
  * @returns {{systemTime:number, fwVersion:number, historyCnt:number,
- *            mechSetting:Buffer, mechStatus:object}}
+ *            mechSetting:ReturnType<typeof parseMechSettingSesame2>,
+ *            mechSettingBot:ReturnType<typeof parseMechSettingBot>,
+ *            mechSettingBytes:Buffer, isConfigured:boolean, mechStatus:object}}
  */
 export function parseLoginResponse(payload) {
   if (!Buffer.isBuffer(payload) || payload.length < 28) {
     throw new Error(`OS2 login response must be >= 28 bytes (got ${Buffer.isBuffer(payload) ? payload.length : "non-buffer"})`);
   }
-  const systemTime = payload.readUInt32BE(0); // toBigLong (BE)
+  // toBigLong (DataExtention.kt:69-71) = reversedArray().toHexString() の 16 進 parse
+  // = 元バイト列を little-endian として読むのと等価 (OS3 側 parseDeviceTimeSeconds と同じ)。
+  const systemTime = payload.readUInt32LE(0);
   const fwVersion = payload[4];
   const historyCnt = payload[6];
-  const mechSetting = Buffer.from(payload.subarray(8, 20)); // mech_setting_t 12B
+  const mechSettingBytes = Buffer.from(payload.subarray(8, 20)); // mech_setting_t 12B
   const mechStatusBytes = Buffer.from(payload.subarray(20, 28)); // mech_status_t 8B
+  const mechSetting = parseMechSettingSesame2(mechSettingBytes);
   return {
     systemTime,
     fwVersion,
     historyCnt,
     mechSetting,
+    mechSettingBot: parseMechSettingBot(mechSettingBytes),
+    mechSettingBytes,
+    isConfigured: mechSetting.isConfigured,
     mechStatus: parseMechStatus(mechStatusBytes),
   };
 }

@@ -45,6 +45,74 @@ export function deleteDevices(client: WsClient, { companyID, items }: {
     }>;
 }): Promise<import("./transport.js").WsMessage>;
 /**
+ * デバイスを company に追加する (biz3ManageDevice/add)。
+ * **デバイスを「増やす」唯一の経路** (del だけある現状は非対称だった — P3-1)。
+ * items は QR 由来のデバイスキーオブジェクト配列 (vendor は addSesameDevicesToBiz3 が
+ * そのまま items に乗せる — useManageDevice.js:256-268)。
+ *
+ * 失敗応答の伝搬: サーバはデバイス数上限で `{success:false, message:"Limit Exceeded"}` を
+ * 返す (useManageDevice.js:28-30)。assertSuccess(strict) がその message を含む
+ * SesameError(rejected) で throw するため、呼び出し側にそのまま伝搬する。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, items: object[]}} p
+ */
+export function addDevices(client: WsClient, { companyID, items }: {
+    companyID: string;
+    items: object[];
+}): Promise<import("./transport.js").WsMessage>;
+/**
+ * デバイスの並び順を更新する (biz3ManageDevice/reorderDevices)。
+ * vendor (useManageDevice.js:270-285) は items の各要素に `rank = 0 - index` を
+ * 振ってから送る (先頭ほど大きい = 降順負値)。本関数も同じ採番を行う。
+ * 応答 data は並び替え後のデバイス一覧 (useManageDevice.js:80-81 setCompanyDevices(message.data))。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, items: object[]}} p items は並べたい順のデバイスオブジェクト配列
+ * @returns {Promise<any>} 並び替え後のデバイス一覧 (resp.data)
+ */
+export function reorderDevices(client: WsClient, { companyID, items }: {
+    companyID: string;
+    items: object[];
+}): Promise<any>;
+/**
+ * デバイスごとの push 通知設定一覧を取得する (biz3ManageDevice/notifyList)。
+ * pushToken はモバイル push トークン (vendor は FCM 等の端末トークンを渡す)。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, pushToken: string, items: object[]}} p
+ * @returns {Promise<any>} 通知設定一覧 (resp.data)
+ */
+export function getNotifyStatus(client: WsClient, { companyID, pushToken, items }: {
+    companyID: string;
+    pushToken: string;
+    items: object[];
+}): Promise<any>;
+/**
+ * 単機の push 通知 ON/OFF を切り替える (biz3ManageDevice/notifyManage)。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, pushToken: string, deviceUUID: string, enablePush: number|boolean}} p
+ *   enablePush: vendor はそのまま乗せる (useManageDevice.js:304-318)。boolean は 1/0 へ正規化。
+ */
+export function switchNotify(client: WsClient, { companyID, pushToken, deviceUUID, enablePush }: {
+    companyID: string;
+    pushToken: string;
+    deviceUUID: string;
+    enablePush: number | boolean;
+}): Promise<import("./transport.js").WsMessage>;
+/**
+ * 充電池モード (リチウム充電池使用フラグ) を切り替える (biz3ManageDevice/switchRecharge)。
+ * vendor フレームに companyID は**乗らない** (useManageDevice.js:360-372)。
+ *
+ * @param {WsClient} client
+ * @param {{deviceUUID: string, isRechargeBattery: boolean|number}} p
+ */
+export function switchRechargeableBattery(client: WsClient, { deviceUUID, isRechargeBattery }: {
+    deviceUUID: string;
+    isRechargeBattery: boolean | number;
+}): Promise<import("./transport.js").WsMessage>;
+/**
  * デバイス state push を購読。subscribeDevicesUpdate (biz3ManageDevice) を投げて購読要求し、
  * 実際の state push は **`biz3TriggerLocker:pubDeviceStateChange`** で届く。
  *
@@ -68,6 +136,22 @@ export function subscribeDevicesUpdate(client: WsClient, { companyID, items, onU
     onUpdate: (msg: any) => void;
 }): () => void;
 /**
+ * デバイス一覧の増減 push (`pubUserDeviceChange`) を購読する (P3-5)。
+ *
+ * vendor (useIotCtrl.js:12,23-25): 鍵共有・デバイス追加/削除があるとサーバが
+ * `{action:"biz3TriggerLocker", op:"pubUserDeviceChange", ...}` を push し、
+ * web はそれを受けて getCompanyDevices() でデバイス一覧を再取得する。
+ * 購読要求フレームは存在しない (pubDeviceStateChange と違い subscribe op 無しで届く) ため、
+ * 本関数はローカル購読のみを行う。再接続を跨いでも transport の subscribers は保持される。
+ *
+ * @param {WsClient} client
+ * @param {{onChange: (msg: any) => void}} p
+ * @returns {() => void} unsubscribe
+ */
+export function subscribeUserDeviceChange(client: WsClient, { onChange }: {
+    onChange: (msg: any) => void;
+}): () => void;
+/**
  * ロックの開閉履歴を取得。`list` はデバイス指定の配列。
  * @param {WsClient} client
  * @param {{companyID:string, list:any[], pageSize?:number|null}} p
@@ -77,6 +161,25 @@ export function getDeviceHistory(client: WsClient, { companyID, list, pageSize }
     list: any[];
     pageSize?: number | null;
 }): Promise<unknown>;
+/**
+ * 単機の開閉履歴を全ページ自動取得する (P3-7、vendor fetchAllHistory 相当)。
+ *
+ * vendor (DeviceHistory.js:37-74 downloadDeviceHistory/fetchAllHistory):
+ *   - lastKey = 直前ページ末尾レコードの timestamp (初回は null)
+ *   - 1 ページ取得して `res.length === pageSize` なら次ページ継続、満たなければ終端
+ *   - pageSize は 100 固定 (DeviceHistory.js:56)
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, deviceUUID: string, pageSize?: number, maxPages?: number}} p
+ *   maxPages: 安全弁 (vendor には無い意図的逸脱 §0.1-2 — CLI/RPC で無限ループを防ぐ。既定 1000)。
+ * @returns {Promise<any[]>} 全ページを結合した履歴配列
+ */
+export function getAllDeviceHistory(client: WsClient, { companyID, deviceUUID, pageSize, maxPages }: {
+    companyID: string;
+    deviceUUID: string;
+    pageSize?: number;
+    maxPages?: number;
+}): Promise<any[]>;
 /**
  * 開閉履歴の1エントリを非表示化 (論理削除)。
  * biz3 useManageGroup.js makeInvisibleHistory: フラット {action, deviceUUID, timestamp, op}。

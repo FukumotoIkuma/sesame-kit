@@ -48,9 +48,11 @@ function isSesameOs3(productType) {
  *   必須: deviceModel, sesame2PublicKey(hex), keyIndex(hex), deviceUUID。
  *   secretKey は guestKeyId 未指定時に必須。
  * @param {object} [opts]
- * @param {number|string} [opts.keyLevel] 0=owner / 1=manager / 2=guest (URL の l=)
+ * @param {number|string} [opts.keyLevel] 0=owner / 1=manager / 2=guest (URL の l=)。
+ *   biz3 (biz3utils.js:131) は guestInfo.keyLevel をそのまま埋めるだけなので、未指定だと
+ *   "l=undefined" になる。deviceKey.keyLevel へはフォールバックしない (参照に無いため)。
  * @param {string} [opts.guestKeyId] ゲスト共有時に secretKey 位置へ差し込む値 (generateGuestQR 応答)
- * @param {string} [opts.name] 表示名 (URL の n=)。省略時 deviceKey.deviceName。
+ * @param {string} [opts.name] 表示名 (URL の n=)。省略時 deviceKey.deviceName (biz3utils.js:127)。
  * @returns {string} `ssm://UI?t=sk&sk=<base64>&l=<lv>&n=<urlenc>`
  */
 export function buildShareKeyUrl(deviceKey, { keyLevel, guestKeyId, name } = {}) {
@@ -85,13 +87,18 @@ export function buildShareKeyUrl(deviceKey, { keyLevel, guestKeyId, name } = {})
     String(deviceKey.deviceUUID).replace(/-/g, "");
   const littleKey = Buffer.from(keydata, "hex").toString("base64");
 
-  const lvl = keyLevel ?? deviceKey.keyLevel;
-  const displayName = name || deviceKey.deviceName || "";
+  // biz3utils.js:127-131 と 1:1 (BIZ-09):
+  //   - l は guestInfo.keyLevel のみ (deviceKey.keyLevel へのフォールバックは参照に無い)。
+  //     keyLevel 未指定なら biz3 同様 "l=undefined" になる (呼び出し側で必ず渡すこと)。
+  //   - n は guestInfo.employeeName || deviceKey.deviceName (両欠落時は biz3 同様
+  //     encodeURIComponent(undefined) = "undefined" が入る。`|| ""` の補完はしない)。
+  const displayName = name || deviceKey.deviceName;
   const params = [
     "t=sk", // qrMode.QR_SESAMEKEY = 'sk' (biz3 constants/qrType.js)
     `sk=${littleKey}`,
-    `l=${lvl}`,
-    `n=${encodeURIComponent(displayName)}`,
+    `l=${keyLevel}`,
+    // 両欠落 (undefined) も biz3 同様そのまま通す (encodeURIComponent(undefined) = "undefined")。
+    `n=${encodeURIComponent(/** @type {string} */ (displayName))}`,
   ].join("&");
   return `ssm://UI?${params}`;
 }
@@ -101,8 +108,10 @@ export function buildShareKeyUrl(deviceKey, { keyLevel, guestKeyId, name } = {})
  * (画像スキャン部 = Decoder/DOM 依存は除外。URL 文字列を直接受ける)。
  *
  * @param {string} url `ssm://UI?t=sk&sk=...&l=...&n=...`
- * @returns {{secretKey:string, keyIndex:string, sesame2PublicKey:string, keyLevel:number|null,
+ * @returns {{secretKey:string, keyIndex:string, sesame2PublicKey:string, keyLevel:number,
  *           deviceModel:string|null, deviceName:string|null, deviceUUID:string}}
+ *   keyLevel は biz3utils.js:189 と同じ `parseInt(l)` で、l 欠落/非数値なら **NaN**
+ *   (null には倒さない。parseInt→NaN 挙動含む 1:1)。
  */
 export function parseShareKeyUrl(url) {
   if (!url) throw badRequest("url required");
@@ -134,12 +143,12 @@ export function parseShareKeyUrl(url) {
     .replace(/(\w{8})(\w{4})(\w{4})(\w{4})(\w{12})/, "$1-$2-$3-$4-$5")
     .toUpperCase();
 
-  const lStr = params.get("l");
   return {
     secretKey,
     keyIndex,
     sesame2PublicKey,
-    keyLevel: lStr != null && lStr !== "" ? parseInt(lStr, 10) : null,
+    // biz3utils.js:189 `parseInt(urlParams.get('l'))` の 1:1。l 欠落 (null) / 非数値は NaN。
+    keyLevel: parseInt(/** @type {string} */ (params.get("l")), 10),
     deviceModel: /** @type {Record<number, string>} */ (modelNameByProductType)[productType] ?? null,
     deviceName: params.get("n"),
     deviceUUID,

@@ -54,6 +54,7 @@ declare namespace _default {
         "domain.ir.learnFailed": string;
         "domain.ir.learnEmptyWaveform": string;
         "domain.devices.getUserDeviceTimeout": string;
+        "domain.devices.itemsArray": string;
         "domain.devices.listFirmwareTimeout": string;
         "domain.devices.registerAuthRequired": string;
         "domain.devices.registerFetchRequired": string;
@@ -145,6 +146,7 @@ declare namespace _default {
         "domain.ir.learnFailed": string;
         "domain.ir.learnEmptyWaveform": string;
         "domain.devices.getUserDeviceTimeout": string;
+        "domain.devices.itemsArray": string;
         "domain.devices.listFirmwareTimeout": string;
         "domain.devices.registerAuthRequired": string;
         "domain.devices.registerFetchRequired": string;

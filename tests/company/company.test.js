@@ -92,10 +92,10 @@ describe("updateCompanyName", () => {
     expect(r).toEqual({ companyID: "ch_A", name: "新名" });
   });
 
-  it("data 欠落時は入力値で補完して返す", async () => {
+  it("data 欠落時は undefined を返す (BIZ-10: 入力値で応答を捏造しない)", async () => {
     const c = mockClient({ success: true });
     const r = await updateCompanyName(c, { companyID: "ch_A", name: "新名" });
-    expect(r).toEqual({ companyID: "ch_A", name: "新名" });
+    expect(r).toBeUndefined();
   });
 
   it("success:false は throw", async () => {

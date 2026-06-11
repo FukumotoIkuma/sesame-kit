@@ -32,7 +32,9 @@ export function getCompanies(client: import("./transport.js").Hub3WsClient, { ti
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{companyID:string, name:string, timeoutMs?:number}} params
- * @returns {Promise<{companyID:string, name:string}>} 更新後の {companyID, name}
+ * @returns {Promise<{companyID:string, name:string}|undefined>} 応答 data (更新後の {companyID, name})。
+ *   サーバが data を返さなければ undefined (BIZ-10: 入力値での補完 = 応答の捏造はしない。
+ *   biz3 も message.data をそのまま読むだけで補完しない)。
  */
 export function updateCompanyName(client: import("./transport.js").Hub3WsClient, { companyID, name, timeoutMs }: {
     companyID: string;
@@ -41,7 +43,7 @@ export function updateCompanyName(client: import("./transport.js").Hub3WsClient,
 }): Promise<{
     companyID: string;
     name: string;
-}>;
+} | undefined>;
 /**
  * 会社を新規登録する。
  *

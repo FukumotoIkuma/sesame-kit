@@ -111,7 +111,7 @@ describe("registry: 新規 top-level メソッドの結線", () => {
   // vendor (references_web/src/components/DeviceHistory.js:37) は常に
   // getDeviceHistory([{deviceUUID, lastKey}], ...) を送る。裸文字列配列 ["U"] だとサーバが
   // list[i].deviceUUID を読めず RPC/SDK/gRPC 経由の履歴取得が壊れる。
-  it("device.history → hub.getDeviceHistory([{deviceUUID}], pageSize) (list 要素はオブジェクト)", async () => {
+  it("device.history → hub.getDeviceHistory([{deviceUUID, lastKey}], pageSize) (list 要素はオブジェクト)", async () => {
     const calls = [];
     const hub = { getDeviceHistory: async (list, pageSize) => { calls.push([list, pageSize]); return []; } };
     const e = reg.get("device.history");
@@ -123,7 +123,102 @@ describe("registry: 新規 top-level メソッドの結線", () => {
     expect(Array.isArray(list)).toBe(true);
     expect(list).toHaveLength(1);
     expect(typeof list[0]).toBe("object"); // 裸文字列 "U" ではない
-    expect(list[0]).toEqual({ deviceUUID: "U" });
+    // vendor (DeviceHistory.js:37) は常に {deviceUUID, lastKey} を送る (初回 lastKey=null)
+    expect(list[0]).toEqual({ deviceUUID: "U", lastKey: null });
+  });
+
+  // P3-7: 履歴/電池のページングカーソルを RPC から渡せる (lastKey / lastEvaluatedKey)。
+  it("device.history は lastKey param を list 要素へ透過する (DeviceHistory.js:37-44)", async () => {
+    const calls = [];
+    const hub = { getDeviceHistory: async (list, pageSize) => { calls.push([list, pageSize]); return []; } };
+    const e = reg.get("device.history");
+    expect(e.params.map((p) => p.name)).toEqual(["deviceUUID", "pageSize", "lastKey"]);
+    await e.handler({ hub, daemon, params: { deviceUUID: "U", pageSize: 7, lastKey: 1700000000 } });
+    expect(calls[0][0]).toEqual([{ deviceUUID: "U", lastKey: 1700000000 }]);
+  });
+
+  it("device.battery は lastEvaluatedKey param を透過する (MobileBatteryChart.js:40-50 の片道契約を解消)", async () => {
+    const calls = [];
+    const hub = { getDeviceBattery: async (uuid, opts) => { calls.push([uuid, opts]); return { records: [] }; } };
+    const e = reg.get("device.battery");
+    expect(e.params.map((p) => p.name)).toEqual(["deviceUUID", "pageSize", "lastEvaluatedKey"]);
+    const cursor = { ts: { N: "1" } };
+    await e.handler({ hub, daemon, params: { deviceUUID: "U", pageSize: 5, lastEvaluatedKey: cursor } });
+    expect(calls[0]).toEqual(["U", { pageSize: 5, lastEvaluatedKey: cursor }]);
+    await e.handler({ hub, daemon, params: { deviceUUID: "U" } });
+    expect(calls[1][1].lastEvaluatedKey).toBeNull(); // 未指定なら null (初回ページ)
+  });
+
+  // P3-1: biz3ManageDevice 残り 5 op の RPC 配線 (useManageDevice.js:256-372)。
+  it("devices.add → hub.addDevices(items)", async () => {
+    const calls = [];
+    const hub = { addDevices: async (items) => { calls.push(items); return { ok: true }; } };
+    const e = reg.get("devices.add");
+    expect(e).toBeTruthy();
+    const items = [{ deviceUUID: "U", secretKey: "s" }];
+    await e.handler({ hub, daemon, params: { items } });
+    expect(calls).toEqual([items]);
+  });
+
+  it("devices.reorder → hub.reorderDevices(items)", async () => {
+    const calls = [];
+    const hub = { reorderDevices: async (items) => { calls.push(items); return []; } };
+    const e = reg.get("devices.reorder");
+    const items = [{ deviceUUID: "a" }, { deviceUUID: "b" }];
+    await e.handler({ hub, daemon, params: { items } });
+    expect(calls).toEqual([items]);
+  });
+
+  it("devices.notifyStatus / devices.notifyManage / devices.switchRecharge の結線", async () => {
+    const calls = [];
+    const hub = {
+      getDevicesNotifyStatus: async (p) => { calls.push(["notifyStatus", p]); return []; },
+      switchDeviceNotify: async (p) => { calls.push(["notifyManage", p]); return { ok: true }; },
+      switchRechargeableBattery: async (p) => { calls.push(["switchRecharge", p]); return { ok: true }; },
+    };
+    await reg.get("devices.notifyStatus").handler({ hub, daemon, params: { pushToken: "tok", items: [{ deviceUUID: "U" }] } });
+    await reg.get("devices.notifyManage").handler({ hub, daemon, params: { pushToken: "tok", deviceUUID: "U", enablePush: false } });
+    await reg.get("devices.switchRecharge").handler({ hub, daemon, params: { deviceUUID: "U", isRechargeBattery: false } });
+    expect(calls).toEqual([
+      ["notifyStatus", { pushToken: "tok", items: [{ deviceUUID: "U" }] }],
+      // boolean false が「欠落」と誤判定されない (need() を使わない明示チェック)
+      ["notifyManage", { pushToken: "tok", deviceUUID: "U", enablePush: false }],
+      ["switchRecharge", { deviceUUID: "U", isRechargeBattery: false }],
+    ]);
+  });
+
+  // P3-3: addRemoteToMatter (useRemoteCtrl.js:933-955 フィールド 1:1) の RPC 配線。
+  it("ir.addRemoteToMatter → hub.addRemoteToMatter (vendor フィールド名のまま透過)", async () => {
+    const calls = [];
+    const hub = { addRemoteToMatter: async (p) => { calls.push(p); return { ok: true }; } };
+    const e = reg.get("ir.addRemoteToMatter");
+    expect(e).toBeTruthy();
+    expect(e.params.map((p) => p.name)).toEqual([
+      "hub3DeviceId", "irDeviceType", "cmdOn", "cmdOff", "irDeviceUUID", "irDeviceName",
+    ]);
+    await e.handler({
+      hub, daemon,
+      params: { hub3DeviceId: "H", irDeviceType: 0xc000, cmdOn: "ON", cmdOff: "OFF", irDeviceUUID: "R", irDeviceName: "AC" },
+    });
+    expect(calls).toEqual([{ hub3DeviceId: "H", irDeviceType: 0xc000, cmdOn: "ON", cmdOff: "OFF", irDeviceUUID: "R", irDeviceName: "AC" }]);
+  });
+
+  it("P3-1/P3-3 の新メソッドは experimental (stable 契約に未昇格)", async () => {
+    const { stabilityOf } = await import("../../src/serve/stability.js");
+    for (const m of ["devices.add", "devices.reorder", "devices.notifyStatus", "devices.notifyManage", "devices.switchRecharge", "ir.addRemoteToMatter"]) {
+      expect(reg.has(m), `${m} が registry に無い`).toBe(true);
+      expect(stabilityOf(m), `${m} は experimental であるべき`).toBe("experimental");
+    }
+  });
+
+  // P3-5: deviceListChanged topic (pubUserDeviceChange の fan-out) が購読可能集合に載る。
+  it("SUBSCRIBABLE_TOPICS に deviceListChanged が含まれ、x-event-topics と一致する", async () => {
+    const { SUBSCRIBABLE_TOPICS, buildOpenRpcDoc } = await import("../../src/serve/registry.js");
+    expect(SUBSCRIBABLE_TOPICS).toContain("deviceListChanged");
+    const doc = buildOpenRpcDoc(reg, "0.0.0-test");
+    expect(doc["x-event-topics"]).toEqual([...SUBSCRIBABLE_TOPICS]);
+    const eventNames = doc["x-events"].map((e) => e.name);
+    expect(eventNames).toContain("event.deviceListChanged");
   });
 
   it("必須 param 欠落は bad_params で弾く", () => {
@@ -131,6 +226,10 @@ describe("registry: 新規 top-level メソッドの結線", () => {
     expect(() => reg.get("device.hideHistory").handler({ hub, daemon, params: { deviceUUID: "U" } })).toThrow();
     expect(() => reg.get("device.hideBattery").handler({ hub, daemon, params: {} })).toThrow();
     expect(() => reg.get("webapi.invoke").handler({ hub, daemon, params: {} })).toThrow();
+    expect(() => reg.get("devices.add").handler({ hub, daemon, params: {} })).toThrow();
+    expect(() => reg.get("devices.notifyManage").handler({ hub, daemon, params: { pushToken: "t", deviceUUID: "U" } })).toThrow(); // enablePush 欠落
+    expect(() => reg.get("devices.switchRecharge").handler({ hub, daemon, params: { deviceUUID: "U" } })).toThrow(); // isRechargeBattery 欠落
+    expect(() => reg.get("ir.addRemoteToMatter").handler({ hub, daemon, params: { hub3DeviceId: "H" } })).toThrow();
   });
 
   it("iot.removeSesameFromHub3 は公開され、iot.subscribeIotResponse は非公開", () => {

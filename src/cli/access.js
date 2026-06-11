@@ -269,7 +269,7 @@ export function registerAccessCommands(program, ctx) {
   //
   // BLE で Touch を register モード (MODE_REGISTER=1, SSMBiometricCard.kt:74) にし、タップされた
   // 複数カードを 1 枚ずつ収集 (registerDelegate.onCardReceive) → クラウド DB へ一括登録
-  // (hub.registerCards = postCards 委譲)。_LAST 待ちの onEnroll ではなく即時収集なので、
+  // (hub.registerCards = レコード毎の updateCardName 委譲、P3-11)。_LAST 待ちの onEnroll ではなく即時収集なので、
   // _LAST の到達順/解除順に依存して取りこぼさない。
   // ⚠️ 実機未検証: _FIRST/_NOTIFY/_LAST の到達順・cardName(hex) は HW で要確認 (biometric.js:839)。
   cards
@@ -334,7 +334,7 @@ export function registerAccessCommands(program, ctx) {
           ctx.out(opts.json, () => console.log(t("access.enroll.none")), { ok: true, enrolled: 0, deviceUUID });
           return;
         }
-        // クラウド DB へ一括登録 (postCards への委譲)。
+        // クラウド DB へ登録 (レコード毎の updateCardName 委譲、P3-11)。
         const resp = await hub.registerCards(deviceUUID, records);
         ctx.out(opts.json, () => {
           console.log(t("access.enroll.collected", { count: records.length, ids: records.map((r) => r.cardID).join(", ") }));

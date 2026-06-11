@@ -56,11 +56,16 @@ import { t } from "./i18n.js";
 
 /**
  * remotes{} のエントリ (IR リモコン定義)。
+ * code/state はプリセットリモコン (irType !== 0xFE00) 用 (IrRemote.kt:5-15 の code/state):
+ *   code  = メーカー DB の HXD 码組 Code (remoteEmit の command 生成に必須)
+ *   state = 最後に発射した command HEX (updateRemoteState で永続化される現在状態)
  * @typedef {Object} RemoteEntry
  * @property {string} hub3 親 Hub3 の config 名
  * @property {string} [irDeviceUUID]
  * @property {number} irType
- * @property {string} irOperation
+ * @property {string} irOperation "learnEmit" (自己学習 0xFE00) | "remoteEmit" (プリセット)
+ * @property {number|null} [code]
+ * @property {string|null} [state]
  * @property {string|null} [alias]
  * @property {Record<string, string>} keys キー名 → keyUUID
  */
@@ -362,7 +367,8 @@ export class ConfigStore {
   /**
    * @param {string} name
    * @param {{hub3?: string, irDeviceUUID?: string, irType?: number|string,
-   *          irOperation?: string, alias?: string|null, keys?: Record<string, string>}} remote
+   *          irOperation?: string, code?: number|string|null, state?: string|null,
+   *          alias?: string|null, keys?: Record<string, string>}} remote
    */
   addRemote(name, remote) {
     const cfg = this.load();
@@ -375,7 +381,10 @@ export class ConfigStore {
       hub3: remote.hub3,
       irDeviceUUID: remote.irDeviceUUID,
       irType: Number(remote.irType),
-      irOperation: remote.irOperation || "learnEmit",
+      // P3-8: 明示指定が無ければ irType から導出 (0xFE00=自己学習のみ learnEmit、他は remoteEmit)。
+      irOperation: remote.irOperation || deriveIrOperation(Number(remote.irType)),
+      code: remote.code == null ? null : Number(remote.code),
+      state: remote.state ?? null,
       alias: remote.alias || null,
       keys: remote.keys || {},
     };
@@ -568,7 +577,7 @@ export class ConfigStore {
    * `{uuid, type, alias?}` 付きで持っているので、それを直接展開する。
    * 先に hub3s が登録済みである必要がある (syncHub3sFromDevices を先に呼ぶ)。
    *
-   * @param {Array<DeviceRecord & {stateInfo?: {remoteList?: Array<{uuid?: string, irDeviceUUID?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null}>}}>} deviceList  getCompanyDevice / getUserDevice の応答
+   * @param {Array<DeviceRecord & {stateInfo?: {remoteList?: Array<{uuid?: string, irDeviceUUID?: string, type?: number|string, irType?: number|string, code?: number|string|null, state?: string|null, alias?: string|null, name?: string|null}>}}>} deviceList  getCompanyDevice / getUserDevice の応答
    * @returns {{added:string[], updated:string[]}}
    */
   syncRemotesFromDevices(deviceList) {
@@ -594,6 +603,11 @@ export class ConfigStore {
         if (!irDeviceUUID) continue;
         const irType = Number(r.type ?? r.irType);
         const alias = r.alias || r.name || null;
+        // P3-8: リモコン要素は {uuid, type, code, state, alias…} (IrRemote.kt:5-15)。
+        // 旧実装は code/state を捨てて irOperation:"learnEmit" を固定していたため、
+        // 同期したプリセットリモコン (0xC000 等) が hub.send() の learnEmit 経路で誤動作した。
+        const code = r.code == null ? null : Number(r.code);
+        const state = typeof r.state === "string" ? r.state : null;
 
         const entry = Object.entries(cfg.remotes).find(
           ([, rm]) => normalizeUuid(rm.irDeviceUUID) === normalizeUuid(irDeviceUUID),
@@ -604,16 +618,26 @@ export class ConfigStore {
           if (Number.isFinite(irType) && rm.irType !== irType) { rm.irType = irType; changed = true; }
           if (alias && rm.alias !== alias) { rm.alias = alias; changed = true; }
           if (rm.hub3 !== hub3Name) { rm.hub3 = hub3Name; changed = true; }
+          // code/state/irOperation も追従させる (サーバ側が真実)。
+          if (code != null && rm.code !== code) { rm.code = code; changed = true; }
+          if (state != null && rm.state !== state) { rm.state = state; changed = true; }
+          const op = deriveIrOperation(Number.isFinite(irType) ? irType : rm.irType);
+          if (rm.irOperation !== op) { rm.irOperation = op; changed = true; }
           if (changed) result.updated.push(existingName);
           continue;
         }
 
         const name = uniqueName(cfg.remotes, baseName(alias, irDeviceUUID));
+        const effType = Number.isFinite(irType) ? irType : DEFAULT_IR_TYPE;
         cfg.remotes[name] = {
           hub3: hub3Name,
           irDeviceUUID,
-          irType: Number.isFinite(irType) ? irType : DEFAULT_IR_TYPE,
-          irOperation: "learnEmit",
+          irType: effType,
+          // P3-8: 0xFE00 (自己学習) のみ learnEmit、プリセットは remoteEmit + HXD code
+          // (remote-air/index.js:369 ほか)。
+          irOperation: deriveIrOperation(effType),
+          code,
+          state,
           alias,
           keys: {},
         };
@@ -629,7 +653,7 @@ export class ConfigStore {
   /**
    * server 側 (getRemoteList) のリモコン一覧から remote 定義を取り込む (上級/代替経路)。
    * 通常は syncRemotesFromDevices で足りる。company 横断の一覧が欲しい場合のみ。
-   * @param {Array<{irDeviceUUID?: string, uuid?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null, irOperation?: string}>} remoteList  getRemoteList の応答 (irDeviceUUID/uuid, type, alias/name 等)
+   * @param {Array<{irDeviceUUID?: string, uuid?: string, type?: number|string, irType?: number|string, code?: number|string|null, state?: string|null, alias?: string|null, name?: string|null, irOperation?: string}>} remoteList  getRemoteList の応答 (irDeviceUUID/uuid, type, alias/name 等)
    * @param {string} hub3Name   これらのリモコンが属する Hub3 の config 名
    * @returns {{added:string[], updated:string[]}}
    */
@@ -646,6 +670,9 @@ export class ConfigStore {
       if (!irDeviceUUID) continue;
       const irType = Number(r.type ?? r.irType);
       const alias = r.alias || r.name || null;
+      // P3-8: server リモコンも {uuid, type, code, state…} (IrRemote.kt:5-15) — code/state を保存。
+      const code = r.code == null ? null : Number(r.code);
+      const state = typeof r.state === "string" ? r.state : null;
 
       const entry = Object.entries(cfg.remotes).find(
         ([, rm]) => normalizeUuid(rm.irDeviceUUID) === normalizeUuid(irDeviceUUID),
@@ -655,16 +682,22 @@ export class ConfigStore {
         let changed = false;
         if (Number.isFinite(irType) && rm.irType !== irType) { rm.irType = irType; changed = true; }
         if (alias && rm.alias !== alias) { rm.alias = alias; changed = true; }
+        if (code != null && rm.code !== code) { rm.code = code; changed = true; }
+        if (state != null && rm.state !== state) { rm.state = state; changed = true; }
         if (changed) result.updated.push(existingName);
         continue;
       }
 
       const name = uniqueName(cfg.remotes, baseName(alias, irDeviceUUID));
+      const effType = Number.isFinite(irType) ? irType : DEFAULT_IR_TYPE;
       cfg.remotes[name] = {
         hub3: hub3Name,
         irDeviceUUID,
-        irType: Number.isFinite(irType) ? irType : DEFAULT_IR_TYPE,
-        irOperation: r.irOperation || "learnEmit",
+        irType: effType,
+        // P3-8: 明示の irOperation > irType からの導出 (0xFE00 のみ learnEmit)。
+        irOperation: r.irOperation || deriveIrOperation(effType),
+        code,
+        state,
         alias,
         keys: {},
       };
@@ -678,6 +711,17 @@ export class ConfigStore {
 }
 
 // ---- model 分類 / 命名ヘルパ (config の同期で共有) ----
+
+/**
+ * irType から sendIR の operation を導出する (P3-8)。
+ * 自己学習リモコン (実 type 0xFE00) のみ learnEmit、プリセット (0xC000/0x2000/0xE000/0x8000)
+ * は remoteEmit + HXD code (remote-air/index.js:369 / remote-non-air/index.js:155-156)。
+ * @param {number} irType
+ * @returns {"learnEmit"|"remoteEmit"}
+ */
+export function deriveIrOperation(irType) {
+  return irType === 0xfe00 ? "learnEmit" : "remoteEmit";
+}
 
 // biz3 の lockModelDevices ホワイトリスト (gUtils.js:279-294) と完全一致させる。
 // 旧実装は prefix マッチ (sesame_/wm_2/ssmbot_/bot_/bike_) で判定していたが、これは誤り:

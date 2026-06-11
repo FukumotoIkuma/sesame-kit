@@ -53,7 +53,10 @@ export class SesameOS2BleSession {
         systemTime: number;
         fwVersion: number;
         historyCnt: number;
-        mechSetting: Buffer;
+        mechSetting: ReturnType<typeof import("./protocol.js").parseMechSettingSesame2>;
+        mechSettingBot: ReturnType<typeof import("./protocol.js").parseMechSettingBot>;
+        mechSettingBytes: Buffer;
+        isConfigured: boolean;
         mechStatus: object;
     } | null;
     get isLoggedIn(): boolean;

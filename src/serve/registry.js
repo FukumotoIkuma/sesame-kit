@@ -248,29 +248,105 @@ function topLevelEntries() {
       params: [], result: "device[]",
       handler: ({ hub, daemon }) => { requireAuth(daemon); return hub.listUserDevices(); },
     },
-    // クラウド一括登録の convenience。BLE で読み取った複数カードの records を 1 回の postCards へ
-    // まとめて投入する (vendor 検証済 postCards へ委譲。新 WS op は捏造しない)。experimental。
+    // P3-1: biz3ManageDevice 残り 5 op (useManageDevice.js:256-372)。いずれも experimental
+    // (STABLE_METHODS 非掲載)。items の形は vendor 透過 (QR 由来キー / デバイスオブジェクト)。
+    "devices.add": {
+      summary: "add devices to the company (biz3ManageDevice/add; items = QR-derived key objects)",
+      params: [{ name: "items", required: true, desc: t("serve.desc.devicesAddItems"), schema: { type: "array", items: { type: "object" } } }],
+      result: "manageDevice ack ('Limit Exceeded' propagates as rejected)",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["items"]); return hub.addDevices(params.items); },
+    },
+    "devices.reorder": {
+      summary: "reorder company devices (biz3ManageDevice/reorderDevices; rank = -index is assigned)",
+      params: [{ name: "items", required: true, desc: t("serve.desc.devicesReorderItems"), schema: { type: "array", items: { type: "object" } } }],
+      result: "reordered device[] (resp.data)",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["items"]); return hub.reorderDevices(params.items); },
+    },
+    "devices.notifyStatus": {
+      summary: "per-device push-notification settings (biz3ManageDevice/notifyList)",
+      params: [
+        { name: "pushToken", required: true, desc: t("serve.desc.pushToken"), schema: S },
+        { name: "items", required: true, schema: { type: "array", items: { type: "object" } } },
+      ],
+      result: "notify status list (resp.data)",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["pushToken", "items"]); return hub.getDevicesNotifyStatus({ pushToken: params.pushToken, items: params.items }); },
+    },
+    "devices.notifyManage": {
+      summary: "switch push notification for one device (biz3ManageDevice/notifyManage)",
+      params: [
+        { name: "pushToken", required: true, desc: t("serve.desc.pushToken"), schema: S },
+        { name: "deviceUUID", required: true, schema: S },
+        { name: "enablePush", required: true, desc: "1/0 or boolean", schema: B },
+      ],
+      result: "manageDevice ack",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon);
+        need(params, ["pushToken", "deviceUUID"]);
+        if (params.enablePush === undefined || params.enablePush === null) {
+          throw new RpcError(t("serve.missingParam", { k: "enablePush" }), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+        }
+        return hub.switchDeviceNotify({ pushToken: params.pushToken, deviceUUID: params.deviceUUID, enablePush: params.enablePush });
+      },
+    },
+    "devices.switchRecharge": {
+      summary: "switch rechargeable-battery mode (biz3ManageDevice/switchRecharge)",
+      params: [
+        { name: "deviceUUID", required: true, schema: S },
+        { name: "isRechargeBattery", required: true, schema: B },
+      ],
+      result: "manageDevice ack",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon);
+        need(params, ["deviceUUID"]);
+        if (params.isRechargeBattery === undefined || params.isRechargeBattery === null) {
+          throw new RpcError(t("serve.missingParam", { k: "isRechargeBattery" }), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+        }
+        return hub.switchRechargeableBattery({ deviceUUID: params.deviceUUID, isRechargeBattery: params.isRechargeBattery });
+      },
+    },
+    // クラウド登録の convenience。BLE で読み取った records をレコード毎の updateCardName で
+    // DB 同期する (vendor のタップ登録経路 cards/index.js:104-136 と同形。P3-11)。experimental。
     "access.registerCards": {
       summary: t("serve.sum.accessRegisterCards"),
       params: [
         { name: "deviceUUID", required: true, desc: t("serve.desc.targetDeviceUUID"), schema: S },
         { name: "cards", required: true, desc: t("serve.desc.registerCardsCards"), schema: { type: "array", items: { type: "object" } } },
       ],
-      result: "postCards ack (null if cards empty)",
+      result: "updateCardName responses (null if cards empty)",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID", "cards"]); return hub.registerCards(params.deviceUUID, params.cards); },
     },
     "device.history": {
       summary: t("serve.sum.deviceHistory"),
-      params: [{ name: "deviceUUID", required: true, schema: S }, { name: "pageSize", required: false, schema: N }], result: "history[]",
+      params: [
+        { name: "deviceUUID", required: true, schema: S },
+        { name: "pageSize", required: false, schema: N },
+        // P3-7: 直前ページ末尾レコードの timestamp (DeviceHistory.js:37-44 loadHistory の lastKey)。
+        { name: "lastKey", required: false, desc: t("serve.desc.historyLastKey"), schema: N },
+      ], result: "history[]",
       // list はオブジェクト配列 [{deviceUUID, lastKey}] (vendor 確認: DeviceHistory.js:37 が
       // getDeviceHistory([{deviceUUID, lastKey}], ...) を送る)。裸文字列配列だとサーバが
-      // list[i].deviceUUID を読めず履歴取得が壊れる (P1-11)。lastKey ページングは Phase 3 (P3-7)。
-      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID"]); return hub.getDeviceHistory([{ deviceUUID: params.deviceUUID }], params.pageSize); },
+      // list[i].deviceUUID を読めず履歴取得が壊れる (P1-11)。
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon); need(params, ["deviceUUID"]);
+        // lastKey は「直前ページ末尾 record の timestamp」なので 0 は有効値ではない。
+        // gRPC (proto3) 経由では未指定の数値フィールドが既定値 0 で届くため、falsy は
+        // null (初回ページ) に正規化する。
+        return hub.getDeviceHistory([{ deviceUUID: params.deviceUUID, lastKey: params.lastKey || null }], params.pageSize);
+      },
     },
     "device.battery": {
       summary: t("serve.sum.deviceBattery"),
-      params: [{ name: "deviceUUID", required: true, schema: S }, { name: "pageSize", required: false, schema: N }], result: "{ records, lastEvaluatedKey }",
-      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID"]); return hub.getDeviceBattery(params.deviceUUID, { pageSize: params.pageSize }); },
+      params: [
+        { name: "deviceUUID", required: true, schema: S },
+        { name: "pageSize", required: false, schema: N },
+        // P3-7: 応答 lastEvaluatedKey をそのまま渡して次ページを取る (MobileBatteryChart.js:40-50)。
+        // 旧契約は「返すが渡せない」片道だった。中身は DynamoDB の opaque カーソル (object)。
+        { name: "lastEvaluatedKey", required: false, desc: t("serve.desc.batteryLastEvaluatedKey"), schema: O },
+      ], result: "{ records, lastEvaluatedKey }",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon); need(params, ["deviceUUID"]);
+        return hub.getDeviceBattery(params.deviceUUID, { pageSize: params.pageSize, lastEvaluatedKey: params.lastEvaluatedKey ?? null });
+      },
     },
     "device.hideHistory": {
       summary: t("serve.sum.deviceHideHistory"),
@@ -455,6 +531,32 @@ function topLevelEntries() {
       ],
       result: "matchRemote response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["irData", "irType"]); return hub.matchIRRemote({ irData: params.irData, irType: params.irType, brandName: params.brandName }); },
+    },
+    // P3-3: リモコンの Matter デバイス化 (useRemoteCtrl.js:933-955 フィールド 1:1)。
+    // CLI は Phase 4 で対応 (RPC まで)。experimental・実機未検証。
+    "ir.addRemoteToMatter": {
+      summary: "register an IR remote as a Matter on/off device on Hub3 (experimental, untested on real hardware)",
+      params: [
+        { name: "hub3DeviceId", required: true, schema: S },
+        { name: "irDeviceType", required: true, desc: t("serve.desc.irDeviceType"), schema: N },
+        { name: "cmdOn", required: true, desc: t("serve.desc.matterCmdOn"), schema: S },
+        { name: "cmdOff", required: true, desc: t("serve.desc.matterCmdOff"), schema: S },
+        { name: "irDeviceUUID", required: true, schema: S },
+        { name: "irDeviceName", required: true, schema: S },
+      ],
+      result: "addRemoteToMatter response",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon);
+        need(params, ["hub3DeviceId", "irDeviceType", "cmdOn", "cmdOff", "irDeviceUUID", "irDeviceName"]);
+        return hub.addRemoteToMatter({
+          hub3DeviceId: params.hub3DeviceId,
+          irDeviceType: params.irDeviceType,
+          cmdOn: params.cmdOn,
+          cmdOff: params.cmdOff,
+          irDeviceUUID: params.irDeviceUUID,
+          irDeviceName: params.irDeviceName,
+        });
+      },
     },
     "access.postAuthenticationData": {
       summary: "Kotlin SDK biometric credential sync: postAuthenticationData",
@@ -644,7 +746,9 @@ function topLevelEntries() {
 // 購読可能なイベント topic (events.subscribe / SSE ?topics= で受け付ける値)。
 // x-events には event.ready のような購読対象でない broadcast 通知も載るため、購読可能な
 // 集合はこちらを単一の真実とし、契約 (x-event-topics) と SDK の型をここから導出する。
-export const SUBSCRIBABLE_TOPICS = ["lockState", "deviceUpdate"];
+// deviceListChanged (P3-5): biz3TriggerLocker/pubUserDeviceChange (鍵共有・デバイス増減 push —
+// useIotCtrl.js:12,23-25) の fan-out。lockState/deviceUpdate (pubDeviceStateChange 源) とは別ストリーム。
+export const SUBSCRIBABLE_TOPICS = ["lockState", "deviceUpdate", "deviceListChanged"];
 
 /**
  * events.subscribe / unsubscribe (daemon に委譲)。
@@ -777,6 +881,7 @@ export function buildOpenRpcDoc(reg, version) {
     "x-events": [
       event("event.lockState", t("serve.event.lockState")),
       event("event.deviceUpdate", t("serve.event.deviceUpdate")),
+      event("event.deviceListChanged", t("serve.event.deviceListChanged")),
       event("event.ready", t("serve.event.ready")),
     ],
     // 購読可能 topic (events.subscribe / SSE ?topics= で受け付ける値)。event.ready のような

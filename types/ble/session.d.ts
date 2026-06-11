@@ -25,7 +25,7 @@ export class BleResultError extends Error {
 export class SesameBleSession {
     /**
      * @param {{transport:BleTransport, secretKey?:string|Buffer, debug?:boolean,
-     *          defaultTimeoutMs?:number, profile?:("lock"|"wm2")}} opts
+     *          defaultTimeoutMs?:number, profile?:("lock"|"wm2"), syncTime?:boolean}} opts
      *   secretKey は **登録済みデバイスへのログイン時のみ必須**。工場出荷 (未登録) デバイスを
      *   register() で登録する場合は secretKey を渡さずに構築する (initial 受信で login を試みず
      *   ReadyToRegister 状態へ遷移する。CHSesameOS3.kt:468-491 isRegistered=false 相当)。
@@ -37,13 +37,21 @@ export class SesameBleSession {
      *       login payload = CMAC 16B 全量、register data = pubK64 のみ、CCM sault = token4 (12B nonce)。
      *       @experimental WM2 profile は SDK Kotlin の静的読みからの移植で **実機未検証**
      *       (参照: CHWifiModule2Device.kt:279-321 / SesameOS3BleCipher.kt:8-32)。
+     *
+     *   syncTime (既定 true): login 成功後の time(8) 自動同期を行うか (BLE3-03)。
+     *     CHSesameOS3LockBase.kt:126-138 handleLoginResponse の時刻同期は **ロック系のみ** の挙動で、
+     *     Hub3 は login を override して handleLoginResponse を呼ばない (CHHub3Device.kt:167-178 —
+     *     login 応答はコールバックで deviceStatus 遷移のみ)。WM2 も同様 (CHWifiModule2Device.kt:314-321。
+     *     こちらは profile="wm2" で構造的に対象外)。ファサード (index.js) は kind が HUB3/WIFI の
+     *     とき false を渡す。
      */
-    constructor({ transport, secretKey, debug, defaultTimeoutMs, profile }: {
+    constructor({ transport, secretKey, debug, defaultTimeoutMs, profile, syncTime }: {
         transport: BleTransport;
         secretKey?: string | Buffer;
         debug?: boolean;
         defaultTimeoutMs?: number;
         profile?: ("lock" | "wm2");
+        syncTime?: boolean;
     });
     /** 最後に受信した mechStatus (parseMechStatus の結果)。未受信なら null。 */
     get lastStatus(): any;

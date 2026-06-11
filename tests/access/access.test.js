@@ -16,9 +16,13 @@ import {
   updatePasscodeName,
   updateCardOwner,
   enrolledToCardList,
+  enrolledToPasscodeList,
   syncEnrolledCards,
   syncEnrolledPasscodes,
   makeBiometricsTransport,
+  postAuthenticationData,
+  putAuthenticationData,
+  deleteAuthenticationData,
 } from "../../src/access.js";
 
 // ---------- request 系 mock client ----------
@@ -290,6 +294,60 @@ describe("getCards", () => {
     const c = pushClient();
     await expect(getCards(c, { deviceUUIDs: ["dev1"], timeoutMs: 20 })).rejects.toThrow(/getCards timeout/);
   });
+
+  // ---- P3-12: 完了通知と pub の到着順序は未確認 (§9 V8) — 逆順サーバ許容 ----
+
+  it("逆順 (完了通知 → pub) でも grace window で残 push を吸収してから確定する (P3-12)", async () => {
+    const c = pushClient();
+    const p = getCards(c, { deviceUUIDs: ["dev1"], graceMs: 50 });
+    // 完了通知が先に届く (ack→pub の逆順)
+    c.emit(`${ACTION}:getCards`, { action: ACTION, op: "getCards" });
+    // grace window 内に残 push が届く
+    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+      data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
+    });
+    const r = await p;
+    expect(r.byDevice.dev1.map((x) => x.cardID)).toEqual(["C1"]);
+    expect(r.items).toHaveLength(1);
+  });
+
+  it("完了通知時に全要求デバイスの pub が揃っていれば grace を待たず即確定する (従来動作)", async () => {
+    // graceMs を timeout より長くする = 即確定でなければこのテストは timeout で落ちる構成。
+    const c = pushClient();
+    const p = getCards(c, { deviceUUIDs: ["dev1"], timeoutMs: 200, graceMs: 60_000 });
+    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+      data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
+    });
+    c.emit(`${ACTION}:getCards`, {});
+    const r = await p;
+    expect(r.byDevice.dev1).toHaveLength(1);
+  });
+
+  it("完了通知後も pub が来ないデバイスは grace 経過後に手持ちの結果で resolve (reject しない)", async () => {
+    const c = pushClient();
+    const p = getCards(c, { deviceUUIDs: ["dev1", "dev2"], graceMs: 30 });
+    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+      data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
+    });
+    c.emit(`${ACTION}:getCards`, {});
+    const r = await p;
+    expect(r.byDevice.dev1).toHaveLength(1);
+    expect(r.byDevice.dev2).toBeUndefined();
+  });
+
+  it("逆順 + 複数ページ: grace window 内の後続ページも吸収する", async () => {
+    const c = pushClient();
+    const p = getCards(c, { deviceUUIDs: ["dev1"], graceMs: 50 });
+    c.emit(`${ACTION}:getCards`, {});
+    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+      data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
+    });
+    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+      data: { deviceUUID: "dev1", page: 2, list: [{ cardID: "C2" }] },
+    });
+    const r = await p;
+    expect(r.byDevice.dev1.map((x) => x.cardID)).toEqual(["C1", "C2"]);
+  });
 });
 
 describe("getPasscodes", () => {
@@ -468,11 +526,29 @@ describe("updateCardOwner", () => {
   });
 });
 
-// enroll → DB 同期ブリッジ。BLE 由来の enroll レコードを postCards/postPasscodes へ委譲する糊。
+// enroll → DB 同期ブリッジ。BLE 由来の enroll レコードを DB 同期 op へ委譲する糊 (P3-11)。
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// BLE NOTIFY 由来の nameUUID は hex 32 文字 (ハイフン無し) で届く (src/ble/biometric.js)。
+const FW_NAME_UUID_HEX = "368154C128BC4BCDBE62F3B15C7496D0";
+const FW_NAME_UUID_DASHED = "368154c1-28bc-4bcd-be62-f3b15c7496d0";
 
 describe("enrolledToCardList", () => {
-  it("records ({cardID,cardName,cardType}) を list 要素 ({cardID,name,cardType,nameUUID v4}) へ写像", () => {
+  it("record.nameUUID (ファームウェア採番) があれば新規採番せず正規化して透過する (P3-11)", () => {
+    const list = enrolledToCardList([
+      { cardID: "aa", cardName: "41", cardType: 1, nameUUID: FW_NAME_UUID_HEX },
+    ]);
+    // 小文字 + ハイフン区切り (biz3utils.insertUUIDIsolationCharacter + toLowerCase 相当)
+    expect(list[0].nameUUID).toBe(FW_NAME_UUID_DASHED);
+  });
+
+  it("既にハイフン付きの nameUUID は小文字化のみで透過する", () => {
+    const list = enrolledToCardList([
+      { cardID: "aa", nameUUID: "368154C1-28BC-4BCD-BE62-F3B15C7496D0" },
+    ]);
+    expect(list[0].nameUUID).toBe(FW_NAME_UUID_DASHED);
+  });
+
+  it("nameUUID 欠落時のみ v4 を採番する (後方互換。ファーム不一致の可能性は JSDoc 注記)", () => {
     const list = enrolledToCardList([{ cardID: "aa", cardName: "41", cardType: 1 }]);
     expect(list).toHaveLength(1);
     expect(list[0].cardID).toBe("aa");
@@ -491,25 +567,74 @@ describe("enrolledToCardList", () => {
   });
 });
 
-describe("syncEnrolledCards", () => {
-  it("records を変換し postCards (deviceUUID/list トップレベル) へ委譲する", async () => {
-    const c = requestClient({ success: true });
-    await syncEnrolledCards(c, { deviceUUID: "dev1", records: [{ cardID: "aa", cardName: "41", cardType: 1 }] });
-    expect(c.sent[0].action).toBe(ACTION);
-    expect(c.sent[0].op).toBe("postCards");
-    expect(c.sent[0].deviceUUID).toBe("dev1");
-    expect(c.sent[0].list[0]).toMatchObject({ cardID: "aa", name: "41", cardType: 1 });
-    expect(c.sent[0].list[0].nameUUID).toMatch(UUID_V4);
+describe("enrolledToPasscodeList", () => {
+  it("写像は {passwordID, name, nameUUID} のみ (passwords.js:101-113 に無い keyBoardPassCode/keyBoardPassCodeNameUUID/type は送らない)", () => {
+    const list = enrolledToPasscodeList([
+      { cardID: "0102", cardName: "70", cardType: 0, nameUUID: FW_NAME_UUID_HEX },
+    ]);
+    expect(list[0]).toEqual({
+      passwordID: "0102",
+      name: "70",
+      nameUUID: FW_NAME_UUID_DASHED,
+    });
+    expect(Object.keys(list[0]).sort()).toEqual(["name", "nameUUID", "passwordID"]);
   });
 
-  it("list を渡すと変換せずそのまま postCards へ流す", async () => {
+  it("nameUUID 欠落時のみ v4 を採番する", () => {
+    const list = enrolledToPasscodeList([{ cardID: "0102", cardName: "70" }]);
+    expect(list[0].nameUUID).toMatch(UUID_V4);
+  });
+
+  it("非配列は空配列を返す", () => {
+    expect(enrolledToPasscodeList(undefined)).toEqual([]);
+  });
+});
+
+describe("syncEnrolledCards", () => {
+  it("タップ登録 (records): レコードごとに updateCardName へ委譲し、ack 由来 nameUUID を cardNameUUID に載せる (cards/index.js:104-136)", async () => {
+    const c = requestClient({ success: true });
+    const res = await syncEnrolledCards(c, {
+      deviceUUID: "dev1",
+      records: [{ cardID: "aa", cardName: "41", cardType: 1, nameUUID: FW_NAME_UUID_HEX }],
+    });
+    expect(c.sent).toHaveLength(1);
+    expect(c.sent[0].action).toBe(ACTION);
+    expect(c.sent[0].op).toBe("updateCardName"); // postCards ではない
+    expect(c.sent[0].obj).toMatchObject({
+      cardID: "aa",
+      name: "41",
+      cardType: 1,
+      stpDeviceUUID: "dev1",
+      cardNameUUID: FW_NAME_UUID_DASHED, // ファームウェア採番値を透過
+    });
+    expect(typeof c.sent[0].obj.timestamp).toBe("number"); // cards/index.js:120
+    expect(Array.isArray(res)).toBe(true);
+    expect(res).toHaveLength(1);
+  });
+
+  it("records 複数件は 1 件ずつ updateCardName を送る", async () => {
+    const c = requestClient({ success: true });
+    await syncEnrolledCards(c, {
+      deviceUUID: "dev1",
+      records: [
+        { cardID: "aa", cardName: "41", cardType: 1 },
+        { cardID: "bb", cardName: "42", cardType: 1 },
+      ],
+    });
+    expect(c.sent).toHaveLength(2);
+    expect(c.sent.map((f) => f.op)).toEqual(["updateCardName", "updateCardName"]);
+    expect(c.sent.map((f) => f.obj.cardID)).toEqual(["aa", "bb"]);
+  });
+
+  it("list を渡すと一括投入経路 (postCards) へそのまま流す (ファームへ書いた nameUUID と同一前提)", async () => {
     const c = requestClient({ success: true });
     const list = [{ cardID: "C1", nameUUID: "u1", name: "x", cardType: 1 }];
     await syncEnrolledCards(c, { deviceUUID: "dev1", list });
+    expect(c.sent[0].op).toBe("postCards");
     expect(c.sent[0].list).toEqual(list);
   });
 
-  it("空 records なら postCards へ委譲して null (list 空ガード)", async () => {
+  it("空 records なら何も送らず null", async () => {
     const c = requestClient({ success: true });
     expect(await syncEnrolledCards(c, { deviceUUID: "dev1", records: [] })).toBeNull();
     expect(c.sent).toHaveLength(0);
@@ -517,22 +642,64 @@ describe("syncEnrolledCards", () => {
 });
 
 describe("syncEnrolledPasscodes", () => {
-  it("records を変換し postPasscodes へ委譲する", async () => {
+  it("records を {passwordID, name, nameUUID} に変換し postPasscodes へ委譲する", async () => {
     const c = requestClient({ success: true });
-    await syncEnrolledPasscodes(c, { deviceUUID: "dev1", records: [{ cardID: "0102", cardName: "70", cardType: 0 }] });
+    await syncEnrolledPasscodes(c, {
+      deviceUUID: "dev1",
+      records: [{ cardID: "0102", cardName: "70", cardType: 0, nameUUID: FW_NAME_UUID_HEX }],
+    });
     expect(c.sent[0].op).toBe("postPasscodes");
     expect(c.sent[0].deviceUUID).toBe("dev1");
-    expect(c.sent[0].list[0]).toMatchObject({
+    expect(c.sent[0].list[0]).toEqual({
       passwordID: "0102",
-      keyBoardPassCode: "0102",
       name: "70",
-      type: 0,
+      nameUUID: FW_NAME_UUID_DASHED,
     });
-    expect(c.sent[0].list[0].keyBoardPassCodeNameUUID).toMatch(UUID_V4);
+    // 参照 (passwords.js:101-113) に無いフィールドを送らない
+    expect(c.sent[0].list[0]).not.toHaveProperty("keyBoardPassCode");
+    expect(c.sent[0].list[0]).not.toHaveProperty("keyBoardPassCodeNameUUID");
+    expect(c.sent[0].list[0]).not.toHaveProperty("type");
   });
 
   it("空 records なら null", async () => {
     const c = requestClient({ success: true });
     expect(await syncEnrolledPasscodes(c, { deviceUUID: "dev1", records: [] })).toBeNull();
+  });
+});
+
+// ---------- withSuffix (BIZ-08): Kotlin の無条件連結に一致 ----------
+
+describe("postAuthenticationData ほか (withSuffix — BIZ-08)", () => {
+  /** 注入 transport: body をキャプチャして 200 を返す。 */
+  function captureTransport(calls) {
+    return async (req) => { calls.push(req); return { status: 200, text: "{}", json: {} }; };
+  }
+
+  it("op は operation + '_post' の無条件連結 (CHDataSynchronizeCapableImpl.kt:17)", async () => {
+    const calls = [];
+    await postAuthenticationData(null, {
+      operation: "nfc_card", deviceID: "d1", items: [], transport: captureTransport(calls),
+    });
+    expect(calls[0].body.op).toBe("nfc_card_post");
+  });
+
+  it("既に '_post' で終わっていても二重連結する (Kotlin `operation += \"_post\"` と同じ)", async () => {
+    const calls = [];
+    await postAuthenticationData(null, {
+      operation: "nfc_card_post", deviceID: "d1", items: [], transport: captureTransport(calls),
+    });
+    expect(calls[0].body.op).toBe("nfc_card_post_post");
+  });
+
+  it("put / delete も同様に無条件連結", async () => {
+    const calls = [];
+    await putAuthenticationData(null, {
+      operation: "fingerprint_put", deviceID: "d1", items: [], transport: captureTransport(calls),
+    });
+    await deleteAuthenticationData(null, {
+      operation: "palm_delete", deviceID: "d1", items: [], transport: captureTransport(calls),
+    });
+    expect(calls[0].body.op).toBe("fingerprint_put_put");
+    expect(calls[1].body.op).toBe("palm_delete_delete");
   });
 });

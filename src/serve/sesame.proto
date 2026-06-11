@@ -86,6 +86,11 @@ service Sesame {
   rpc LockStatus (LockStatusRequest) returns (JsonRpc);
   rpc DevicesList (DevicesListRequest) returns (JsonRpc);
   rpc DevicesUserList (DevicesUserListRequest) returns (JsonRpc);
+  rpc DevicesAdd (DevicesAddRequest) returns (JsonRpc);
+  rpc DevicesReorder (DevicesReorderRequest) returns (JsonRpc);
+  rpc DevicesNotifyStatus (DevicesNotifyStatusRequest) returns (JsonRpc);
+  rpc DevicesNotifyManage (DevicesNotifyManageRequest) returns (JsonRpc);
+  rpc DevicesSwitchRecharge (DevicesSwitchRechargeRequest) returns (JsonRpc);
   rpc AccessRegisterCards (AccessRegisterCardsRequest) returns (JsonRpc);
   rpc DeviceHistory (DeviceHistoryRequest) returns (JsonRpc);
   rpc DeviceBattery (DeviceBatteryRequest) returns (JsonRpc);
@@ -111,6 +116,7 @@ service Sesame {
   rpc IrGetMode (IrGetModeRequest) returns (JsonRpc);
   rpc IrSetMode (IrSetModeRequest) returns (JsonRpc);
   rpc IrMatchRemote (IrMatchRemoteRequest) returns (JsonRpc);
+  rpc IrAddRemoteToMatter (IrAddRemoteToMatterRequest) returns (JsonRpc);
   rpc AccessPostAuthenticationData (AccessPostAuthenticationDataRequest) returns (JsonRpc);
   rpc AccessPutAuthenticationData (AccessPutAuthenticationDataRequest) returns (JsonRpc);
   rpc AccessDeleteAuthenticationData (AccessDeleteAuthenticationDataRequest) returns (JsonRpc);
@@ -359,10 +365,12 @@ message PaymentGetDevApiInfoRequest {
 message AccessGetCardsRequest {
   repeated string deviceUUIDs = 1;
   double timeoutMs = 2;
+  double graceMs = 3;
 }
 message AccessGetPasscodesRequest {
   repeated string deviceUUIDs = 1;
   double timeoutMs = 2;
+  double graceMs = 3;
 }
 message AccessPostCardsRequest {
   string deviceUUID = 1;
@@ -482,13 +490,14 @@ message PresetirEmitAirRequest {
   double code = 3;
   string irDeviceUUID = 4;
   double timeoutMs = 5;
-  bool power = 6;
-  double temperature = 7;
-  double mode = 8;
-  double fanSpeed = 9;
-  double windDirection = 10;
-  bool autoSwing = 11;
-  string keyType = 12;
+  string savedState = 6;
+  bool power = 7;
+  double temperature = 8;
+  double mode = 9;
+  double fanSpeed = 10;
+  double windDirection = 11;
+  bool autoSwing = 12;
+  string keyType = 13;
 }
 message PresetirEmitButtonRequest {
   string deviceId = 1;
@@ -537,6 +546,25 @@ message DevicesListRequest {
 }
 message DevicesUserListRequest {
 }
+message DevicesAddRequest {
+  string items = 1;
+}
+message DevicesReorderRequest {
+  string items = 1;
+}
+message DevicesNotifyStatusRequest {
+  string pushToken = 1;
+  string items = 2;
+}
+message DevicesNotifyManageRequest {
+  string pushToken = 1;
+  string deviceUUID = 2;
+  bool enablePush = 3;
+}
+message DevicesSwitchRechargeRequest {
+  string deviceUUID = 1;
+  bool isRechargeBattery = 2;
+}
 message AccessRegisterCardsRequest {
   string deviceUUID = 1;
   string cards = 2;
@@ -544,10 +572,12 @@ message AccessRegisterCardsRequest {
 message DeviceHistoryRequest {
   string deviceUUID = 1;
   double pageSize = 2;
+  double lastKey = 3;
 }
 message DeviceBatteryRequest {
   string deviceUUID = 1;
   double pageSize = 2;
+  string lastEvaluatedKey = 3;
 }
 message DeviceHideHistoryRequest {
   string deviceUUID = 1;
@@ -641,6 +671,14 @@ message IrMatchRemoteRequest {
   string irData = 1;
   double irType = 2;
   string brandName = 3;
+}
+message IrAddRemoteToMatterRequest {
+  string hub3DeviceId = 1;
+  double irDeviceType = 2;
+  string cmdOn = 3;
+  string cmdOff = 4;
+  string irDeviceUUID = 5;
+  string irDeviceName = 6;
 }
 message AccessPostAuthenticationDataRequest {
   string operation = 1;

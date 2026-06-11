@@ -19,15 +19,20 @@
 //     旧称の「iotCmd / biz3OperateIoT」= SesameBle.biometric (BLE 直結経路) と読み替える。
 //
 //   ★ enroll (実機タップ登録) → DB 同期の実結線: BLE 側で出揃った登録レコードを本モジュールの
-//     syncEnrolledCards/syncEnrolledPasscodes (= postCards/postPasscodes への委譲) へ渡す。
+//     syncEnrolledCards/syncEnrolledPasscodes へ渡す。
 //     BLE 側の集約は src/ble/biometric.js の createEnrollCollector / BiometricCommands.onEnroll が
 //     行い、その onEnrolled コールバック内で本関数を呼ぶ (BLE→cloud の責務境界はその境目)。
+//     タップ登録 (records) は biz3 と同じく ack の nameUUID を使った updateCardName 委譲、
+//     一括投入 (list) のみ postCards/postPasscodes 委譲 (詳細は各関数の JSDoc)。
 //
 // ⚠️ 取得 (getCards/getPasscodes) の応答は **2系統** で届く (useManageAuthData.js:116-191):
 //   (1) 完了通知:  { action, op:'getCards' }            ← data 本体なし。fetch 完了の合図のみ。
 //   (2) データ本体: { action, op:'pubCardLinkedIDs', data:{ deviceUUID, page, list } }
 //                  ← page===1 で list 置換、それ以外は累積 (ページング)。
 //   passcode は op が 'getPasscodes' / 'pubPasscodeLinkedIDs' になる (同型)。
+//   (1)/(2) の到着順序は参照から導出できず **未確認** (REFACTORING_PLAN §9 V8)。完了通知が
+//   先に届く逆順サーバも許容するため、fetchAuthData は欠落デバイスがある間は短い grace
+//   window で残 push を吸収してから確定する (P3-12)。
 
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { assertSuccess, subscribeChunks, timeoutError, badRequest, rejected } from "./util.js";
@@ -48,6 +53,9 @@ const PUB_CARD_LINKED_IDS = "pubCardLinkedIDs";
 const PUB_PASSCODE_LINKED_IDS = "pubPasscodeLinkedIDs";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+// 完了通知が pub データ push より先に届いた場合に残 push を吸収する猶予 (P3-12)。
+// 到着順序は参照から導出できないため (§9 V8)、逆順でも黙って空成功にならないよう設ける。
+const DEFAULT_COMPLETION_GRACE_MS = 300;
 const BIOMETRICS_PATH = "/device/v1/biometrics";
 
 /**
@@ -222,10 +230,17 @@ function resolveBiometricsTransport({ transport, ...opts }) {
   return makeBiometricsTransport(opts);
 }
 
-/** @param {string|undefined} operation @param {string} suffix @returns {string} */
+/**
+ * operation に op サフィックスを連結する。
+ * Kotlin SDK は `request.operation += "_post"` のように **無条件連結** する
+ * (CHDataSynchronizeCapableImpl.kt:17,32,44)。既に suffix が付いていても二重連結になるのが
+ * 参照の挙動なので、ここでも条件分岐せず 1:1 で連結する (BIZ-08)。
+ * operation 欠落時の throw は kit 側の入力検証 (参照は型で非 null を保証)。
+ * @param {string|undefined} operation @param {string} suffix @returns {string}
+ */
 function withSuffix(operation, suffix) {
   if (!operation) throw badRequest("access.err.operationRequired");
-  return String(operation).endsWith(suffix) ? String(operation) : `${operation}${suffix}`;
+  return `${operation}${suffix}`;
 }
 
 /** @param {BiometricsTransport} transport @param {object} body @param {string} opLabel */
@@ -246,11 +261,17 @@ async function postBiometrics(transport, body, opLabel) {
  *   1. { action, obj:{ devices: 'uuid1,uuid2,...' }, op } を送信 (devices はカンマ連結文字列)。
  *   2. サーバは対象デバイスごとに op='pubCardLinkedIDs'/'pubPasscodeLinkedIDs' で
  *      { data:{ deviceUUID, page, list } } を複数回 push (page でページング)。
- *   3. 最後に完了通知 { op:'getCards'/'getPasscodes' } (data 無し) が届く。
+ *   3. 完了通知 { op:'getCards'/'getPasscodes' } (data 無し) が届く。
+ *      ⚠️ 完了通知と pub push の到着順序は参照 (web は両方を独立に処理するだけ) から
+ *      導出できず **未確認** (REFACTORING_PLAN §9 V8)。「完了通知は必ず全 push の後」とは
+ *      仮定しない。
  *
  * CLI では (1) 送信 → (2) pub を集約 → (3) 完了通知 or timeout で確定、という流れで
  * デバイス横断の一覧をまとめて返す。biz3 の handleDeviceCardData (124-131) と同じく
  * deviceUUID ごとに page===1 で置換 / それ以外で追記する。
+ * (3) では要求 deviceUUIDs が byDevice に揃っているかを検査し、欠落がある場合のみ
+ * graceMs の grace window で残 push を吸収してから確定する (P3-12。逆順サーバでも
+ * 黙って空成功にならない)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {object} cfg
@@ -259,11 +280,12 @@ async function postBiometrics(transport, body, opLabel) {
  * @param {string} cfg.idKey         集約キー ('cardID' | 'passwordID')
  * @param {string[]} cfg.deviceUUIDs 対象 deviceUUID 配列
  * @param {number} cfg.timeoutMs
+ * @param {number} [cfg.graceMs]     完了通知時に欠落デバイスがある場合の残 push 吸収猶予 (テスト注入用)
  * @returns {Promise<{byDevice: Record<string, object[]>, items: object[]}>}
  *   byDevice: deviceUUID → そのデバイスに紐づく要素配列
  *   items:    idKey 単位に集約し uuids(=該当 deviceUUID 群) を付与した横断リスト
  */
-async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs }) {
+async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs, graceMs = DEFAULT_COMPLETION_GRACE_MS }) {
   if (!Array.isArray(deviceUUIDs) || deviceUUIDs.length === 0) {
     return { byDevice: {}, items: [] };
   }
@@ -271,6 +293,9 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs 
 
   /** @type {Record<string, object[]>} deviceUUID → list (ページング累積) */
   const byDevice = {};
+  // 完了通知後の grace timer (欠落デバイスがある時のみ起動。finish は冪等なので多重発火は無害)。
+  /** @type {ReturnType<typeof setTimeout>|null} */
+  let graceTimer = null;
   // 「(1) 取得 send → (2) pub データ push を集約 → (3) 完了通知 op で確定」の 2 購読モデル。
   // ライフサイクル (Promise/cleanup/timeout/二重解決) は util.subscribeChunks に委譲する。
   return subscribeChunks(client, {
@@ -280,7 +305,8 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs 
     onTimeout: () => timeoutError(t("access.err.opTimeout", { op })),
     result: () => ({ byDevice, items: aggregate(byDevice, idKey) }),
     subscriptions: [
-      // (2) データ本体 push の集約 (useManageAuthData.js:116-131)。完了はさせない。
+      // (2) データ本体 push の集約 (useManageAuthData.js:116-131)。完了はさせない
+      //     (完了通知後の残 push も grace window 内ならここで吸収される)。
       {
         key: `${ACTION}:${pubOp}`,
         onMessage: (msg) => {
@@ -293,10 +319,18 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs 
           byDevice[deviceUUID] = page === 1 ? [...list] : [...current, ...list];
         },
       },
-      // (3) 完了通知 (useManageAuthData.js:180-185)。data 本体は無い → ここで確定。
+      // (3) 完了通知 (useManageAuthData.js:180-185)。data 本体は無い。
+      //     要求した全デバイスの push が揃っていれば即確定。欠落があれば graceMs だけ
+      //     残 push を吸収してから確定する (到着順序が未確認のため。§9 V8)。
+      //     注: データ 0 件のデバイスには pub が来ない可能性もあるため、欠落時も
+      //     reject はせず grace 経過後に手持ちの結果で resolve する。
       {
         key: `${ACTION}:${op}`,
-        onMessage: (_msg, finish) => { finish(); },
+        onMessage: (_msg, finish) => {
+          const missing = deviceUUIDs.some((u) => byDevice[u] === undefined);
+          if (!missing) { finish(); return; }
+          if (graceTimer == null) graceTimer = setTimeout(() => finish(), graceMs);
+        },
       },
     ],
   });
@@ -333,17 +367,19 @@ function aggregate(byDevice, idKey) {
  * 内部で集約してから完了通知 or timeout で確定する (useManageAuthData.js:50-191)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUIDs:string[], timeoutMs?:number}} params
+ * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number}} params
+ *   graceMs: 完了通知が pub より先行した場合の残 push 吸収猶予 (既定 300ms。テスト注入用)。
  * @returns {Promise<{byDevice: Record<string, object[]>, items: object[]}>}
  *   items の各要素: { cardID, nameUUID, name, cardType, subUUID, ..., uuids:string[] }
  */
-export async function getCards(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+export async function getCards(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOUT_MS, graceMs }) {
   return fetchAuthData(client, {
     op: "getCards",
     pubOp: PUB_CARD_LINKED_IDS,
     idKey: "cardID",
     deviceUUIDs,
     timeoutMs,
+    graceMs,
   });
 }
 
@@ -354,17 +390,19 @@ export async function getCards(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOU
  * 応答データ本体は op='pubPasscodeLinkedIDs' で届く (useManageAuthData.js:189-191)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUIDs:string[], timeoutMs?:number}} params
+ * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number}} params
+ *   graceMs: 完了通知が pub より先行した場合の残 push 吸収猶予 (既定 300ms。テスト注入用)。
  * @returns {Promise<{byDevice: Record<string, object[]>, items: object[]}>}
  *   items の各要素: { passwordID, keyBoardPassCode, keyBoardPassCodeNameUUID, name, nameUUID, subUUID, ..., uuids:string[] }
  */
-export async function getPasscodes(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+export async function getPasscodes(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOUT_MS, graceMs }) {
   return fetchAuthData(client, {
     op: "getPasscodes",
     pubOp: PUB_PASSCODE_LINKED_IDS,
     idKey: "passwordID",
     deviceUUIDs,
     timeoutMs,
+    graceMs,
   });
 }
 
@@ -702,20 +740,54 @@ function authenticationNameRequest(params) {
 //
 // 責務分担 (本ファイル冒頭の 2 層構造コメントの通り):
 //   - 実機への物理書き込み = BLE (SesameBle.biometric.cardAdd 等)。本関数は一切触らない。
-//   - DB 同期            = 本関数 (= 既存 postCards/postPasscodes へ委譲)。
-// よって本関数は「BLE 由来の enroll レコード → postCards/postPasscodes の list 要素」への
-// 変換 + 既存 op 呼び出しだけを行い、新しい WS op は増やさない。
+//   - DB 同期            = 本関数 (既存 WS op への委譲のみ。新しい WS op は増やさない)。
+//
+// biz3 の DB 同期は経路が 2 つあり、nameUUID の出所が異なる (P3-11 / BIZ-04):
+//   (a) タップ登録 (実機側でファームが nameUUID を採番):
+//       BLE ack (NOTIFY) の cardInfo.nameUUID を使い **updateCardName** で DB を追従させる
+//       (cards/index.js:104-136 batchLinkCardCallback)。postCards は使わない。
+//   (b) 一括投入 (web/CSV 側で nameUUID を採番してファームへ書き込む):
+//       buildNameUUIDMappedDataList で採番 → ファームへ書込 → 同一 nameUUID を
+//       **postCards/postPasscodes** で DB へ送る (cards/index.js:264-295, passwords.js:101-113)。
+// どちらも「ファームと DB の nameUUID が一致する」ことが不変条件。BLE enroll 後に DB 側で
+// 新規採番すると恒久不一致になるため、records には NOTIFY 由来の nameUUID を含める契約
+// (src/ble/biometric.js の enroll collector が付与。ファームウェア採番値)。
 
 /**
- * createEnrollCollector の records ({cardID, cardName, cardType}) を postCards/postPasscodes の
+ * nameUUID をサーバ DB 形 (小文字 + ハイフン区切り) に正規化する。
+ * biz3 は両経路ともサーバへ送る前にこの形へ揃える:
+ *   - タップ登録: parseHexStrToCardInfo が insertUUIDIsolationCharacter で整形 (biz3utils.js:382)
+ *   - 一括投入:   insertUUIDIsolationCharacter(item.nameUUID.toLowerCase())
+ *                (cards/index.js:275, passwords.js:106)
+ * BLE collector (src/ble/biometric.js) は NOTIFY の nameUUID を hex のまま渡すため、ここで整形する。
+ * @param {unknown} nameUUID
+ * @returns {string|null} 正規化済み nameUUID。非文字列/空は null。
+ */
+function normalizeNameUUID(nameUUID) {
+  if (typeof nameUUID !== "string" || nameUUID === "") return null;
+  const lower = nameUUID.toLowerCase();
+  // 32 hex (ハイフン無し) なら biz3utils.insertUUIDIsolationCharacter と同じ整形を適用。
+  return /^[0-9a-f]{32}$/.test(lower)
+    ? lower.replace(/^(\w{8})(\w{4})(\w{4})(\w{4})(\w{12})$/, "$1-$2-$3-$4-$5")
+    : lower;
+}
+
+/**
+ * createEnrollCollector の records ({cardID, cardName, cardType, nameUUID?}) を DB 同期用の
  * list 要素 ({ cardID, name, cardType, nameUUID }) へ写像する純関数。
  *
- * ⚠️ 未確認 (実機検証要): NOTIFY 由来の cardName は hex 文字列で届くため、ここでは
- *   name にはそのまま cardName を載せる。DB が要求する nameUUID は BLE publish には含まれない
- *   ため、欠落時は v4 UUID を新規採番する (updateCardName の v4 要件と同じ流儀)。
- *   表示名や既存 nameUUID との突き合わせが必要な運用では呼び出し側で list を補正すること。
+ * nameUUID は record.nameUUID (= BLE NOTIFY 由来の **ファームウェア採番値**。
+ * cards/index.js:264-295 の不変条件「ファームと DB の nameUUID 一致」の根拠) があれば
+ * それを正規化して使う。
  *
- * @param {Array<{cardID:string, cardName:string, cardType:number}>} records
+ * ⚠️ record.nameUUID 欠落時のみ v4 UUID を新規採番する (旧 BLE collector との後方互換)。
+ *   この場合 DB の nameUUID はファームウェア側の採番値と **不一致になる可能性** があり、
+ *   以後の名前更新 (updateCardName の v4 化分岐) 等で齟齬が出得る。nameUUID を含む
+ *   collector (src/ble/biometric.js) との併用を推奨。
+ * ⚠️ 未確認 (実機検証要): NOTIFY 由来の cardName は hex 文字列で届くため、name には
+ *   そのまま cardName を載せる。表示名の補正が必要な運用では呼び出し側で list を補正すること。
+ *
+ * @param {Array<{cardID:string, cardName:string, cardType:number, nameUUID?:string}>} [records]
  * @returns {Array<{cardID:string, name:string, cardType:number, nameUUID:string}>}
  */
 export function enrolledToCardList(records) {
@@ -724,59 +796,92 @@ export function enrolledToCardList(records) {
     cardID: r.cardID,
     name: r.cardName,
     cardType: r.cardType,
-    nameUUID: generateUUID(),
+    nameUUID: normalizeNameUUID(r.nameUUID) ?? generateUUID(),
   }));
 }
 
 /**
  * enroll records を postPasscodes 用 list に写像する。
- * 参照元 UI は passcode identity に `passwordID` を使い、名前更新では
- * `keyBoardPassCode` / `keyBoardPassCodeNameUUID` を使う。カード形状は流用しない。
+ * 要素は {passwordID, name, nameUUID} のみ (passwords.js:101-113 で postPasscodes に渡る
+ * serverList = buildNameUUIDMappedDataList 由来の {passwordID, name} + nameUUID。
+ * keyBoardPassCode / keyBoardPassCodeNameUUID / type は **送らない** — それらは
+ * updatePasscodeName 等の別 op のフィールドで、postPasscodes の参照経路には現れない)。
  *
- * @param {Array<{cardID?:string,passwordID?:string,cardName?:string,name?:string,cardType?:number,type?:number}>} records
- * @returns {Array<{passwordID:string,keyBoardPassCode:string,name:string,nameUUID:string,keyBoardPassCodeNameUUID:string,type:number}>}
+ * nameUUID は record.nameUUID (ファームウェア採番。NOTIFY 由来) を優先し、欠落時のみ
+ * v4 UUID を採番する (enrolledToCardList と同じ注意 — ファーム不一致の可能性あり)。
+ *
+ * @param {Array<{cardID?:string,passwordID?:string,cardName?:string,name?:string,nameUUID?:string}>} [records]
+ * @returns {Array<{passwordID:string,name:string,nameUUID:string}>}
  */
 export function enrolledToPasscodeList(records) {
   if (!Array.isArray(records)) return [];
   return records.map((r) => {
     const passwordID = r.passwordID || r.cardID || "";
-    const nameUUID = generateUUID();
+    const nameUUID = normalizeNameUUID(r.nameUUID) ?? generateUUID();
     return {
       passwordID,
-      keyBoardPassCode: passwordID,
       name: r.name ?? r.cardName ?? nameUUID,
       nameUUID,
-      keyBoardPassCodeNameUUID: nameUUID,
-      type: r.type ?? r.cardType ?? 0,
     };
   });
 }
 
 /**
- * BLE で実機登録 (タップ) されたカードの集約結果を DB へ同期する (postCards への委譲)。
+ * BLE で実機登録 (タップ) されたカードの集約結果を DB へ同期する。
  * BiometricCommands.onEnroll の onEnrolled({kind:'card', records}) からそのまま呼べる。
  *
+ * 経路は引数で分かれる (公開シグネチャは従来どおり):
+ *   - records (タップ登録): biz3 のタップ登録 (cards/index.js:104-136) と同じく、レコード
+ *     1 件ごとに **updateCardName** で DB を追従させる。cardNameUUID には BLE ack 由来の
+ *     ファームウェア採番 nameUUID (enrolledToCardList が解決) を載せる。
+ *   - list (一括投入): **postCards 委譲**。これは「ファームへ同一 nameUUID を書き込んだ後の
+ *     一括投入」(cards/index.js:264-295) 専用。呼び出し側がファームに書いたものと同じ
+ *     nameUUID を list 要素に入れて渡すこと (ここでは採番しない)。
+ *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUID:string, records:Array<{cardID:string,cardName:string,cardType:number}>, list?:object[], timeoutMs?:number}} params
- *   list を渡せば変換をスキップしてそのまま postCards へ流す (呼び出し側で補正したい場合)。
- *   省略時は records を enrolledToCardList で変換する。
- * @returns {Promise<object|null>} postCards の戻り (list 空のときは null)
+ * @param {{deviceUUID:string, records?:Array<{cardID:string,cardName:string,cardType:number,nameUUID?:string}>, list?:object[], timeoutMs?:number}} params
+ *   list を渡すと records を無視して postCards へそのまま流す (一括投入経路)。
+ * @returns {Promise<object[]|object|null>}
+ *   records 経路: updateCardName 応答の配列 (records 空のときは null)。
+ *   list 経路:   postCards の戻り (list 空のときは null)。
  */
 export async function syncEnrolledCards(client, { deviceUUID, records, list, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  const payload = Array.isArray(list) ? list : enrolledToCardList(records);
-  return postCards(client, { deviceUUID, list: payload, timeoutMs });
+  // 一括投入経路: ファームへ書いた nameUUID と同一の list をそのまま DB へ (biz3 (b) 経路)。
+  if (Array.isArray(list)) {
+    return postCards(client, { deviceUUID, list, timeoutMs });
+  }
+  // タップ登録経路: ack の nameUUID で updateCardName (biz3 (a) 経路, cards/index.js:116-124)。
+  const items = enrolledToCardList(records);
+  if (items.length === 0) return null;
+  const responses = [];
+  for (const it of items) {
+    responses.push(await updateCardName(client, {
+      item: {
+        cardID: it.cardID,
+        name: it.name,
+        cardNameUUID: it.nameUUID,
+        timestamp: Date.now(), // cards/index.js:120 (new Date().getTime())
+        cardType: it.cardType,
+        stpDeviceUUID: deviceUUID,
+      },
+      timeoutMs,
+    }));
+  }
+  return responses;
 }
 
 /**
  * BLE で実機登録された暗証番号の集約結果を DB へ同期する (postPasscodes への委譲)。
- * syncEnrolledCards と同型。
  *
- * ⚠️ postPasscodes の list 要素は biz3 上未確認 (access.js:222 参照) のため、records からの
- *   自動変換は **誇張せず** enrolledToCardList と同じ最小写像に留める。確実な運用には
- *   呼び出し側が list を組み立てて渡すこと。
+ * passcode の参照 (passwords.js:94-115) には card のような「タップ登録 → updateCardName」の
+ * DB 同期経路が無く、postPasscodes は一括投入 (ファームへ書いた nameUUID と同一の list を
+ * 送る) のみ。よって本関数は postPasscodes 委譲のままとし、records からの自動変換は
+ * record.nameUUID (ファームウェア採番) を透過する {passwordID, name, nameUUID} の最小写像
+ * (enrolledToPasscodeList) に留める。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUID:string, records:Array<{cardID:string,cardName:string,cardType:number}>, list?:object[], timeoutMs?:number}} params
+ * @param {{deviceUUID:string, records?:Array<{cardID?:string,passwordID?:string,cardName?:string,nameUUID?:string}>, list?:object[], timeoutMs?:number}} params
+ *   list を渡せば変換をスキップしてそのまま postPasscodes へ流す (一括投入経路)。
  * @returns {Promise<object|null>}
  */
 export async function syncEnrolledPasscodes(client, { deviceUUID, records, list, timeoutMs = DEFAULT_TIMEOUT_MS }) {
@@ -785,8 +890,9 @@ export async function syncEnrolledPasscodes(client, { deviceUUID, records, list,
 }
 
 // 公開 op の allowlist (SesameHub3._bindNs / serve registry が参照する単一の真実)。
-// syncEnrolledCards/Passcodes は WS op を増やさず postCards/postPasscodes へ委譲する糊なので
-// allowlist には載せない (新 op を捏造しない)。enrolledToCardList は純関数 (op ではない)。
+// syncEnrolledCards/Passcodes は WS op を増やさず既存 op (updateCardName / postCards /
+// postPasscodes) へ委譲する糊なので allowlist には載せない (新 op を捏造しない)。
+// enrolledToCardList/enrolledToPasscodeList は純関数 (op ではない)。
 export const NAMESPACE_OPS = [
   "getCards", "getPasscodes", "postCards", "postPasscodes",
   "delCards", "delPasscodes", "clearCards", "clearPasscodes",

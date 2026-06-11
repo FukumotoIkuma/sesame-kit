@@ -146,19 +146,27 @@ export const ITEM_CODES = Object.freeze({
   RESET: 104,                     // SesameProtocols.kt:36 Reset
   NOTIFY_LOCK_DOWN: 106,
 
-  // SESAME Hub3 / Hub3 LTE 固有 (Wi-Fi プロビジョニング・SSID スキャン・接続種別) — 出典: SesameProtocols.kt:40,52
+  // SESAME Hub3 / Hub3 LTE 固有 (Wi-Fi プロビジョニング・SSID スキャン) — 出典: SesameProtocols.kt:40,52
   // WM2 が WM2ActionCode (別 enum) で Wi-Fi 設定を持つのに対し、Hub3 は **SesameItemCode に直接**
-  // 131-136/208-209 を持つ (CHHub3Device.kt は CHSesameOS3 を継承し SesameOS3Payload(itemCode,...) で送る)。
-  // 値は SesameProtocols.kt:40 (131-136) / :52 (208-209) と 1:1。
+  // 131-136/208 を持つ (CHHub3Device.kt は CHSesameOS3 を継承し SesameOS3Payload(itemCode,...) で送る)。
+  // 値は SesameProtocols.kt:40 (131-136) / :52 (208) と 1:1。
+  // 注: 旧版でここに同居していた NETWORK_TYPE(209) は SesameItemCode に **存在しない**
+  //   (enum は 208 で終端) ため、SDK 由来定数群から分離し UNVERIFIED_ITEM_CODES へ移した (P3-14)。
   HUB3_ITEM_CODE_WIFI_SSID: 131,      // SSID スキャン要求 (送信 data 無し)。結果は SSID_NOTIFY(133) publish で届く
-  HUB3_ITEM_CODE_SSID_FIRST: 132,     // SSID スキャン結果の先頭マーカー publish (CHHub3Device.kt:320 で no-op)
+  HUB3_ITEM_CODE_SSID_FIRST: 132,     // SSID スキャン結果の先頭マーカー publish (CHHub3Device.kt:324 で no-op)
   HUB3_ITEM_CODE_SSID_NOTIFY: 133,    // SSID スキャン 1 件 publish: [rssi(LE int16) 2B][ssid UTF-8...]
-  HUB3_ITEM_CODE_SSID_LAST: 134,      // SSID スキャン結果の末尾マーカー publish (CHHub3Device.kt:321 で no-op)
+  HUB3_ITEM_CODE_SSID_LAST: 134,      // SSID スキャン結果の末尾マーカー publish (CHHub3Device.kt:325 で no-op)
   HUB3_ITEM_CODE_WIFI_PASSWORD: 135,  // Wi-Fi パスワード設定 (送信 data = password の UTF-8 bytes)
   HUB3_UPDATE_WIFI_SSID: 136,         // Wi-Fi SSID 設定 (送信 data = ssid の UTF-8 bytes)
   HUB3_MATTER_PAIRING_CODE: 137,
-  HUB3_ITEM_CODE_RELAY_SWITCH: 208,   // リレー切替の op (IoT 経由でも使う。CHHub3Device.kt:145)
-  HUB3_ITEM_CODE_NETWORK_TYPE: 209,   // 接続種別 publish: [isWifiConnected 1B][isLTEConnected 1B] (各 1=接続)
+  HUB3_ITEM_CODE_RELAY_SWITCH: 208,   // リレー切替の op (IoT 経由でも使う。CHHub3Device.kt:150)
+
+  // STP_ITEM_CODE_DEVICE_STATUS(183) — 出典: SesameProtocols.kt:49 (SesameItemCode 側の宣言)。
+  // ★SDK 内で参照箇所が無い (送信も受信ハンドラも存在しない) 未使用コード。さらに別 enum の
+  //   StpItemCode 側 183 (STP_ITEM_CODE_CARDS_DELETE, SesameProtocols.kt:66) と **数値が衝突** する
+  //   (BLEP-10)。batchAdd/Delete の cmdItCode に使うのは STP_ITEM_CODES 側であり、本定数は
+  //   SesameItemCode enum の 1:1 完全性のためだけに置く (混同しないこと)。
+  STP_ITEM_CODE_DEVICE_STATUS: 183,
 
   // Remote Nano (トリガ遅延) — 出典: SesameProtocols.kt:49
   // REMOTE_NANO_ITEM_CODE_SET_TRIGGER_DELAYTIME(190u) / REMOTE_NANO_ITEM_CODE_PUB_TRIGGER_DELAYTIME(191u)。
@@ -189,6 +197,21 @@ export const ITEM_CODES = Object.freeze({
   SSM3_ITEM_CODE_SESAME_UNSUPPORT: 204,
   SS3_ITEM_CODE_SET_ADV_PRODUCT_TYPE: 205,
   SSM3_ITEM_CODE_BLE_TX_POWER_SETTING: 206,
+});
+
+// ============================ UNVERIFIED_ITEM_CODES ============================
+// 一次ソース (Android SDK SesameProtocols.kt) に **存在しない** 番号。「SesameProtocols.kt と 1:1」
+// という ITEM_CODES の宣言を守るため、ここに隔離する。確証 (iOS SDK 等の別一次ソース or 実機
+// キャプチャ) が得られたら ITEM_CODES へ昇格、得られない場合は機能ごと削除を検討する (§9 V6)。
+export const UNVERIFIED_ITEM_CODES = Object.freeze({
+  // Hub3 LTE の接続種別 publish: [isWifiConnected 1B][isLTEConnected 1B] (各 1=接続) — と推定。
+  // 出典: Android SDK に存在しない。SesameItemCode enum は 208 (HUB3_ITEM_CODE_RELAY_SWITCH) で
+  //   終端し (SesameProtocols.kt:32-53)、CHHub3Device.kt の onGattSesamePublish にも 209 の
+  //   ハンドラは無い。biz3 web の native ブリッジ挙動 (requestNetworkType → onNetworkType で
+  //   {isWifiConnected, isLTEConnected} が返る。references_web/src/components/MobileWifiModule.js:219-235)
+  //   からの **推定** であり、BLE itemCode 値・payload 配置 ([wifi 1B][lte 1B]) の一次ソースは無い。
+  // @experimental 実機未検証 (§9 V6)。
+  HUB3_ITEM_CODE_NETWORK_TYPE: 209,
 });
 
 // WM2 (Wi-Fi Module 2) 専用アクションコード。
