@@ -4,6 +4,9 @@
 // すべて巨大な cli.js に直書きされ、終了コードが不統一 (usage エラーが 1 だったり 2 だったり)
 // だった。契約をここへ一本化する:
 //   - 終了コード: 0=成功 / 1=ランタイムエラー / 2=usage エラー (README と一致)。
+//     BLE 環境エラー (BLE_UNAUTHORIZED/BLE_UNSUPPORTED/BLE_POWERED_OFF/BLE_INIT_TIMEOUT/
+//     BLE_NO_ADAPTER) は実行環境のランタイム障害なので 1 (usage の 2 ではない。SURF-19。
+//     cli.js maybeHandleBleError 参照 — --json 封筒には bleCode が付く)。
 //   - --json 時: 成功は stdout に純 JSON、エラーは stderr に {error, code} JSON。
 //
 // 依存方向: cli.js / cli/*.js → このモジュール (逆は無し)。

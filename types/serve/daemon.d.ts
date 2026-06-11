@@ -71,8 +71,8 @@ export class Daemon {
      */
     /** 冪等。受付停止 → hub.close()(=_pendingCleanups 実行) → 解決。 */
     shutdown(): Promise<void>;
-    /** 購読可能な topic 一覧 (framing が事前検証に使う)。 */
-    get topics(): string[];
+    /** 購読可能な topic 一覧 (framing が事前検証に使う。registry.SUBSCRIBABLE_TOPICS が単一定義)。 */
+    get topics(): readonly string[];
     /** テスト/イントロスペクション用。 */
     get registry(): Map<string, import("./registry.js").MethodEntry>;
     get openrpc(): Record<string, unknown>;
@@ -107,6 +107,10 @@ export type HubLike = {
     connect: () => Promise<void>;
     close: () => Promise<void>;
     onReconnect?: ((cb: () => void) => void) | undefined;
+    /**
+     * 実 companyID/subUUID を config へ反映 (SURF-09)
+     */
+    refreshAccount?: (() => Promise<unknown>) | undefined;
     onDeviceUpdate: (items: Array<{
         deviceUUID: unknown;
         deviceModel: unknown;

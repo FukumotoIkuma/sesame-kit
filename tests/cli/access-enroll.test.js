@@ -131,4 +131,95 @@ describe("access cards enroll (配線)", () => {
     ).rejects.toMatchObject({ code: 2 });
     expect(hub.registerCards).not.toHaveBeenCalled();
   });
+
+  it("bioCaps 限定ビューに card 系が無い機種 (cardModeSet 非存在) は die(2)", async () => {
+    const hub = { listDevices: vi.fn(async () => [DEV]), registerCards: vi.fn() };
+    // biometric ゲッタは生えるが card 能力は無い (例 sesame_face_ai = palm+face のみ) を模す。
+    const ble = {
+      biometric: { registerDelegate: vi.fn() }, // cardModeSet が無い
+      async connect() {}, async close() {},
+    };
+    const { ctx } = makeCtx({ hub, ble });
+    await expect(
+      buildProgram(ctx).parseAsync(["access", "cards", "enroll", "--device", "u1"], { from: "user" }),
+    ).rejects.toMatchObject({ code: 2 });
+    expect(hub.registerCards).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * fake SesameBle (passcode 版)。passcodeModeSet(1)=register で registerDelegate.onKeyBoardReceive
+ * に records を流す (publish 形は card と同じ parseTouchCard 共通形 — CHPassCodeEventHandlers.kt:28-37)。
+ */
+function makeFakePasscodeBle(records) {
+  let delegate = null;
+  const calls = [];
+  return {
+    calls,
+    biometric: {
+      registerDelegate(d) { delegate = d; return () => calls.push(["unsub"]); },
+      async passcodeModeSet(mode) {
+        calls.push(["passcodeModeSet", mode]);
+        if (mode === 1 && delegate?.onKeyBoardReceive) {
+          for (const r of records) delegate.onKeyBoardReceive(r.cardID, r.cardName, r.cardType);
+        }
+      },
+    },
+    async connect() { calls.push(["connect"]); },
+    async close() { calls.push(["close"]); },
+  };
+}
+
+describe("access passcodes enroll (配線, SURF-04)", () => {
+  it("複数入力を集約し hub.registerPasscodes へ一括登録する (cards enroll と対称)", async () => {
+    const hub = {
+      listDevices: vi.fn(async () => [DEV]),
+      registerPasscodes: vi.fn(async (uuid, records) => ({ ok: true, count: records.length })),
+    };
+    const ble = makeFakePasscodeBle([
+      { cardID: "1234", cardName: "31323334", cardType: 0 },
+      { cardID: "5678", cardName: "35363738", cardType: 0 },
+    ]);
+    const { ctx, outputs } = makeCtx({ hub, ble });
+
+    await buildProgram(ctx).parseAsync(["access", "passcodes", "enroll", "--device", "u1"], { from: "user" });
+
+    // register モードに入り、終了後に control へ戻す (passcodeModeSet 経由)。
+    expect(ble.calls).toContainEqual(["passcodeModeSet", 1]);
+    expect(ble.calls).toContainEqual(["passcodeModeSet", 0]);
+    expect(ble.calls).toContainEqual(["close"]);
+    // 解除は MODE_CONTROL 復帰の後 (cards enroll と同じ取りこぼし防止順序)。
+    const modeOffIdx = ble.calls.findIndex((c) => c[0] === "passcodeModeSet" && c[1] === 0);
+    const unsubIdx = ble.calls.findIndex((c) => c[0] === "unsub");
+    expect(unsubIdx).toBeGreaterThan(modeOffIdx);
+    expect(hub.registerPasscodes).toHaveBeenCalledTimes(1);
+    expect(hub.registerPasscodes).toHaveBeenCalledWith("u1", [
+      { cardID: "1234", cardName: "31323334", cardType: 0 },
+      { cardID: "5678", cardName: "35363738", cardType: 0 },
+    ]);
+    expect(outputs[0]).toMatchObject({ ok: true, enrolled: 2, deviceUUID: "u1" });
+  });
+
+  it("passcode 能力が無い機種 (bioCaps 限定ビューに passcodeModeSet 非存在) は die(2)", async () => {
+    const hub = { listDevices: vi.fn(async () => [{ ...DEV, deviceModel: "ssm_touch" }]), registerPasscodes: vi.fn() };
+    // ssm_touch の bioCaps は card+fingerprint のみ → 限定ビューに passcode 系は生えない (P3-15)。
+    const ble = {
+      biometric: { registerDelegate: vi.fn(), cardModeSet: vi.fn() }, // passcodeModeSet が無い
+      async connect() {}, async close() {},
+    };
+    const { ctx } = makeCtx({ hub, ble });
+    await expect(
+      buildProgram(ctx).parseAsync(["access", "passcodes", "enroll", "--device", "u1"], { from: "user" }),
+    ).rejects.toMatchObject({ code: 2 });
+    expect(hub.registerPasscodes).not.toHaveBeenCalled();
+  });
+
+  it("0 件なら登録せず enrolled:0 を返す", async () => {
+    const hub = { listDevices: vi.fn(async () => [DEV]), registerPasscodes: vi.fn() };
+    const ble = makeFakePasscodeBle([]);
+    const { ctx, outputs } = makeCtx({ hub, ble });
+    await buildProgram(ctx).parseAsync(["access", "passcodes", "enroll", "--device", "u1"], { from: "user" });
+    expect(hub.registerPasscodes).not.toHaveBeenCalled();
+    expect(outputs[0]).toMatchObject({ ok: true, enrolled: 0 });
+  });
 });

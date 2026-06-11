@@ -48,6 +48,11 @@ const LOCK_ACK = obj(
   ["action"],
 );
 
+// BLE 専用 RPC (ble.reset / ble.position / ble.wifi.set*/connect) の ack。
+// registry.bleCommandAck が組む {resultCode, resultName} (SesameResultCode taxonomy —
+// src/ble/protocol.js RESULT)。kit 自前の整形なので shape は確実 (上流応答ではない)。
+const BLE_ACK = obj({ resultCode: NUM, resultName: STR }, ["resultCode", "resultName"]);
+
 /** @type {Readonly<Record<string, JsonSchema>>} */
 export const RESULT_SCHEMAS = Object.freeze({
   // daemon 自前 (確実)
@@ -91,4 +96,21 @@ export const RESULT_SCHEMAS = Object.freeze({
   "lock.unlock": LOCK_ACK,
   "lock.toggle": LOCK_ACK,
   "lock.click": LOCK_ACK,
+
+  // BLE 専用 RPC (P4-1 段階2)。kit 自前の整形 (registry の handler が組む) なので形は確実。
+  // experimental だが SDK の戻り型を Any に劣化させないためスキーマを出す。
+  "ble.reset": BLE_ACK,
+  "ble.position": BLE_ACK,
+  "ble.wifi.setSsid": BLE_ACK,
+  "ble.wifi.setPassword": BLE_ACK,
+  "ble.wifi.connect": BLE_ACK,
+  // OS3 ロック系は SDK 同様コマンド無送信 (commandSent=false, resultCode/Name=null)。
+  "ble.updateFirmware": obj(
+    { commandSent: BOOL, resultCode: nullable(NUM), resultName: nullable(STR) },
+    ["commandSent"],
+  ),
+  "ble.wifi.scan": obj(
+    { ssids: arr(obj({ ssid: STR, rssi: NUM }, ["ssid", "rssi"])) },
+    ["ssids"],
+  ),
 });

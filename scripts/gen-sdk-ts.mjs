@@ -137,14 +137,29 @@ export class SesameRpcError extends Error {
 
 export const API_VERSION = ${JSON.stringify(spec.info["x-apiVersion"])};
 
+// HTTP status → error kind/retryable mapping, shared by all four client implementations
+// (sdk/ts, sdk/python, clients/js, clients/python). Canonical table: REFACTORING_PLAN.md
+// P4-5/SURF-10, pinned by tests/fixtures/http-kind-map.json.
+//   400/413/415 → bad_params · 401/403 → not_authenticated · 404 → not_implemented
+//   408/429/5xx → connection_lost (retryable) · anything else → internal (not retryable)
+const HTTP_KIND_BY_STATUS: Record<number, string> = {
+  400: "bad_params",
+  401: "not_authenticated",
+  403: "not_authenticated",
+  404: "not_implemented",
+  408: "connection_lost",
+  413: "bad_params",
+  415: "bad_params",
+  429: "connection_lost",
+};
+
 function httpErrorKind(status: number): string {
-  if (status === 401 || status === 403) return "not_authenticated";
-  if (status === 408 || status === 429 || status >= 500) return "connection_lost";
-  return "bad_params";
+  if (status >= 500) return "connection_lost"; // all 5xx are transient from the client's view
+  return HTTP_KIND_BY_STATUS[status] ?? "internal";
 }
 
 function httpRetryable(status: number): boolean {
-  return status === 408 || status === 429 || status >= 500;
+  return httpErrorKind(status) === "connection_lost"; // 408/429/5xx; other 4xx are caller errors
 }
 
 async function parseResponseJson(res: Response): Promise<unknown> {

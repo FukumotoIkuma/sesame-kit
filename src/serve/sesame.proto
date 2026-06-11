@@ -77,6 +77,7 @@ service Sesame {
   rpc PresetirEmitAir (PresetirEmitAirRequest) returns (JsonRpc);
   rpc PresetirEmitButton (PresetirEmitButtonRequest) returns (JsonRpc);
   rpc Status (StatusRequest) returns (JsonRpc);
+  rpc CloudPing (CloudPingRequest) returns (JsonRpc);
   rpc AccountWhoami (AccountWhoamiRequest) returns (JsonRpc);
   rpc LockLock (LockLockRequest) returns (JsonRpc);
   rpc LockUnlock (LockUnlockRequest) returns (JsonRpc);
@@ -92,6 +93,7 @@ service Sesame {
   rpc DevicesNotifyManage (DevicesNotifyManageRequest) returns (JsonRpc);
   rpc DevicesSwitchRecharge (DevicesSwitchRechargeRequest) returns (JsonRpc);
   rpc AccessRegisterCards (AccessRegisterCardsRequest) returns (JsonRpc);
+  rpc AccessRegisterPasscodes (AccessRegisterPasscodesRequest) returns (JsonRpc);
   rpc DeviceHistory (DeviceHistoryRequest) returns (JsonRpc);
   rpc DeviceBattery (DeviceBatteryRequest) returns (JsonRpc);
   rpc DeviceHideHistory (DeviceHideHistoryRequest) returns (JsonRpc);
@@ -99,6 +101,10 @@ service Sesame {
   rpc DeviceRename (DeviceRenameRequest) returns (JsonRpc);
   rpc DeviceDelete (DeviceDeleteRequest) returns (JsonRpc);
   rpc FirmwareList (FirmwareListRequest) returns (JsonRpc);
+  rpc ConfigSyncLocks (ConfigSyncLocksRequest) returns (JsonRpc);
+  rpc ConfigSyncHub3s (ConfigSyncHub3sRequest) returns (JsonRpc);
+  rpc ConfigSyncRemotes (ConfigSyncRemotesRequest) returns (JsonRpc);
+  rpc ConfigSyncRemoteKeys (ConfigSyncRemoteKeysRequest) returns (JsonRpc);
   rpc WebapiInvoke (WebapiInvokeRequest) returns (JsonRpc);
   rpc WebapiDeviceState (WebapiDeviceStateRequest) returns (JsonRpc);
   rpc WebapiDeviceHistory (WebapiDeviceHistoryRequest) returns (JsonRpc);
@@ -122,10 +128,16 @@ service Sesame {
   rpc AccessDeleteAuthenticationData (AccessDeleteAuthenticationDataRequest) returns (JsonRpc);
   rpc AccessUpdateAuthenticationName (AccessUpdateAuthenticationNameRequest) returns (JsonRpc);
   rpc BleInvoke (BleInvokeRequest) returns (JsonRpc);
+  rpc BleUpdateFirmware (BleUpdateFirmwareRequest) returns (JsonRpc);
+  rpc BleReset (BleResetRequest) returns (JsonRpc);
+  rpc BlePosition (BlePositionRequest) returns (JsonRpc);
+  rpc BleWifiScan (BleWifiScanRequest) returns (JsonRpc);
+  rpc BleWifiSetSsid (BleWifiSetSsidRequest) returns (JsonRpc);
+  rpc BleWifiSetPassword (BleWifiSetPasswordRequest) returns (JsonRpc);
+  rpc BleWifiConnect (BleWifiConnectRequest) returns (JsonRpc);
   rpc BleRegister (BleRegisterRequest) returns (JsonRpc);
   rpc BleOs2Invoke (BleOs2InvokeRequest) returns (JsonRpc);
   rpc BleOs2Register (BleOs2RegisterRequest) returns (JsonRpc);
-  rpc Discover (DiscoverRequest) returns (JsonRpc);
   // イベント購読 (topics を渡し event を stream で受ける)。payload は JSON 文字列。
   rpc Subscribe (SubReq) returns (stream Event);
   // 後方互換: 任意の JSON-RPC を文字列で運ぶ汎用経路 (型付きに無い新 op 用)。
@@ -510,6 +522,8 @@ message PresetirEmitButtonRequest {
 }
 message StatusRequest {
 }
+message CloudPingRequest {
+}
 message AccountWhoamiRequest {
 }
 message LockLockRequest {
@@ -538,6 +552,11 @@ message LockSetAutolockRequest {
   string secretKey = 3;
   double seconds = 4;
   double timeoutMs = 5;
+  string transport = 6;
+  string address = 7;
+  string model = 8;
+  double scanTimeoutMs = 9;
+  bool debug = 10;
 }
 message LockStatusRequest {
   string deviceUUID = 1;
@@ -569,6 +588,10 @@ message AccessRegisterCardsRequest {
   string deviceUUID = 1;
   string cards = 2;
 }
+message AccessRegisterPasscodesRequest {
+  string deviceUUID = 1;
+  string passcodes = 2;
+}
 message DeviceHistoryRequest {
   string deviceUUID = 1;
   double pageSize = 2;
@@ -595,6 +618,17 @@ message DeviceDeleteRequest {
   string deviceUUID = 1;
 }
 message FirmwareListRequest {
+}
+message ConfigSyncLocksRequest {
+  bool prune = 1;
+}
+message ConfigSyncHub3sRequest {
+  bool prune = 1;
+}
+message ConfigSyncRemotesRequest {
+}
+message ConfigSyncRemoteKeysRequest {
+  string remote = 1;
 }
 message WebapiInvokeRequest {
   string func = 1;
@@ -626,6 +660,8 @@ message IrSendRequest {
 }
 message IrListKeysRequest {
   string remote = 1;
+  string hub3DeviceId = 2;
+  string irDeviceUUID = 3;
 }
 message IrLearnRequest {
   string remote = 1;
@@ -733,6 +769,86 @@ message BleInvokeRequest {
   bool needAuthFromServer = 9;
   string registerBaseUrl = 10;
 }
+message BleUpdateFirmwareRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double timeoutMs = 9;
+}
+message BleResetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BlePositionRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double lockPosition = 9;
+  double unlockPosition = 10;
+}
+message BleWifiScanRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string companyId = 9;
+  double collectMs = 10;
+}
+message BleWifiSetSsidRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string ssid = 9;
+  string companyId = 10;
+}
+message BleWifiSetPasswordRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string password = 9;
+  string companyId = 10;
+}
+message BleWifiConnectRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string companyId = 9;
+}
 message BleRegisterRequest {
   string deviceUUID = 1;
   string address = 2;
@@ -764,8 +880,6 @@ message BleOs2RegisterRequest {
   bool debug = 6;
   bool localServerAuth = 7;
   string ak = 8;
-}
-message DiscoverRequest {
 }
 
 message SubReq { string token = 1; repeated string topics = 2; }

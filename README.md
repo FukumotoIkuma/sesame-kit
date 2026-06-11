@@ -125,7 +125,7 @@ With `--json`, commands behave under a contract that is safe to call from a subp
 - Success: exactly one pure JSON object on stdout (progress and logs go to stderr).
 - Error: `{"error": "...", "code": <n>}` on stderr, with a non-zero exit code.
 - With `--json` or non-interactive, no prompts; missing arguments are immediate errors.
-- Exit codes: `0` = success / `1` = runtime error / `2` = usage error.
+- Exit codes: `0` = success / `1` = runtime error / `2` = usage error. BLE environment errors (`BLE_UNAUTHORIZED` / `BLE_UNSUPPORTED` / `BLE_POWERED_OFF` / `BLE_INIT_TIMEOUT`) are runtime failures of the execution environment, not usage errors → exit `1` (the `--json` envelope carries `bleCode`).
 
 ```bash
 sesame front status --json        # → stdout: {...}  exit 0
@@ -362,7 +362,7 @@ Full docs: **[docs/en/](./docs/en/index.md)** ([日本語](./docs/ja/index.md)).
 - `triggerLock timeout`: wrong `secretKey`, Hub3 offline, or a half-open WS (recovers on auto-reconnect).
 - `learn timeout`: the Hub3 entered REGISTER mode but did not receive a waveform. Move closer or try a different button.
 - `apiKeyId required`: for `webapi` commands, set `apiKeyId` in config.json (issue one in the biz3 dev console).
-- **BLE could not initialize** (`sesame ble …` / `--ble-only`): the CLI exits with code `2` and a friendly message (`{ error, code, bleCode }` under `--json`) instead of crashing silently. `bleCode: BLE_UNAUTHORIZED` → grant the terminal Bluetooth access (macOS: System Settings → Privacy & Security → Bluetooth); `BLE_UNSUPPORTED` → no adapter / insufficient privileges (Linux / Raspberry Pi / headless — need a real adapter and `setcap cap_net_raw+eip`); `BLE_POWERED_OFF` → turn Bluetooth on; `BLE_INIT_TIMEOUT` → Bluetooth did not become ready in time. See [docs/en/ble.md](./docs/en/ble.md#troubleshooting).
+- **BLE could not initialize** (`sesame ble …` / `--ble-only`): the CLI exits with code `1` (a runtime failure of the environment, not a usage error) and a friendly message (`{ error, code, bleCode }` under `--json`) instead of crashing silently. `bleCode: BLE_UNAUTHORIZED` → grant the terminal Bluetooth access (macOS: System Settings → Privacy & Security → Bluetooth); `BLE_UNSUPPORTED` → no adapter / insufficient privileges (Linux / Raspberry Pi / headless — need a real adapter and `setcap cap_net_raw+eip`); `BLE_POWERED_OFF` → turn Bluetooth on; `BLE_INIT_TIMEOUT` → Bluetooth did not become ready in time. See [docs/en/ble.md](./docs/en/ble.md#troubleshooting).
 
 ## See also
 

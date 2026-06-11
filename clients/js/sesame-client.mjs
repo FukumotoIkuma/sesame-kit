@@ -9,7 +9,8 @@
 //   const h = SesameClient.http("http://127.0.0.1:8080"); // token は serve.token から自動
 //   const w = await SesameClient.ws("ws://127.0.0.1:8081"); // Windows でも全二重 (要 Node22+ or ws)
 //
-// 失敗は SesameError(message, kind) を throw (kind: not_authenticated / connection_lost / timeout)。
+// 失敗は SesameError(message, kind) を throw (kind: not_authenticated / connection_lost / timeout /
+// not_implemented / bad_params / rejected / internal — serve の error.data.kind 7 種と一致)。
 // subscribe は **常に await** すること (接続/認証エラーを取りこぼさないため)。
 
 import net from "node:net";
@@ -42,7 +43,13 @@ export class SesameError extends Error {
   constructor(message, kind, code) { super(message); this.name = "SesameError"; this.kind = kind; this.code = code; }
 }
 
-function httpKind(status) {
+// HTTP ステータス → SesameError.kind 写像 (出典: REFACTORING_PLAN.md P4-5/SURF-10)。
+// sdk/ts・sdk/python・clients/python と共通の正で、tests/fixtures/http-kind-map.json に固定。
+//   400/413/415→bad_params, 401/403→not_authenticated, 404→not_implemented,
+//   408/429/5xx→connection_lost (再試行可), その他→internal
+// (thin クライアントは retryable フィールドを持たない — connection_lost が再試行可能の意)
+// export はテスト照合用 (tests/serve/http-kind-map.test.js)。
+export function httpKind(status) {
   if (status === 401 || status === 403) return "not_authenticated";
   if (status === 400 || status === 413 || status === 415) return "bad_params";
   if (status === 404) return "not_implemented";

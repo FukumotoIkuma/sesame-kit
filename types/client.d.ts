@@ -390,6 +390,27 @@ export class SesameHub3 {
         cardType?: number;
         nameUUID?: string;
     }>): Promise<object | null>;
+    /**
+     * 読み取った複数パスコードをクラウド DB へ登録する (registerCards と対称。SURF-04)。
+     *
+     * BLE enroll (`sesame access passcodes enroll`) で集約した records をそのまま渡せる。
+     * records 要素は BLE 読み取り形 `{cardID|passwordID, cardName|name, nameUUID?}`。
+     * DB 同期は access.syncEnrolledPasscodes (= postPasscodes 委譲。passcode に card のような
+     * タップ登録→updateCardName 経路は参照に無い — passwords.js:94-115) で、nameUUID
+     * (ファームウェア採番値) は透過される (P3-11 の不変条件: ファームと DB の nameUUID 一致)。
+     * postPasscodes の list 形を既に持つ一括投入は access.postPasscodes /
+     * syncEnrolledPasscodes({list}) を直接使う。
+     * @param {string} deviceUUID 対象 Touch (Pro) / キーパッド搭載機の deviceUUID
+     * @param {Array<{cardID?:string, passwordID?:string, cardName?:string, name?:string, nameUUID?:string}>} passcodes
+     * @returns {Promise<object|null>} postPasscodes 応答 (records 空なら null)
+     */
+    registerPasscodes(deviceUUID: string, passcodes: Array<{
+        cardID?: string;
+        passwordID?: string;
+        cardName?: string;
+        name?: string;
+        nameUUID?: string;
+    }>): Promise<object | null>;
     /** @param {import("./client.js").BiometricAuthBag} [args] */
     postAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: import("./client.js").BiometricAuthBag): Promise<object | object[]>;
     /** @param {import("./client.js").BiometricAuthBag} [args] */

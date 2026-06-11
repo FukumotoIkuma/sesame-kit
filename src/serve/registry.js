@@ -25,7 +25,11 @@ import * as payment from "../payment.js";
 import * as access from "../access.js";
 import * as iot from "../iot.js";
 import * as presetir from "../presetir.js";
-import { SesameBle, SesameOS2Ble, createBleTransport } from "../ble/index.js";
+import {
+  SesameBle, SesameOS2Ble, createBleTransport,
+  BLE_RPC_ALLOWLIST, OS2_BLE_RPC_ALLOWLIST, resultName,
+} from "../ble/index.js";
+import { ITEM_CODES } from "../itemcodes.js";
 import { resolveRegisterTransport } from "../devices.js";
 
 /**
@@ -57,7 +61,8 @@ import { resolveRegisterTransport } from "../devices.js";
 
 /**
  * gen-rpc-schema が抽出した 1 param の記述。
- * @typedef {{ name:string, required:boolean, tsType?:string, schema?:Record<string, unknown> }} GenParam
+ * desc は生成側が上書きした説明 (SURF-09: companyID/subUUID の自動注入注記等)。無ければ tsType を出す。
+ * @typedef {{ name:string, required:boolean, tsType?:string, desc?:string, schema?:Record<string, unknown> }} GenParam
  */
 
 // ビルド時に .d.ts から抽出した名前空間 op の param 型 (scripts/gen-rpc-schema.mjs)。
@@ -137,11 +142,36 @@ function requireAuth(daemon) {
 }
 
 /**
+ * config 同期 RPC (config.*) の前段ガード (SURF-07)。daemon の hub が ConfigStore を持たない
+ * 構成 (config/tokenStore 直渡しの埋め込み等) では同期先が無いため bad_params で明示拒否する。
+ * hub.syncXxx 側の plain Error (requiresConfigStore) が kind=internal に潰れるのを防ぐ。
+ * @param {Hub} hub
+ * @param {string} op エラーメッセージに出すメソッド名
+ */
+function requireConfigStore(hub, op) {
+  if (!hub.configStore) {
+    throw new RpcError(t("serve.configStoreRequired", { op }), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+  }
+}
+
+/**
+ * BLE ファサードをドット区切り op パスで辿って実行する (`ble.invoke` / `ble.os2.invoke` /
+ * CLI `sesame ble invoke` 共通の単一実装。CLI が同じドット op パス・同じ JSON 引数 revive
+ * 規約を共有するため export している)。
+ *
+ * **fail-closed (P4-2 / ARCH-14)**: 第 1 セグメントを allowlist (ble/index.js の
+ * BLE_RPC_ALLOWLIST / OS2_BLE_RPC_ALLOWLIST = ファサードの意図的公開面) と照合し、
+ * 非掲載は **値の解決 (getter 実行) より前に** bad_params で拒否する。旧実装は
+ * `_`/constructor/prototype のブロックリストのみの fail-open で、connect/close/register 等の
+ * ライフサイクル API や任意の getter に到達できた。
+ *
  * @param {Record<string, any>} root 走査対象のオブジェクトツリー (ble facade 等)。
  * @param {string} path ドット区切りの op パス。
  * @param {unknown[]} [args]
+ * @param {readonly string[]} [allowlist] 第 1 セグメントの allowlist。**未指定は全拒否**
+ *   (fail-closed の既定。呼び出し側が公開面の表を明示的に渡す)。
  */
-async function invokePath(root, path, args = []) {
+export async function invokePath(root, path, args = [], allowlist = []) {
   if (!path || typeof path !== "string") {
     throw new RpcError("missing required param: op", { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
   }
@@ -149,6 +179,11 @@ async function invokePath(root, path, args = []) {
     throw new RpcError(`unsupported BLE op: ${path}`, { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
   }
   const parts = path.split(".").filter(Boolean);
+  // fail-closed: allowlist 非掲載の第 1 セグメントは、root のプロパティ解決 (getter が実行され
+  // 得る) に入る前に拒否する。
+  if (parts.length === 0 || !allowlist.includes(parts[0])) {
+    throw new RpcError(`unsupported BLE op: ${path}`, { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+  }
   let target = root;
   for (let i = 0; i < parts.length; i += 1) {
     const key = parts[i];
@@ -164,6 +199,119 @@ async function invokePath(root, path, args = []) {
     target = typeof value === "function" ? value.call(target) : value;
   }
   return target;
+}
+
+// ---------- BLE 専用 RPC (P4-1 段階2) の共有ヘルパ ----------
+
+/**
+ * WM2 connectWifi の verification に使う既定 companyId。
+ * 出典: _sesame_sdk_ref/app.properties:6 `aws.apigateway.clientId` (= BuildConfig.API_GATEWAY_CLIENT_ID。
+ * CHWifiModule2Device.kt:358-363 が ":"/"-" を除去して company 部に使う)。params.companyId で上書き可。
+ */
+export const WM2_API_GATEWAY_CLIENT_ID = "ap-northeast-1:0a1820f1-dbb3-4bca-9227-2a92f6abf0ae";
+
+// Wi-Fi SSID スキャン publish の既定収集時間 (SDK に終了通知契約が無い WM2 のための打ち切り)。
+const WIFI_SCAN_COLLECT_MS = 8_000;
+
+/**
+ * SesameBle ファサードから Wi-Fi プロビジョニング view を kind で自動判別して返す。
+ *   - wifiProvisioning (WM2)  → ble.wifi({companyId})
+ *   - hubProvisioning (Hub3)  → ble.hub3()
+ * どちらでもない model は bad_params (op を捏造して実機に送らない)。
+ * CLI `sesame ble wifi` も同じ判別を共有する (export)。
+ * @param {import("../ble/index.js").SesameBle} ble
+ * @param {{companyId?:string}} [opts]
+ * @returns {{type:"wm2"|"hub3", view:Record<string, any>}}
+ */
+export function wifiViewOf(ble, { companyId } = {}) {
+  const caps = ble.capabilities;
+  if (caps.wifiProvisioning) return { type: "wm2", view: ble.wifi({ companyId: companyId ?? WM2_API_GATEWAY_CLIENT_ID }) };
+  if (caps.hubProvisioning) return { type: "hub3", view: ble.hub3() };
+  throw new RpcError(t("serve.bleWifiNotSupported", { label: caps.label }), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+}
+
+/**
+ * scanWifiSSID を送り、publish ({kind:"scanWifiSSID"}) を収集して SSID 一覧を返す。
+ * Hub3 は SSID_LAST(134) マーカー publish (CHHub3Device.kt:325) で確定し、WM2 は終了通知が
+ * 無い (CHWifiModule2Device.kt:486-490 は逐次 publish のみ) ため collectMs で打ち切る。
+ * 同一 SSID の再 publish は rssi を更新する (重複行を返さない)。
+ * @param {Record<string, any>} view WifiModule2 / Hub3Commands (onPublish + scanWifiSSID を持つ
+ *   wifiViewOf の戻り view。Record なのは両クラスの publish 正規化形が異なるため)
+ * @param {{collectMs?:number}} [opts]
+ * @returns {Promise<{ssids:Array<{ssid:string, rssi:number}>}>}
+ */
+export function collectWifiScan(view, { collectMs = WIFI_SCAN_COLLECT_MS } = {}) {
+  return new Promise((resolve, reject) => {
+    /** @type {Map<string, {ssid:string, rssi:number}>} */
+    const found = new Map();
+    let done = false;
+    /** @type {ReturnType<typeof setTimeout>|null} */
+    let timer = null;
+    /** @type {() => void} */
+    let off = () => {};
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      off();
+      resolve({ ssids: [...found.values()] });
+    };
+    off = view.onPublish((/** @type {any} */ p) => {
+      if (p && p.kind === "scanWifiSSID" && typeof p.ssid === "string") {
+        found.set(p.ssid, { ssid: p.ssid, rssi: p.rssi });
+      } else if (p && p.kind === "ssidMarker" && p.itemCode === ITEM_CODES.HUB3_ITEM_CODE_SSID_LAST) {
+        finish(); // Hub3 のみ: 末尾マーカーで早期確定
+      }
+    });
+    timer = setTimeout(finish, collectMs);
+    // スキャン要求の ack 失敗 (BleResultError 等) は収集を打ち切って伝搬する。
+    Promise.resolve(view.scanWifiSSID()).catch((err) => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      off();
+      reject(err);
+    });
+  });
+}
+
+/**
+ * BLE コマンド応答 ({resultCode, payload}) を JSON 化可能な ack へ正規化する
+ * (payload の生 Buffer は契約に載せない。生バイトが要る場合は ble.invoke を使う)。
+ * @param {{resultCode:number}} r
+ * @returns {{resultCode:number, resultName:string}}
+ */
+export function bleCommandAck(r) {
+  return { resultCode: r.resultCode, resultName: resultName(r.resultCode) };
+}
+
+/**
+ * ble.* 専用 RPC 共通の対象指定 params から SesameBle.use の opts を組む
+ * (ble.invoke と同じ対象指定群 {deviceUUID?, address?, secretKey, model?, …} の単一実装)。
+ * @param {Hub} hub
+ * @param {Record<string, any>} params
+ * @returns {Record<string, any>} SesameBle.use 第 1 引数
+ */
+function bleUseOptsFromParams(hub, params) {
+  need(params, ["secretKey"]);
+  const needAuthFromServer = !!(params.needAuthFromServer || params.registerBaseUrl);
+  return {
+    deviceUUID: params.deviceUUID,
+    address: params.address,
+    secretKey: params.secretKey,
+    model: params.model ?? null,
+    scanTimeoutMs: params.scanTimeoutMs,
+    debug: !!params.debug,
+    needAuthFromServer,
+    registerTransport: needAuthFromServer
+      ? resolveRegisterTransport({
+          baseUrl: typeof params.registerBaseUrl === "string" ? params.registerBaseUrl : undefined,
+          config: hub.config,
+          tokenStore: hub.tokenStore,
+          required: true,
+        })
+      : undefined,
+  };
 }
 
 /**
@@ -196,6 +344,21 @@ function topLevelEntries() {
     { name: "deviceUUID", required: false, desc: t("serve.desc.deviceUUIDParam"), schema: S },
     { name: "secretKey", required: false, desc: t("serve.desc.secretKeyParam"), schema: S },
   ];
+  // ble.invoke / ble.* 専用 RPC 共通の対象指定群 (bleUseOptsFromParams が消費する単一の表)。
+  const bleTargetParams = [
+    { name: "deviceUUID", required: false, schema: S },
+    { name: "address", required: false, schema: S },
+    { name: "secretKey", required: true, schema: S },
+    { name: "model", required: false, schema: S },
+    { name: "scanTimeoutMs", required: false, schema: N },
+    { name: "debug", required: false, schema: B },
+    { name: "needAuthFromServer", required: false, schema: B },
+    { name: "registerBaseUrl", required: false, schema: S },
+  ];
+  // ble.wifi.* は model で WM2 (専用 GATT) / Hub3 を判別するため model 必須。
+  const bleTargetParamsModelRequired = bleTargetParams.map((p) => (
+    p.name === "model" ? { ...p, required: true, desc: t("serve.desc.bleModelWifi") } : p
+  ));
 
   return {
     "status": {
@@ -211,6 +374,18 @@ function topLevelEntries() {
         contractVersion: CONTRACT_VERSION,
       }),
     },
+    // SURF-06: 実疎通の確認 (biz3KeepAlive 1 往復)。`status` は daemon のローカル状態を返すだけ
+    // なので、RPC 消費者がクラウド接続の生存を実検証する手段としてこれを公開する。experimental。
+    "cloud.ping": {
+      summary: t("serve.sum.cloudPing"),
+      params: [], result: "{ ok: true, rttMs }",
+      handler: async ({ hub, daemon }) => {
+        requireAuth(daemon);
+        const t0 = Date.now();
+        await hub.ping(); // keepalive ack 受信 = 生存。timeout は transport が reject する。
+        return { ok: true, rttMs: Date.now() - t0 };
+      },
+    },
     "account.whoami": {
       summary: t("serve.sum.whoami"),
       params: [], result: t("serve.result.customerInfo"),
@@ -220,12 +395,42 @@ function topLevelEntries() {
     "lock.unlock": { summary: t("serve.sum.lockUnlock"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("unlock") },
     "lock.toggle": { summary: t("serve.sum.lockToggle"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("toggle") },
     "lock.click": { summary: t("serve.sum.lockClick"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("botClick") },
+    // SURF-15: transport param で cloud / BLE 経路を選べる。
+    //   - "cloud": biz3TriggerLocker cmd=11 (ack は返るが**実機反映は未確認** — §9。README の
+    //     「autolock cloud 不可」観測とも整合)。
+    //   - "ble":   SesameBle.autolock(seconds) (ItemCode 11 直送。公式アプリと同経路で実機反映される)。
+    // 既定は "cloud"。プランの「既定 ble」からの意図的逸脱: 既存呼び出し (transport 未指定) の
+    // 挙動・必要 param (name だけで呼べる) を変えないため。確実な経路が要る消費者は明示的に
+    // transport:"ble" + {deviceUUID/secretKey/model} を渡す (summary/desc に明記)。
     "lock.setAutolock": {
-      summary: "set autolock seconds (cloud path; BLE is preferred when available)",
-      params: [...lockParams, { name: "seconds", required: true, schema: N }, { name: "timeoutMs", required: false, schema: N }],
-      result: "{ ack, cmd, seconds }",
-      handler: ({ hub, params, daemon }) => {
-        requireAuth(daemon); need(params, ["seconds"]);
+      summary: t("serve.sum.lockSetAutolock"),
+      params: [
+        ...lockParams,
+        { name: "seconds", required: true, desc: t("serve.desc.autolockSeconds"), schema: N },
+        { name: "timeoutMs", required: false, schema: N },
+        { name: "transport", required: false, desc: t("serve.desc.autolockTransport"), schema: { type: "string", enum: ["cloud", "ble"] } },
+        // transport:"ble" 用の対象指定 (bleUseOptsFromParams が消費。secretKey は ble 時のみ必須)。
+        { name: "address", required: false, schema: S },
+        { name: "model", required: false, schema: S },
+        { name: "scanTimeoutMs", required: false, schema: N },
+        { name: "debug", required: false, schema: B },
+      ],
+      result: "{ ack, cmd, seconds } (cloud) | { resultCode, resultName, seconds, transport } (ble)",
+      handler: async ({ hub, params, daemon }) => {
+        need(params, ["seconds"]);
+        const transport = params.transport ?? "cloud";
+        if (transport === "ble") {
+          // BLE 経路はクラウド接続不要 (requireAuth しない)。対象は deviceUUID/address + secretKey。
+          return SesameBle.use(bleUseOptsFromParams(hub, params), async (ble) => ({
+            ...bleCommandAck(await ble.autolock(params.seconds)),
+            seconds: params.seconds,
+            transport: "ble",
+          }));
+        }
+        if (transport !== "cloud") {
+          throw new RpcError(t("serve.badAutolockTransport", { transport: String(transport) }), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+        }
+        requireAuth(daemon);
         if (params.deviceUUID) {
           need(params, ["deviceUUID", "secretKey"]);
           return hub.setAutolockDevice({ deviceUUID: params.deviceUUID, secretKey: params.secretKey, seconds: params.seconds, timeoutMs: params.timeoutMs });
@@ -244,26 +449,26 @@ function topLevelEntries() {
       handler: ({ hub, daemon }) => { requireAuth(daemon); return hub.listDevices(); },
     },
     "devices.userList": {
-      summary: "personal user device list (biz3 getUserDevice)",
+      summary: t("serve.sum.devicesUserList"),
       params: [], result: "device[]",
       handler: ({ hub, daemon }) => { requireAuth(daemon); return hub.listUserDevices(); },
     },
     // P3-1: biz3ManageDevice 残り 5 op (useManageDevice.js:256-372)。いずれも experimental
     // (STABLE_METHODS 非掲載)。items の形は vendor 透過 (QR 由来キー / デバイスオブジェクト)。
     "devices.add": {
-      summary: "add devices to the company (biz3ManageDevice/add; items = QR-derived key objects)",
+      summary: t("serve.sum.devicesAdd"),
       params: [{ name: "items", required: true, desc: t("serve.desc.devicesAddItems"), schema: { type: "array", items: { type: "object" } } }],
       result: "manageDevice ack ('Limit Exceeded' propagates as rejected)",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["items"]); return hub.addDevices(params.items); },
     },
     "devices.reorder": {
-      summary: "reorder company devices (biz3ManageDevice/reorderDevices; rank = -index is assigned)",
+      summary: t("serve.sum.devicesReorder"),
       params: [{ name: "items", required: true, desc: t("serve.desc.devicesReorderItems"), schema: { type: "array", items: { type: "object" } } }],
       result: "reordered device[] (resp.data)",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["items"]); return hub.reorderDevices(params.items); },
     },
     "devices.notifyStatus": {
-      summary: "per-device push-notification settings (biz3ManageDevice/notifyList)",
+      summary: t("serve.sum.devicesNotifyStatus"),
       params: [
         { name: "pushToken", required: true, desc: t("serve.desc.pushToken"), schema: S },
         { name: "items", required: true, schema: { type: "array", items: { type: "object" } } },
@@ -272,11 +477,11 @@ function topLevelEntries() {
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["pushToken", "items"]); return hub.getDevicesNotifyStatus({ pushToken: params.pushToken, items: params.items }); },
     },
     "devices.notifyManage": {
-      summary: "switch push notification for one device (biz3ManageDevice/notifyManage)",
+      summary: t("serve.sum.devicesNotifyManage"),
       params: [
         { name: "pushToken", required: true, desc: t("serve.desc.pushToken"), schema: S },
         { name: "deviceUUID", required: true, schema: S },
-        { name: "enablePush", required: true, desc: "1/0 or boolean", schema: B },
+        { name: "enablePush", required: true, desc: t("serve.desc.enablePush"), schema: B },
       ],
       result: "manageDevice ack",
       handler: ({ hub, params, daemon }) => {
@@ -289,7 +494,7 @@ function topLevelEntries() {
       },
     },
     "devices.switchRecharge": {
-      summary: "switch rechargeable-battery mode (biz3ManageDevice/switchRecharge)",
+      summary: t("serve.sum.devicesSwitchRecharge"),
       params: [
         { name: "deviceUUID", required: true, schema: S },
         { name: "isRechargeBattery", required: true, schema: B },
@@ -314,6 +519,18 @@ function topLevelEntries() {
       ],
       result: "updateCardName responses (null if cards empty)",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID", "cards"]); return hub.registerCards(params.deviceUUID, params.cards); },
+    },
+    // SURF-04: registerCards と対称の passcode 版。BLE enroll で集めた records を
+    // access.syncEnrolledPasscodes (= postPasscodes 委譲, passwords.js:101-113) で DB 同期する。
+    // nameUUID (ファームウェア採番) は透過される。experimental。
+    "access.registerPasscodes": {
+      summary: t("serve.sum.accessRegisterPasscodes"),
+      params: [
+        { name: "deviceUUID", required: true, desc: t("serve.desc.targetDeviceUUID"), schema: S },
+        { name: "passcodes", required: true, desc: t("serve.desc.registerPasscodesRecords"), schema: { type: "array", items: { type: "object" } } },
+      ],
+      result: "postPasscodes response (null if passcodes empty)",
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID", "passcodes"]); return hub.registerPasscodes(params.deviceUUID, params.passcodes); },
     },
     "device.history": {
       summary: t("serve.sum.deviceHistory"),
@@ -365,7 +582,7 @@ function topLevelEntries() {
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID", "timestampSecond"]); return hub.hideBatteryRecord({ deviceUUID: params.deviceUUID, timestampSecond: params.timestampSecond }); },
     },
     "device.rename": {
-      summary: "rename a device",
+      summary: t("serve.sum.deviceRename"),
       params: [
         { name: "deviceUUID", required: true, schema: S },
         { name: "deviceName", required: true, schema: S },
@@ -374,15 +591,55 @@ function topLevelEntries() {
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID", "deviceName"]); return hub.renameDevice(params.deviceUUID, params.deviceName); },
     },
     "device.delete": {
-      summary: "delete a device from the company",
+      summary: t("serve.sum.deviceDelete"),
       params: [{ name: "deviceUUID", required: true, schema: S }],
       result: "deleteDevices ack",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID"]); return hub.deleteDevice(params.deviceUUID); },
     },
     "firmware.list": {
-      summary: "available firmware list",
+      summary: t("serve.sum.firmwareList"),
       params: [], result: "firmware[]",
       handler: ({ hub, daemon }) => { requireAuth(daemon); return hub.listFirmware(); },
+    },
+    // SURF-07: devices → config 同期を RPC へ公開 (hub.sync*FromDevices / syncRemoteKeys 委譲)。
+    // daemon の ConfigStore (= CLI と同じ ~/.config/sesame-kit/config.json) へ**書き込む**操作。
+    // ConfigStore を持たない構成 (config/tokenStore 直渡しの埋め込み) では bad_params で明示拒否
+    // する (hub 側の plain Error が internal に潰れるのを防ぐ)。いずれも experimental。
+    "config.syncLocks": {
+      summary: t("serve.sum.configSyncLocks"),
+      params: [{ name: "prune", required: false, desc: t("serve.desc.syncPrune"), schema: B }],
+      result: "{ added, updated, removed }",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon); requireConfigStore(hub, "config.syncLocks");
+        return hub.syncLocksFromDevices({ prune: !!params.prune });
+      },
+    },
+    "config.syncHub3s": {
+      summary: t("serve.sum.configSyncHub3s"),
+      params: [{ name: "prune", required: false, desc: t("serve.desc.syncPrune"), schema: B }],
+      result: "{ added, updated, removed }",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon); requireConfigStore(hub, "config.syncHub3s");
+        return hub.syncHub3sFromDevices({ prune: !!params.prune });
+      },
+    },
+    "config.syncRemotes": {
+      summary: t("serve.sum.configSyncRemotes"),
+      params: [],
+      result: "{ hub3: {added,updated,removed}, remotes: {added,updated} }",
+      handler: ({ hub, daemon }) => {
+        requireAuth(daemon); requireConfigStore(hub, "config.syncRemotes");
+        return hub.syncRemotesFromDevices();
+      },
+    },
+    "config.syncRemoteKeys": {
+      summary: t("serve.sum.configSyncRemoteKeys"),
+      params: [{ name: "remote", required: false, desc: t("serve.desc.syncRemoteName"), schema: S }],
+      result: "{ name, keyCount }",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon); requireConfigStore(hub, "config.syncRemoteKeys");
+        return hub.syncRemoteKeys(params.remote ?? null);
+      },
     },
     "webapi.invoke": {
       summary: t("serve.sum.webapiInvoke"),
@@ -395,7 +652,7 @@ function topLevelEntries() {
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["func"]); return hub.invokeWebAPI({ func: params.func, query: params.query, body: params.body, apiKeyId: params.apiKeyId }); },
     },
     "webapi.deviceState": {
-      summary: "WebAPI proxy: device shadow state",
+      summary: t("serve.sum.webapiDeviceState"),
       params: [
         { name: "deviceId", required: true, schema: S },
         { name: "apiKeyId", required: false, schema: S },
@@ -404,7 +661,7 @@ function topLevelEntries() {
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceId"]); return hub.webapiDeviceState({ deviceId: params.deviceId, apiKeyId: params.apiKeyId }); },
     },
     "webapi.deviceHistory": {
-      summary: "WebAPI proxy: device history",
+      summary: t("serve.sum.webapiDeviceHistory"),
       params: [
         { name: "deviceId", required: true, schema: S },
         { name: "page", required: false, schema: N },
@@ -425,7 +682,7 @@ function topLevelEntries() {
       },
     },
     "webapi.sendCmd": {
-      summary: "WebAPI proxy: send a lock command",
+      summary: t("serve.sum.webapiSendCmd"),
       params: [
         { name: "deviceId", required: true, schema: S },
         { name: "cmd", required: true, schema: N },
@@ -453,11 +710,26 @@ function topLevelEntries() {
     },
     "ir.listKeys": {
       summary: t("serve.sum.irListKeys"),
-      params: [{ name: "remote", required: false, schema: S }], result: "key[]",
-      handler: ({ hub, params, daemon }) => { requireAuth(daemon); return hub.listKeys(params.remote ?? null); },
+      params: [
+        { name: "remote", required: false, schema: S },
+        // SURF-24: config 非依存の直指定 (emit 側 presetir.sendIR / ir.send の direct 経路と対称)。
+        // 両方を指定したときだけ hub.getIRCodesDirect に直行する (remote 名解決をスキップ)。
+        { name: "hub3DeviceId", required: false, desc: t("serve.desc.irListKeysHub3DeviceId"), schema: S },
+        { name: "irDeviceUUID", required: false, desc: t("serve.desc.irListKeysIrDeviceUUID"), schema: S },
+      ],
+      result: "key[]",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon);
+        if (params.hub3DeviceId || params.irDeviceUUID) {
+          // 片方だけの直指定は対象を特定できない (config 解決と混ぜない) ため明示エラー。
+          need(params, ["hub3DeviceId", "irDeviceUUID"]);
+          return hub.getIRCodesDirect({ hub3DeviceId: params.hub3DeviceId, irDeviceUUID: params.irDeviceUUID });
+        }
+        return hub.listKeys(params.remote ?? null);
+      },
     },
     "ir.learn": {
-      summary: "learn one IR key into a configured remote",
+      summary: t("serve.sum.irLearn"),
       params: [
         { name: "remote", required: true, schema: S },
         { name: "key", required: true, schema: S },
@@ -467,63 +739,63 @@ function topLevelEntries() {
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote", "key"]); return hub.learnIR(params.remote, params.key, { timeoutMs: params.timeoutMs }); },
     },
     "ir.listRemotes": {
-      summary: "list registered IR remotes by type",
+      summary: t("serve.sum.irListRemotes"),
       params: [{ name: "type", required: true, schema: N }, { name: "page", required: false, schema: N }, { name: "pageSize", required: false, schema: N }],
       // P1-12: vendor (useRemoteCtrl.js:43-57) の応答は {data:[...], pagination:{...}} のラッパー。
       result: "{ list: remote[], pagination: object|null }",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["type"]); return hub.listIRRemotes(params.type, { page: params.page, pageSize: params.pageSize }); },
     },
     "ir.searchRemotes": {
-      summary: "search preset IR remotes",
+      summary: t("serve.sum.irSearchRemotes"),
       params: [{ name: "type", required: true, schema: N }, { name: "searchTerm", required: true, schema: S }],
       // P1-12: vendor (useRemoteCtrl.js:59-63) の応答は {data:[...], pagination:{...}} のラッパー。
       result: "{ list: remote[], pagination: object|null }",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["type", "searchTerm"]); return hub.searchPresetIRRemotes(params.type, params.searchTerm); },
     },
     "ir.addRemote": {
-      summary: "add an IR remote object on the server",
+      summary: t("serve.sum.irAddRemote"),
       params: [{ name: "remote", required: true, schema: O }],
       result: "addIRRemote response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote"]); return hub.addIRRemoteServer(params.remote); },
     },
     "ir.deleteRemote": {
-      summary: "delete a configured IR remote on the server",
+      summary: t("serve.sum.irDeleteRemote"),
       params: [{ name: "remote", required: true, schema: S }],
       result: "deleteIRRemote response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote"]); return hub.deleteIRRemoteServer(params.remote); },
     },
     "ir.renameRemote": {
-      summary: "rename an IR remote alias",
+      summary: t("serve.sum.irRenameRemote"),
       params: [{ name: "remote", required: true, schema: S }, { name: "alias", required: true, schema: S }],
       result: "updateRemoteAlias response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote", "alias"]); return hub.renameIRRemote(params.remote, params.alias); },
     },
     "ir.deleteKey": {
-      summary: "delete one IR key",
+      summary: t("serve.sum.irDeleteKey"),
       params: [{ name: "remote", required: true, schema: S }, { name: "key", required: true, schema: S }],
       result: "deleteIRCode response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote", "key"]); return hub.deleteIRKey(params.remote, params.key); },
     },
     "ir.renameKey": {
-      summary: "rename one IR key",
+      summary: t("serve.sum.irRenameKey"),
       params: [{ name: "remote", required: true, schema: S }, { name: "key", required: true, schema: S }, { name: "newName", required: true, schema: S }],
       result: "updateIRCode response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["remote", "key", "newName"]); return hub.renameIRKey(params.remote, params.key, params.newName); },
     },
     "ir.getMode": {
-      summary: "get Hub3 IR mode",
+      summary: t("serve.sum.irGetMode"),
       params: [{ name: "hub3", required: false, schema: S }],
       result: "mode",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); return hub.getIRMode(params.hub3 ?? null); },
     },
     "ir.setMode": {
-      summary: "set Hub3 IR mode",
+      summary: t("serve.sum.irSetMode"),
       params: [{ name: "hub3", required: false, schema: S }, { name: "mode", required: true, schema: N }],
       result: "setIRMode response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["mode"]); return hub.setIRMode(params.hub3 ?? null, params.mode); },
     },
     "ir.matchRemote": {
-      summary: "match learned IR data against preset remotes",
+      summary: t("serve.sum.irMatchRemote"),
       params: [
         { name: "irData", required: true, schema: S },
         { name: "irType", required: true, schema: N },
@@ -533,9 +805,9 @@ function topLevelEntries() {
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["irData", "irType"]); return hub.matchIRRemote({ irData: params.irData, irType: params.irType, brandName: params.brandName }); },
     },
     // P3-3: リモコンの Matter デバイス化 (useRemoteCtrl.js:933-955 フィールド 1:1)。
-    // CLI は Phase 4 で対応 (RPC まで)。experimental・実機未検証。
+    // CLI は `sesame ir remote-add-matter` (SURF-05)。experimental・実機未検証。
     "ir.addRemoteToMatter": {
-      summary: "register an IR remote as a Matter on/off device on Hub3 (experimental, untested on real hardware)",
+      summary: t("serve.sum.irAddRemoteToMatter"),
       params: [
         { name: "hub3DeviceId", required: true, schema: S },
         { name: "irDeviceType", required: true, desc: t("serve.desc.irDeviceType"), schema: N },
@@ -559,25 +831,25 @@ function topLevelEntries() {
       },
     },
     "access.postAuthenticationData": {
-      summary: "Kotlin SDK biometric credential sync: postAuthenticationData",
+      summary: t("serve.sum.accessPostAuthData"),
       params: [{ name: "operation", required: true, schema: S }, { name: "deviceID", required: true, schema: S }, { name: "items", required: true, schema: A }, { name: "baseUrl", required: false, schema: S }],
       result: "credential items or biometrics response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["operation", "deviceID", "items"]); return hub.postAuthenticationData(params); },
     },
     "access.putAuthenticationData": {
-      summary: "Kotlin SDK biometric credential sync: putAuthenticationData",
+      summary: t("serve.sum.accessPutAuthData"),
       params: [{ name: "operation", required: true, schema: S }, { name: "deviceID", required: true, schema: S }, { name: "items", required: true, schema: A }, { name: "baseUrl", required: false, schema: S }],
       result: "biometrics response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["operation", "deviceID", "items"]); return hub.putAuthenticationData(params); },
     },
     "access.deleteAuthenticationData": {
-      summary: "Kotlin SDK biometric credential sync: deleteAuthenticationData",
+      summary: t("serve.sum.accessDeleteAuthData"),
       params: [{ name: "operation", required: true, schema: S }, { name: "deviceID", required: true, schema: S }, { name: "items", required: true, schema: A }, { name: "baseUrl", required: false, schema: S }],
       result: "biometrics response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["operation", "deviceID", "items"]); return hub.deleteAuthenticationData(params); },
     },
     "access.updateAuthenticationName": {
-      summary: "Kotlin SDK biometric credential sync: updateAuthenticationName",
+      summary: t("serve.sum.accessUpdateAuthName"),
       params: [
         { name: "request", required: false, schema: O },
         { name: "kind", required: false, schema: S },
@@ -605,44 +877,135 @@ function topLevelEntries() {
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); return hub.updateAuthenticationName(params); },
     },
     "ble.invoke": {
-      summary: "invoke a registered OS3 BLE operation through the daemon host Bluetooth adapter",
+      summary: t("serve.sum.bleInvoke"),
       params: [
         { name: "op", required: true, schema: S },
         { name: "args", required: false, schema: A },
-        { name: "deviceUUID", required: false, schema: S },
-        { name: "address", required: false, schema: S },
-        { name: "secretKey", required: true, schema: S },
-        { name: "model", required: false, schema: S },
-        { name: "scanTimeoutMs", required: false, schema: N },
-        { name: "debug", required: false, schema: B },
-        { name: "needAuthFromServer", required: false, schema: B },
-        { name: "registerBaseUrl", required: false, schema: S },
+        ...bleTargetParams,
       ],
       result: "BLE operation result",
       handler: async ({ hub, params }) => {
         need(params, ["op", "secretKey"]);
-        const needAuthFromServer = !!(params.needAuthFromServer || params.registerBaseUrl);
-        return SesameBle.use({
-          deviceUUID: params.deviceUUID,
-          address: params.address,
-          secretKey: params.secretKey,
-          model: params.model ?? null,
-          scanTimeoutMs: params.scanTimeoutMs,
-          debug: !!params.debug,
-          needAuthFromServer,
-          registerTransport: needAuthFromServer
-            ? resolveRegisterTransport({
-                baseUrl: typeof params.registerBaseUrl === "string" ? params.registerBaseUrl : undefined,
-                config: hub.config,
-                tokenStore: hub.tokenStore,
-                required: true,
-              })
-            : undefined,
-        }, (ble) => invokePath(ble, params.op, params.args));
+        // fail-closed (P4-2): 公開面 allowlist (ble/index.js BLE_RPC_ALLOWLIST) 非掲載 op は拒否。
+        return SesameBle.use(bleUseOptsFromParams(hub, params),
+          (ble) => invokePath(ble, params.op, params.args, BLE_RPC_ALLOWLIST));
+      },
+    },
+    // ---- P4-1 段階2: 高価値 BLE op の専用 RPC (typed SDK に個別メソッドとして現れる) ----
+    // いずれも experimental (STABLE_METHODS 非掲載)。対象指定は ble.invoke と同じ
+    // {deviceUUID?, address?, secretKey, model?, …} (bleTargetParams / bleUseOptsFromParams)。
+    "ble.updateFirmware": {
+      summary: t("serve.sum.bleUpdateFirmware"),
+      params: [...bleTargetParams, { name: "timeoutMs", required: false, schema: N }],
+      result: "{ commandSent, resultCode|null, resultName|null }",
+      handler: async ({ hub, params }) => SesameBle.use(bleUseOptsFromParams(hub, params), async (ble) => {
+        // WM2 (OPEN_OTA_SERVER) / Hub3 (MOVE_TO) は応答 Promise、OS3 ロック系は SDK 同様
+        // **コマンド無送信**で同期にハンドル返し (CHSesameOS3.kt:441-449。P1-7 の分岐をそのまま使う)。
+        const r = /** @type {{resultCode?:number}} */ (
+          await Promise.resolve(ble.updateFirmware({ timeoutMs: params.timeoutMs }))
+        );
+        const sent = typeof r?.resultCode === "number";
+        return sent
+          ? { commandSent: true, ...bleCommandAck(/** @type {{resultCode:number}} */ (r)) }
+          : { commandSent: false, resultCode: null, resultName: null };
+      }),
+    },
+    "ble.reset": {
+      summary: t("serve.sum.bleReset"),
+      params: [...bleTargetParams],
+      result: "{ resultCode, resultName }",
+      handler: async ({ hub, params }) => SesameBle.use(bleUseOptsFromParams(hub, params),
+        async (ble) => bleCommandAck(await ble.reset())),
+    },
+    "ble.position": {
+      summary: t("serve.sum.blePosition"),
+      params: [
+        ...bleTargetParams,
+        { name: "lockPosition", required: true, desc: t("serve.desc.blePositionLock"), schema: N },
+        { name: "unlockPosition", required: true, desc: t("serve.desc.blePositionUnlock"), schema: N },
+      ],
+      result: "{ resultCode, resultName }",
+      handler: async ({ hub, params }) => {
+        // 0 は有効な角度 (need() は 0 も欠落扱いするため undefined/null だけを明示チェック)。
+        for (const k of ["lockPosition", "unlockPosition"]) {
+          if (params[k] === undefined || params[k] === null) {
+            throw new RpcError(t("serve.missingParam", { k }), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+          }
+        }
+        return SesameBle.use(bleUseOptsFromParams(hub, params),
+          async (ble) => bleCommandAck(await ble.configureLockPosition(params.lockPosition, params.unlockPosition)));
+      },
+    },
+    "ble.wifi.scan": {
+      summary: t("serve.sum.bleWifiScan"),
+      params: [
+        ...bleTargetParamsModelRequired,
+        { name: "companyId", required: false, desc: t("serve.desc.bleCompanyId"), schema: S },
+        { name: "collectMs", required: false, desc: t("serve.desc.bleCollectMs"), schema: N },
+      ],
+      result: "{ ssids: [{ssid, rssi}] }",
+      handler: async ({ hub, params }) => {
+        need(params, ["model"]); // WM2/Hub3 の判別 (GATT も異なる) に model が必須
+        return SesameBle.use(bleUseOptsFromParams(hub, params), (ble) => {
+          const { view } = wifiViewOf(ble, { companyId: params.companyId });
+          return collectWifiScan(view, { collectMs: params.collectMs });
+        });
+      },
+    },
+    "ble.wifi.setSsid": {
+      summary: t("serve.sum.bleWifiSetSsid"),
+      params: [
+        ...bleTargetParamsModelRequired,
+        { name: "ssid", required: true, schema: S },
+        { name: "companyId", required: false, desc: t("serve.desc.bleCompanyId"), schema: S },
+      ],
+      result: "{ resultCode, resultName }",
+      handler: async ({ hub, params }) => {
+        need(params, ["model", "ssid"]);
+        return SesameBle.use(bleUseOptsFromParams(hub, params), async (ble) => {
+          const { view } = wifiViewOf(ble, { companyId: params.companyId });
+          return bleCommandAck(await view.setWifiSSID(params.ssid));
+        });
+      },
+    },
+    "ble.wifi.setPassword": {
+      summary: t("serve.sum.bleWifiSetPassword"),
+      params: [
+        ...bleTargetParamsModelRequired,
+        { name: "password", required: true, schema: S },
+        { name: "companyId", required: false, desc: t("serve.desc.bleCompanyId"), schema: S },
+      ],
+      result: "{ resultCode, resultName }",
+      handler: async ({ hub, params }) => {
+        need(params, ["model", "password"]);
+        return SesameBle.use(bleUseOptsFromParams(hub, params), async (ble) => {
+          const { view } = wifiViewOf(ble, { companyId: params.companyId });
+          return bleCommandAck(await view.setWifiPassword(params.password));
+        });
+      },
+    },
+    "ble.wifi.connect": {
+      summary: t("serve.sum.bleWifiConnect"),
+      params: [
+        ...bleTargetParamsModelRequired,
+        { name: "companyId", required: false, desc: t("serve.desc.bleCompanyId"), schema: S },
+      ],
+      result: "{ resultCode, resultName }",
+      handler: async ({ hub, params }) => {
+        need(params, ["model"]);
+        return SesameBle.use(bleUseOptsFromParams(hub, params), async (ble) => {
+          const { type, view } = wifiViewOf(ble, { companyId: params.companyId });
+          // Hub3 に connect コマンドは存在しない (CHHub3Device.kt の Wi-Fi 系は SSID/Password の
+          // 設定のみで、適用は本体側)。WM2 だけが CONNECT_WIFI(5) を持つ (CHWifiModule2Device.kt:355-365)。
+          if (type !== "wm2") {
+            throw new RpcError(t("serve.bleWifiConnectWm2Only"), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+          }
+          return bleCommandAck(await view.connectWifi());
+        });
       },
     },
     "ble.register": {
-      summary: "register a factory-reset OS3 BLE device through the daemon host Bluetooth adapter",
+      summary: t("serve.sum.bleRegister"),
       params: [
         { name: "deviceUUID", required: true, schema: S },
         { name: "address", required: false, schema: S },
@@ -675,7 +1038,7 @@ function topLevelEntries() {
       },
     },
     "ble.os2.invoke": {
-      summary: "invoke a registered OS2 BLE operation through the daemon host Bluetooth adapter",
+      summary: t("serve.sum.bleOs2Invoke"),
       params: [
         { name: "op", required: true, schema: S },
         { name: "args", required: false, schema: A },
@@ -705,11 +1068,12 @@ function topLevelEntries() {
           ssmPublicKey: params.ssmPublicKey,
           model: params.model ?? null,
           debug: !!params.debug,
-        }, (ble) => invokePath(ble, params.op, params.args));
+        // fail-closed (P4-2): OS2 公開面 allowlist (ble/index.js OS2_BLE_RPC_ALLOWLIST) で照合。
+        }, (ble) => invokePath(ble, params.op, params.args, OS2_BLE_RPC_ALLOWLIST));
       },
     },
     "ble.os2.register": {
-      summary: "register a factory-reset OS2 BLE device through the daemon host Bluetooth adapter",
+      summary: t("serve.sum.bleOs2Register"),
       params: [
         { name: "deviceUUID", required: true, schema: S },
         { name: "address", required: false, schema: S },
@@ -748,7 +1112,14 @@ function topLevelEntries() {
 // 集合はこちらを単一の真実とし、契約 (x-event-topics) と SDK の型をここから導出する。
 // deviceListChanged (P3-5): biz3TriggerLocker/pubUserDeviceChange (鍵共有・デバイス増減 push —
 // useIotCtrl.js:12,23-25) の fan-out。lockState/deviceUpdate (pubDeviceStateChange 源) とは別ストリーム。
-export const SUBSCRIBABLE_TOPICS = ["lockState", "deviceUpdate", "deviceListChanged"];
+//
+// SURF-16 (= ARCH-07): topic 集合はここが単一定義。daemon.js は STATE_TOPICS /
+// SUBSCRIBABLE_TOPICS を import して使う (旧実装は daemon.js にも同じ配列が手書きされていて、
+// topic 追加時に二重メンテが要った)。
+/** pubDeviceStateChange を源とする state push の topic (同一ストリームの別ラベル — daemon._fanout 参照)。 */
+export const STATE_TOPICS = Object.freeze(["lockState", "deviceUpdate"]);
+/** 購読可能な全 topic。deviceListChanged は pubUserDeviceChange 源の別ストリーム。 */
+export const SUBSCRIBABLE_TOPICS = Object.freeze([...STATE_TOPICS, "deviceListChanged"]);
 
 /**
  * events.subscribe / unsubscribe (daemon に委譲)。
@@ -806,8 +1177,9 @@ export function buildRegistry() {
     for (const op of ops) {
       const gen = GEN_PARAMS[`${ns}.${op}`];
       // 抽出済みなら実 param (名前/required/型) を、無ければ汎用 (params) を出す。
+      // desc は生成側の上書き (SURF-09 の自動注入注記) があればそれを優先する。
       const params = gen
-        ? gen.map((p) => ({ name: p.name, required: p.required, desc: p.tsType, schema: p.schema }))
+        ? gen.map((p) => ({ name: p.name, required: p.required, desc: p.desc ?? p.tsType, schema: p.schema }))
         : [{ name: "(params)", required: false, desc: t("serve.desc.nsParams") }];
       reg.set(`${ns}.${op}`, {
         summary: t("serve.sum.nsOp", { ns, op }),

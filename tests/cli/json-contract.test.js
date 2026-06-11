@@ -150,4 +150,31 @@ describe("CLI --json 出力契約", () => {
     // JSON 封筒ではない (人間向け)
     expect(() => JSON.parse(r.stderr)).toThrow();
   });
+
+  // ---- Phase 4 (SURF-05/24) で追加した CLI 入口の usage 契約 ----
+
+  it("ir remote-add は --json 無しなら exit 2 (接続前に弾く)", () => {
+    const r = runCli(["ir", "remote-add"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("--json");
+  });
+
+  it("ir remote-add-matter は必須オプション欠落で exit 2 (不足一覧を出す)", () => {
+    const r = runCli(["ir", "remote-add-matter"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("--hub3-device-id");
+    expect(r.stderr).toContain("--ir-device-uuid");
+  });
+
+  it("list の直指定は --hub3-device-id / --ir-device-uuid の片方だけなら exit 2", () => {
+    const r = runCli(["list", "--hub3-device-id", "H"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("--ir-device-uuid");
+  });
+
+  it("iot raw は --topic 欠落で exit 2 (接続前に弾く)", () => {
+    const r = runCli(["iot", "raw", "--payload", "00"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("--topic");
+  });
 });

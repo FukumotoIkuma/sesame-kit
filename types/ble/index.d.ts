@@ -6,6 +6,14 @@ export * as wm2 from "./wm2.js";
 export * as hub3 from "./hub3.js";
 export * as dfu from "./dfu.js";
 export * as os2 from "./os2/index.js";
+/** SesameBle (OS3) ファサードの RPC 公開面 (op パス第 1 セグメント)。 */
+export const BLE_RPC_ALLOWLIST: readonly string[];
+/**
+ * SesameOS2Ble ファサードの RPC 公開面 (op パス第 1 セグメント)。
+ * 除外の方針は BLE_RPC_ALLOWLIST と同じ (connect/close/register 系・onStatus は載せない —
+ * 登録は ble.os2.register RPC が担う)。
+ */
+export const OS2_BLE_RPC_ALLOWLIST: readonly string[];
 /**
  * biometric ゲッタが返す限定ビューの型。
  *

@@ -136,6 +136,27 @@ function extractModule(ns) {
   return out;
 }
 
+// SURF-09: daemon (SesameHub3._bindNs) が config/account から自動注入する param。
+// lib 関数のシグネチャ上は必須 (string) でも、RPC 契約としては省略可 — 省略時は daemon が
+// `hub.refreshAccount()` で解決済みの実値を注入する。required:true のままだと SDK/型付き
+// クライアントが「必須なのに値を知らない」矛盾した契約になるため、生成時に上書きする。
+const DAEMON_INJECTED_PARAMS = Object.freeze({
+  companyID: "auto-injected by the daemon from config/account when omitted",
+  subUUID: "auto-injected by the daemon from the logged-in account when omitted",
+});
+
+/**
+ * 名前空間 op の param 配列へ daemon 注入 param の required:false 上書きを適用する (SURF-09)。
+ * @param {Array<{name:string, required:boolean, tsType?:string, schema?:object}>} params
+ */
+function applyDaemonInjectedOverride(params) {
+  return params.map((p) => {
+    const note = DAEMON_INJECTED_PARAMS[p.name];
+    if (!note) return p;
+    return { ...p, required: false, desc: `${p.tsType ?? ""} — ${note}`.trim() };
+  });
+}
+
 /** 生成結果オブジェクトを返す (テストの drift-guard が呼ぶ)。 */
 export async function generateSchema() {
   const result = {};
@@ -145,7 +166,7 @@ export async function generateSchema() {
     const ops = new Set(Array.isArray(mod.NAMESPACE_OPS) ? mod.NAMESPACE_OPS : []);
     const extracted = extractModule(ns);
     for (const [fn, params] of Object.entries(extracted)) {
-      if (ops.has(fn)) result[`${ns}.${fn}`] = params;
+      if (ops.has(fn)) result[`${ns}.${fn}`] = applyDaemonInjectedOverride(params);
     }
   }
   return result;

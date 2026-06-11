@@ -99,6 +99,58 @@ export * as dfu from "./dfu.js";
 export { SesameOS2Ble, SesameOS2BleSession, SesameOS2BleCipher } from "./os2/index.js";
 export * as os2 from "./os2/index.js";
 
+// ---------- RPC 公開面 allowlist (P4-1 段階3 / P4-2) ----------
+//
+// serve の `ble.invoke` / `ble.os2.invoke` はドット区切り op パスでファサードを動的に辿る。
+// 旧実装はブロックリスト (`_`/constructor/prototype) のみの fail-open で、ファサードの全公開面
+// (connect/close/register 等のライフサイクル管理 API や static 面) に到達できた (ARCH-14)。
+// ここで「意図的に RPC へ公開する第 1 セグメント」を allowlist として単一定義し、
+// registry.invokePath は非掲載パスを bad_params で拒否する (fail-closed)。
+//
+// 将来の「BLE 版 NAMESPACE_OPS」(facade メソッド表からの registry 自動生成、P4-1 段階3) も
+// この表を単一の真実として使う。**ファサードに公開メソッドを足したらここにも足すこと**
+// (tests/ble/rpc-allowlist.test.js が「表の全名が実在する」ことを固定している)。
+//
+// 意図的に**載せない**もの (理由):
+//   - connect / close / use / register / registerOnce / connectMany / listNearby / fromDiscovery:
+//     接続ライフサイクルと登録は ble.invoke の SesameBle.use() と ble.register RPC が管理する。
+//     invoke 経由で二重 connect / 切断 / 再登録させない。
+//   - onStatus: 購読 API。戻り値が unsubscribe 関数で 1 往復 RPC では意味を成さない。
+/** SesameBle (OS3) ファサードの RPC 公開面 (op パス第 1 セグメント)。 */
+export const BLE_RPC_ALLOWLIST = Object.freeze([
+  // 制御 verb (CONTROL_OPS 系)
+  "lock", "unlock", "click", "toggle", "autolock",
+  // 状態取得
+  "status", "lastStatus", "lastMechSetting", "lastOpsSetting", "isConnected",
+  // 機種情報・能力
+  "model", "capabilities", "supports",
+  // 履歴・バージョン
+  "history", "deleteHistory", "getVersionTag",
+  // 設定・管理 (LOCK5 固有ガードは各メソッドが実施)
+  "configureLockPosition", "magnet", "opSensorControl", "sendAdvProductType", "setBleTxPower",
+  "reset", "updateFirmware", "resetWifiModule2",
+  // サブファサード (biometric/fingerPrint は getter、script は getter、wifi/hub3 はメソッド)
+  "biometric", "fingerPrint", "script", "wifi", "hub3",
+]);
+
+/**
+ * SesameOS2Ble ファサードの RPC 公開面 (op パス第 1 セグメント)。
+ * 除外の方針は BLE_RPC_ALLOWLIST と同じ (connect/close/register 系・onStatus は載せない —
+ * 登録は ble.os2.register RPC が担う)。
+ */
+export const OS2_BLE_RPC_ALLOWLIST = Object.freeze([
+  // 制御 verb
+  "lock", "unlock", "click", "toggle",
+  // autolock 系 (OS2 は read/update が別メソッド)
+  "autolock", "disableAutolock", "getAutolock",
+  // 状態取得
+  "status", "lastStatus", "loginInfo", "isConnected", "model",
+  // 履歴・バージョン
+  "history", "versionTag",
+  // 設定・管理
+  "configureLockPosition", "updateSetting", "reset", "updateFirmware",
+]);
+
 /**
  * deviceUUID 正規化 (照合用)。
  * @param {string} u

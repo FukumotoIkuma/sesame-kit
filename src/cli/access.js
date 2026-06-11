@@ -95,6 +95,109 @@ async function resolveDeviceUUIDs(hub, ctx, devices, cmdHint) {
 }
 
 /**
+ * BLE enroll (実機タップ/入力の即時収集 → クラウド DB 一括登録) の種別ごとの差分定義。
+ * cards / passcodes で共通のフロー (cards enroll の実装) を再利用するための delegate 表
+ * (SURF-04: passcode は onKeyBoardReceive / passcodeModeSet 系に差し替えるだけで同型)。
+ * @typedef {object} EnrollKind
+ * @property {string} cmdHint resolveDeviceUUIDs の die ヒント
+ * @property {(bio: Record<string, unknown>) => boolean} hasCapability bioCaps 限定ビューに必要メソッドが生えているか
+ * @property {string} notCapableKey 能力なし機種の die メッセージキー
+ * @property {(collect: (id: string|undefined, record: object) => void) => object} delegateFor registerDelegate に渡す delegate
+ * @property {(bio: any, mode: number) => Promise<void>} modeSet 登録モード切替 (1=REGISTER / 0=CONTROL)
+ * @property {(hub: import("../client.js").SesameHub3, deviceUUID: string, records: object[]) => Promise<unknown>} register クラウド DB 登録
+ * @property {string} tapPromptKey 対話時のプロンプト文言キー
+ * @property {string} waitingKey 非対話時の収集待ち文言キー
+ * @property {string} collectedKey 収集結果文言キー
+ * @property {string} noneKey 0 件文言キー
+ * @property {string} registeredKey 登録完了文言キー
+ * @property {string} recordsKey JSON 出力でレコード配列を入れるキー名
+ */
+
+/**
+ * BLE enroll の共通フロー (cards enroll の実装を kind 差し替えで共有する。SURF-04)。
+ *
+ * BLE で対象機を register モードにし、タップ/入力された複数レコードを 1 件ずつ即時収集
+ * (registerDelegate) → クラウド DB へ一括登録する。_LAST 待ちの onEnroll ではなく即時収集
+ * なので、_LAST の到達順/解除順に依存して取りこぼさない。
+ * ⚠️ 実機未検証: _FIRST/_NOTIFY/_LAST の到達順・cardName(hex) は HW で要確認 (biometric.js:839)。
+ *
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {import("../client.js").SesameHub3} hub
+ * @param {Record<string, any>} opts withHub extra.opts (--json 等)
+ * @param {{ device?: string[]|string, timeout?: string }} subOpts
+ * @param {EnrollKind} kind
+ */
+async function runBleEnroll(ctx, hub, opts, subOpts, kind) {
+  const devices = normalizeDevices(subOpts.device);
+  const deviceUUIDs = await resolveDeviceUUIDs(hub, ctx, devices, kind.cmdHint);
+  if (!deviceUUIDs) return;
+  const deviceUUID = deviceUUIDs[0];
+
+  // secretKey / model はクラウドの devices 一覧から解決 (Touch は lock config に無いことが多い)。
+  const list = await hub.listDevices();
+  const dev = Array.isArray(list) ? list.find((d) => d.deviceUUID === deviceUUID) : null;
+  if (!dev) { ctx.die(t("access.err.cards.enroll.deviceNotFound", { deviceUUID }), 2); return; }
+  if (!dev.secretKey) { ctx.die(t("access.err.cards.enroll.noSecretKey", { deviceUUID }), 2); return; }
+
+  const ble = ctx.makeBle({ secretKey: dev.secretKey, deviceUUID, model: dev.deviceModel ?? null, debug: !!opts.debug });
+  // 生体非対応機種なら明示エラー (biometric ゲッタが throw。op を捏造しない)。
+  // さらに bioCaps の限定ビュー (P3-15) に当該 capability のメソッドが無い機種
+  // (例: ssm_touch に passcode 系は無い) も明示エラーにする。
+  // transport は遅延 (NobleTransport は connect() まで noble を開かない) ので構築済みでも leak しない。
+  /** @type {any} */
+  let bio;
+  try { bio = ble.biometric; }
+  catch { ctx.die(t(kind.notCapableKey, { deviceUUID, model: dev.deviceModel ?? "?" }), 2); return; }
+  if (!kind.hasCapability(bio)) {
+    ctx.die(t(kind.notCapableKey, { deviceUUID, model: dev.deviceModel ?? "?" }), 2);
+    return;
+  }
+
+  const collected = new Map(); // id -> record (重複排除)
+  try {
+    await ble.connect();
+    // 1 件ずつ即時収集する (createEnrollCollector は _LAST でしか flush しないため、
+    // _LAST の到達タイミング/unsub 順に依存して取りこぼしうる — 実機未検証 biometric.js:839)。
+    const unsub = bio.registerDelegate(kind.delegateFor((id, record) => {
+      if (id) collected.set(id, record);
+    }));
+    try {
+      await kind.modeSet(bio, 1); // MODE_REGISTER
+      if (ctx.canPrompt()) {
+        await ctx.prompts.promptText(t(kind.tapPromptKey), { required: false, defaultValue: "" });
+      } else {
+        const sec = Math.max(1, Number(subOpts.timeout) || 20);
+        console.error(t(kind.waitingKey, { seconds: sec, deviceUUID }));
+        await new Promise((r) => setTimeout(r, sec * 1000));
+      }
+    } finally {
+      await kind.modeSet(bio, 0).catch(() => {}); // 先に register を抜け (抜ける際の publish も拾う)、
+      unsub();                                    // その後に listener を解除する。
+    }
+  } catch (e) {
+    // die() は process.exit するため finally の close は走らない。明示的に後始末してから die。
+    await kind.modeSet(bio, 0).catch(() => {}); // best-effort で control へ戻す
+    await ble.close().catch(() => {});
+    ctx.die(t("access.err.cards.enroll.bleFailed", { error: /** @type {{message?:string}} */ (e)?.message || String(e) }), 1);
+    return;
+  } finally {
+    await ble.close().catch(() => {});
+  }
+
+  const records = [...collected.values()];
+  if (records.length === 0) {
+    ctx.out(opts.json, () => console.log(t(kind.noneKey)), { ok: true, enrolled: 0, deviceUUID });
+    return;
+  }
+  // クラウド DB へ登録 (cards: レコード毎の updateCardName 委譲 P3-11 / passcodes: postPasscodes 委譲)。
+  const resp = await kind.register(hub, deviceUUID, records);
+  ctx.out(opts.json, () => {
+    console.log(t(kind.collectedKey, { count: records.length, ids: records.map((r) => /** @type {{cardID?:string}} */ (r).cardID).join(", ") }));
+    console.log(t(kind.registeredKey, { count: records.length, deviceUUID }));
+  }, { ok: true, enrolled: records.length, deviceUUID, [kind.recordsKey]: records, response: resp });
+}
+
+/**
  * @param {import("commander").Command} program
  * @param {import("../cli.js").CliCtx} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
@@ -269,78 +372,32 @@ export function registerAccessCommands(program, ctx) {
   //
   // BLE で Touch を register モード (MODE_REGISTER=1, SSMBiometricCard.kt:74) にし、タップされた
   // 複数カードを 1 枚ずつ収集 (registerDelegate.onCardReceive) → クラウド DB へ一括登録
-  // (hub.registerCards = レコード毎の updateCardName 委譲、P3-11)。_LAST 待ちの onEnroll ではなく即時収集なので、
-  // _LAST の到達順/解除順に依存して取りこぼさない。
-  // ⚠️ 実機未検証: _FIRST/_NOTIFY/_LAST の到達順・cardName(hex) は HW で要確認 (biometric.js:839)。
+  // (hub.registerCards = レコード毎の updateCardName 委譲、P3-11)。共通フローは runBleEnroll。
   cards
     .command("enroll")
     .description(t("access.cmd.cards.enroll"))
     .option("-d, --device <uuid>", t("access.opt.cards.enroll.device"))
     .option("--timeout <sec>", t("access.opt.cards.enroll.timeout"))
     .action((subOpts) =>
-      ctx.withHub(async (hub, { opts }) => {
-        const devices = normalizeDevices(subOpts.device);
-        const deviceUUIDs = await resolveDeviceUUIDs(hub, ctx, devices, "sesame access cards enroll --device <uuid>");
-        if (!deviceUUIDs) return;
-        const deviceUUID = deviceUUIDs[0];
-
-        // secretKey / model はクラウドの devices 一覧から解決 (Touch は lock config に無いことが多い)。
-        const list = await hub.listDevices();
-        const dev = Array.isArray(list) ? list.find((d) => d.deviceUUID === deviceUUID) : null;
-        if (!dev) { ctx.die(t("access.err.cards.enroll.deviceNotFound", { deviceUUID }), 2); return; }
-        if (!dev.secretKey) { ctx.die(t("access.err.cards.enroll.noSecretKey", { deviceUUID }), 2); return; }
-
-        const ble = ctx.makeBle({ secretKey: dev.secretKey, deviceUUID, model: dev.deviceModel ?? null, debug: !!opts.debug });
-        // 生体非対応機種なら明示エラー (biometric ゲッタが throw。op を捏造しない)。
-        // transport は遅延 (NobleTransport は connect() まで noble を開かない) ので構築済みでも leak しない。
-        try { void ble.biometric; }
-        catch { ctx.die(t("access.err.cards.enroll.notBiometric", { deviceUUID, model: dev.deviceModel ?? "?" }), 2); return; }
-
-        const collected = new Map(); // cardID -> record (重複排除)
-        try {
-          await ble.connect();
-          // カードを 1 枚ずつ即時収集する (createEnrollCollector は _LAST でしか flush しないため、
-          // _LAST の到達タイミング/unsub 順に依存して取りこぼしうる — 実機未検証 biometric.js:839)。
-          const unsub = ble.biometric.registerDelegate({
-            onCardReceive: (cardID, cardName, cardType) => {
-              if (cardID) collected.set(cardID, { cardID, cardName, cardType });
-            },
-          });
-          try {
-            await ble.biometric.cardModeSet(1); // MODE_REGISTER
-            if (ctx.canPrompt()) {
-              await ctx.prompts.promptText(t("access.enroll.tapPrompt"), { required: false, defaultValue: "" });
-            } else {
-              const sec = Math.max(1, Number(subOpts.timeout) || 20);
-              console.error(t("access.enroll.waiting", { seconds: sec, deviceUUID }));
-              await new Promise((r) => setTimeout(r, sec * 1000));
-            }
-          } finally {
-            await ble.biometric.cardModeSet(0).catch(() => {}); // 先に register を抜け (抜ける際の publish も拾う)、
-            unsub();                                            // その後に listener を解除する。
-          }
-        } catch (e) {
-          // die() は process.exit するため finally の close は走らない。明示的に後始末してから die。
-          await ble.biometric.cardModeSet(0).catch(() => {}); // best-effort で control へ戻す
-          await ble.close().catch(() => {});
-          ctx.die(t("access.err.cards.enroll.bleFailed", { error: /** @type {{message?:string}} */ (e)?.message || String(e) }), 1);
-          return;
-        } finally {
-          await ble.close().catch(() => {});
-        }
-
-        const records = [...collected.values()];
-        if (records.length === 0) {
-          ctx.out(opts.json, () => console.log(t("access.enroll.none")), { ok: true, enrolled: 0, deviceUUID });
-          return;
-        }
-        // クラウド DB へ登録 (レコード毎の updateCardName 委譲、P3-11)。
-        const resp = await hub.registerCards(deviceUUID, records);
-        ctx.out(opts.json, () => {
-          console.log(t("access.enroll.collected", { count: records.length, ids: records.map((r) => r.cardID).join(", ") }));
-          console.log(t("access.enroll.registered", { count: records.length, deviceUUID }));
-        }, { ok: true, enrolled: records.length, deviceUUID, cards: records, response: resp });
-      }),
+      ctx.withHub((hub, { opts }) => runBleEnroll(ctx, hub, opts, subOpts, {
+        cmdHint: "sesame access cards enroll --device <uuid>",
+        // bioCaps 限定ビュー (P3-15): card 能力が無い機種 (例 sesame_face_ai) では
+        // cardModeSet が生えない → 明示エラー。
+        hasCapability: (bio) => typeof bio.cardModeSet === "function",
+        notCapableKey: "access.err.cards.enroll.notBiometric",
+        delegateFor: (collect) => ({
+          /** @param {string} cardID @param {string} cardName @param {number} cardType */
+          onCardReceive: (cardID, cardName, cardType) => collect(cardID, { cardID, cardName, cardType }),
+        }),
+        modeSet: (bio, mode) => bio.cardModeSet(mode),
+        register: (hub2, deviceUUID, records) => hub2.registerCards(deviceUUID, /** @type {any} */ (records)),
+        tapPromptKey: "access.enroll.tapPrompt",
+        waitingKey: "access.enroll.waiting",
+        collectedKey: "access.enroll.collected",
+        noneKey: "access.enroll.none",
+        registeredKey: "access.enroll.registered",
+        recordsKey: "cards",
+      })),
     );
 
   // ===== パスコード =====
@@ -442,6 +499,44 @@ export function registerAccessCommands(program, ctx) {
           console.log(t("access.passcodes.nameUpdated", { keyBoardPassCode: item.keyBoardPassCode ?? "?" }));
         }, { ok: true, item, response: resp });
       }),
+    );
+
+  // sesame access passcodes enroll --device <uuid>  (experimental, BLE 物理入力)
+  //
+  // SURF-04: cards enroll と対称。register モード (PASSCODE_MODE_SET=1) で入力された複数
+  // パスコードを 1 件ずつ収集 (registerDelegate.onKeyBoardReceive — CHPassCodeEventHandlers.kt:28-37
+  // と同じ publish) → hub.registerPasscodes (= syncEnrolledPasscodes → postPasscodes 委譲) で
+  // クラウド DB へ一括登録する。
+  // ⚠️ bioCaps ゲート: passcode 能力はキーパッド搭載機 (TOUCH_PRO 系等) のみ
+  //    (CHSesameBiometricDevice.kt:44-57)。bioCaps に passcode が無い機種 (ssm_touch 等) では
+  //    biometric 限定ビューに passcodeModeSet が生えず、明示エラーで止める (op を捏造しない)。
+  // ⚠️ 実機未検証 (cards enroll と同じ注意。biometric.js:839)。
+  passcodes
+    .command("enroll")
+    .description(t("access.cmd.passcodes.enroll"))
+    .option("-d, --device <uuid>", t("access.opt.passcodes.enroll.device"))
+    .option("--timeout <sec>", t("access.opt.cards.enroll.timeout"))
+    .action((subOpts) =>
+      ctx.withHub((hub, { opts }) => runBleEnroll(ctx, hub, opts, subOpts, {
+        cmdHint: "sesame access passcodes enroll --device <uuid>",
+        hasCapability: (bio) => typeof bio.passcodeModeSet === "function",
+        notCapableKey: "access.err.passcodes.enroll.notCapable",
+        delegateFor: (collect) => ({
+          // passcode の publish delegate は onKeyBoardReceive (CHPassCodeEventHandlers.kt 系)。
+          // record 形は card と同型 {cardID, cardName, cardType} (parseTouchCard 共通) で、
+          // enrolledToPasscodeList が {passwordID, name, nameUUID} へ写像する (nameUUID 透過)。
+          /** @param {string} cardID @param {string} cardName @param {number} cardType */
+          onKeyBoardReceive: (cardID, cardName, cardType) => collect(cardID, { cardID, cardName, cardType }),
+        }),
+        modeSet: (bio, mode) => bio.passcodeModeSet(mode),
+        register: (hub2, deviceUUID, records) => hub2.registerPasscodes(deviceUUID, /** @type {any} */ (records)),
+        tapPromptKey: "access.enroll.passcodes.tapPrompt",
+        waitingKey: "access.enroll.passcodes.waiting",
+        collectedKey: "access.enroll.passcodes.collected",
+        noneKey: "access.enroll.passcodes.none",
+        registeredKey: "access.enroll.passcodes.registered",
+        recordsKey: "passcodes",
+      })),
     );
 
   // sesame access passcodes post --device <uuid> --json <list>

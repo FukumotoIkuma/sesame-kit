@@ -123,6 +123,28 @@ export const KIND = Object.freeze({
   NOT_IMPLEMENTED: "not_implemented",
 });
 
+// BLE デバイスの結果コード (BleResultError.resultName) → JSON-RPC kind 写像 (SURF-11)。
+// resultName の語彙は SesameResultCode (src/ble/protocol.js RESULT: success/invalidFormat/
+// notSupported/resultStorageFail/invalidSig/notFound/unknown/busy/invalidParam/invalidAction。
+// OS2 側 src/ble/os2/protocol.js も同語彙)。タイムアウトは BleResultError ではなく
+// 通常 Error (ble.requestTimeout) で届くため、この表に timeout は現れない。
+//   - 呼び出し形の不正をデバイスが弾いたもの (invalidFormat/invalidParam/invalidAction) → bad_params
+//   - 鍵不一致 (invalidSig = secretKey mismatch) → not_authenticated
+//   - デバイスが明示的に実行を拒否/失敗 (busy/notFound/notSupported/storage/unknown) → rejected
+//     (busy のみ retryable=true: 他操作完了後の再試行で成功し得る)
+/** @type {Record<string, { kind: string, code: number, retryable: boolean }>} */
+const BLE_RESULT_TO_RPC = Object.freeze({
+  invalidFormat: { kind: "bad_params", code: RPC.INVALID_PARAMS, retryable: false },
+  invalidParam: { kind: "bad_params", code: RPC.INVALID_PARAMS, retryable: false },
+  invalidAction: { kind: "bad_params", code: RPC.INVALID_PARAMS, retryable: false },
+  invalidSig: { kind: "not_authenticated", code: RPC.APP_ERROR, retryable: false },
+  busy: { kind: "rejected", code: RPC.APP_ERROR, retryable: true },
+  notFound: { kind: "rejected", code: RPC.APP_ERROR, retryable: false },
+  notSupported: { kind: "rejected", code: RPC.APP_ERROR, retryable: false },
+  resultStorageFail: { kind: "rejected", code: RPC.APP_ERROR, retryable: false },
+  unknown: { kind: "rejected", code: RPC.APP_ERROR, retryable: false },
+});
+
 // ライブラリの SesameError.code → JSON-RPC {kind, code} 写像 (serve は lib に依存してよい)。
 /** @type {Record<string, { kind: string, code: number }>} */
 const SESAME_TO_RPC = Object.freeze({
@@ -172,6 +194,21 @@ export function makeError(id, code, message, kind, data = null) {
 export function errorFromThrow(id, err) {
   if (err instanceof RpcError) {
     return makeError(id, err.code, err.message, err.kind, err.data);
+  }
+  // BLE デバイスの結果コード付きエラー (src/ble/session.js / os2/session.js の BleResultError)。
+  // 旧実装は kind=internal に潰れて resultCode/resultName が RPC 境界で失われていた (SURF-11)。
+  // name 判定にするのは OS3/OS2 両 session の BleResultError が別クラスのため (instanceof 不可。
+  // どちらも {resultCode, resultName, itemCode} を持つ同形契約)。
+  if (err instanceof Error && err.name === "BleResultError") {
+    const e = /** @type {Error & {resultCode?:number, resultName?:string, itemCode?:number|null}} */ (err);
+    const m = (e.resultName && BLE_RESULT_TO_RPC[e.resultName])
+      || { kind: KIND.REJECTED, code: RPC.APP_ERROR, retryable: false }; // unknown(N) 等の未知名は rejected
+    return makeError(id, m.code, String(err.message), m.kind, {
+      bleResultCode: e.resultCode ?? null,
+      bleResultName: e.resultName ?? null,
+      itemCode: e.itemCode ?? null,
+      retryable: m.retryable,
+    });
   }
   // ライブラリのドメインエラー: code を kind へ写像し、retryable / 付随 data を載せる
   // (internal 潰れを回避し、消費者が data.kind / data.retryable で分岐できるようにする)。

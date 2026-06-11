@@ -613,16 +613,27 @@ async function cmdSend(key, options, program) {
 }
 
 /**
- * @param {RemoteOpts} options
+ * @param {RemoteOpts & { hub3DeviceId?: string, irDeviceUuid?: string }} options
  * @param {Program} program
  */
 async function cmdList(options, program) {
+  // SURF-24: config 非依存の直指定 (--hub3-device-id + --ir-device-uuid)。両方そろえば
+  // remote 名解決をスキップして getIRCodesDirect に直行する。片方だけは対象不定なので usage。
+  const direct = !!(options.hub3DeviceId || options.irDeviceUuid);
+  if (direct && !(options.hub3DeviceId && options.irDeviceUuid)) {
+    die(t("cli.listDirectNeedsBoth"), 2);
+  }
   const { configStore } = loadCtx(program);
-  if (configStore.exists()) {
+  if (!direct && configStore.exists()) {
     options.remote = await pickRemoteName(program, configStore, options.remote ?? undefined) || options.remote;
   }
   await withHub(program, async (hub, { opts }) => {
-    const codes = await hub.listKeys(options.remote ?? null);
+    const codes = direct
+      ? await hub.getIRCodesDirect({
+          hub3DeviceId: /** @type {string} */ (options.hub3DeviceId),
+          irDeviceUUID: /** @type {string} */ (options.irDeviceUuid),
+        })
+      : await hub.listKeys(options.remote ?? null);
     out(opts.json, () => {
       if (!Array.isArray(codes) || codes.length === 0) {
         console.log(t("cli.noKeys"));
@@ -1238,6 +1249,87 @@ async function cmdIRRemoteMatch(type, irData, _opts, program) {
       console.log(t("cli.foundMatchingRemotes", { count: matches.length }));
       for (const m of matches) console.log(`  ${JSON.stringify(m)}`);
     }, { count: matches.length, matches });
+  });
+}
+
+/**
+ * --json <file|-> の入力を読む (ファイルパス or "-"=stdin)。
+ * `ir remote-add` / 将来の JSON 投入系コマンドの共通入口。
+ * @param {string} src ファイルパス or "-"
+ * @returns {Promise<string>} 生 JSON 文字列
+ */
+async function readJsonSource(src) {
+  if (src === "-") {
+    if (process.stdin.isTTY) die(t("cli.jsonStdinNotTty"), 2);
+    const chunks = [];
+    for await (const c of process.stdin) chunks.push(c);
+    return Buffer.concat(chunks).toString("utf8").trim();
+  }
+  try {
+    return readFileSync(src, "utf8").trim();
+  } catch (e) {
+    die(t("cli.jsonFileReadFailed", { file: src, message: /** @type {CliError} */ (e).message }), 2);
+    return ""; // unreachable (die は exit)
+  }
+}
+
+/**
+ * `sesame ir remote-add --json <file|->` — リモコンオブジェクトをサーバへ登録 (SURF-05)。
+ * 入力契約: `sesame ir search` / `sesame ir match` の出力 remote オブジェクト (vendor の
+ * remoteDevice 形 — useRemoteCtrl.js addIRRemote が remote をそのまま frame に乗せる) を
+ * **そのまま** 渡せる。最低限 {hub3DeviceId, type, name, irOperation, ...} を含めること
+ * (フィールドは vendor 透過。kit 側で形を捏造しない)。
+ * @param {{ json?: string }} options
+ * @param {Program} program
+ */
+async function cmdIRRemoteAddServer(options, program) {
+  if (!options.json) die(t("cli.irRemoteAddJsonRequired"), 2);
+  const raw = await readJsonSource(/** @type {string} */ (options.json));
+  /** @type {any} */
+  let remote;
+  try { remote = JSON.parse(raw); }
+  catch (e) { die(t("cli.invalidJsonValue", { message: /** @type {CliError} */ (e).message }), 2); }
+  if (!remote || typeof remote !== "object" || Array.isArray(remote)) {
+    die(t("cli.irRemoteAddNotObject"), 2);
+  }
+  await withHub(program, async (hub, { opts }) => {
+    const resp = await hub.addIRRemoteServer(remote);
+    out(opts.json, () => console.log(t("cli.okIrRemoteAdded", { name: remote.name || remote.alias || remote.uuid || "(unnamed)" })),
+      { ok: true, remote, response: resp });
+  });
+}
+
+/**
+ * `sesame ir remote-add-matter` — リモコンを Matter の On/Off デバイスとして Hub3 に登録
+ * (SURF-05 / P3-3 残件。hub.addRemoteToMatter = useRemoteCtrl.js:933-955 フィールド 1:1)。
+ * Matter ペアリング窓 (`sesame iot matter-open`) の開放とセットで使う。実機未検証 (experimental)。
+ * @param {{ hub3DeviceId?: string, irDeviceType?: string, cmdOn?: string, cmdOff?: string,
+ *           irDeviceUuid?: string, irDeviceName?: string }} options
+ * @param {Program} program
+ */
+async function cmdIRRemoteAddMatter(options, program) {
+  // commander は --ir-device-uuid → irDeviceUuid とキャメル化する。vendor フィールド名へ写像。
+  const p = {
+    hub3DeviceId: options.hub3DeviceId,
+    irDeviceType: options.irDeviceType === undefined ? undefined : Number(options.irDeviceType),
+    cmdOn: options.cmdOn,
+    cmdOff: options.cmdOff,
+    irDeviceUUID: options.irDeviceUuid,
+    irDeviceName: options.irDeviceName,
+  };
+  /** @type {string[]} */
+  const missing = [];
+  if (!p.hub3DeviceId) missing.push("--hub3-device-id");
+  if (p.irDeviceType === undefined || Number.isNaN(p.irDeviceType)) missing.push("--ir-device-type");
+  if (!p.cmdOn) missing.push("--cmd-on");
+  if (!p.cmdOff) missing.push("--cmd-off");
+  if (!p.irDeviceUUID) missing.push("--ir-device-uuid");
+  if (!p.irDeviceName) missing.push("--ir-device-name");
+  if (missing.length > 0) die(t("cli.irRemoteAddMatterMissing", { missing: missing.join(" ") }), 2);
+  await withHub(program, async (hub, { opts }) => {
+    const resp = await hub.addRemoteToMatter(/** @type {{hub3DeviceId:string, irDeviceType:number, cmdOn:string, cmdOff:string, irDeviceUUID:string, irDeviceName:string}} */ (p));
+    out(opts.json, () => console.log(t("cli.okIrRemoteAddedMatter", { name: /** @type {string} */ (p.irDeviceName) })),
+      { ok: true, request: p, response: resp });
   });
 }
 
@@ -2360,6 +2452,9 @@ export async function run(argv = process.argv) {
     .action((key, opts) => cmdSend(key, opts, program));
   program.command("list").description(t("cli.descList"))
     .option("--remote <name>", t("cli.optRemoteName"))
+    // SURF-24: config 非依存の直指定 (両方そろえて使う)。
+    .option("--hub3-device-id <uuid>", t("cli.optListHub3DeviceId"))
+    .option("--ir-device-uuid <uuid>", t("cli.optListIrDeviceUuid"))
     .action((opts) => cmdList(opts, program));
   program.command("ping").description(t("cli.descPing"))
     .action((opts) => cmdPing(opts, program));
@@ -2465,6 +2560,20 @@ export async function run(argv = process.argv) {
     .action((type, term, opts) => cmdIRRemoteSearch(type, term, opts, program));
   irCmd.command("match <irType> <irData>").description(t("cli.descIrMatch"))
     .action((type, irData, opts) => cmdIRRemoteMatch(type, irData, opts, program));
+  // SURF-05: `ir search`/`ir match` の出力 remote オブジェクトをそのまま投入できる登録口。
+  irCmd.command("remote-add").description(t("cli.descIrRemoteAdd"))
+    .option("--json <file|->", t("cli.optIrRemoteAddJson"))
+    .addHelpText("after", t("cli.helpIrRemoteAdd"))
+    .action((opts) => cmdIRRemoteAddServer(opts, program));
+  // SURF-05 (P3-3 残件): リモコンの Matter デバイス化。
+  irCmd.command("remote-add-matter").description(t("cli.descIrRemoteAddMatter"))
+    .option("--hub3-device-id <uuid>", t("cli.optMatterHub3DeviceId"))
+    .option("--ir-device-type <type>", t("cli.optMatterIrDeviceType"))
+    .option("--cmd-on <hex>", t("cli.optMatterCmdOn"))
+    .option("--cmd-off <hex>", t("cli.optMatterCmdOff"))
+    .option("--ir-device-uuid <uuid>", t("cli.optMatterIrDeviceUuid"))
+    .option("--ir-device-name <name>", t("cli.optMatterIrDeviceName"))
+    .action((opts) => cmdIRRemoteAddMatter(opts, program));
   irCmd.command("remote-rm [name]").description(t("cli.descIrRemoteRm"))
     .action((name, opts) => cmdIRRemoteRmServer(name, opts, program));
   irCmd.command("remote-rename <alias> [name]").description(t("cli.descIrRemoteRename"))
@@ -2626,7 +2735,10 @@ function maybeHandleBleError(err) {
     code !== "BLE_NO_ADAPTER"
   )
     return false;
-  if (isJsonMode()) console.error(JSON.stringify({ error: e.message, code: 2, bleCode: code }));
+  // SURF-19: BLE 環境エラー (権限/アダプタ/電源/初期化) は実行環境のランタイム障害であり
+  // usage(2) ではない → 終了コード契約 (src/cli/errors.js EXIT) どおり 1。封筒の code は
+  // exit code と一致させ、bleCode (機械可読な BLE 分類) は維持する。
+  if (isJsonMode()) console.error(JSON.stringify({ error: e.message, code: 1, bleCode: code }));
   else console.error(`Error: ${e.message}`);
   if (!isJsonMode() && process.platform === "darwin" && code === "BLE_UNAUTHORIZED") {
     // システム設定 → プライバシーとセキュリティ → Bluetooth を直接開く (人間向け誘導。--json では出さない)。
@@ -2639,6 +2751,6 @@ function maybeHandleBleError(err) {
       console.error(t("cli.bleEnablePrivacy"));
     }
   }
-  process.exitCode = 2;
+  process.exitCode = 1; // SURF-19: ランタイム障害 = 1 (2 は usage 専用)
   return true;
 }

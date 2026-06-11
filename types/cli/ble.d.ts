@@ -85,6 +85,11 @@ export type BleOptions = {
     ak?: string;
     registerBaseUrl?: string;
     serverAuth?: boolean;
+    args?: string;
+    keyIndex?: string;
+    ssmPublicKey?: string;
+    yes?: boolean;
+    companyId?: string;
 };
 /**
  * resolveBleEntry の解決結果。

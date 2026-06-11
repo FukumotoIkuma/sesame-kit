@@ -6,7 +6,8 @@
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from the logged-in account when omitted"
     },
     {
       "name": "timeoutMs",
@@ -24,7 +25,8 @@
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from the logged-in account when omitted"
     },
     {
       "name": "scheduleId",
@@ -46,11 +48,12 @@
   "org.getEmployees": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "timeoutMs",
@@ -95,11 +98,12 @@
   "org.updateEmployee": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "data",
@@ -199,11 +203,12 @@
   "org.getEmployeeGroups": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "timeoutMs",
@@ -217,11 +222,12 @@
   "org.addEmployeeGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "item",
@@ -243,11 +249,12 @@
   "org.updateEmployeeGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "item",
@@ -269,11 +276,12 @@
   "org.removeEmployeeGroups": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "gids",
@@ -313,11 +321,12 @@
   "org.addEmployeeInGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "gid",
@@ -355,11 +364,12 @@
   "org.removeEmployeeInGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "gid",
@@ -400,11 +410,12 @@
   "org.removeEmployeeGroupBindDeviceGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "data",
@@ -426,11 +437,12 @@
   "org.getTags": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "timeoutMs",
@@ -444,11 +456,12 @@
   "org.postTag": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "data",
@@ -470,11 +483,12 @@
   "org.removeTag": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "data",
@@ -496,11 +510,12 @@
   "org.getDeviceGroups": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "timeoutMs",
@@ -514,11 +529,12 @@
   "org.addDeviceGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "name",
@@ -551,11 +567,12 @@
   "org.updateDeviceGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "item",
@@ -577,11 +594,12 @@
   "org.removeDeviceGroups": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "groupIds",
@@ -606,11 +624,12 @@
   "org.addDeviceInGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "gid",
@@ -648,11 +667,12 @@
   "org.removeDeviceInGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "gid",
@@ -711,11 +731,12 @@
   "org.removeDeviceGroupBindUserGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "data",
@@ -758,11 +779,12 @@
   "org.shareDeviceGroupKeysToEmployeeGroup": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "item",
@@ -784,11 +806,12 @@
   "org.getEmployeeDeviceKeys": [
     {
       "name": "subUUID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from the logged-in account when omitted"
     },
     {
       "name": "timeoutMs",
@@ -864,11 +887,12 @@
     },
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "limit",
@@ -900,11 +924,12 @@
   "company.updateCompanyName": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "name",
@@ -942,11 +967,12 @@
     },
     {
       "name": "subUUID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from the logged-in account when omitted"
     },
     {
       "name": "timeoutMs",
@@ -960,11 +986,12 @@
   "company.getPaymentConfig": [
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "timeoutMs",
@@ -990,7 +1017,8 @@
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "timeoutMs",
@@ -1016,7 +1044,8 @@
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "timeoutMs",
@@ -1042,7 +1071,8 @@
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "defaultPaymentMethod",
@@ -1076,7 +1106,8 @@
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "paymentId",
@@ -1110,7 +1141,8 @@
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "subId",
@@ -1176,7 +1208,8 @@
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "email",
@@ -1858,11 +1891,12 @@
     },
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "irDeviceUUID",
@@ -1900,11 +1934,12 @@
     },
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "code",
@@ -2006,11 +2041,12 @@
     },
     {
       "name": "companyID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
-      }
+      },
+      "desc": "string — auto-injected by the daemon from config/account when omitted"
     },
     {
       "name": "code",

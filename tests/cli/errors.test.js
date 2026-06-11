@@ -1,5 +1,6 @@
 // cli/errors.js: エラー/終了コード契約の純ロジックを検証する。
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   EXIT, withStaleHint, commanderErrorInfo, isCommanderError, runtimeExitCode,
   setJsonMode, isJsonMode,
@@ -77,5 +78,20 @@ describe("cli/errors: json mode", () => {
   it("setJsonMode/isJsonMode をトグルできる", () => {
     setJsonMode(true); expect(isJsonMode()).toBe(true);
     setJsonMode(false); expect(isJsonMode()).toBe(false);
+  });
+});
+
+describe("SURF-19: BLE 環境エラーの終了コード契約", () => {
+  // BLE_UNAUTHORIZED 等は実行環境のランタイム障害であり usage(2) ではない → exit 1。
+  // maybeHandleBleError は cli.js の内部関数で、経路を起動するには実 BLE 環境 (権限拒否等)
+  // が必要なため、ここではソースを直接固定する (回帰: かつて exit 2 を返していた)。
+  it("maybeHandleBleError は exit 1 を設定し、--json 封筒も code:1 + bleCode を保つ", () => {
+    const src = readFileSync(new URL("../../src/cli.js", import.meta.url), "utf8");
+    const start = src.indexOf("function maybeHandleBleError");
+    expect(start).toBeGreaterThan(-1);
+    const body = src.slice(start, src.indexOf("\n}", start) + 2);
+    expect(body).toContain("process.exitCode = 1");
+    expect(body).not.toContain("process.exitCode = 2");
+    expect(body).toContain("code: 1, bleCode: code"); // --json 封筒: code は exit code と一致、bleCode 維持
   });
 });

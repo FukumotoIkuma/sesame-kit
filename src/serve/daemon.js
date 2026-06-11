@@ -13,7 +13,7 @@
 //   send はフレーミング固有の直列化 + 背圧を担う (溢れたらその接続を切る)。
 
 import { handleMessage, makeEvent, RpcError, RPC, KIND } from "./jsonrpc.js";
-import { buildRegistry, buildOpenRpcDoc } from "./registry.js";
+import { buildRegistry, buildOpenRpcDoc, STATE_TOPICS, SUBSCRIBABLE_TOPICS } from "./registry.js";
 import { TRANSPORT_ERR } from "../transport.js";
 import { t } from "../i18n.js";
 
@@ -37,17 +37,15 @@ import { t } from "../i18n.js";
  * @property {() => Promise<void>} connect
  * @property {() => Promise<void>} close
  * @property {(cb: () => void) => void} [onReconnect]
+ * @property {() => Promise<unknown>} [refreshAccount] 実 companyID/subUUID を config へ反映 (SURF-09)
  * @property {(items: Array<{deviceUUID: unknown, deviceModel: unknown}>, cb: (msg: unknown) => void) => (() => void)} onDeviceUpdate
  * @property {(cb: (msg: unknown) => void) => (() => void)} [onUserDeviceChange]
  * @property {import("../tokens.js").TokenStore} [tokenStore]
  * @property {{ devices?: Record<string, { deviceUUID: unknown, deviceModel: unknown }>, registerBaseUrl?: string|null }} [config]
  */
 
-// pubDeviceStateChange を源とする state push の topic (同一ストリームの別ラベル — _fanout 参照)。
-const STATE_TOPICS = ["lockState", "deviceUpdate"];
-// 購読可能な全 topic。deviceListChanged (P3-5) は pubUserDeviceChange (デバイス増減 push) を源と
-// する**別ストリーム**なので STATE_TOPICS には含めない (registry.SUBSCRIBABLE_TOPICS と一致)。
-const TOPICS = [...STATE_TOPICS, "deviceListChanged"];
+// topic 集合は registry.js の STATE_TOPICS / SUBSCRIBABLE_TOPICS を単一の真実として import する
+// (SURF-16 = ARCH-07: 旧実装はここに同じ配列が二重定義されていて、topic 追加時にずれ得た)。
 
 /**
  * unknown な throw から安全に message を取り出す (ログ用)。
@@ -128,6 +126,18 @@ export class Daemon {
         await this.hub.connect();
         this.authState = "ok";
         this._log("cloud connected");
+        // SURF-09: 名前空間 op の companyID/subUUID は daemon が hub 既定値を自動注入する契約
+        // (gen-rpc-schema が required:false に上書き)。config の既定 companyID
+        // (ch_CandyhouseMobile) と実アカウントの companyID の食い違いを、起動直後に
+        // biz3GetLoginUser 1 回で解消しておく。失敗は warn ログのみで継続する
+        // (注入値が既定のままになるだけで、明示 params 渡しの呼び出しは影響を受けない)。
+        if (typeof this.hub.refreshAccount === "function") {
+          try {
+            await this.hub.refreshAccount();
+          } catch (e) {
+            console.error(t("serve.refreshAccountFailed", { detail: errMessage(e).slice(0, 160) }));
+          }
+        }
         this._ensureStateSub();
         return;
       } catch (e) {
@@ -380,8 +390,8 @@ export class Daemon {
     try { await this.hub.close(); } catch (e) { this._log("hub.close error:", errMessage(e)); }
   }
 
-  /** 購読可能な topic 一覧 (framing が事前検証に使う)。 */
-  get topics() { return TOPICS; }
+  /** 購読可能な topic 一覧 (framing が事前検証に使う。registry.SUBSCRIBABLE_TOPICS が単一定義)。 */
+  get topics() { return SUBSCRIBABLE_TOPICS; }
 
   /** テスト/イントロスペクション用。 */
   get registry() { return this._registry; }

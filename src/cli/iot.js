@@ -265,6 +265,68 @@ export function registerIotCommands(program, ctx) {
     .option("--nick <name>", t("iot.rmSesame.opt.nick"))
     .option("--model <model>", t("iot.rmSesame.opt.model"))
     .action((options) => runSesameItem(ctx, options, "remove"));
+
+  // ---- iot raw ----
+  // SURF-23: 任意 topic / payload の生 iot cmd 送信 (iot.sendIotCmd / sendIotCmdAwait 委譲)。
+  // 高レベルラッパに無い cmdCode の検証・実験用の脱出口。payload は hex (バイト列を base64 化
+  // して送る) か、それ以外の文字列 (base64 等) をそのまま frame に乗せる。
+  // --await 時は --cmd <n> (応答 push の op = cmdCode echo) が必須。
+  iot
+    .command("raw")
+    .description(t("iot.raw.desc"))
+    .option("--topic <topic>", t("iot.raw.opt.topic"))
+    .option("--payload <data>", t("iot.raw.opt.payload"))
+    .option("--await", t("iot.raw.opt.await"))
+    .option("--cmd <n>", t("iot.raw.opt.cmd"))
+    .option("--device <uuid>", t("iot.raw.opt.device"))
+    .option("--timeout <ms>", t("iot.raw.opt.timeout"))
+    .addHelpText("after", t("iot.raw.help"))
+    .action((options) => {
+      // usage 検証は withHub (config 必須・接続) の前に行う (usage エラーは exit 2 契約)。
+      if (!options.topic) { ctx.die(t("iot.raw.topicRequired"), 2); return undefined; }
+      if (!options.payload) { ctx.die(t("iot.raw.payloadRequired"), 2); return undefined; }
+      const payload = normalizeRawPayload(String(options.payload));
+      const cmd = Number(options.cmd);
+      if (options.await && (!options.cmd || !Number.isInteger(cmd))) {
+        ctx.die(t("iot.raw.cmdRequired"), 2);
+        return undefined;
+      }
+      return ctx.withHub(async (hub, { opts }) => {
+        if (options.await) {
+          const timeoutMs = options.timeout ? Number(options.timeout) : undefined;
+          const msg = await hub.iot.sendIotCmdAwait({
+            topic: options.topic,
+            payload,
+            cmd,
+            deviceId: options.device,
+            timeoutMs,
+          });
+          ctx.out(opts.json, () => {
+            console.log(t("iot.raw.response", { cmd, message: JSON.stringify(msg) }));
+          }, { ok: true, sent: true, awaited: true, cmd, topic: options.topic, response: msg });
+          return;
+        }
+        hub.iot.sendIotCmd({ topic: options.topic, payload });
+        ctx.out(opts.json, () => {
+          console.log(t("iot.raw.sent", { topic: options.topic }));
+        }, { ok: true, sent: true, awaited: false, topic: options.topic, note: "fire-and-forget (応答待ちは --await --cmd <n>)" });
+      });
+    });
+}
+
+/**
+ * `iot raw --payload` の入力を frame の payload 文字列へ正規化する。
+ *   - hex (偶数長の 16 進文字列): バイト列とみなし base64 化 (buildIotPayload の出力形式と同じ。
+ *     vendor frame の payload は base64 — useOperateIoT.js:54-61)。
+ *   - それ以外: そのまま透過 (既に base64 化済みの文字列等。kit 側で形を捏造しない)。
+ * @param {string} raw
+ * @returns {string}
+ */
+function normalizeRawPayload(raw) {
+  if (/^(?:[0-9a-fA-F]{2})+$/.test(raw)) {
+    return Buffer.from(raw, "hex").toString("base64");
+  }
+  return raw;
 }
 
 // ---------- ヘルパ ----------

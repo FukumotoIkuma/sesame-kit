@@ -63,8 +63,9 @@ export async function generateProto() {
     }
     methods.push({ jsonrpc: name, pascal: pascal(name), fields, jsonFields });
   }
-  // rpc.discover を型付きメソッドとして追加 (引数なし)。
-  methods.push({ jsonrpc: "rpc.discover", pascal: "Discover", fields: [], jsonFields: [] });
+  // SURF-22: 旧実装はここで `Discover` を追加していたが、registry の rpc.discover が上のループで
+  // `RpcDiscover` として既に生成されるため同一 op への重複 rpc だった。利用箇所 (tests/clients/
+  // sdk/docs) に `Discover` 参照は無いことを確認の上、deprecated 残置はせず即削除した。
 
   // ---- .proto テキスト ----
   const L = [];

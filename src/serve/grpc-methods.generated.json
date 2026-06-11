@@ -347,6 +347,10 @@
     "method": "status",
     "jsonFields": []
   },
+  "CloudPing": {
+    "method": "cloud.ping",
+    "jsonFields": []
+  },
   "AccountWhoami": {
     "method": "account.whoami",
     "jsonFields": []
@@ -415,6 +419,12 @@
       "cards"
     ]
   },
+  "AccessRegisterPasscodes": {
+    "method": "access.registerPasscodes",
+    "jsonFields": [
+      "passcodes"
+    ]
+  },
   "DeviceHistory": {
     "method": "device.history",
     "jsonFields": []
@@ -443,6 +453,22 @@
   },
   "FirmwareList": {
     "method": "firmware.list",
+    "jsonFields": []
+  },
+  "ConfigSyncLocks": {
+    "method": "config.syncLocks",
+    "jsonFields": []
+  },
+  "ConfigSyncHub3s": {
+    "method": "config.syncHub3s",
+    "jsonFields": []
+  },
+  "ConfigSyncRemotes": {
+    "method": "config.syncRemotes",
+    "jsonFields": []
+  },
+  "ConfigSyncRemoteKeys": {
+    "method": "config.syncRemoteKeys",
     "jsonFields": []
   },
   "WebapiInvoke": {
@@ -552,6 +578,34 @@
       "args"
     ]
   },
+  "BleUpdateFirmware": {
+    "method": "ble.updateFirmware",
+    "jsonFields": []
+  },
+  "BleReset": {
+    "method": "ble.reset",
+    "jsonFields": []
+  },
+  "BlePosition": {
+    "method": "ble.position",
+    "jsonFields": []
+  },
+  "BleWifiScan": {
+    "method": "ble.wifi.scan",
+    "jsonFields": []
+  },
+  "BleWifiSetSsid": {
+    "method": "ble.wifi.setSsid",
+    "jsonFields": []
+  },
+  "BleWifiSetPassword": {
+    "method": "ble.wifi.setPassword",
+    "jsonFields": []
+  },
+  "BleWifiConnect": {
+    "method": "ble.wifi.connect",
+    "jsonFields": []
+  },
   "BleRegister": {
     "method": "ble.register",
     "jsonFields": []
@@ -567,9 +621,5 @@
     "jsonFields": [
       "ak"
     ]
-  },
-  "Discover": {
-    "method": "rpc.discover",
-    "jsonFields": []
   }
 }

@@ -29,7 +29,7 @@
         {
           "name": "subUUID",
           "required": false,
-          "description": "string",
+          "description": "string — auto-injected by the daemon from the logged-in account when omitted",
           "schema": {
             "type": "string"
           }
@@ -60,7 +60,7 @@
         {
           "name": "subUUID",
           "required": false,
-          "description": "string",
+          "description": "string — auto-injected by the daemon from the logged-in account when omitted",
           "schema": {
             "type": "string"
           }
@@ -98,8 +98,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -186,8 +186,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -355,8 +355,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -386,8 +386,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -425,8 +425,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -464,8 +464,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -534,8 +534,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -589,8 +589,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -647,8 +647,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -686,8 +686,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -717,8 +717,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -756,8 +756,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -795,8 +795,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -826,8 +826,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -876,8 +876,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -915,8 +915,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -957,8 +957,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1012,8 +1012,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1101,8 +1101,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1174,8 +1174,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1213,8 +1213,8 @@
       "params": [
         {
           "name": "subUUID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from the logged-in account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1345,8 +1345,8 @@
         },
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1407,8 +1407,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1462,8 +1462,8 @@
         },
         {
           "name": "subUUID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from the logged-in account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1493,8 +1493,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1533,7 +1533,7 @@
         {
           "name": "companyID",
           "required": false,
-          "description": "string",
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1572,7 +1572,7 @@
         {
           "name": "companyID",
           "required": false,
-          "description": "string",
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1611,7 +1611,7 @@
         {
           "name": "companyID",
           "required": false,
-          "description": "string",
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1658,7 +1658,7 @@
         {
           "name": "companyID",
           "required": false,
-          "description": "string",
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1705,7 +1705,7 @@
         {
           "name": "companyID",
           "required": false,
-          "description": "string",
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1784,7 +1784,7 @@
         {
           "name": "companyID",
           "required": false,
-          "description": "string",
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -2755,8 +2755,8 @@
         },
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -2810,8 +2810,8 @@
         },
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -2929,8 +2929,8 @@
         },
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -3022,6 +3022,20 @@
       },
       "x-stability": "stable",
       "x-provenance": "local"
+    },
+    {
+      "name": "cloud.ping",
+      "summary": "verify cloud liveness with one biz3KeepAlive round-trip",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ ok: true, rttMs }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
     },
     {
       "name": "account.whoami",
@@ -3341,7 +3355,7 @@
     },
     {
       "name": "lock.setAutolock",
-      "summary": "set autolock seconds (cloud path; BLE is preferred when available)",
+      "summary": "set autolock seconds. transport:\"cloud\" (default) is unverified on real hardware (ack only); transport:\"ble\" sends ItemCode 11 over BLE and is the reliable path",
       "params": [
         {
           "name": "name",
@@ -3370,7 +3384,7 @@
         {
           "name": "seconds",
           "required": true,
-          "description": "",
+          "description": "0..65535 (0 = disable)",
           "schema": {
             "type": "number"
           }
@@ -3382,12 +3396,56 @@
           "schema": {
             "type": "number"
           }
+        },
+        {
+          "name": "transport",
+          "required": false,
+          "description": "\"cloud\" (default; unverified on real hardware) or \"ble\" (reliable; needs deviceUUID/secretKey/model)",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "cloud",
+              "ble"
+            ]
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
         }
       ],
       "result": {
         "name": "result",
         "schema": {
-          "description": "{ ack, cmd, seconds }",
+          "description": "{ ack, cmd, seconds } (cloud) | { resultCode, resultName, seconds, transport } (ble)",
           "type": "object"
         }
       },
@@ -3692,6 +3750,40 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "access.registerPasscodes",
+      "summary": "[experimental] register read passcodes to the cloud DB (postPasscodes; symmetric with access.registerCards)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "target deviceUUID",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "passcodes",
+          "required": true,
+          "description": "passcode records to register: [{cardID|passwordID, cardName|name, nameUUID?}, ...] (nameUUID = firmware-assigned, from BLE enroll)",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "postPasscodes response (null if passcodes empty)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "device.history",
       "summary": "open/close history",
       "params": [
@@ -3968,6 +4060,89 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "config.syncLocks",
+      "summary": "[experimental] import locks from the device list into the daemon config (writes config.json)",
+      "params": [
+        {
+          "name": "prune",
+          "required": false,
+          "description": "also remove config entries that no longer exist in the device list",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ added, updated, removed }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "config.syncHub3s",
+      "summary": "[experimental] import Hub3s from the device list into the daemon config (writes config.json)",
+      "params": [
+        {
+          "name": "prune",
+          "required": false,
+          "description": "also remove config entries that no longer exist in the device list",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ added, updated, removed }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "config.syncRemotes",
+      "summary": "[experimental] import Hub3s + IR remotes from the device list into the daemon config (writes config.json)",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ hub3: {added,updated,removed}, remotes: {added,updated} }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "config.syncRemoteKeys",
+      "summary": "[experimental] fetch one remote's keys from the server and write them back to the daemon config",
+      "params": [
+        {
+          "name": "remote",
+          "required": false,
+          "description": "remote name in config (default remote when omitted)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ name, keyCount }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "webapi.invoke",
       "summary": "call a biz3 WebAPI proxy function (apiKeyId from config when omitted)",
       "params": [
@@ -4188,12 +4363,28 @@
     },
     {
       "name": "ir.listKeys",
-      "summary": "learned keys of a remote",
+      "summary": "learned keys of a remote (config name, or direct hub3DeviceId+irDeviceUUID)",
       "params": [
         {
           "name": "remote",
           "required": false,
           "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hub3DeviceId",
+          "required": false,
+          "description": "direct target: Hub3 deviceUUID (config-independent; pass together with irDeviceUUID)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irDeviceUUID",
+          "required": false,
+          "description": "direct target: IR remote UUID (config-independent; pass together with hub3DeviceId)",
           "schema": {
             "type": "string"
           }
@@ -5035,6 +5226,738 @@
         "schema": {
           "description": "BLE operation result",
           "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.updateFirmware",
+      "summary": "start BLE firmware update (WM2: OPEN_OTA_SERVER / Hub3: MOVE_TO / OS3 locks: no command sent, SDK no-op path)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ commandSent, resultCode|null, resultName|null }",
+          "type": "object",
+          "properties": {
+            "commandSent": {
+              "type": "boolean"
+            },
+            "resultCode": {
+              "type": "number",
+              "nullable": true
+            },
+            "resultName": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          "required": [
+            "commandSent"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.reset",
+      "summary": "factory-reset an OS3 device over BLE (destructive: invalidates its keys)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object",
+          "properties": {
+            "resultCode": {
+              "type": "number"
+            },
+            "resultName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resultCode",
+            "resultName"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.position",
+      "summary": "configure lock/unlock angles over BLE (configureLockPosition; OS3 Sesame5/6-family locks)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "lockPosition",
+          "required": true,
+          "description": "lock angle (signed 16-bit integer)",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "unlockPosition",
+          "required": true,
+          "description": "unlock angle (signed 16-bit integer)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object",
+          "properties": {
+            "resultCode": {
+              "type": "number"
+            },
+            "resultName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resultCode",
+            "resultName"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.scan",
+      "summary": "scan nearby Wi-Fi SSIDs via WM2/Hub3 BLE (kind auto-detected from model)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": true,
+          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyId",
+          "required": false,
+          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "collectMs",
+          "required": false,
+          "description": "how long to collect SSID publishes in ms (default 8000; Hub3 finishes early on the SSID_LAST marker)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ ssids: [{ssid, rssi}] }",
+          "type": "object",
+          "properties": {
+            "ssids": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "ssid": {
+                    "type": "string"
+                  },
+                  "rssi": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "ssid",
+                  "rssi"
+                ]
+              }
+            }
+          },
+          "required": [
+            "ssids"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.setSsid",
+      "summary": "set Wi-Fi SSID via WM2/Hub3 BLE (kind auto-detected from model)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": true,
+          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssid",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyId",
+          "required": false,
+          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object",
+          "properties": {
+            "resultCode": {
+              "type": "number"
+            },
+            "resultName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resultCode",
+            "resultName"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.setPassword",
+      "summary": "set Wi-Fi password via WM2/Hub3 BLE (kind auto-detected from model)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": true,
+          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "password",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyId",
+          "required": false,
+          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object",
+          "properties": {
+            "resultCode": {
+              "type": "number"
+            },
+            "resultName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resultCode",
+            "resultName"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.connect",
+      "summary": "connect WM2 to the configured Wi-Fi (CONNECT_WIFI; WM2 only)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": true,
+          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyId",
+          "required": false,
+          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object",
+          "properties": {
+            "resultCode": {
+              "type": "number"
+            },
+            "resultName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resultCode",
+            "resultName"
+          ]
         }
       },
       "x-stability": "experimental",
