@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import { aesCmac } from "node-aes-cmac";
 import { t } from "../i18n.js";
-import { ITEM_CODES } from "../itemcodes.js";
+import { ITEM_CODES, WM2_ACTION_CODES } from "../itemcodes.js";
 
 // ---------- 定数 ----------
 
@@ -64,6 +64,42 @@ export function resultName(code) {
 const CCM_TAG_LEN = 4; // candy.h:42
 const MAX_CHUNK_DATA = 19; // 20B パケット - ヘッダ1B (ssm.c:112-127)
 
+// ---------- セッションプロファイル (lock / wm2) ----------
+//
+// SesameOS3 のセッション確立は機種で 2 系統に分かれる。CHWifiModule2Device は CHSesameOS3 の
+// login/register/initial を**オーバーライド**しており、ロック系と非互換 (CHWifiModule2Device.kt:279-321,
+// 521-528)。差分はワイヤ形状そのもの (initial itemCode / login payload / cipher 鍵 / CCM sault) なので、
+// 「どちらの形でしゃべるか」をプロファイルとしてこの層で定義し、session.js が参照する。
+//
+//   lock (既定): SESAME5 系ロック・Hub3・Bot2/Bike2/3・biometric (CHSesameOS3 基底のまま)
+//     - initial itemCode = 14 (SesameItemCode.initial)
+//     - login: 鍵 = CMAC(secretKey, token4)、payload = [LOGIN(2)] ++ 鍵[0:4] (CHSesameOS3LockBase.kt:109-120)
+//     - register data = pubK64 ++ timestamp4 (CHHub3Device.kt:191-194)、登録後鍵 = CMAC(pre16, token4)
+//     - CCM sault = 0x00 ++ token4 → nonce 13B (CHHub3Device.kt:170,203)
+//   wm2: WifiModule2 のみ (CHWifiModule2Device.kt)
+//     - initial itemCode = 13 (WM2ActionCode.INITIAL、kt:521-528/540)
+//     - login: 鍵 = secretKey **生 16B**、payload = [LOGIN_WM2(2)] ++ CMAC(secretKey, token4) **16B 全量**
+//       (kt:314-321: loginTag = AesCmac(secretKey).computeMac(mSesameToken)、cipher 鍵 = secretKey 生)
+//     - register data = pubK64 のみ (timestamp 無し、kt:290)、登録後鍵 = ecdhSecret_pre16 **生**
+//       (kt:295-297: cipher = SesameOS3BleCipher(name, ecdhSecret_pre16, mSesameToken))
+//     - CCM sault = token4 (0x00 を挟まない) → nonce 12B (kt:297,317 sault = mSesameToken)
+export const SESSION_PROFILES = Object.freeze({
+  lock: Object.freeze({ initialItemCode: ITEM_CODES.INITIAL }),       // 14 (SesameProtocols.kt)
+  wm2: Object.freeze({ initialItemCode: WM2_ACTION_CODES.INITIAL }),  // 13 (CHWifiModule2Device.kt:540)
+});
+
+/**
+ * プロファイル名の検証 (lock / wm2 以外を黙って lock 扱いしない)。
+ * @param {string} profile
+ * @returns {"lock"|"wm2"}
+ */
+export function assertProfile(profile) {
+  if (profile !== "lock" && profile !== "wm2") {
+    throw new Error(t("ble.unknownProfile", { profile: String(profile) }));
+  }
+  return profile;
+}
+
 // ---------- セッション鍵 / login ----------
 
 /**
@@ -91,9 +127,12 @@ export function deriveSessionKey(secretKey, token) {
  *   - register 直後: 鍵 = ECDH 共有秘密の先頭 16B (= crypto.js:ecdhSecretPre16, CHHub3Device.kt:163-174,197)。
  *   どちらも CMAC の **メッセージは token4 (4B)** で共通、戻りは 16B。違いは CMAC の鍵だけ。
  *
- * sault も両者共通: sault = 0x00 ++ token4 (CHHub3Device.kt:170,203 / SesameOS3BleCipher.kt:8-19)。
- * sault は CCM nonce の組み立て側 (ccmNonce: count(8B LE) ++ 0x00 ++ token4) で消費するため、
- * この鍵導出関数自体は sault を引数に取らない (session 確立後の暗号化は ccmEncrypt/ccmDecrypt が担う)。
+ * sault も両者共通 (lock profile): sault = 0x00 ++ token4 (CHHub3Device.kt:170,203 /
+ * SesameOS3BleCipher.kt:8-19)。sault は CCM nonce の組み立て側 (ccmNonce(count, ccmSault(profile,
+ * token4))) で消費するため、この鍵導出関数自体は sault を引数に取らない (session 確立後の暗号化は
+ * ccmEncrypt/ccmDecrypt が担う)。
+ * なお wm2 profile はこの関数を **使わない** (登録後鍵 = pre16 生・login 鍵 = secretKey 生、
+ * CHWifiModule2Device.kt:295-297,317。SESSION_PROFILES 参照)。
  *
  * 実装方針: アルゴリズム (16B 鍵 + 4B token → AES-128-CMAC(鍵, token4) で 16B) は login 経路の
  *   deriveSessionKey と完全に同一で、違いは「鍵の出所」だけ。よって CMAC コードパスを二重に
@@ -114,28 +153,52 @@ export function deriveSessionKeyFromEcdh(ecdhSecretPre16, token4) {
 }
 
 /**
- * login コマンドの平文ペイロード = [LOGIN(2)] ++ token16[0:4] (ssm_cmd.c:44-45 / CHSesameOS3LockBase.kt:118-120)。
- * PLAINTEXT セグメントで送る。
- * @param {Buffer} token16 deriveSessionKey の戻り
- * @returns {Buffer} 5B
+ * login コマンドの平文ペイロード (PLAINTEXT セグメントで送る)。プロファイルで形が分かれる:
+ *   - lock: [LOGIN(2)] ++ token16[0:4] = 5B (ssm_cmd.c:44-45 / CHSesameOS3LockBase.kt:118-120)
+ *   - wm2 : [LOGIN_WM2(2)] ++ loginTag **16B 全量** = 17B
+ *           (CHWifiModule2Device.kt:314-321: sendCommand(SesameOS3Payload(LOGIN_WM2, loginTag), plain)。
+ *            loginTag = AesCmac(secretKey 生 16B).computeMac(mSesameToken) で切り詰めない)
+ * LOGIN(2) と WM2ActionCode.LOGIN_WM2(2) は同値なので先頭バイトは共通、続く長さだけが異なる。
+ * @param {Buffer} token16 deriveSessionKey の戻り (lock: session 鍵 / wm2: loginTag = CMAC(secretKey, token))
+ * @param {"lock"|"wm2"} [profile="lock"]
+ * @returns {Buffer} lock: 5B / wm2: 17B
  */
-export function loginPayload(token16) {
+export function loginPayload(token16, profile = "lock") {
+  assertProfile(profile);
+  if (profile === "wm2") return Buffer.concat([Buffer.from([ITEM.LOGIN]), token16]);
   return Buffer.concat([Buffer.from([ITEM.LOGIN]), token16.subarray(0, 4)]);
 }
 
 // ---------- AES-128-CCM (c_ccm.c, ssm.c:80-82/100-104) ----------
 
 /**
- * CCM nonce (13B) = count(8B LE) ++ 0x00 ++ token(4B)。
- * (ssm.h:17-21 / SesameOS3BleCipher.kt:13 + sault=0x00++token)
+ * CCM nonce = count(8B LE) ++ sault。sault はプロファイル依存 (ccmSault):
+ *   - lock: sault = 0x00 ++ token4 → nonce 13B (ssm.h:17-21 / CHHub3Device.kt:170,203)
+ *   - wm2 : sault = token4         → nonce 12B (CHWifiModule2Device.kt:297,317)
+ * SesameOS3BleCipher.kt:13 nonce = encryptCounter.toBytes() (8B LE, DataExtention.kt:114-129) + sault。
  * @param {number|bigint} count
- * @param {Buffer} token4
- * @returns {Buffer} 13B
+ * @param {Buffer} sault ccmSault の戻り (lock 5B / wm2 4B)
+ * @returns {Buffer} 13B (lock) / 12B (wm2)
  */
-function ccmNonce(count, token4) {
+function ccmNonce(count, sault) {
   const c = Buffer.alloc(8);
   c.writeBigUInt64LE(BigInt(count));
-  return Buffer.concat([c, Buffer.from([0x00]), token4]);
+  return Buffer.concat([c, sault]);
+}
+
+/**
+ * CCM sault をプロファイルから組み立てる (SesameOS3BleCipher のコンストラクタ第 3 引数に相当)。
+ *   - lock: "00" + mSesameToken (CHHub3Device.kt:170,203 / CHSesame5 系・Bot2/Bike2 も同形)
+ *   - wm2 : mSesameToken そのまま 4B — 0x00 を挟まない (CHWifiModule2Device.kt:297,317)
+ * @param {"lock"|"wm2"} profile
+ * @param {Buffer} token4 initial token (4B)
+ * @returns {Buffer} lock: 5B / wm2: 4B
+ */
+export function ccmSault(profile, token4) {
+  assertProfile(profile);
+  if (!Buffer.isBuffer(token4) || token4.length !== 4) throw new Error(t("ble.tokenMustBe4Byte"));
+  if (profile === "wm2") return Buffer.from(token4);
+  return Buffer.concat([Buffer.from([0x00]), token4]);
 }
 
 const CCM_AAD = Buffer.from([0x00]); // ssm.c:8
@@ -146,10 +209,11 @@ const CCM_AAD = Buffer.from([0x00]); // ssm.c:8
  * @param {number|bigint} count 送信カウンタ (送信ごと +1)
  * @param {Buffer} token4 initial token
  * @param {Buffer} plaintext 暗号化前フレーム ([item, ...data])
+ * @param {"lock"|"wm2"} [profile="lock"] nonce sault の形 (ccmSault 参照)。既定は従来どおり lock。
  * @returns {Buffer} ciphertext ++ tag(4B)
  */
-export function ccmEncrypt(token16, count, token4, plaintext) {
-  const iv = ccmNonce(count, token4);
+export function ccmEncrypt(token16, count, token4, plaintext, profile = "lock") {
+  const iv = ccmNonce(count, ccmSault(profile, token4));
   const c = crypto.createCipheriv("aes-128-ccm", token16, iv, { authTagLength: CCM_TAG_LEN });
   c.setAAD(CCM_AAD, { plaintextLength: plaintext.length });
   const ct = Buffer.concat([c.update(plaintext), c.final()]);
@@ -162,11 +226,12 @@ export function ccmEncrypt(token16, count, token4, plaintext) {
  * @param {number|bigint} count 受信カウンタ (受信ごと +1)
  * @param {Buffer} token4
  * @param {Buffer} ctWithTag ciphertext ++ tag(4B)
+ * @param {"lock"|"wm2"} [profile="lock"] nonce sault の形 (ccmSault 参照)。既定は従来どおり lock。
  * @returns {Buffer} 復号平文
  */
-export function ccmDecrypt(token16, count, token4, ctWithTag) {
+export function ccmDecrypt(token16, count, token4, ctWithTag, profile = "lock") {
   if (ctWithTag.length < CCM_TAG_LEN) throw new Error(t("ble.ciphertextTooShort"));
-  const iv = ccmNonce(count, token4);
+  const iv = ccmNonce(count, ccmSault(profile, token4));
   const ct = ctWithTag.subarray(0, ctWithTag.length - CCM_TAG_LEN);
   const tag = ctWithTag.subarray(ctWithTag.length - CCM_TAG_LEN);
   const d = crypto.createDecipheriv("aes-128-ccm", token16, iv, { authTagLength: CCM_TAG_LEN });
@@ -570,11 +635,19 @@ export function registrationTimestampBytes(nowMs = Date.now()) {
  *   REGISTRATION(1) を PLAINTEXT 送出し、ファサード SesameBle.register()/registerOnce()
  *   から到達できる。mock vector でテスト済みだが**実機 OS3 検証は未了** (README 参照)。
  *
+ * プロファイル分岐 (P1-6):
+ *   - lock (既定): pubK64 ++ timestamp4 = 68B (CHHub3Device.kt:191-194 / CHSesameOS3LockBase.kt:93)
+ *   - wm2        : **pubK64 のみ** = 64B — timestamp を付けない
+ *                  (CHWifiModule2Device.kt:290: sendCommand(SesameOS3Payload(REGISTER_WM2,
+ *                   EccKey.getPubK().hexStringToByteArray()), plain) — data は公開鍵 64B のみ)
+ *
  * @param {Buffer|string} pubK ECDH 生公開鍵 64B (X‖Y, prefix 無し) または 128hex 文字列。
- * @param {number} [nowMs=Date.now()] エポックミリ秒 (registrationTimestampBytes へ委譲)。
- * @returns {Buffer} 68B (pubK 64B ++ timestamp 4B)。
+ * @param {number} [nowMs=Date.now()] エポックミリ秒 (registrationTimestampBytes へ委譲。wm2 では未使用)。
+ * @param {"lock"|"wm2"} [profile="lock"]
+ * @returns {Buffer} lock: 68B (pubK 64B ++ timestamp 4B) / wm2: 64B (pubK のみ)。
  */
-export function registrationData(pubK, nowMs = Date.now()) {
+export function registrationData(pubK, nowMs = Date.now(), profile = "lock") {
+  assertProfile(profile);
   let pub;
   if (Buffer.isBuffer(pubK)) {
     pub = pubK;
@@ -587,6 +660,8 @@ export function registrationData(pubK, nowMs = Date.now()) {
     throw new Error(t("ble.pubKMustBe64", { len: typeof pubK }));
   }
   if (pub.length !== 64) throw new Error(t("ble.pubKMustBe64", { len: `${pub.length}B` }));
+  // wm2: 公開鍵のみ。timestamp は乗せない (CHWifiModule2Device.kt:290)。
+  if (profile === "wm2") return Buffer.from(pub);
   // timestamp 4B は registrationTimestampBytes に委譲 (toUInt32ByteArray の唯一の実装箇所)。
   return Buffer.concat([pub, registrationTimestampBytes(nowMs)]);
 }

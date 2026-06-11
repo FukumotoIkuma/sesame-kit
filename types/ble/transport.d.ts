@@ -175,15 +175,6 @@ export function createBleTransport(opts?: NobleTransportOpts): NobleTransport;
 export class NobleTransport {
     /** @param {NobleTransportOpts} [opts] */
     constructor(opts?: NobleTransportOpts);
-    /** @type {Noble|null} */
-    /** @type {NoblePeripheral|null} */
-    /** @type {NobleCharacteristic|null} */
-    /** @type {NobleCharacteristic|null} */
-    /** @type {Promise<void>} */
-    /** @type {((reason:any)=>void)|null} */
-    /** @type {((reason:any)=>void)|null} */
-    /** @param {...any} a */
-    _log(...a: any[]): void;
     /**
      * @param {(packet:Buffer)=>void} onPacket notify 1 件ごとに呼ばれる
      * @param {(reason:any)=>void} [onDisconnect] リンク切断時 (相手側/圏外/write 連続失敗) に 1 回だけ呼ばれる。
@@ -200,31 +191,7 @@ export class NobleTransport {
      * @returns {Promise<void>}
      */
     write(bytes: Buffer | Uint8Array): Promise<void>;
-    /**
-     * writeAsync を有限回リトライ。全失敗で _handleDisconnect → 最後のエラーを rethrow。
-     * @param {Buffer} buf
-     * @returns {Promise<void>}
-     */
-    _writeWithRetry(buf: Buffer): Promise<void>;
-    /**
-     * リンク切断 (peripheral 'disconnect' / write 連続失敗) を 1 回だけ session に伝播する。
-     * SDK の onConnectionStateChange STATE_DISCONNECTED 側 (cmdCallBack.clear) に相当。
-     * @param {any} reason 切断理由 (noble の reason 文字列 or write 失敗エラー)
-     */
-    _handleDisconnect(reason: any): void;
     disconnect(): Promise<void>;
-    /** @param {Noble} noble */
-    _waitPoweredOn(noble: Noble): Promise<void>;
-    /**
-     * @param {Noble} noble
-     * @param {{deviceUUID?:string, address?:string, scanTimeoutMs:number}} opts
-     * @returns {Promise<NoblePeripheral>}
-     */
-    _scanForDevice(noble: Noble, { deviceUUID, address, scanTimeoutMs }: {
-        deviceUUID?: string;
-        address?: string;
-        scanTimeoutMs: number;
-    }): Promise<NoblePeripheral>;
 }
 /**
  * noble の characteristic (使用メソッドのみ)。

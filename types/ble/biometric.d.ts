@@ -425,16 +425,6 @@ export class BiometricCommands {
      */
     constructor(session: BiometricSession);
     /**
-     * request の薄いラッパ (将来 timeout 等を一括調整できるよう一箇所に集約)。
-     * @param {number} itemCode
-     * @param {Buffer} data
-     * @returns {Promise<{resultCode:number, payload:Buffer}>}
-     */
-    _req(itemCode: number, data: Buffer): Promise<{
-        resultCode: number;
-        payload: Buffer;
-    }>;
-    /**
      * 登録モード設定。応答後にデバイスが CARD_FIRST/NOTIFY/LAST を push する。
      * @param {number} mode
      */
@@ -536,17 +526,6 @@ export class BiometricCommands {
         resultCode: number;
         payload: Buffer;
     }>;
-    /**
-     * STP 分割転送による一括登録 (cardBatchAdd / passcodeBatchAdd 共通実体)。
-     * SDK CHCardCapableImpl.kt:106-160 / CHPassCodeCapableImpl.kt:52-114 を 1:1 で移植:
-     *   209B ずつに分割し、各パケットを [dataIndex(2B LE)][dataSize(2B LE)][chunk] で送る。
-     *   1 パケットごとに送信完了を待ち (request の Promise が CountDownLatch 相当)、
-     *   次パケットが残るなら 4 秒待つ。
-     * @param {number} stpItemCode STP_ITEM_CODE_CARDS_ADD / STP_ITEM_CODE_PASSCODES_ADD
-     * @param {Buffer} data 全登録データ
-     * @param {(current:number,total:number)=>void} [progress] 進捗コールバック
-     */
-    _batchAdd(stpItemCode: number, data: Buffer, progress?: (current: number, total: number) => void): Promise<void>;
     /**
      * publish 受信を delegate に結線する (session.onPublish へ handleBiometricPublish を登録)。
      * @param {BiometricDelegate} delegate handleBiometricPublish の delegate

@@ -292,7 +292,7 @@ Hub3 は BLE のロック制御 op を持ちませんが、共通の OS3 経路�
 
 ### BLE 経由ファームウェア更新（DFU / OTA）
 
-`lock.updateFirmware({ onProgress })` で BLE OTA を開始します。経路は model で分岐します（SDK と 1:1）。WM2 は `OPEN_OTA_SERVER`（126）を送り（`CHWifiModule2Device.updateFirmware`）、Hub3 / OS3 ロックは `MOVE_TO`（84）を送ります（`CHHub3Device.updateFirmwareBleOnly` / `CHSesameOS3.updateFirmware`）。進捗は publish で届き、payload の先頭 1 バイトが進捗値です。OTA を持たない機種（OS2・Bot/Bike・生体・未知）は op を捏造せず明示エラーを投げます。
+`lock.updateFirmware({ onProgress })` で BLE OTA を開始します。経路は model で分岐します（SDK と 1:1）。WM2 は `OPEN_OTA_SERVER`（126）を送り（`CHWifiModule2Device.updateFirmware`）、`MOVE_TO`（84）を送るのは **Hub3 のみ**です（`CHHub3Device.updateFirmwareBleOnly` — Hub3 専用コマンド）。OS3 ロック（および Bot2 / Bike2/3 / 生体）は**命令を一切送らず**、接続済みデバイスハンドルを返すだけです（`CHSesameOS3.updateFirmware` は no-op のハンドル返し。実際のファーム転送は別 GATT サービス上の Nordic DFU 相当が必要で、本 kit は未実装）。進捗（Hub3/WM2）は publish で届き、payload の先頭 1 バイトが進捗値です。OTA 経路を持たない機種（OS2・未知）は op を捏造せず明示エラーを投げます。
 
 ```js
 await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
@@ -300,7 +300,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
 });
 ```
 
-ファサードは OTA サーバ起動（コマンド応答）の時点で内部の進捗購読を解除します。100% 完了まで進捗を取り続けたい場合は `ble.onMoveToOtaProgress(session, cb)`（Hub3 / OS3 ロック）または `ble.onWM2OtaProgress(session, cb)`（WM2）を直接購読してください。純ロジック層（`updateFirmware` / `updateFirmwareBleOnly` / `updateFirmwareWM2`）も `sesame-kit/ble`（`ble.dfu.*`）から export されており、独自結線に利用できます。実際の DFU バイナリ転送は別 GATT サービスで外部 DFU ライブラリが行い、この層は OTA サーバの起動と進捗報告のみを担当します。
+ファサードは OTA サーバ起動（コマンド応答）の時点で内部の進捗購読を解除します。100% 完了まで進捗を取り続けたい場合は `ble.onMoveToOtaProgress(session, cb)`（Hub3）または `ble.onWM2OtaProgress(session, cb)`（WM2）を直接購読してください。純ロジック層（`updateFirmware` / `updateFirmwareBleOnly` / `updateFirmwareWM2`）も `sesame-kit/ble`（`ble.dfu.*`）から export されており、独自結線に利用できます。実際の DFU バイナリ転送は別 GATT サービスで外部 DFU ライブラリが行い、この層は OTA サーバの起動と進捗報告のみを担当します。
 
 ### OS2 デバイス（SESAME 2 / 3 / 4・Bot1・Bike1）
 

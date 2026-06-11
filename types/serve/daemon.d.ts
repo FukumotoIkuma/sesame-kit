@@ -13,23 +13,8 @@ export class Daemon {
     version: string;
     /** @type {"ok"|"degraded"|"expired"} */
     authState: "ok" | "degraded" | "expired";
-    /** @type {Map<string, Promise<unknown>>} メソッド名→直列化チェーン末尾 */
-    /** @type {Map<Connection, Set<string>>} Connection→購読 topic */
-    /** @type {(() => void)|null} hub 状態 push の単一購読の unsubscribe (張っている時のみ非 null) */
-    /** @type {ReturnType<typeof setTimeout>|null} */
-    /** @type {(() => void)|null} */
-    /** @param {...unknown} a */
-    _log(...a: unknown[]): void;
     openRpcDocument(): Record<string, unknown>;
     start(): void;
-    _connectLoop(): Promise<void>;
-    _hasStoredTokens(): boolean;
-    /**
-     * キャンセル可能な sleep。shutdown 時に即 resolve してループを抜けさせる。
-     * @param {number} ms
-     * @returns {Promise<void>}
-     */
-    _sleep(ms: number): Promise<void>;
     /** @param {Connection} conn */
     addConnection(conn: Connection): void;
     /** @param {Connection} conn */
@@ -61,12 +46,6 @@ export class Daemon {
      * 解決する op** を、複数クライアント同時呼び出しから守る防御。同名 op を 1 並行に絞る。
      */
     /**
-     * @param {string} key
-     * @param {() => Promise<unknown>} run
-     * @returns {Promise<unknown>}
-     */
-    _serialize(key: string, run: () => Promise<unknown>): Promise<unknown>;
-    /**
      * @param {Connection|undefined} conn
      * @param {string[]} topics
      * @returns {{ subscribed: string[] }}
@@ -82,19 +61,12 @@ export class Daemon {
     unsubscribe(conn: Connection | undefined, topics: string[]): {
         subscribed: string[];
     };
-    _anySubscribers(): boolean;
-    /** 状態 push の単一購読を (必要なら) 張る。hub 未接続なら接続時に再試行。 */
-    _ensureStateSub(): void;
-    _reestablishStateSub(): void;
-    _maybeTeardownStateSub(): void;
     /**
      * 状態 push を購読 Connection へ配信する。
      * 注: lockState と deviceUpdate は現状どちらも biz3 の pubDeviceStateChange を源とする
      * (同一ストリームの別ラベル)。両方購読している接続には **1 回だけ** 配信する
      * (最初に購読している topic のラベルで) — 同一イベントの二重配信を避ける。
      */
-    /** @param {unknown} msg */
-    _fanout(msg: unknown): void;
     /** 冪等。受付停止 → hub.close()(=_pendingCleanups 実行) → 解決。 */
     shutdown(): Promise<void>;
     /** 購読可能な topic 一覧 (framing が事前検証に使う)。 */

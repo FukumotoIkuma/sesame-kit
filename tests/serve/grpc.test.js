@@ -19,7 +19,8 @@ function fakeHub() {
     _emit: (m) => duFn && duFn(m),
     unlock: vi.fn(async (n) => ({ ok: true, name: n })),
     getDeviceStatus: vi.fn(async (u) => ({ deviceUUID: u, locked: true })),
-    getDeviceHistory: vi.fn(async (uuids, pageSize) => ({ uuids, pageSize })),
+    // list はオブジェクト配列 [{deviceUUID}] (vendor 確認: DeviceHistory.js:37)。P1-11 回帰防止。
+    getDeviceHistory: vi.fn(async (list, pageSize) => ({ list, pageSize })),
     send: vi.fn(async (remote, key) => ({ remote, key })),
     org: { addEmployees: vi.fn(async (p) => ({ received: p })) },
   };
@@ -79,8 +80,14 @@ describe("gRPC 型付きメソッド", () => {
     handle = await startGrpcFraming(d, { port: 0, token: TOKEN });
     client = makeClient(handle.port);
     const r = await unary(client, "DeviceHistory", { deviceUUID: "u1", pageSize: 5 }, bearer(TOKEN));
-    expect(hub.getDeviceHistory).toHaveBeenCalledWith(["u1"], 5);
-    expect(JSON.parse(r.json)).toMatchObject({ uuids: ["u1"], pageSize: 5 });
+    // P1-11: lib 層へ渡る list はオブジェクト配列 [{deviceUUID}] (DeviceHistory.js:37)。
+    // 裸文字列 ["u1"] を期待していた旧テストはバグを保護していた。
+    expect(hub.getDeviceHistory).toHaveBeenCalledWith([{ deviceUUID: "u1" }], 5);
+    const sentList = hub.getDeviceHistory.mock.calls[0][0];
+    expect(sentList).toHaveLength(1);
+    expect(typeof sentList[0]).toBe("object");
+    expect(sentList[0].deviceUUID).toBe("u1");
+    expect(JSON.parse(r.json)).toMatchObject({ list: [{ deviceUUID: "u1" }], pageSize: 5 });
   });
 
   it("型付き IrSend({remote, key}) がプレーン引数で通る", async () => {

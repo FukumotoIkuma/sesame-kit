@@ -26,7 +26,7 @@ import { BiometricCommands } from "./biometric.js";
 import { Bot2Commands } from "./bot2.js";
 import { WifiModule2, WM2_GATT } from "./wm2.js";
 import { Hub3Commands } from "./hub3.js";
-import { updateFirmwareBleOnly, updateFirmwareWM2 } from "./dfu.js";
+import { updateFirmware as dfuUpdateFirmware, updateFirmwareBleOnly, updateFirmwareWM2 } from "./dfu.js";
 
 import { scanSesames, listNearbyDevices, NobleTransport } from "./transport.js";
 import { signGuestKey } from "../devices.js";
@@ -170,7 +170,14 @@ export class SesameBle {
     const isWm2 = capabilitiesForModel(model).wifiProvisioning;
     this._transport = transport || createBleTransport({ deviceUUID, address, debug, scanTimeoutMs, gatt: isWm2 ? WM2_GATT : undefined });
     // register モードは secretKey 無しで session を構築 (SesameBleSession.register() の契約)。
-    this._session = new SesameBleSession({ transport: this._transport, secretKey: registerMode ? undefined : secretKey, debug });
+    // WM2 (kind===WIFI) はセッション確立がロックと非互換 (initial=13 / 鍵=生16B / sault=token4。
+    // CHWifiModule2Device.kt:279-321,521-528) のため profile "wm2" を渡す (P1-6)。
+    this._session = new SesameBleSession({
+      transport: this._transport,
+      secretKey: registerMode ? undefined : secretKey,
+      debug,
+      profile: isWm2 ? "wm2" : "lock",
+    });
     this._model = model;
     this._caps = capabilitiesForModel(model); // 型ごとの能力 (SDK CHProductModel 準拠)
     this._deviceUUID = deviceUUID;
@@ -363,29 +370,41 @@ export class SesameBle {
 
   /**
    * BLE 経由ファームウェア更新 (DFU/OTA) を開始する。model で経路が分岐する (SDK と 1:1):
-   *   - WM2 (wifiProvisioning)        → OPEN_OTA_SERVER(126) を送る updateFirmwareWM2
-   *                                     (CHWifiModule2Device.kt:450-458)
-   *   - Hub3 / OS3 lock (それ以外の OS3) → MOVE_TO(84) を送る updateFirmwareBleOnly
-   *                                     (CHHub3Device.kt:213-226 / CHSesameOS3.kt:441-449)
+   *   - WM2 (wifiProvisioning)  → OPEN_OTA_SERVER(126) を送る updateFirmwareWM2
+   *                               (CHWifiModule2Device.kt:450-458)
+   *   - Hub3                    → MOVE_TO(84) を送る updateFirmwareBleOnly
+   *                               (CHHub3Device.kt:217-230。MOVE_TO 送出は **Hub3 専用**)
+   *   - OS3 lock / Bot2 / Bike2/3 / biometric
+   *                             → **命令を一切送らず** デバイスハンドル ({session}) を返す
+   *                               dfu.updateFirmware (CHSesameOS3.kt:441-449 の共通 no-op 経路。
+   *                               実際の DFU バイナリ転送は Nordic DFU 相当が別 GATT で行う前提で、
+   *                               本 kit は未実装 — ハンドル返しまで)。
    *
-   * 進捗は publish の payload 先頭バイト (onProgress(progress, body))。応答が来た時点 (OTA サーバ
-   * 起動完了) で内部購読は停止する。100% 完了まで進捗を取り続けたい場合は ble.onMoveToOtaProgress /
-   * ble.onWM2OtaProgress を直接購読する。
+   * 進捗 (Hub3/WM2) は publish の payload 先頭バイト (onProgress(progress, body))。応答が来た時点
+   * (OTA サーバ起動完了) で内部購読は停止する。100% 完了まで進捗を取り続けたい場合は
+   * ble.onMoveToOtaProgress / ble.onWM2OtaProgress を直接購読する。
    *
-   * OTA に対応しない機種 (OS2 系・Bot/Bike/biometric・未知) は明示エラーを投げる (op を捏造しない)。
+   * OTA 経路を持たない機種 (OS2 系・未知) は明示エラーを投げる (op を捏造しない)。
    *
    * @param {{onProgress?:(progress:number|null, body:Buffer)=>void, timeoutMs?:number}} [opts]
-   * @returns {Promise<{resultCode:number, payload:Buffer, session:object}>}
+   * @returns {Promise<{resultCode:number, payload:Buffer, session:object}>
+   *           |{session:import("./session.js").SesameBleSession}}
+   *   Hub3/WM2 はコマンド応答 + session の Promise。OS3 lock 系は同期で {session} (命令無送信)。
    */
   updateFirmware(opts = {}) {
-    // OTA は OS3 系の Hub3 / WM2 / OS3 lock のみ。能力テーブル上は dedicated フラグを持たないので
-    // kind (HUB3 / WIFI / LOCK5) で対象を判定する (mechSetting を autolock 能力で弾くのと同じ流儀)。
+    // 経路は kind で判定する (mechSetting を autolock 能力で弾くのと同じ流儀)。
+    // 旧実装は LOCK5 も MOVE_TO(84) へ流していたが、MOVE_TO はモーター駆動命令の番号域で
+    // SDK は SS5 系に送らない (CHSesameOS3.kt:441-449 は no-op でハンドル返し)。P1-7 で修正。
     const kind = this._caps.kind;
     if (this._caps.wifiProvisioning || kind === KIND.WIFI) {
       return updateFirmwareWM2(this._session, opts);
     }
-    if (kind === KIND.HUB3 || kind === KIND.LOCK5) {
+    if (kind === KIND.HUB3) {
       return updateFirmwareBleOnly(this._session, opts);
+    }
+    if (kind === KIND.LOCK5 || kind === KIND.BIOMETRIC || kind === KIND.BIKE2 || kind === KIND.BIKE3 || kind === KIND.BOT2) {
+      // CHSesameOS3.kt:441-449: コマンド無送信・カウンタ消費無し。接続ハンドルを返すのみ。
+      return dfuUpdateFirmware(this._session);
     }
     throw new Error(t("ble.dfuNotSupported", {
       label: this._caps.label,

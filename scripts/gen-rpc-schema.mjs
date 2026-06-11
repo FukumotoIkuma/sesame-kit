@@ -8,9 +8,12 @@ import ts from "typescript";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+// 名前空間一覧は registry の NS_MODULES が単一真実源 (P1-15: 本スクリプト側の手書きリストに
+// payment が漏れ、payment.* の型が openrpc/proto/SDK 全てでプレースホルダに劣化した再発防止)。
+import { NAMESPACE_MODULE_KEYS } from "../src/serve/registry.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const NS_MODULES = ["schedule", "org", "company", "access", "iot", "presetir"];
+const NS_MODULES = NAMESPACE_MODULE_KEYS;
 
 /** TS の型ノード → JSON Schema。文字列マッチでなく AST のノード種別で判定する。
  *  union はメンバを anyOf/enum で honestly に表し、別名/未知型のみ {} を返す (嘘の型を主張しない)。 */

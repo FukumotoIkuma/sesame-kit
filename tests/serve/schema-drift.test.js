@@ -18,6 +18,20 @@ describe("生成物の drift", () => {
     expect(readFileSync(MAP_PATH, "utf8")).toBe(JSON.stringify(nameMap, null, 2) + "\n");
   });
 
+  // P1-15 再発防止: gen-rpc-schema の名前空間一覧は registry の NS_MODULES
+  // (NAMESPACE_MODULE_KEYS) を import する形に一本化済み。ここでは「registry に名前空間を
+  // 足したのに types/<ns>.d.ts や NAMESPACE_OPS が無く生成対象から脱落する」形の漏れを検出する
+  // (payment が手書きリストから漏れ、6 メソッドの型が params プレースホルダに劣化していた)。
+  it("registry の全名前空間が param schema 生成に現れる (payment 含む)", async () => {
+    const { NAMESPACE_MODULE_KEYS } = await import("../../src/serve/registry.js");
+    const schema = await generateSchema();
+    const covered = new Set(Object.keys(schema).map((k) => k.split(".")[0]));
+    for (const ns of NAMESPACE_MODULE_KEYS) {
+      expect(covered.has(ns), `名前空間 "${ns}" の op が 1 つも生成されていない`).toBe(true);
+    }
+    expect(NAMESPACE_MODULE_KEYS).toContain("payment");
+  });
+
   // 回帰ガード: `Parameters<typeof addSesameToHub3>[1]` のような indexed-access 引数型でも
   // 参照先 op の引数を解決して param schema を出す (extractModule の TypeLiteral 限定で
   // removeSesameFromHub3 が空 (params) に落ちていた drift の再発防止)。

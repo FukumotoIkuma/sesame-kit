@@ -31,8 +31,16 @@ const DEVICE_PRIV_HEX = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1
 const SS5_MECH_STATUS_7B = Buffer.from([0x80, 0x0c, 0x00, 0x00, 0x10, 0x00, 0x02]);
 const SS5_MECH_SETTING_6B = Buffer.from([0x0a, 0x00, 0x14, 0x00, 0x1e, 0x00]);
 
+// Bot2/Bike2 形 (67B) の register 応答先頭 3B = CHSesameBot2MechStatus / CHSesameBike2MechStatus
+// (CHSesameBot2Device.kt:216 / CHSesameBike2Device.kt:110: payload.sliceArray(0..2))。
+//   data[0..1]=batteryRaw=0x0c80(LE), data[2]=flags=0x02 (bit1 isInLockRange)
+const BOT2_MECH_STATUS_3B = Buffer.from([0x80, 0x0c, 0x02]);
+
 /** 工場出荷 (未登録) デバイスを模す mock transport。固定 device 鍵で ECDH を鏡像再現。
- *  registerResponseShape: "hub3"(64B=pubkey 全体) | "ss5"(77B=mechStatus7++mechSetting6++pubkey64)。 */
+ *  registerResponseShape:
+ *    "hub3"(64B=pubkey 全体) | "ss5"(77B=mechStatus7++mechSetting6++pubkey64)
+ *    | "bot2"(67B=mechStatus3++pubkey64、CHSesameBot2Device.kt:216-219 / CHSesameBike2Device.kt:110-113
+ *      の catch 分岐から導出)。 */
 class MockRegisterSesame {
   constructor({ token = TOKEN, regResult = 0, registerResponseShape = "hub3" } = {}) {
     this.token = token;
@@ -79,9 +87,12 @@ class MockRegisterSesame {
         // (cipher はまだ未確立 — registration 応答は平文)。
         //   hub3: payload = devicePubK64 (64B)
         //   ss5 : payload = mechStatus7 ++ mechSetting6 ++ devicePubK64 (77B)
+        //   bot2: payload = mechStatus3 ++ devicePubK64 (67B)
         const regPayload = this.registerResponseShape === "ss5"
           ? Buffer.concat([SS5_MECH_STATUS_7B, SS5_MECH_SETTING_6B, this.devicePubK64])
-          : this.devicePubK64;
+          : this.registerResponseShape === "bot2"
+            ? Buffer.concat([BOT2_MECH_STATUS_3B, this.devicePubK64])
+            : this.devicePubK64;
         this._emitPlain(Buffer.concat([
           Buffer.from([OP.RESPONSE, ITEM.REGISTRATION, this.regResult]),
           regPayload,
@@ -277,6 +288,34 @@ describe("SesameBleSession.register (登録ハンドシェイク)", () => {
     expect(dev.cipherWrites[0][0]).toBe(ITEM.LOCK);
   });
 
+  it("Bot2/Bike2 形 (67B) 応答: 先頭 3B を mechStatus として parse し、payload[3..66] で ECDH 完走 (P1-8)", async () => {
+    // 導出元: CHSesameBot2Device.kt:216-219 / CHSesameBike2Device.kt:110-113 (catch 分岐) —
+    //   mechStatus = CHSesameBot2MechStatus(payload.sliceArray(0..2))
+    //   ecdhSecretPre16 = EccKey.ecdh(payload.sliceArray(3..66)).sliceArray(0..15)
+    const dev = new MockRegisterSesame({ registerResponseShape: "bot2" });
+    const session = new SesameBleSession({ transport: dev });
+    const res = await session.register({ deviceUUID: "BOT2-1", productType: "bot_2" });
+
+    // payload[3..66] を device pubkey として ECDH → secretKey = pre16 hex (Hub3/SS5 形と同じ導出)。
+    const expectedPre16 = ecdhSecretPre16(dev.ecdh, dev.clientPubK64);
+    expect(res.secretKey).toBe(expectedPre16.toString("hex"));
+    expect(session.isLoggedIn).toBe(true);
+
+    // 先頭 3B mechStatus が parse されキャッシュへ (3B → parseMechStatusBot: flags=data[2])。
+    expect(session.lastStatus).not.toBeNull();
+    expect(session.lastStatus.isInLockRange).toBe(true);
+    expect(session.lastStatus.state).toBe("locked");
+    expect(session.lastStatus.batteryRaw).toBe(0x0c80);
+    expect(session.lastStatus.position).toBeNull(); // Bot/Bike に position/target は無い
+    // mechSetting は同梱されない (67B 形に mechSetting 領域は無い)。
+    expect(session.lastMechSetting).toBeNull();
+
+    // cipher セッションが確立し request が暗号往復する (sessionKey = CMAC(pre16, token) は lock 共通)。
+    const r = await session.request(ITEM.CLICK, Buffer.from([0x00, 0x0e]));
+    expect(r.resultCode).toBe(0);
+    expect(dev.cipherWrites[0][0]).toBe(ITEM.CLICK);
+  });
+
   it("SS5 形 (77B) と Hub3 形 (64B) は同一 device 鍵なら同じ secretKey を導く", async () => {
     const hub3 = new MockRegisterSesame({ registerResponseShape: "hub3" });
     const ss5 = new MockRegisterSesame({ registerResponseShape: "ss5" });
@@ -296,7 +335,7 @@ describe("SesameBleSession.register (登録ハンドシェイク)", () => {
     expect(sSs5.lastMechSetting).not.toBeNull();
   });
 
-  it("register 応答が 64/77 以外の長さなら registerDevicePubKeyLen で reject", async () => {
+  it("register 応答が 64/67/77 以外の長さなら registerDevicePubKeyLen で reject", async () => {
     // 応答 payload を 50B にする変則 transport。
     class BadLenTransport extends MockRegisterSesame {
       write(seg) {

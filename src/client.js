@@ -74,6 +74,7 @@ import * as iot from "./iot.js";
 import * as presetir from "./presetir.js";
 import * as payment from "./payment.js";
 import { setAutolock as setAutolockRaw } from "./lock.js";
+import { subscribeChunks, timeoutError } from "./util.js";
 import { t } from "./i18n.js";
 
 /**
@@ -462,39 +463,35 @@ export class SesameHub3 {
    */
   async listDevices({ timeoutMs = 10_000 } = {}) {
     const ws = this._ensureConnected();
-    /** @type {(msg: import("./transport.js").WsMessage) => void} */
-    let resolveGot;
-    /** @type {Promise<import("./transport.js").WsMessage>} */
-    const got = new Promise((resolve) => { resolveGot = resolve; });
-    /** @param {import("./transport.js").WsMessage} msg */
-    const listener = (msg) => {
-      if (msg.action === ACTION_TYPES.BIZ3_MANAGE_DEVICE && msg.op === "PubedCompanyDevice") {
-        resolveGot(msg);
-      }
-    };
-    // 3rd-pass L-3: onMessage の戻り unsubscribe を必ず呼んで listener leak を防ぐ
-    // (daemon 用途で listDevices を繰り返し呼ぶと累積していた)
-    const off = ws.onMessage(listener);
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let timeoutId;
-    try {
-      ws.send({
+    // biz3 PubedCompanyDevice は page 単位 push (vendor 確認: useManageDevice.js:36-55):
+    //   message.data = { totalPage, data: { list, page } }
+    // page===1 で全置換、page>1 で追記、totalPage===page で確定。最初の push で即 resolve
+    // すると 1 ページ超のアカウントで一覧が先頭ページに切り詰められる (P1-13)。
+    // 同一プロトコルの devices.js getUserDevices (PubedUserDevice) と同型の実装。
+    /** @type {DeviceInfo[]} */
+    let acc = [];
+    return subscribeChunks(ws, {
+      sendFrame: {
         action: ACTION_TYPES.BIZ3_MANAGE_DEVICE,
         op: "getCompanyDevice",
         companyID: this._companyID,
-      });
-      /** @type {Promise<never>} */
-      const timeout = new Promise((_, rej) => {
-        timeoutId = setTimeout(() => rej(new Error(t("domain.client.getCompanyDeviceTimeout"))), timeoutMs);
-      });
-      const msg = await Promise.race([got, timeout]);
-      // data.data.list は biz3 の動的応答ペイロード。device レコード配列として読む。
-      const payload = /** @type {{ data?: { data?: { list?: import("./config.js").DeviceRecord[] } } }} */ (msg);
-      return payload?.data?.data?.list || [];
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
-      off();
-    }
+      },
+      timeoutMs,
+      onTimeout: () => timeoutError(t("domain.client.getCompanyDeviceTimeout")),
+      result: () => acc,
+      subscriptions: [{
+        key: `${ACTION_TYPES.BIZ3_MANAGE_DEVICE}:PubedCompanyDevice`,
+        /** @param {any} msg @param {(err?: Error) => void} finish */
+        onMessage: (msg, finish) => {
+          const totalPage = msg?.data?.totalPage;
+          const inner = msg?.data?.data ?? {};
+          const page = inner.page ?? 1;
+          acc = page === 1 ? [...(inner.list ?? [])] : [...acc, ...(inner.list ?? [])];
+          // totalPage が無ければ単一 chunk とみなし即完了 (vendor も totalPage===page で確定)。
+          if (typeof totalPage !== "number" || page >= totalPage) finish();
+        },
+      }],
+    });
   }
 
   // ---------- devices → config 同期 (ドメイン操作) ----------
@@ -592,10 +589,12 @@ export class SesameHub3 {
   async syncRemotesFromServer(hub3Name, irType) {
     this._ensureConnected();
     const configStore = this._requireConfigStore("syncRemotesFromServer");
-    const list = /** @type {Array<{irDeviceUUID?: string, uuid?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null, irOperation?: string}>} */ (
-      await this.listIRRemotes(irType)
+    // P1-12: listIRRemotes は {list, pagination} を返す。config へ渡すのは一覧本体のみ。
+    const { list } = await this.listIRRemotes(irType);
+    return configStore.syncRemotesFromServer(
+      /** @type {Array<{irDeviceUUID?: string, uuid?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null, irOperation?: string}>} */ (list),
+      hub3Name,
     );
-    return configStore.syncRemotesFromServer(list, hub3Name);
   }
 
   /**
@@ -738,8 +737,12 @@ export class SesameHub3 {
   }
 
   /**
+   * 登録済み IR リモコン一覧 (1 ページ分)。
+   * 次ページは戻り値 pagination の currentPage+1 を page に渡す (vendor loadMoreRemotes,
+   * useRemoteCtrl.js:431-441 と同じ読み方)。
    * @param {number} type irType
    * @param {{ page?: number, pageSize?: number }} [opts]
+   * @returns {Promise<import("./ir.js").RemoteListPage>}
    */
   async listIRRemotes(type, { page, pageSize } = {}) {
     const ws = this._ensureConnected();
@@ -747,8 +750,10 @@ export class SesameHub3 {
   }
 
   /**
+   * プリセット IR リモコン検索 (最大 1000 件)。
    * @param {number} type irType
    * @param {string} searchTerm
+   * @returns {Promise<import("./ir.js").RemoteListPage>}
    */
   async searchPresetIRRemotes(type, searchTerm) {
     const ws = this._ensureConnected();

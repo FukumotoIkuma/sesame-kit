@@ -60,6 +60,8 @@ export default {
     "domain.ir.subscribeIRDataFailed": "subscribeIRData failed: {detail}",
     "domain.ir.subscribeIRModeFailed": "subscribeIRMode failed: {detail}",
     "domain.ir.learnTimeout": "learn timeout (no IR captured)",
+    "domain.ir.learnFailed": "IR learn failed: {detail}",
+    "domain.ir.learnEmptyWaveform": "IR learn returned an empty waveform (nothing captured)",
 
     // ---- devices.js ----
     "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",
@@ -158,6 +160,8 @@ export default {
     "domain.ir.subscribeIRDataFailed": "subscribeIRData failed: {detail}",
     "domain.ir.subscribeIRModeFailed": "subscribeIRMode failed: {detail}",
     "domain.ir.learnTimeout": "learn timeout (no IR captured)",
+    "domain.ir.learnFailed": "IR 学習に失敗しました: {detail}",
+    "domain.ir.learnEmptyWaveform": "IR 学習で空の波形が返されました (何もキャプチャされていません)",
 
     // ---- devices.js ----
     "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",

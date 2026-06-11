@@ -116,8 +116,6 @@ export class Hub3Commands {
     constructor({ session }?: {
         session: import("./session.js").SesameBleSession;
     });
-    /** @type {Set<(parsed:any)=>void>} */
-    /** @type {(() => void)|null} session publish 中継の unsubscribe。 */
     /** Hub3 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。 @param {(parsed:any)=>void} fn */
     onPublish(fn: (parsed: any) => void): () => boolean;
     /** 購読解除 (session の publish 中継を外す)。 */

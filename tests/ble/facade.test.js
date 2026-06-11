@@ -49,6 +49,48 @@ class MockSesame {
 const LOCKED = Buffer.from([0x70, 0x17, 0, 0, 0, 0, 0b010]);
 const UNLOCKED = Buffer.from([0x70, 0x17, 0, 0, 0, 0, 0b100]);
 
+/**
+ * WM2 profile の鏡像 mock。導出元: CHWifiModule2Device.kt:314-321 (login override) /
+ * :521-528 (INITIAL=13) / :539-541 (WM2ActionCode) / SesameOS3BleCipher.kt:8-32 (sault=token4)。
+ * ロックと違い initial itemCode=13、cipher 鍵 = secretKey **生 16B**、CCM sault = token4 (nonce 12B)。
+ * バイト列の固定ベクタ検証は wm2-session.test.js が担い、ここはファサード配線 (profile "wm2" が
+ * kind===WIFI で自動選択され handshake が成立すること) の検証に使う。
+ */
+class MockWM2 {
+  constructor() {
+    this.secret = Buffer.from(SECRET, "hex");
+    this.token = Buffer.from([9, 9, 9, 9]);
+    this.asm = new SegmentAssembler();
+    this.encCount = 0; this.decCount = 0;
+    this.onPacket = null; this.lastCommand = null; this.disconnected = false;
+  }
+  connect(onPacket) {
+    this.onPacket = onPacket;
+    // initial publish は WM2ActionCode.INITIAL = 13 (CHWifiModule2Device.kt:521,540)
+    this._emitPlain(Buffer.concat([Buffer.from([OP.PUBLISH, 13]), this.token]));
+    return Promise.resolve();
+  }
+  write(seg) {
+    const a = this.asm.feed(Buffer.from(seg));
+    if (!a) return;
+    let frame;
+    if (a.type === SEG.CIPHERTEXT) { frame = ccmDecrypt(this.secret, this.decCount, this.token, a.data, "wm2"); this.decCount++; }
+    else frame = a.data;
+    const item = frame[0];
+    // login = [LOGIN_WM2(2)] ++ CMAC(secretKey, token) 16B 全量 = 17B 平文 (kt:316-318)
+    if (a.type === SEG.PLAINTEXT && item === 2) {
+      if (frame.length !== 17) throw new Error(`wm2 login frame must be 17B, got ${frame.length}`);
+      this._emitCipher(Buffer.from([OP.RESPONSE, 2, 0]));
+      return;
+    }
+    this.lastCommand = { item, data: Buffer.from(frame.subarray(1)) };
+    this._emitCipher(Buffer.from([OP.RESPONSE, item, 0x00]));
+  }
+  disconnect() { this.disconnected = true; return Promise.resolve(); }
+  _emitPlain(f) { for (const s of splitSegments(f, SEG.PLAINTEXT)) this.onPacket(s); }
+  _emitCipher(f) { const ct = ccmEncrypt(this.secret, this.encCount, this.token, f, "wm2"); this.encCount++; for (const s of splitSegments(ct, SEG.CIPHERTEXT)) this.onPacket(s); }
+}
+
 describe("SesameBle facade", () => {
   it("connect → unlock → autolock → close", async () => {
     const dev = new MockSesame();
@@ -157,8 +199,9 @@ describe("SesameBle facade", () => {
   });
 
   it("setBleTxPower は Hub3/WM2/OS2 では型エラー (OS3 lock + biometric のみ)", async () => {
+    // wm_2 は profile "wm2" (initial=13/生鍵/sault=token4) で handshake するため専用 mock を使う (P1-6)。
     for (const model of ["hub_3", "wm_2", "sesame_2", "bot_2", "bike_2"]) {
-      const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: model === "wm_2" ? new MockWM2() : new MockSesame() });
       await ble.connect();
       expect(() => ble.setBleTxPower(0), model).toThrow();
       await ble.close();
@@ -166,8 +209,11 @@ describe("SesameBle facade", () => {
   });
 
   it("reset は RESET(104) を空ペイロードで送り全 OS3 機種で使える", async () => {
+    // wm_2 は profile "wm2" の handshake (P1-6) なので専用 mock。なお Kotlin の WM2 は reset() も
+    // RESET_WM2(18) にオーバーライドしており (CHWifiModule2Device.kt:437-448、WifiModule2.reset が担当)、
+    // ファサード reset() が WM2 にも RESET(104) を送る現挙動は SDK と乖離している (P1 範囲外、§9 候補)。
     for (const model of ["sesame_5", "bot_2", "bike_2", "bike_3", "ssm_touch", "hub_3", "wm_2"]) {
-      const dev = new MockSesame();
+      const dev = model === "wm_2" ? new MockWM2() : new MockSesame();
       const ble = new SesameBle({ secretKey: SECRET, model, transport: dev });
       await ble.connect();
       const r = await ble.reset();

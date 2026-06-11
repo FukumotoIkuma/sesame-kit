@@ -11,7 +11,7 @@ import grpc from "@grpc/grpc-js";
 import protoLoader from "@grpc/proto-loader";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { tokenMatches } from "./token.js";
+import { tokenMatches, parseBearer } from "./token.js";
 import { errorFromThrow } from "../jsonrpc.js";
 import { t } from "../../i18n.js";
 
@@ -69,7 +69,9 @@ function grpcStatusFor(kind) {
 function metaToken(call) {
   const md = call.metadata?.get?.("authorization");
   const raw = md && md[0] ? String(md[0]) : "";
-  return /^Bearer\s+(.+)$/i.exec(raw)?.[1] || "";
+  // Bearer 解析は token.js の parseBearer に一本化 (REFACTORING_PLAN P1-17)。
+  // 旧 `/^Bearer\s+(.+)$/i` は token.js が ReDoS を実測して廃止した禁止パターンの再実装だった。
+  return parseBearer(raw) ?? "";
 }
 
 /**

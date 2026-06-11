@@ -379,17 +379,17 @@ export class SesameClient {
 
   readonly payment = {
     /** @experimental unverified — may change without notice. */
-    changeDefaultPayment: (params: Record<string, unknown>): Promise<unknown> => this._call("payment.changeDefaultPayment", params) as Promise<unknown>,
+    changeDefaultPayment: (params: { customerId?: string; companyID?: string; defaultPaymentMethod?: string; timeoutMs?: number }): Promise<unknown> => this._call("payment.changeDefaultPayment", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getClientSecret: (params: Record<string, unknown>): Promise<unknown> => this._call("payment.getClientSecret", params) as Promise<unknown>,
+    getClientSecret: (params: { customerId?: string; companyID?: string; timeoutMs?: number }): Promise<unknown> => this._call("payment.getClientSecret", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getDevApiInfo: (params: Record<string, unknown>): Promise<unknown> => this._call("payment.getDevApiInfo", params) as Promise<unknown>,
+    getDevApiInfo: (params: { customerId?: string; companyID?: string; email?: string; update?: boolean; timeoutMs?: number }): Promise<unknown> => this._call("payment.getDevApiInfo", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getPaymentMethods: (params: Record<string, unknown>): Promise<unknown> => this._call("payment.getPaymentMethods", params) as Promise<unknown>,
+    getPaymentMethods: (params: { customerId?: string; companyID?: string; timeoutMs?: number }): Promise<unknown> => this._call("payment.getPaymentMethods", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    payUpdateLevel: (params: Record<string, unknown>): Promise<unknown> => this._call("payment.payUpdateLevel", params) as Promise<unknown>,
+    payUpdateLevel: (params: { customerId?: string; companyID?: string; subId?: string; subscriptionId?: string; level?: number; isUpgrade?: boolean; isCancel?: boolean; timeoutMs?: number }): Promise<unknown> => this._call("payment.payUpdateLevel", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    removePayment: (params: Record<string, unknown>): Promise<unknown> => this._call("payment.removePayment", params) as Promise<unknown>,
+    removePayment: (params: { customerId?: string; companyID?: string; paymentId?: string; timeoutMs?: number }): Promise<unknown> => this._call("payment.removePayment", params) as Promise<unknown>,
   };
 
   readonly presetir = {

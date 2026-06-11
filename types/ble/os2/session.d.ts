@@ -27,7 +27,7 @@ export class SesameOS2BleSession {
      * @param {{
      *   transport: BleTransport,
      *   secretKey?: string|Buffer,        // 16B ロック共通鍵 (登録済みデバイスの login に必須)
-     *   keyIndex?: string|Buffer,         // userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う
+     *   keyIndex?: string|Buffer,         // userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。既定 "0000" (2B)。空は明示エラー
      *   ssmPublicKey?: string|Buffer,     // デバイス公開鍵 64B (sesame2KeyData.sesame2PublicKey)。login の ECDH 相手
      *   debug?: boolean,
      *   defaultTimeoutMs?: number,
@@ -48,24 +48,6 @@ export class SesameOS2BleSession {
         debug?: boolean;
         defaultTimeoutMs?: number;
     });
-    /** @type {Buffer|null} */
-    /** @type {import("node:crypto").ECDH|null} */
-    /** @type {Buffer|null} */
-    /** @type {SesameOS2BleCipher|null} */
-    /** @type {import("./session.js").Os2Waiter|null} */
-    /** @type {import("./session.js").Os2Waiter|null} */
-    /** @type {import("./session.js").Os2Waiter|null} */
-    /** @type {Map<number, Array<{resolve:(v:{resultCode:number, payload:Buffer})=>void, reject:(e:Error)=>void, timer:any}>>} item → FIFO */
-    /** @type {Set<(status:any)=>void>} */
-    /** @type {Set<(pub:{itemCode:number, payload:Buffer})=>void>} */
-    /** @type {any} */
-    /** @type {ReturnType<typeof import("./protocol.js").parseLoginResponse>|null} */
-    /** @type {((signPayloadHex:string)=>Promise<string>)|null} */
-    /** @type {Function|null} */
-    /** @type {import("node:crypto").ECDH|null} */
-    /** @param {...any} a */
-    _log(...a: any[]): void;
-    _isBusy(): boolean;
     get lastStatus(): any;
     get lastLoginResponse(): {
         systemTime: number;
@@ -111,7 +93,11 @@ export class SesameOS2BleSession {
      *   5. registerKey/ownerKey/sessionKey = deriveRegisterKeys(pre16, serverToken, mSesameToken)。
      *      cipher = (sessionKey, sessionToken)。
      *   6. payload = sig1[0:4] ++ appPubKey64 ++ serverToken、CREATE REGISTRATION を PLAINTEXT 送出。
-     *   7. login publish (登録完了) を待ち、{deviceUUID, secretKey(=pre16 hex), ownerKey, sesamePublicKey} を返す。
+     *   7. login publish (登録完了) を待ち、{deviceUUID, secretKey(=ownerKey hex), keyIndex("0000"),
+     *      ecdhSecret(=pre16 hex), ownerKey, sesamePublicKey} を返す。
+     *      SDK が登録完了時に永続化するのは keyIndex="0000" / secretKey=ownerKey.toHexString()
+     *      (CHSesame2Device.kt:462-469 CHDevice(..., "0000", ownerKey.toHexString(), ...)) であり、
+     *      次回 login の CMAC(secretKey, ...) も ownerKey を使う (CHSesame2Device.kt:233-252)。
      *
      * @param {{deviceUUID?:string, productType?:(string|number),
      *          registerServer?:(req:{deviceUUID:string, ak:(Buffer|undefined), mSesameToken:Buffer, ER:string,
@@ -127,8 +113,10 @@ export class SesameOS2BleSession {
      *     (crypto.js makeLocalRegisterServer) はこの appPubK64 を ak に採用する。本番のサーバ実装は
      *     ak フィールド (または appPubK64) を使う/無視するを選べる。ak は EccKey.getRegisterAK() 相当
      *     (省略時は appPubK64 をローカル registerServer が使う)。
-     * @returns {Promise<{deviceUUID:string, secretKey:string, ownerKey:string,
-     *                    sesamePublicKey:string, serverSecret:string}>}
+     * @returns {Promise<{deviceUUID:string, secretKey:string, keyIndex:string, ownerKey:string,
+     *                    ecdhSecret:string, sesamePublicKey:string, serverSecret:string}>}
+     *   secretKey は **ownerKey の hex** (次回 login にそのまま使う鍵)。ecdhSecret は ECDH pre16 の
+     *   hex (登録ハンドシェイク中間値。login には使えない — CMAC(pre16,…) は invalidSig になる)。
      */
     register({ deviceUUID, productType, registerServer, ak }?: {
         deviceUUID?: string;
@@ -152,43 +140,12 @@ export class SesameOS2BleSession {
     }): Promise<{
         deviceUUID: string;
         secretKey: string;
+        keyIndex: string;
         ownerKey: string;
+        ecdhSecret: string;
         sesamePublicKey: string;
         serverSecret: string;
     }>;
-    /**
-     * Node getPublicKey() (65B) から SDK 契約の 64B raw (prefix 無し) を取り出す。
-     * @param {import("node:crypto").ECDH} keyPair
-     * @returns {Buffer}
-     */
-    _appPubK64(keyPair: import("node:crypto").ECDH): Buffer;
-    /**
-     * @param {"_loginWaiter"|"_readyWaiter"|"_registerWaiter"} field
-     * @param {Error} err
-     */
-    _rejectWaiter(field: "_loginWaiter" | "_readyWaiter" | "_registerWaiter", err: Error): void;
-    /**
-     * pending request と 3 待機者 (login/ready/register) を全て reject + timer clear し、
-     * セッション状態フラグを倒す。能動 disconnect() と、transport からの非同期切断通知
-     * (_handleTransportDisconnect) の両方が共有する内部解放処理 (transport.disconnect() は呼ばない)。
-     * OS3 session._failAllPending と対称。
-     * @param {Error} err pending/待機者へ渡す reject 理由
-     */
-    _failAllPending(err: Error): void;
-    /**
-     * transport を onPacket / onDisconnect 配線付きで接続する (connect()/register() 共通)。
-     * onDisconnect: リンク断 (相手側切断 / 圏外 / write リトライ枯渇) で pending/待機者を即 reject し、
-     * OS3 session 同様 timeout 宙づりを防ぐ (fail-fast)。transport が 2 引数 connect 非対応でも安全。
-     */
-    _connectTransport(): Promise<void>;
-    /**
-     * transport から「リンクが切れた」と通知されたときのハンドラ (transport.connect の onDisconnect)。
-     * OS3 session._handleTransportDisconnect と同様、pending/待機者を即 reject して **timeout 宙づりを
-     * 防ぐ** (fail-fast)。能動 disconnect() と異なり transport.disconnect() は呼ばない (既に切断済み・
-     * 自分が起点ではないため)。何度呼ばれても安全 (待機者・pending が無ければ no-op)。
-     * @param {any} reason 切断理由 (noble の reason 文字列等)
-     */
-    _handleTransportDisconnect(reason: any): void;
     disconnect(): Promise<void>;
     /**
      * 暗号化コマンドを送り、response(7)+item を待って返す。
@@ -206,64 +163,6 @@ export class SesameOS2BleSession {
         resultCode: number;
         payload: Buffer;
     }>;
-    /**
-     * PLAINTEXT で送り、response(7)+item を待つ (register の IRER 読み出し等)。
-     * @param {number} opCode
-     * @param {number} itemCode
-     * @param {Buffer} data
-     * @param {number} [timeoutMs]
-     * @returns {Promise<{resultCode:number, payload:Buffer}>}
-     */
-    _requestPlain(opCode: number, itemCode: number, data: Buffer, timeoutMs?: number): Promise<{
-        resultCode: number;
-        payload: Buffer;
-    }>;
-    /** 暗号化なしで送る (login / registration / IRER 等のハンドシェイク用)。 @param {Buffer} frame */
-    _sendPlain(frame: Buffer): void;
-    /** OS2 CCM 暗号化して送る (cipher 内部で encCount++)。 @param {Buffer} frame */
-    _sendCipher(frame: Buffer): void;
-    /**
-     * @param {number} itemCode
-     * @param {{resolve:(v:{resultCode:number, payload:Buffer})=>void, reject:(e:Error)=>void, timer:any}} entry
-     */
-    _dequeue(itemCode: number, entry: {
-        resolve: (v: {
-            resultCode: number;
-            payload: Buffer;
-        }) => void;
-        reject: (e: Error) => void;
-        timer: any;
-    }): void;
-    /** @param {Buffer} packet */
-    _onPacket(packet: Buffer): void;
-    /** @param {Buffer} token */
-    _handleInitial(token: Buffer): void;
-    /** login ハンドシェイク本体 (CHSesame2Device.kt:231-255)。signLogin 指定時は非同期で sessionAuth を取得。 */
-    _startLogin(): void;
-    /**
-     * @param {Buffer} signPayload
-     * @param {Buffer} appPubK64
-     */
-    _loginViaServer(signPayload: Buffer, appPubK64: Buffer): Promise<void>;
-    /**
-     * login(2) を SYNC opCode で PLAINTEXT 送る (CHSesame2Device.kt:254-255)。
-     * @param {Buffer} appPubK64
-     * @param {Buffer} auth16
-     */
-    _sendLogin(appPubK64: Buffer, auth16: Buffer): void;
-    /** @param {number} resultCode @param {Buffer} payload */
-    _handleLoginResponse(resultCode: number, payload: Buffer): void;
-    /** 登録直後はデバイスが response ではなく login **publish** で完了を知らせる (CHSesame2Device.kt:508-517)。 @param {Buffer} payload */
-    _handleLoginPublish(payload: Buffer): void;
-    /** login response の systemTime と現在時刻の差が大きければ timePhone を送る (CHSesame2Device.kt:259-264)。 */
-    _maybeSyncTime(): void;
-    /**
-     * @param {"_loginWaiter"|"_readyWaiter"|"_registerWaiter"} field
-     * @param {any} [value]
-     */
-    _resolveWaiter(field: "_loginWaiter" | "_readyWaiter" | "_registerWaiter", value?: any): void;
-    /** @param {number} itemCode @param {number} resultCode @param {Buffer} payload */
-    _resolvePending(itemCode: number, resultCode: number, payload: Buffer): void;
 }
 /**
  * BLE 無線 I/O アダプタ (transport.js のアダプタが満たす契約)。

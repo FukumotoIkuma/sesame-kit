@@ -61,10 +61,22 @@ const dataTopic = (deviceId) => `hub3/${deviceId}/ir/learned/data`;
 // ---------- remote 一覧 / 検索 ----------
 
 /**
+ * getRemoteList / searchRemoteList の戻り値。
+ * vendor (useRemoteCtrl.js:43-57) の応答 `message.data` は {data:[...], pagination:{...}} の
+ * ラッパーで、一覧本体は `message.data.data`、ページング情報は `message.data.pagination`
+ * (currentPage / pageSize / hasMore 等。次ページは currentPage+1, hasMore で打ち切り —
+ *  loadMoreRemotes, useRemoteCtrl.js:431-441)。
+ * @typedef {{ list: any[], pagination: {currentPage?:number, pageSize?:number, hasMore?:boolean} | null }} RemoteListPage
+ */
+
+/**
  * 登録済みリモコン一覧を取得 (ページング)。
+ * 次ページは戻り値 pagination の currentPage+1 を page に渡す (hasMore が false なら終端 —
+ * vendor loadMoreRemotes, useRemoteCtrl.js:431-441)。
  * @param {WsClient} client
  * @param {{type:number, companyID:string, page?:number, pageSize?:number}} p
  *   type は **実 remote.type** (自己学習=0xFE00, UI メニューの 0xFEFF ではない / 上記トラップ参照)
+ * @returns {Promise<RemoteListPage>}
  */
 export async function getRemoteList(client, p) {
   const frame = {
@@ -76,13 +88,21 @@ export async function getRemoteList(client, p) {
   };
   const resp = await client.request(frame, DEFAULT_TIMEOUT_MS);
   assertSuccess(resp, "getRemoteList", { strict: true });
-  return resp.data || [];
+  // vendor の読み方 1:1 (useRemoteCtrl.js:44-46):
+  //   const responseData = message.data || {};
+  //   const list = responseData.data || [];
+  //   const paginationInfo = responseData.pagination || {};
+  const d = /** @type {{data?: any[], pagination?: any}} */ (resp.data ?? {});
+  return { list: d.data ?? [], pagination: d.pagination ?? null };
 }
 
 /**
- * プリセットリモコン (メーカー DB) 検索。最大 1000 件返却。
+ * プリセットリモコン (メーカー DB) 検索。最大 1000 件返却
+ * (vendor は page=1/pageSize=1000 固定で frame にページング引数を露出しない —
+ *  useRemoteCtrl.js:406-414)。
  * @param {WsClient} client
  * @param {{type:number, companyID:string, searchTerm:string}} p
+ * @returns {Promise<RemoteListPage>}
  */
 export async function searchRemoteList(client, p) {
   const frame = {
@@ -95,7 +115,9 @@ export async function searchRemoteList(client, p) {
   };
   const resp = await client.request(frame, DEFAULT_TIMEOUT_MS);
   assertSuccess(resp, "searchRemoteList", { strict: true });
-  return resp.data || [];
+  // vendor の読み方 1:1 (useRemoteCtrl.js:60-62): searchList = message.data.data
+  const d = /** @type {{data?: any[], pagination?: any}} */ (resp.data ?? {});
+  return { list: d.data ?? [], pagination: d.pagination ?? null };
 }
 
 // ---------- remote CRUD ----------
@@ -368,8 +390,26 @@ export async function learnIRKey(client, p) {
     waveform = await new Promise((resolve, reject) => {
       const to = setTimeout(() => reject(timeoutError(t("domain.ir.learnTimeout"))), timeoutMs);
       sub.onData((/** @type {any} */ msg) => {
+        // biz3 learn/index.js:217-249: response.success === false は失敗処理 (データは success 時のみ採用)。
+        if (msg?.success === false) {
+          clearTimeout(to);
+          reject(rejected(t("domain.ir.learnFailed", { detail: msg?.message || "" }), { upstreamCode: msg?.code ?? null }));
+          return;
+        }
+        const data = msg?.data?.data; // biz3: response.data.data が生波形
+        // 波形が空/undefined のまま addIRCode へ進むと壊れたキーを保存するため reject する。
+        // 意図的逸脱 (§0.1-2): vendor remote-match/index.js:142-149 は `!data` も待機継続だが、
+        // 学習フローでは timeout まで黙って待つより明示失敗の方が誤保存を確実に防げる。
+        if (data == null || data.length === 0) {
+          clearTimeout(to);
+          reject(rejected(t("domain.ir.learnEmptyWaveform")));
+          return;
+        }
+        // biz3 remote-match/index.js:142-149: 波形長 <= 50 はノイズ扱いで無視して待機継続
+        // ("learning data is empty, continue waiting...")。timeout タイマーは走らせたまま。
+        if (data.length <= 50) return;
         clearTimeout(to);
-        resolve(msg?.data?.data); // biz3: response.data.data が生波形
+        resolve(data);
       });
     });
   } finally {

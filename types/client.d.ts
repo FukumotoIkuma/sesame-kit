@@ -48,13 +48,6 @@ export class SesameHub3 {
         configStore?: ConfigStore | null;
         debug?: boolean;
     });
-    /** @type {Hub3WsClient | null} */
-    /**
-     * close() 時に await したい async cleanup 関数の集合 (2nd-pass M-1)。
-     * `onIRLearned` 等の戻り値 unsubscribe は呼び出し側の await 忘れで Hub3 が
-     * REGISTER モードに残るリスクがあるため、ここに登録しておくと close() で確実に走る。
-     */
-    /** WS 再接続 (初回以外の OPEN) で呼ぶコールバック集合。購読者の再 subscribe 用。 */
     /**
      * WS 再接続時に呼ばれるコールバックを登録する。戻り値で解除。
      * デーモン等、再接続後にサーバ購読 (subscribe frame) を張り直したい用途向け。
@@ -62,8 +55,6 @@ export class SesameHub3 {
      * @returns {() => void} unsubscribe
      */
     onReconnect(cb: () => void): () => void;
-    /** 登録済み再接続コールバックを発火する (transport の onReopen から呼ばれる)。 */
-    _fireReconnect(): void;
     /**
      * companyID を必ず string で返す (DEFAULT_CONFIG / config.load が常に設定するため、
      * 型上 optional でも実体は常に present)。下流モジュールは companyID:string を要求する。
@@ -87,19 +78,6 @@ export class SesameHub3 {
     /** WS 接続を確立。既に接続済みなら何もしない。 */
     connect(): Promise<void>;
     close(): Promise<void>;
-    /**
-     * 未接続なら throw、接続済みなら非 null の WS client を返す。
-     * 呼び出し側はこの戻り値を使うと `this._ws` の null 絞り込みを跨いで保持できる。
-     * @returns {Hub3WsClient}
-     */
-    _ensureConnected(): Hub3WsClient;
-    /**
-     * ドメインモジュール (純関数集) を namespace オブジェクトに束ねる。
-     * companyID/subUUID を既定注入し、各 op を `(params) => fn(ws, {...})` でラップする。
-     * @param {Record<string, unknown>} mod
-     * @returns {Record<string, (params?: Record<string, unknown>) => unknown>}
-     */
-    _bindNs(mod: Record<string, unknown>): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** スケジュール (biz3Schedule)。 */
     get schedule(): Record<string, (params?: Record<string, unknown>) => unknown>;
     /** 組織管理 (employee/group/role/device-group/employee-device)。 */
@@ -164,12 +142,6 @@ export class SesameHub3 {
     listDevices({ timeoutMs }?: {
         timeoutMs?: number;
     }): Promise<DeviceInfo[]>;
-    /**
-     * configStore が無ければ throw、あれば非 null の ConfigStore を返す。
-     * @param {string} op エラーメッセージ用の操作名
-     * @returns {ConfigStore}
-     */
-    _requireConfigStore(op: string): ConfigStore;
     /**
      * 全 SESAME デバイスを引いてロックを config に取り込む。
      * @param {{prune?:boolean}} [opts]
@@ -330,18 +302,24 @@ export class SesameHub3 {
         saved: unknown;
     }>;
     /**
+     * 登録済み IR リモコン一覧 (1 ページ分)。
+     * 次ページは戻り値 pagination の currentPage+1 を page に渡す (vendor loadMoreRemotes,
+     * useRemoteCtrl.js:431-441 と同じ読み方)。
      * @param {number} type irType
      * @param {{ page?: number, pageSize?: number }} [opts]
+     * @returns {Promise<import("./ir.js").RemoteListPage>}
      */
     listIRRemotes(type: number, { page, pageSize }?: {
         page?: number;
         pageSize?: number;
-    }): Promise<{}>;
+    }): Promise<import("./ir.js").RemoteListPage>;
     /**
+     * プリセット IR リモコン検索 (最大 1000 件)。
      * @param {number} type irType
      * @param {string} searchTerm
+     * @returns {Promise<import("./ir.js").RemoteListPage>}
      */
-    searchPresetIRRemotes(type: number, searchTerm: string): Promise<{}>;
+    searchPresetIRRemotes(type: number, searchTerm: string): Promise<import("./ir.js").RemoteListPage>;
     /** @param {object} remoteObj */
     addIRRemoteServer(remoteObj: object): Promise<{}>;
     /** @param {string} [remoteName] */
@@ -375,8 +353,6 @@ export class SesameHub3 {
         irType: number;
         brandName?: string;
     }): Promise<any[]>;
-    /** @param {string} [name] @returns {import("./config.js").Hub3View} */
-    _resolveHub3(name?: string): import("./config.js").Hub3View;
     /** 個人ユーザのデバイス一覧 (会社 vs 個人で別 op)。 */
     listUserDevices(): Promise<any[]>;
     /** @param {string} deviceUUID */
@@ -396,14 +372,6 @@ export class SesameHub3 {
         cardName?: string;
         cardType?: number;
     }>): Promise<object | null>;
-    /**
-     * biometrics REST のベース URL を解決する。引数 > config.biometricsBaseUrl > config.registerBaseUrl。
-     * @param {string} [baseUrl]
-     * @returns {string}
-     */
-    _biometricsBaseUrl(baseUrl?: string): string;
-    /** @returns {() => Promise<string>} 都度 idToken から Bearer を発行する provider */
-    _biometricsAuthorizationProvider(): () => Promise<string>;
     /** @param {import("./client.js").BiometricAuthBag} [args] */
     postAuthenticationData({ operation, deviceID, items, baseUrl, transport }?: import("./client.js").BiometricAuthBag): Promise<object | object[]>;
     /** @param {import("./client.js").BiometricAuthBag} [args] */

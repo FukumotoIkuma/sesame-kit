@@ -318,22 +318,43 @@ message CompanyGetPaymentConfigRequest {
   double timeoutMs = 2;
 }
 message PaymentGetPaymentMethodsRequest {
-  string params = 1;
+  string customerId = 1;
+  string companyID = 2;
+  double timeoutMs = 3;
 }
 message PaymentGetClientSecretRequest {
-  string params = 1;
+  string customerId = 1;
+  string companyID = 2;
+  double timeoutMs = 3;
 }
 message PaymentChangeDefaultPaymentRequest {
-  string params = 1;
+  string customerId = 1;
+  string companyID = 2;
+  string defaultPaymentMethod = 3;
+  double timeoutMs = 4;
 }
 message PaymentRemovePaymentRequest {
-  string params = 1;
+  string customerId = 1;
+  string companyID = 2;
+  string paymentId = 3;
+  double timeoutMs = 4;
 }
 message PaymentPayUpdateLevelRequest {
-  string params = 1;
+  string customerId = 1;
+  string companyID = 2;
+  string subId = 3;
+  string subscriptionId = 4;
+  double level = 5;
+  bool isUpgrade = 6;
+  bool isCancel = 7;
+  double timeoutMs = 8;
 }
 message PaymentGetDevApiInfoRequest {
-  string params = 1;
+  string customerId = 1;
+  string companyID = 2;
+  string email = 3;
+  bool update = 4;
+  double timeoutMs = 5;
 }
 message AccessGetCardsRequest {
   repeated string deviceUUIDs = 1;

@@ -76,6 +76,25 @@ describe("registry: 新規 top-level メソッドの結線", () => {
     expect(hub.calls).toEqual([["invokeWebAPI", { func: "f", query: { a: 1 }, body: { b: 2 }, apiKeyId: "k" }]]);
   });
 
+  // P1-11 回帰ガード: device.history が lib 層へ渡す list は **オブジェクト配列** [{deviceUUID}]。
+  // vendor (references_web/src/components/DeviceHistory.js:37) は常に
+  // getDeviceHistory([{deviceUUID, lastKey}], ...) を送る。裸文字列配列 ["U"] だとサーバが
+  // list[i].deviceUUID を読めず RPC/SDK/gRPC 経由の履歴取得が壊れる。
+  it("device.history → hub.getDeviceHistory([{deviceUUID}], pageSize) (list 要素はオブジェクト)", async () => {
+    const calls = [];
+    const hub = { getDeviceHistory: async (list, pageSize) => { calls.push([list, pageSize]); return []; } };
+    const e = reg.get("device.history");
+    expect(e).toBeTruthy();
+    await e.handler({ hub, daemon, params: { deviceUUID: "U", pageSize: 7 } });
+    expect(calls).toHaveLength(1);
+    const [list, pageSize] = calls[0];
+    expect(pageSize).toBe(7);
+    expect(Array.isArray(list)).toBe(true);
+    expect(list).toHaveLength(1);
+    expect(typeof list[0]).toBe("object"); // 裸文字列 "U" ではない
+    expect(list[0]).toEqual({ deviceUUID: "U" });
+  });
+
   it("必須 param 欠落は bad_params で弾く", () => {
     const hub = makeHub();
     expect(() => reg.get("device.hideHistory").handler({ hub, daemon, params: { deviceUUID: "U" } })).toThrow();

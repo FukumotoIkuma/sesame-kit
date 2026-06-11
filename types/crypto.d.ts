@@ -129,7 +129,8 @@ export function deriveRegisterPriKey(e: string | Buffer): Buffer;
  *
  * 手順:
  *   priKey       = deriveRegisterPriKey(e)                       (32B)
- *   pubKey       = priKey から P-256 公開鍵 (04 ‖ X ‖ Y, 65B)    (SDK drop(27) と一致)
+ *   pubKey       = priKey から P-256 公開鍵 (X ‖ Y, **64B**, prefix 無し)
+ *                  (SDK priKeyToPubKey の drop(27) = SPKI 91B − 27B。CHServerAuth.kt:138)
  *   secret       = ECDH(priKey, serverKey)[0..15]                (16B)
  *   serverToken  = 4B 乱数 (テスト用に注入可)
  *   sessionToken = serverToken ‖ b64decode(n)
@@ -143,7 +144,7 @@ export function deriveRegisterPriKey(e: string | Buffer): Buffer;
  * @param {{serverToken?:Buffer}} [opts] serverToken を注入してゴールデンベクタを再現可能にする。
  *   省略時は 4B 乱数。
  * @returns {{sig1:string, st:string, pubkey:string}} すべて base64 文字列。
- *   sig1 = 4B sig, st = 4B serverToken, pubkey = 65B 登録用公開鍵 (04 prefix 込み)。
+ *   sig1 = 4B sig, st = 4B serverToken, pubkey = **64B** 登録用公開鍵 (X‖Y, prefix 無し)。
  */
 export function getRegisterKey(data: {
     ak: string;

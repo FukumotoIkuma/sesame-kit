@@ -71,6 +71,10 @@ try {
 // 自動公開する名前空間 (getter 名 → モジュール)。getter は SesameHub3 のプロパティ名と一致。
 const NS_MODULES = { schedule, org, company, payment, access, iot, presetir };
 
+// 名前空間キーの単一真実源。scripts/gen-rpc-schema.mjs はこれを import して param 型を
+// 抽出する (P1-15: payment が生成対象から漏れて型がプレースホルダに劣化した再発防止)。
+export const NAMESPACE_MODULE_KEYS = Object.freeze(Object.keys(NS_MODULES));
+
 /**
  * params 必須キーの存在チェック (軽量バリデータ)。欠落は bad_params。
  * @param {Record<string, unknown>} params
@@ -258,7 +262,10 @@ function topLevelEntries() {
     "device.history": {
       summary: t("serve.sum.deviceHistory"),
       params: [{ name: "deviceUUID", required: true, schema: S }, { name: "pageSize", required: false, schema: N }], result: "history[]",
-      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID"]); return hub.getDeviceHistory([params.deviceUUID], params.pageSize); },
+      // list はオブジェクト配列 [{deviceUUID, lastKey}] (vendor 確認: DeviceHistory.js:37 が
+      // getDeviceHistory([{deviceUUID, lastKey}], ...) を送る)。裸文字列配列だとサーバが
+      // list[i].deviceUUID を読めず履歴取得が壊れる (P1-11)。lastKey ページングは Phase 3 (P3-7)。
+      handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["deviceUUID"]); return hub.getDeviceHistory([{ deviceUUID: params.deviceUUID }], params.pageSize); },
     },
     "device.battery": {
       summary: t("serve.sum.deviceBattery"),
@@ -386,13 +393,15 @@ function topLevelEntries() {
     "ir.listRemotes": {
       summary: "list registered IR remotes by type",
       params: [{ name: "type", required: true, schema: N }, { name: "page", required: false, schema: N }, { name: "pageSize", required: false, schema: N }],
-      result: "remote[]",
+      // P1-12: vendor (useRemoteCtrl.js:43-57) の応答は {data:[...], pagination:{...}} のラッパー。
+      result: "{ list: remote[], pagination: object|null }",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["type"]); return hub.listIRRemotes(params.type, { page: params.page, pageSize: params.pageSize }); },
     },
     "ir.searchRemotes": {
       summary: "search preset IR remotes",
       params: [{ name: "type", required: true, schema: N }, { name: "searchTerm", required: true, schema: S }],
-      result: "remote[]",
+      // P1-12: vendor (useRemoteCtrl.js:59-63) の応答は {data:[...], pagination:{...}} のラッパー。
+      result: "{ list: remote[], pagination: object|null }",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); need(params, ["type", "searchTerm"]); return hub.searchPresetIRRemotes(params.type, params.searchTerm); },
     },
     "ir.addRemote": {

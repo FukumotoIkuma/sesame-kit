@@ -281,19 +281,26 @@ export class SesameBle {
     hub3(): Hub3Commands;
     /**
      * BLE 経由ファームウェア更新 (DFU/OTA) を開始する。model で経路が分岐する (SDK と 1:1):
-     *   - WM2 (wifiProvisioning)        → OPEN_OTA_SERVER(126) を送る updateFirmwareWM2
-     *                                     (CHWifiModule2Device.kt:450-458)
-     *   - Hub3 / OS3 lock (それ以外の OS3) → MOVE_TO(84) を送る updateFirmwareBleOnly
-     *                                     (CHHub3Device.kt:213-226 / CHSesameOS3.kt:441-449)
+     *   - WM2 (wifiProvisioning)  → OPEN_OTA_SERVER(126) を送る updateFirmwareWM2
+     *                               (CHWifiModule2Device.kt:450-458)
+     *   - Hub3                    → MOVE_TO(84) を送る updateFirmwareBleOnly
+     *                               (CHHub3Device.kt:217-230。MOVE_TO 送出は **Hub3 専用**)
+     *   - OS3 lock / Bot2 / Bike2/3 / biometric
+     *                             → **命令を一切送らず** デバイスハンドル ({session}) を返す
+     *                               dfu.updateFirmware (CHSesameOS3.kt:441-449 の共通 no-op 経路。
+     *                               実際の DFU バイナリ転送は Nordic DFU 相当が別 GATT で行う前提で、
+     *                               本 kit は未実装 — ハンドル返しまで)。
      *
-     * 進捗は publish の payload 先頭バイト (onProgress(progress, body))。応答が来た時点 (OTA サーバ
-     * 起動完了) で内部購読は停止する。100% 完了まで進捗を取り続けたい場合は ble.onMoveToOtaProgress /
-     * ble.onWM2OtaProgress を直接購読する。
+     * 進捗 (Hub3/WM2) は publish の payload 先頭バイト (onProgress(progress, body))。応答が来た時点
+     * (OTA サーバ起動完了) で内部購読は停止する。100% 完了まで進捗を取り続けたい場合は
+     * ble.onMoveToOtaProgress / ble.onWM2OtaProgress を直接購読する。
      *
-     * OTA に対応しない機種 (OS2 系・Bot/Bike/biometric・未知) は明示エラーを投げる (op を捏造しない)。
+     * OTA 経路を持たない機種 (OS2 系・未知) は明示エラーを投げる (op を捏造しない)。
      *
      * @param {{onProgress?:(progress:number|null, body:Buffer)=>void, timeoutMs?:number}} [opts]
-     * @returns {Promise<{resultCode:number, payload:Buffer, session:object}>}
+     * @returns {Promise<{resultCode:number, payload:Buffer, session:object}>
+     *           |{session:import("./session.js").SesameBleSession}}
+     *   Hub3/WM2 はコマンド応答 + session の Promise。OS3 lock 系は同期で {session} (命令無送信)。
      */
     updateFirmware(opts?: {
         onProgress?: (progress: number | null, body: Buffer) => void;
@@ -302,22 +309,9 @@ export class SesameBle {
         resultCode: number;
         payload: Buffer;
         session: object;
-    }>;
-    /**
-     * BLE で送れない操作を弾く。SDK では型ごとに能力が非対称 (Bot は click のみ等)。
-     * @param {string} op
-     */
-    _assertOp(op: string): void;
-    /**
-     * Sesame5/6 系 OS3 ロック (LOCK5 kind) 固有の BLE コマンドを弾く。
-     * SDK では magnet(17)/OPS_CONTROL(92)/SET_ADV_PRODUCT_TYPE(205)/mechSetting(80) の itemCode は
-     * CHSesame5 インターフェース (open/devices/CHSesame5.kt:16/19/21) にのみ宣言され、実装も
-     * ble/os3/CHSesame5Device.kt のみ。OS2 ロック (CHSesame2Device) や Bot/Bike/biometric/Hub3/WM2 は
-     * 持たない。autolock 能力は OS2 SESAME2/4 も持つため _assertOp("autolock") では弾けない
-     * (over-exposure)。setBleTxPower と同様に os===3 && kind===LOCK5 で明示判定する。
-     * @param {string} api エラー文に出すメソッド名
-     */
-    _assertLock5(api: string): void;
+    }> | {
+        session: import("./session.js").SesameBleSession;
+    };
     /**
      * mechStatus publish を購読 (戻り値 unsubscribe)。
      * @param {(status: unknown) => void} fn

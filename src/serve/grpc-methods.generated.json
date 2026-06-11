@@ -213,39 +213,27 @@
   },
   "PaymentGetPaymentMethods": {
     "method": "payment.getPaymentMethods",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "PaymentGetClientSecret": {
     "method": "payment.getClientSecret",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "PaymentChangeDefaultPayment": {
     "method": "payment.changeDefaultPayment",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "PaymentRemovePayment": {
     "method": "payment.removePayment",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "PaymentPayUpdateLevel": {
     "method": "payment.payUpdateLevel",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "PaymentGetDevApiInfo": {
     "method": "payment.getDevApiInfo",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "AccessGetCards": {
     "method": "access.getCards",

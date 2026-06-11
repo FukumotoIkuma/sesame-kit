@@ -975,6 +975,234 @@
       }
     }
   ],
+  "payment.getPaymentMethods": [
+    {
+      "name": "customerId",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "companyID",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "timeoutMs",
+      "required": false,
+      "tsType": "number",
+      "schema": {
+        "type": "number"
+      }
+    }
+  ],
+  "payment.getClientSecret": [
+    {
+      "name": "customerId",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "companyID",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "timeoutMs",
+      "required": false,
+      "tsType": "number",
+      "schema": {
+        "type": "number"
+      }
+    }
+  ],
+  "payment.changeDefaultPayment": [
+    {
+      "name": "customerId",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "companyID",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "defaultPaymentMethod",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "timeoutMs",
+      "required": false,
+      "tsType": "number",
+      "schema": {
+        "type": "number"
+      }
+    }
+  ],
+  "payment.removePayment": [
+    {
+      "name": "customerId",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "companyID",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "paymentId",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "timeoutMs",
+      "required": false,
+      "tsType": "number",
+      "schema": {
+        "type": "number"
+      }
+    }
+  ],
+  "payment.payUpdateLevel": [
+    {
+      "name": "customerId",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "companyID",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "subId",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "subscriptionId",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "level",
+      "required": false,
+      "tsType": "number",
+      "schema": {
+        "type": "number"
+      }
+    },
+    {
+      "name": "isUpgrade",
+      "required": false,
+      "tsType": "boolean",
+      "schema": {
+        "type": "boolean"
+      }
+    },
+    {
+      "name": "isCancel",
+      "required": false,
+      "tsType": "boolean",
+      "schema": {
+        "type": "boolean"
+      }
+    },
+    {
+      "name": "timeoutMs",
+      "required": false,
+      "tsType": "number",
+      "schema": {
+        "type": "number"
+      }
+    }
+  ],
+  "payment.getDevApiInfo": [
+    {
+      "name": "customerId",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "companyID",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "email",
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "update",
+      "required": false,
+      "tsType": "boolean | null",
+      "schema": {
+        "type": "boolean"
+      }
+    },
+    {
+      "name": "timeoutMs",
+      "required": false,
+      "tsType": "number",
+      "schema": {
+        "type": "number"
+      }
+    }
+  ],
   "access.getCards": [
     {
       "name": "deviceUUIDs",

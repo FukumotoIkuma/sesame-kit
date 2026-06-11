@@ -14,12 +14,6 @@ export class LockManager {
         ensureConnected: () => void;
     });
     /**
-     * 接続済み WS を返す。各 lock 操作は直前に `_ensureConnected()` を呼ぶため、
-     * この時点で WS は非 null。型レベルで非 null を確定させるだけのアクセサ (実行時挙動なし)。
-     * @returns {import("./transport.js").Hub3WsClient}
-     */
-    _ws(): import("./transport.js").Hub3WsClient;
-    /**
      * lock 設定を name から解決。name 省略時は default.lock、
      * 無ければ locks が 1 つだけならそれ。
      * @param {string|null} [name]
@@ -28,16 +22,6 @@ export class LockManager {
     resolveLock(name?: string | null): {
         name: string;
         lock: import("./config.js").LockView;
-    };
-    /**
-     * name 解決 + 必須フィールド検査 → triggerLock 用 params。
-     * @param {string|null} [name]
-     * @returns {{deviceId: string, secretKey: string, subUUID: string}}
-     */
-    _lockParams(name?: string | null): {
-        deviceId: string;
-        secretKey: string;
-        subUUID: string;
     };
     /** ロック施錠 (name-based, cmd=82)。 @param {string|null} [name] */
     lock(name?: string | null): Promise<any>;

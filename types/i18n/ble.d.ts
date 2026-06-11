@@ -67,6 +67,8 @@ declare namespace _default {
         "ble.wm2NetworkStatusEmpty": string;
         "ble.wm2SessionRequired": string;
         "ble.wm2NotSupported": string;
+        "ble.wm2NoServerAuth": string;
+        "ble.unknownProfile": string;
         "ble.hub3SessionRequired": string;
         "ble.hub3NetworkTypeShort": string;
         "ble.hub3NotSupported": string;
@@ -188,6 +190,8 @@ declare namespace _default {
         "ble.wm2NetworkStatusEmpty": string;
         "ble.wm2SessionRequired": string;
         "ble.wm2NotSupported": string;
+        "ble.wm2NoServerAuth": string;
+        "ble.unknownProfile": string;
         "ble.hub3SessionRequired": string;
         "ble.hub3NetworkTypeShort": string;
         "ble.hub3NotSupported": string;

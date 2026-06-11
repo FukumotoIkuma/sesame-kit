@@ -292,7 +292,7 @@ Hub3 has no BLE lock-control ops, but it does inherit the shared OS3 paths: `con
 
 ### Firmware update over BLE (DFU / OTA)
 
-`lock.updateFirmware({ onProgress })` starts a BLE OTA. The route is chosen by model (1:1 with the SDK): a WM2 sends `OPEN_OTA_SERVER` (126) (`CHWifiModule2Device.updateFirmware`), while a Hub3 / OS3 lock sends `MOVE_TO` (84) (`CHHub3Device.updateFirmwareBleOnly` / `CHSesameOS3.updateFirmware`). Progress arrives as a publish whose first payload byte is the progress value. Models that have no OTA (OS2, Bot/Bike, biometric, unknown) throw instead of fabricating an unsupported op.
+`lock.updateFirmware({ onProgress })` starts a BLE OTA. The route is chosen by model (1:1 with the SDK): a WM2 sends `OPEN_OTA_SERVER` (126) (`CHWifiModule2Device.updateFirmware`), a **Hub3 only** sends `MOVE_TO` (84) (`CHHub3Device.updateFirmwareBleOnly` — this command is Hub3-specific), and an OS3 lock (and Bot2 / Bike2/3 / biometric) **sends no command at all** — it just returns the connected device handle (`CHSesameOS3.updateFirmware` is a no-op handle return; the actual firmware transfer requires a Nordic-DFU equivalent on a separate GATT service, which this kit does not implement). Progress (Hub3/WM2) arrives as a publish whose first payload byte is the progress value. Models that have no OTA route (OS2, unknown) throw instead of fabricating an unsupported op.
 
 ```js
 await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
@@ -300,7 +300,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
 });
 ```
 
-The facade unsubscribes its internal progress listener once the OTA server is up (the command response). To keep receiving progress all the way to 100 %, subscribe directly via `ble.onMoveToOtaProgress(session, cb)` (Hub3 / OS3 lock) or `ble.onWM2OtaProgress(session, cb)` (WM2). The pure logic layer (`updateFirmware` / `updateFirmwareBleOnly` / `updateFirmwareWM2`) is also exported from `sesame-kit/ble` (`ble.dfu.*`) for custom wiring. The actual DFU binary transfer is handled by an external DFU library on a separate GATT service; this layer only starts the OTA server and reports progress.
+The facade unsubscribes its internal progress listener once the OTA server is up (the command response). To keep receiving progress all the way to 100 %, subscribe directly via `ble.onMoveToOtaProgress(session, cb)` (Hub3) or `ble.onWM2OtaProgress(session, cb)` (WM2). The pure logic layer (`updateFirmware` / `updateFirmwareBleOnly` / `updateFirmwareWM2`) is also exported from `sesame-kit/ble` (`ble.dfu.*`) for custom wiring. The actual DFU binary transfer is handled by an external DFU library on a separate GATT service; this layer only starts the OTA server and reports progress.
 
 ### OS2 devices (SESAME 2 / 3 / 4, Bot1, Bike1)
 

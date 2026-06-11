@@ -11,6 +11,7 @@ export function buildRegistry(): Map<string, MethodEntry>;
  * @returns {Record<string, unknown>}
  */
 export function buildOpenRpcDoc(reg: Map<string, MethodEntry>, version: string): Record<string, unknown>;
+export const NAMESPACE_MODULE_KEYS: readonly string[];
 export const SUBSCRIBABLE_TOPICS: string[];
 /**
  * 常駐 hub。registry は (a) 明示メソッド (hub.lock 等) と (b) 名前空間 op の動的

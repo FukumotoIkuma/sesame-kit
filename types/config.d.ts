@@ -38,8 +38,6 @@ export class ConfigStore {
      * @returns {LoadedConfig}
      */
     load(): LoadedConfig;
-    /** devices{} から locks{}/hub3s{} の派生 view (旧 shape) を都度組み立てる。reader 互換用。 */
-    _reproject(): void;
     save(): void;
     /**
      * 空スケルトンを書き出す。既存があれば触らない。
@@ -117,25 +115,6 @@ export class ConfigStore {
     setDefaultLock(name: string): void;
     /** @param {string} name */
     removeLock(name: string): void;
-    /**
-     * @param {DeviceRecord[]} deviceList
-     * @param {{ accept:(d:DeviceRecord)=>boolean, category:"lock"|"hub3", prune?:boolean,
-     *           onFirstAdd?:((name:string)=>void)|null, pruneProtect?:((name:string)=>boolean)|null }} opts
-     *   accept  受理条件 (取り込む incoming device の判定)
-     *   category この sync が司る view。prune はこの view に属する device だけを対象にする
-     * @returns {{added:string[], updated:string[], removed:string[]}}
-     */
-    _syncDevices(deviceList: DeviceRecord[], { accept, category, prune, onFirstAdd, pruneProtect }: {
-        accept: (d: DeviceRecord) => boolean;
-        category: "lock" | "hub3";
-        prune?: boolean;
-        onFirstAdd?: ((name: string) => void) | null;
-        pruneProtect?: ((name: string) => boolean) | null;
-    }): {
-        added: string[];
-        updated: string[];
-        removed: string[];
-    };
     /**
      * `devices` (getCompanyDevice 等) の結果からロックを取り込む (devices{} に丸ごと格納)。
      * @param {DeviceRecord[]} deviceList

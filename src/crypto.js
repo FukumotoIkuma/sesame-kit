@@ -322,7 +322,7 @@ export function ecdhSecretPre16(keyPair, remotePubKey64) {
 //     - CMAC 鍵文字列 "Sesame2_key_pair"
 //     - priKey = oneKey ‖ twoKey の連結順
 //     - sessionToken = serverToken ‖ b64(n) / msg = b64(ak) ‖ sessionToken の連結順
-//     - priKeyToPubKey の drop(27) → 65B pubkey
+//     - priKeyToPubKey の drop(27) → 64B pubkey (X‖Y, prefix 無し)
 //     - SERVER_AUTH_PUBKEY (serverKey) の定数値
 //
 //   ★配線状況 (2026-06 更新): getRegisterKey は **OS2 register の任意 server-auth 経路に配線済み**。
@@ -364,12 +364,14 @@ export function ecdhSecretPre16(keyPair, remotePubKey64) {
 //   両方とも e そのもの (時刻 CMAC のように上位 3B を取る等の加工はしない)。
 //
 // ★priKey → pubKey (CHServerAuth.kt:113-148 priKeyToPubKey):
-//   SDK は priKey をスカラとして G を点倍算し、X509 SubjectPublicKeyInfo に詰めた
-//   publicKey.encoded から先頭 27B (= SPKI ヘッダ 26B + unused-bits 1B) を drop する。
-//   残りは uncompressed EC point = 0x04 ‖ X(32B) ‖ Y(32B) の **65B**。
-//   Node では createECDH("prime256v1").setPrivateKey(priKey).getPublicKey() が
-//   まさにこの 65B (0x04 prefix 付き uncompressed point) を返すので等価。
-//   → pubString は 64B ではなく **65B (04 prefix 込み)**。SDK の drop(27) と一致する。
+//   SDK は priKey をスカラとして G を点倍算し、X509 SubjectPublicKeyInfo (P-256 SPKI = 91B) に
+//   詰めた publicKey.encoded から先頭 27B を drop する (CHServerAuth.kt:138)。
+//   27B = SPKI ヘッダ 26B + uncompressed point prefix 0x04 の 1B (EccKey.kt の fixheader
+//   "3059…03420004" 27B と同じ区切りで、**04 を含む**)。残りは 91 − 27 = **64B (X‖Y, prefix 無し)**。
+//   Node の createECDH("prime256v1").setPrivateKey(priKey).getPublicKey() は 0x04 prefix 付き
+//   65B を返すので、subarray(1) で先頭 1B を剥がしたものが SDK の drop(27) と等価。
+//   消費側 (EccKey.ecdh / 本実装の ecdhSecretPre16) は fixheader(04 込み) + remote 64B で
+//   SPKI を再構成するため、65B を渡すと 04 が二重化し SPKI が破損する。
 //
 // ★serverKey (CHServerAuth.kt:28-29): サーバが保持する固定 P-256 公開鍵 (65B, 04 prefix 込み)。
 //   ecdhShareKey は EccKey.ecdh() と同じく X509 fixheader を前置して KeyAgreement。
@@ -508,7 +510,8 @@ export function deriveRegisterPriKey(e) {
  *
  * 手順:
  *   priKey       = deriveRegisterPriKey(e)                       (32B)
- *   pubKey       = priKey から P-256 公開鍵 (04 ‖ X ‖ Y, 65B)    (SDK drop(27) と一致)
+ *   pubKey       = priKey から P-256 公開鍵 (X ‖ Y, **64B**, prefix 無し)
+ *                  (SDK priKeyToPubKey の drop(27) = SPKI 91B − 27B。CHServerAuth.kt:138)
  *   secret       = ECDH(priKey, serverKey)[0..15]                (16B)
  *   serverToken  = 4B 乱数 (テスト用に注入可)
  *   sessionToken = serverToken ‖ b64decode(n)
@@ -522,7 +525,7 @@ export function deriveRegisterPriKey(e) {
  * @param {{serverToken?:Buffer}} [opts] serverToken を注入してゴールデンベクタを再現可能にする。
  *   省略時は 4B 乱数。
  * @returns {{sig1:string, st:string, pubkey:string}} すべて base64 文字列。
- *   sig1 = 4B sig, st = 4B serverToken, pubkey = 65B 登録用公開鍵 (04 prefix 込み)。
+ *   sig1 = 4B sig, st = 4B serverToken, pubkey = **64B** 登録用公開鍵 (X‖Y, prefix 無し)。
  */
 export function getRegisterKey(data, opts = {}) {
   if (!data || typeof data !== "object") {
@@ -554,7 +557,11 @@ export function getRegisterKey(data, opts = {}) {
   assertValidP256Scalar(priKey);
   const ecdh = createECDH("prime256v1");
   ecdh.setPrivateKey(priKey);
-  const pubKey = ecdh.getPublicKey(); // 65B uncompressed (04 ‖ X ‖ Y) = SDK drop(27) と一致
+  // SDK priKeyToPubKey は SPKI 91B から drop(27) = **64B (X‖Y, prefix 無し)** を返す
+  // (CHServerAuth.kt:138。27B = SPKI ヘッダ 26B + 0x04 の 1B)。Node の getPublicKey() は
+  // 0x04 prefix 付き 65B なので subarray(1) で剥がす。消費側 (EccKey.ecdh) は
+  // fixheader(04 込み 27B) + remote 64B を組むため、65B を返すと 04 が二重化し SPKI 破損。
+  const pubKey = ecdh.getPublicKey().subarray(1); // 64B (X ‖ Y) = SDK drop(27)
 
   // 2. serverKey との ECDH → 共有秘密先頭 16B = secret。
   //    ecdhSecretPre16 は serverKey の 65B (04 prefix 込み) 形態をそのまま受理する。

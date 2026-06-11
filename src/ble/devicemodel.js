@@ -89,7 +89,10 @@ const CAPS = Object.freeze({
   [KIND.BIKE_OS2]: { os: 2, cloud: ["unlock"],                   ble: ["unlock"],                                mechKind: "os2bot",  label: "SESAME Bike (OS2)" },
   [KIND.BIOMETRIC]:{ os: 3, cloud: [],                           ble: [],                          biometric: true, mechKind: null,      label: "SESAME Touch/Face/Sensor/Remote" },
   [KIND.HUB3]:     { os: 3, cloud: ["ir", "relay", "led"],       ble: [],                          hubProvisioning: true, mechKind: null,      label: "SESAME Hub3" },
-  [KIND.WIFI]:     { os: 3, cloud: ["ir", "relay", "led"],       ble: [],                          wifiProvisioning: true, mechKind: null,      label: "WiFi Module 2" },
+  // WM2 の公開 API に IR/リレー/LED は無い (open/devices/CHWifiModule2.kt:30-39 — scanWifiSSID/
+  // setWifiSSID/setWifiPassword/connectWifi/insertSesames/removeSesame のみ)。ir/relay/led は
+  // Hub3 専用 (CHHub3.kt) であり、旧定義の cloud:["ir","relay","led"] は能力の捏造だった (P1-9)。
+  [KIND.WIFI]:     { os: 3, cloud: [],                           ble: [],                          wifiProvisioning: true, mechKind: null,      label: "WiFi Module 2" },
   [KIND.UNKNOWN]:  { os: 0, cloud: [],                           ble: [],                                        mechKind: null,      label: "(未知のデバイス)" },
 });
 
@@ -105,8 +108,9 @@ function unionOps(caps) {
   return out;
 }
 
-// Hub3/WM2 の IR/リレー/LED は「別 API 面」(biz3OperateIoT) であって、ロック系デバイス制御
+// Hub3 の IR/リレー/LED は「別 API 面」(biz3OperateIoT) であって、ロック系デバイス制御
 // (`sesame <device> <action>`) の動詞ではない。制御 op 語彙からは除外する。
+// (WM2 はこれらを持たない — CHWifiModule2.kt:30-39。P1-9 で cloud:[] に修正済み。)
 const IOT_OPS = Object.freeze(["ir", "relay", "led"]);
 
 /**

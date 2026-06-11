@@ -1185,13 +1185,15 @@ async function cmdIRRemoteListServer(type, _opts, program) {
   let irt;
   try { irt = parseIrType(type); } catch (e) { die(/** @type {CliError} */ (e).message, 2); }
   await withHub(program, async (hub, { opts }) => {
-    const list = /** @type {Array<{alias?:string, name?:string, irDeviceUUID?:string, uuid?:string}>} */ (await hub.listIRRemotes(irt));
+    // P1-12: listIRRemotes は {list, pagination} を返す (vendor useRemoteCtrl.js:43-57 の読み方)。
+    const { list: rawList, pagination } = await hub.listIRRemotes(irt);
+    const list = /** @type {Array<{alias?:string, name?:string, irDeviceUUID?:string, uuid?:string}>} */ (rawList);
     out(opts.json, () => {
       console.log(t("cli.foundRemotes", { count: list.length, type: irt }));
       for (const r of list) {
         console.log(`  ${r.alias || r.name || "(no name)"}\t${r.irDeviceUUID || r.uuid || ""}`);
       }
-    }, { count: list.length, remotes: list });
+    }, { count: list.length, remotes: list, pagination });
   });
 }
 
@@ -1207,7 +1209,9 @@ async function cmdIRRemoteSearch(type, term, _opts, program) {
   try { irt = parseIrType(type); } catch (e) { die(/** @type {CliError} */ (e).message, 2); }
   if (!term) die(t("cli.searchTermRequired"), 2);
   await withHub(program, async (hub, { opts }) => {
-    const list = /** @type {Array<{brandName?:string, name?:string, modelName?:string, model?:string, uuid?:string}>} */ (await hub.searchPresetIRRemotes(irt, term));
+    // P1-12: searchPresetIRRemotes は {list, pagination} を返す (vendor useRemoteCtrl.js:59-63 の読み方)。
+    const { list: rawList } = await hub.searchPresetIRRemotes(irt, term);
+    const list = /** @type {Array<{brandName?:string, name?:string, modelName?:string, model?:string, uuid?:string}>} */ (rawList);
     out(opts.json, () => {
       console.log(t("cli.foundPresetRemotes", { count: list.length }));
       for (const r of list) {

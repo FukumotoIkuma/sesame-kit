@@ -51,6 +51,8 @@ declare namespace _default {
         "domain.ir.subscribeIRDataFailed": string;
         "domain.ir.subscribeIRModeFailed": string;
         "domain.ir.learnTimeout": string;
+        "domain.ir.learnFailed": string;
+        "domain.ir.learnEmptyWaveform": string;
         "domain.devices.getUserDeviceTimeout": string;
         "domain.devices.listFirmwareTimeout": string;
         "domain.devices.registerBaseUrlRequired": string;
@@ -132,6 +134,8 @@ declare namespace _default {
         "domain.ir.subscribeIRDataFailed": string;
         "domain.ir.subscribeIRModeFailed": string;
         "domain.ir.learnTimeout": string;
+        "domain.ir.learnFailed": string;
+        "domain.ir.learnEmptyWaveform": string;
         "domain.devices.getUserDeviceTimeout": string;
         "domain.devices.listFirmwareTimeout": string;
         "domain.devices.registerBaseUrlRequired": string;

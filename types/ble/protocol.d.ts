@@ -5,6 +5,12 @@
  */
 export function resultName(code: number): string;
 /**
+ * プロファイル名の検証 (lock / wm2 以外を黙って lock 扱いしない)。
+ * @param {string} profile
+ * @returns {"lock"|"wm2"}
+ */
+export function assertProfile(profile: string): "lock" | "wm2";
+/**
  * 既存 secretKey と initial token から CCM セッション鍵 (16B) を導出する。
  * token16 = AES-128-CMAC(secretKey, randomToken)  (ssm_cmd.c:43 / CHSesameOS3LockBase.kt:109)
  *
@@ -22,9 +28,12 @@ export function deriveSessionKey(secretKey: string | Buffer, token: Buffer): Buf
  *   - register 直後: 鍵 = ECDH 共有秘密の先頭 16B (= crypto.js:ecdhSecretPre16, CHHub3Device.kt:163-174,197)。
  *   どちらも CMAC の **メッセージは token4 (4B)** で共通、戻りは 16B。違いは CMAC の鍵だけ。
  *
- * sault も両者共通: sault = 0x00 ++ token4 (CHHub3Device.kt:170,203 / SesameOS3BleCipher.kt:8-19)。
- * sault は CCM nonce の組み立て側 (ccmNonce: count(8B LE) ++ 0x00 ++ token4) で消費するため、
- * この鍵導出関数自体は sault を引数に取らない (session 確立後の暗号化は ccmEncrypt/ccmDecrypt が担う)。
+ * sault も両者共通 (lock profile): sault = 0x00 ++ token4 (CHHub3Device.kt:170,203 /
+ * SesameOS3BleCipher.kt:8-19)。sault は CCM nonce の組み立て側 (ccmNonce(count, ccmSault(profile,
+ * token4))) で消費するため、この鍵導出関数自体は sault を引数に取らない (session 確立後の暗号化は
+ * ccmEncrypt/ccmDecrypt が担う)。
+ * なお wm2 profile はこの関数を **使わない** (登録後鍵 = pre16 生・login 鍵 = secretKey 生、
+ * CHWifiModule2Device.kt:295-297,317。SESSION_PROFILES 参照)。
  *
  * 実装方針: アルゴリズム (16B 鍵 + 4B token → AES-128-CMAC(鍵, token4) で 16B) は login 経路の
  *   deriveSessionKey と完全に同一で、違いは「鍵の出所」だけ。よって CMAC コードパスを二重に
@@ -38,30 +47,46 @@ export function deriveSessionKey(secretKey: string | Buffer, token: Buffer): Buf
  */
 export function deriveSessionKeyFromEcdh(ecdhSecretPre16: Buffer, token4: Buffer): Buffer;
 /**
- * login コマンドの平文ペイロード = [LOGIN(2)] ++ token16[0:4] (ssm_cmd.c:44-45 / CHSesameOS3LockBase.kt:118-120)。
- * PLAINTEXT セグメントで送る。
- * @param {Buffer} token16 deriveSessionKey の戻り
- * @returns {Buffer} 5B
+ * login コマンドの平文ペイロード (PLAINTEXT セグメントで送る)。プロファイルで形が分かれる:
+ *   - lock: [LOGIN(2)] ++ token16[0:4] = 5B (ssm_cmd.c:44-45 / CHSesameOS3LockBase.kt:118-120)
+ *   - wm2 : [LOGIN_WM2(2)] ++ loginTag **16B 全量** = 17B
+ *           (CHWifiModule2Device.kt:314-321: sendCommand(SesameOS3Payload(LOGIN_WM2, loginTag), plain)。
+ *            loginTag = AesCmac(secretKey 生 16B).computeMac(mSesameToken) で切り詰めない)
+ * LOGIN(2) と WM2ActionCode.LOGIN_WM2(2) は同値なので先頭バイトは共通、続く長さだけが異なる。
+ * @param {Buffer} token16 deriveSessionKey の戻り (lock: session 鍵 / wm2: loginTag = CMAC(secretKey, token))
+ * @param {"lock"|"wm2"} [profile="lock"]
+ * @returns {Buffer} lock: 5B / wm2: 17B
  */
-export function loginPayload(token16: Buffer): Buffer;
+export function loginPayload(token16: Buffer, profile?: "lock" | "wm2"): Buffer;
+/**
+ * CCM sault をプロファイルから組み立てる (SesameOS3BleCipher のコンストラクタ第 3 引数に相当)。
+ *   - lock: "00" + mSesameToken (CHHub3Device.kt:170,203 / CHSesame5 系・Bot2/Bike2 も同形)
+ *   - wm2 : mSesameToken そのまま 4B — 0x00 を挟まない (CHWifiModule2Device.kt:297,317)
+ * @param {"lock"|"wm2"} profile
+ * @param {Buffer} token4 initial token (4B)
+ * @returns {Buffer} lock: 5B / wm2: 4B
+ */
+export function ccmSault(profile: "lock" | "wm2", token4: Buffer): Buffer;
 /**
  * コマンド平文を CCM 暗号化し、末尾に 4B tag を付けて返す。
  * @param {Buffer} token16 セッション鍵
  * @param {number|bigint} count 送信カウンタ (送信ごと +1)
  * @param {Buffer} token4 initial token
  * @param {Buffer} plaintext 暗号化前フレーム ([item, ...data])
+ * @param {"lock"|"wm2"} [profile="lock"] nonce sault の形 (ccmSault 参照)。既定は従来どおり lock。
  * @returns {Buffer} ciphertext ++ tag(4B)
  */
-export function ccmEncrypt(token16: Buffer, count: number | bigint, token4: Buffer, plaintext: Buffer): Buffer;
+export function ccmEncrypt(token16: Buffer, count: number | bigint, token4: Buffer, plaintext: Buffer, profile?: "lock" | "wm2"): Buffer;
 /**
  * CCM 復号。入力は ciphertext ++ tag(4B)。tag 不一致なら throw。
  * @param {Buffer} token16
  * @param {number|bigint} count 受信カウンタ (受信ごと +1)
  * @param {Buffer} token4
  * @param {Buffer} ctWithTag ciphertext ++ tag(4B)
+ * @param {"lock"|"wm2"} [profile="lock"] nonce sault の形 (ccmSault 参照)。既定は従来どおり lock。
  * @returns {Buffer} 復号平文
  */
-export function ccmDecrypt(token16: Buffer, count: number | bigint, token4: Buffer, ctWithTag: Buffer): Buffer;
+export function ccmDecrypt(token16: Buffer, count: number | bigint, token4: Buffer, ctWithTag: Buffer, profile?: "lock" | "wm2"): Buffer;
 /**
  * 1 メッセージ (平文 or 暗号文+tag) を 20B パケット列に分割する。
  * 先頭パケットのみ start bit、最終パケットで parsing type を立てる (中間は APPEND_ONLY)。
@@ -300,11 +325,18 @@ export function registrationTimestampBytes(nowMs?: number): Buffer;
  *   REGISTRATION(1) を PLAINTEXT 送出し、ファサード SesameBle.register()/registerOnce()
  *   から到達できる。mock vector でテスト済みだが**実機 OS3 検証は未了** (README 参照)。
  *
+ * プロファイル分岐 (P1-6):
+ *   - lock (既定): pubK64 ++ timestamp4 = 68B (CHHub3Device.kt:191-194 / CHSesameOS3LockBase.kt:93)
+ *   - wm2        : **pubK64 のみ** = 64B — timestamp を付けない
+ *                  (CHWifiModule2Device.kt:290: sendCommand(SesameOS3Payload(REGISTER_WM2,
+ *                   EccKey.getPubK().hexStringToByteArray()), plain) — data は公開鍵 64B のみ)
+ *
  * @param {Buffer|string} pubK ECDH 生公開鍵 64B (X‖Y, prefix 無し) または 128hex 文字列。
- * @param {number} [nowMs=Date.now()] エポックミリ秒 (registrationTimestampBytes へ委譲)。
- * @returns {Buffer} 68B (pubK 64B ++ timestamp 4B)。
+ * @param {number} [nowMs=Date.now()] エポックミリ秒 (registrationTimestampBytes へ委譲。wm2 では未使用)。
+ * @param {"lock"|"wm2"} [profile="lock"]
+ * @returns {Buffer} lock: 68B (pubK 64B ++ timestamp 4B) / wm2: 64B (pubK のみ)。
  */
-export function registrationData(pubK: Buffer | string, nowMs?: number): Buffer;
+export function registrationData(pubK: Buffer | string, nowMs?: number, profile?: "lock" | "wm2"): Buffer;
 /**
  * mech_status を OS3 デバイスの種別に応じて解析する。
  *
@@ -515,12 +547,19 @@ export const RESULT: Readonly<{
     8: "invalidParam";
     9: "invalidAction";
 }>;
+export const SESSION_PROFILES: Readonly<{
+    lock: Readonly<{
+        initialItemCode: 14;
+    }>;
+    wm2: Readonly<{
+        initialItemCode: 13;
+    }>;
+}>;
 /**
  * 受信セグメントを結合するアセンブラ。feed() で 1 パケットずつ与え、メッセージ完結時に
  * { type, data } を返す (未完なら null)。start bit でバッファをリセット。
  */
 export class SegmentAssembler {
-    /** @type {Buffer[]} */
     /**
      * @param {Buffer} packet notify で届いた 1 パケット
      * @returns {{type:number, data:Buffer}|null} 完結時のみ {type, data}

@@ -77,7 +77,7 @@ export class SesameOS2BleSession {
    * @param {{
    *   transport: BleTransport,
    *   secretKey?: string|Buffer,        // 16B ロック共通鍵 (登録済みデバイスの login に必須)
-   *   keyIndex?: string|Buffer,         // userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う
+   *   keyIndex?: string|Buffer,         // userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。既定 "0000" (2B)。空は明示エラー
    *   ssmPublicKey?: string|Buffer,     // デバイス公開鍵 64B (sesame2KeyData.sesame2PublicKey)。login の ECDH 相手
    *   debug?: boolean,
    *   defaultTimeoutMs?: number,
@@ -94,7 +94,14 @@ export class SesameOS2BleSession {
     if (!transport) throw new Error("transport required");
     this._transport = transport;
     this._secretKey = secretKey == null ? null : (Buffer.isBuffer(secretKey) ? secretKey : Buffer.from(secretKey, "hex"));
-    this._keyIndex = keyIndex == null ? Buffer.alloc(0) : (Buffer.isBuffer(keyIndex) ? keyIndex : Buffer.from(keyIndex, "hex"));
+    // keyIndex (userIdx) の既定は "0000" = 2B [0x00,0x00]。SDK は登録完了時に CHDevice.keyIndex="0000"
+    // を永続化し (CHSesame2Device.kt:462-469)、login で keyIndex.hexStringToByteArray() = 2B を
+    // signPayload/loginPayload の先頭に置く (CHSesame2Device.kt:233-252)。旧実装の既定 (空 0B) は
+    // loginPayload が 2B 短くなり実機のパースとずれるため、空はここで明示エラーに倒す (BLE2-06)。
+    this._keyIndex = keyIndex == null ? Buffer.from("0000", "hex") : (Buffer.isBuffer(keyIndex) ? keyIndex : Buffer.from(keyIndex, "hex"));
+    if (this._keyIndex.length === 0) {
+      throw new Error('keyIndex must not be empty (registered OS2 devices use "0000" = 2 bytes; omit to use the default)');
+    }
     this._ssmPublicKey = ssmPublicKey == null ? null : (Buffer.isBuffer(ssmPublicKey) ? ssmPublicKey : Buffer.from(ssmPublicKey, "hex"));
     this._debug = debug;
     this._defaultTimeoutMs = defaultTimeoutMs;
@@ -205,7 +212,11 @@ export class SesameOS2BleSession {
    *   5. registerKey/ownerKey/sessionKey = deriveRegisterKeys(pre16, serverToken, mSesameToken)。
    *      cipher = (sessionKey, sessionToken)。
    *   6. payload = sig1[0:4] ++ appPubKey64 ++ serverToken、CREATE REGISTRATION を PLAINTEXT 送出。
-   *   7. login publish (登録完了) を待ち、{deviceUUID, secretKey(=pre16 hex), ownerKey, sesamePublicKey} を返す。
+   *   7. login publish (登録完了) を待ち、{deviceUUID, secretKey(=ownerKey hex), keyIndex("0000"),
+   *      ecdhSecret(=pre16 hex), ownerKey, sesamePublicKey} を返す。
+   *      SDK が登録完了時に永続化するのは keyIndex="0000" / secretKey=ownerKey.toHexString()
+   *      (CHSesame2Device.kt:462-469 CHDevice(..., "0000", ownerKey.toHexString(), ...)) であり、
+   *      次回 login の CMAC(secretKey, ...) も ownerKey を使う (CHSesame2Device.kt:233-252)。
    *
    * @param {{deviceUUID?:string, productType?:(string|number),
    *          registerServer?:(req:{deviceUUID:string, ak:(Buffer|undefined), mSesameToken:Buffer, ER:string,
@@ -221,8 +232,10 @@ export class SesameOS2BleSession {
    *     (crypto.js makeLocalRegisterServer) はこの appPubK64 を ak に採用する。本番のサーバ実装は
    *     ak フィールド (または appPubK64) を使う/無視するを選べる。ak は EccKey.getRegisterAK() 相当
    *     (省略時は appPubK64 をローカル registerServer が使う)。
-   * @returns {Promise<{deviceUUID:string, secretKey:string, ownerKey:string,
-   *                    sesamePublicKey:string, serverSecret:string}>}
+   * @returns {Promise<{deviceUUID:string, secretKey:string, keyIndex:string, ownerKey:string,
+   *                    ecdhSecret:string, sesamePublicKey:string, serverSecret:string}>}
+   *   secretKey は **ownerKey の hex** (次回 login にそのまま使う鍵)。ecdhSecret は ECDH pre16 の
+   *   hex (登録ハンドシェイク中間値。login には使えない — CMAC(pre16,…) は invalidSig になる)。
    */
   async register({ deviceUUID, productType, registerServer, ak } = {}) {
     if (this._secretKey) return Promise.reject(new Error("register() requires a factory device: construct WITHOUT secretKey"));
@@ -276,7 +289,11 @@ export class SesameOS2BleSession {
     // 5. ECDH(sesamePublicKey) → pre16、登録鍵束 (CHSesame2Device.kt:445-456)。
     const pre16 = ecdhSecretPre16(this._regKeyPair, sesamePublicKey);
     const { ownerKey, sessionKey, sessionToken: regSessionToken } = deriveRegisterKeys(pre16, serverToken, mSesameToken);
-    const secretKey = pre16.toString("hex"); // 登録後の device 共通鍵 = ECDH pre16 (CHSesame2Device.kt 後続 login で secretKey 化)
+    // 登録後に永続化する device 共通鍵 = **ownerKey** (CHSesame2Device.kt:462-469:
+    // CHDevice(..., keyIndex="0000", secretKey=ownerKey.toHexString(), ...))。
+    // pre16 (ECDH 共有秘密) は鍵導出の中間値であり login の CMAC 鍵ではない (BLE2-04)。
+    const ownerKeyHex = ownerKey.toString("hex");
+    const ecdhSecretHex = pre16.toString("hex");
 
     // 6. cipher 確立 (sessionKey, regSessionToken)。enc/decCount は cipher 内部で 0 起点。
     this._cipher = new SesameOS2BleCipher(sessionKey, regSessionToken);
@@ -296,14 +313,23 @@ export class SesameOS2BleSession {
 
     this._loggedIn = true;
     this._readyToRegister = false;
-    this._secretKey = Buffer.from(secretKey, "hex");
+    // 以後の login と同じ状態にする: secretKey=ownerKey / keyIndex="0000"
+    // (CHSesame2Device.kt:462-469 の sesame2KeyData = CHDevice(..., "0000", ownerKey, ...))。
+    this._secretKey = Buffer.from(ownerKeyHex, "hex");
+    this._keyIndex = Buffer.from("0000", "hex");
 
     pre16.fill(0);
 
     return {
       deviceUUID,
-      secretKey,
-      ownerKey: ownerKey.toString("hex"),
+      // secretKey = ownerKey hex。register 戻り値をそのまま次回 login の secretKey に使える
+      // (CHSesame2Device.kt:233-252: sessionAuth = CMAC(secretKey=ownerKey, …))。
+      secretKey: ownerKeyHex,
+      keyIndex: "0000", // CHSesame2Device.kt:465
+      ownerKey: ownerKeyHex,
+      // ecdhSecret = ECDH pre16 hex (登録ハンドシェイク中間値)。旧実装はこれを secretKey として
+      // 返していたが、login の CMAC 鍵は ownerKey なので pre16 を渡すと実機は invalidSig で拒否する。
+      ecdhSecret: ecdhSecretHex,
       sesamePublicKey: sesamePublicKey.toString("hex"),
       serverSecret,
     };

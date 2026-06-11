@@ -1523,10 +1523,28 @@
       "summary": "getPaymentMethods of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1544,10 +1562,28 @@
       "summary": "getClientSecret of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1565,10 +1601,36 @@
       "summary": "changeDefaultPayment of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "defaultPaymentMethod",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1586,10 +1648,36 @@
       "summary": "removePayment of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "paymentId",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1607,10 +1695,68 @@
       "summary": "payUpdateLevel of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "subId",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "subscriptionId",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "level",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "isUpgrade",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "isCancel",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1628,10 +1774,44 @@
       "summary": "getDevApiInfo of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "email",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "update",
+          "required": false,
+          "description": "boolean | null",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -3904,7 +4084,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "remote[]",
+          "description": "{ list: remote[], pagination: object|null }",
           "type": "object"
         }
       },
@@ -3935,7 +4115,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "remote[]",
+          "description": "{ list: remote[], pagination: object|null }",
           "type": "object"
         }
       },

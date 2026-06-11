@@ -12,7 +12,7 @@ export { SesameOS2BleCipher } from "./cipher.js";
  * SesameOS2Ble のコンストラクタ opts。
  * @typedef {object} SesameOS2BleOptions
  * @property {string|Buffer} [secretKey] ロック共通鍵 (16B / 32hex)。login 必須、register モードでは不要。
- * @property {string|Buffer} [keyIndex] userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。
+ * @property {string|Buffer} [keyIndex] userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。既定 "0000" (CHSesame2Device.kt:465 の登録時永続値)。
  * @property {string|Buffer} [ssmPublicKey] デバイス公開鍵 (64B, sesame2KeyData.sesame2PublicKey)。login の ECDH 相手。
  * @property {string} [deviceUUID]
  * @property {string|null} [model] "sesame_2" / "sesame_3" / "sesame_4" / "ssmbot_1" / "bike_1"。
@@ -65,8 +65,12 @@ export class SesameOS2Ble {
     close(): Promise<void>;
     /**
      * 工場出荷 (未登録) デバイスの登録 (ECDH + サーバ認証)。registerMode:true で構築した場合に呼ぶ。
+     * 戻り値の {secretKey(=ownerKey hex), keyIndex("0000"), sesamePublicKey} はそのまま次回 login の
+     * コンストラクタ {secretKey, keyIndex, ssmPublicKey} に渡せる (CHSesame2Device.kt:462-469 の
+     * CHDevice 永続化フィールドと同じ契約)。
      * @param {{deviceUUID?:string, productType?:(string|number), ak?:Buffer}} [opts]
-     * @returns {Promise<{deviceUUID:string, secretKey:string, ownerKey:string, sesamePublicKey:string, serverSecret:string}>}
+     * @returns {Promise<{deviceUUID:string, secretKey:string, keyIndex:string, ownerKey:string,
+     *                    ecdhSecret:string, sesamePublicKey:string, serverSecret:string}>}
      */
     register({ deviceUUID, productType, ak }?: {
         deviceUUID?: string;
@@ -75,21 +79,36 @@ export class SesameOS2Ble {
     }): Promise<{
         deviceUUID: string;
         secretKey: string;
+        keyIndex: string;
         ownerKey: string;
+        ecdhSecret: string;
         sesamePublicKey: string;
         serverSecret: string;
     }>;
-    /** 施錠 (OP.async, item=82)。SESAME2/3/4。tag は履歴に残す任意バイト列。 @param {Buffer|Uint8Array} [tag] */
+    /**
+     * 施錠 (OP.async, item=82)。SESAME2/3/4。tag は履歴に残す任意バイト列。
+     * data = createHistag(tag) の **22B 固定** (CHSesame2Device.kt:185: SSM2OpCode.async, lock,
+     * sesame2KeyData.createHistag(historytag) / Bot は CHSesameBotDevice.kt:370)。
+     * @param {Buffer|Uint8Array} [tag]
+     */
     lock(tag?: Buffer | Uint8Array): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /** 解錠 (OP.async, item=83)。SESAME2/3/4 と Bike1。 @param {Buffer|Uint8Array} [tag] */
+    /**
+     * 解錠 (OP.async, item=83)。SESAME2/3/4 と Bike1。data = createHistag(tag) 22B
+     * (CHSesame2Device.kt:201 / Bot CHSesameBotDevice.kt:387 / Bike CHSesameBikeDevice.kt:311)。
+     * @param {Buffer|Uint8Array} [tag]
+     */
     unlock(tag?: Buffer | Uint8Array): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /** SESAME Bot1 のクリック (OP.async, item=89)。 @param {Buffer|Uint8Array} [tag] */
+    /**
+     * SESAME Bot1 のクリック (OP.async, item=89)。data = createHistag(tag) 22B
+     * (CHSesameBotDevice.kt:408)。
+     * @param {Buffer|Uint8Array} [tag]
+     */
     click(tag?: Buffer | Uint8Array): Promise<{
         resultCode: number;
         payload: Buffer;
@@ -104,7 +123,8 @@ export class SesameOS2Ble {
         payload: Buffer;
     }>;
     /**
-     * オートロック設定 (OP.update, item=11、2byte LE 秒数 ++ historyTag。0=無効)。SESAME2/3/4。
+     * オートロック設定 (OP.update, item=11、2byte LE 秒数 ++ createHistag(tag) = 24B。0=無効。
+     * CHSesame2Device.kt:141)。SESAME2/3/4。
      * **BLE 経由なら実機に反映される** (クラウドの biz3TriggerLocker では ack のみで未反映だった機能)。
      * @param {number} seconds 0..65535
      * @param {Buffer|Uint8Array} [tag]
@@ -208,7 +228,7 @@ export type SesameOS2BleOptions = {
      */
     secretKey?: string | Buffer<ArrayBufferLike> | undefined;
     /**
-     * userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。
+     * userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。既定 "0000" (CHSesame2Device.kt:465 の登録時永続値)。
      */
     keyIndex?: string | Buffer<ArrayBufferLike> | undefined;
     /**

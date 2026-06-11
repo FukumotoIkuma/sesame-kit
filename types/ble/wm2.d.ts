@@ -201,8 +201,6 @@ export class WifiModule2 {
         companyId?: string;
         deviceUUID?: string;
     });
-    /** @type {Set<(parsed: ReturnType<typeof parseWM2Publish>) => void>} */
-    /** @type {(() => void)|null} */
     /**
      * WM2 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。
      * @param {(parsed: ReturnType<typeof parseWM2Publish>) => void} fn

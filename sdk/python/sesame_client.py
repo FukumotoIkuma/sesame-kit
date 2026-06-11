@@ -663,29 +663,29 @@ class _Payment:
     def __init__(self, c: "SesameClient") -> None:
         self._c = c
 
-    def changeDefaultPayment(self, **params: Any) -> Any:
+    def changeDefaultPayment(self, *, customerId: str | None = None, companyID: str | None = None, defaultPaymentMethod: str | None = None, timeoutMs: float | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("payment.changeDefaultPayment", params)
+        return self._c._call("payment.changeDefaultPayment", _omit_none({"customerId": customerId, "companyID": companyID, "defaultPaymentMethod": defaultPaymentMethod, "timeoutMs": timeoutMs}))
 
-    def getClientSecret(self, **params: Any) -> Any:
+    def getClientSecret(self, *, customerId: str | None = None, companyID: str | None = None, timeoutMs: float | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("payment.getClientSecret", params)
+        return self._c._call("payment.getClientSecret", _omit_none({"customerId": customerId, "companyID": companyID, "timeoutMs": timeoutMs}))
 
-    def getDevApiInfo(self, **params: Any) -> Any:
+    def getDevApiInfo(self, *, customerId: str | None = None, companyID: str | None = None, email: str | None = None, update: bool | None = None, timeoutMs: float | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("payment.getDevApiInfo", params)
+        return self._c._call("payment.getDevApiInfo", _omit_none({"customerId": customerId, "companyID": companyID, "email": email, "update": update, "timeoutMs": timeoutMs}))
 
-    def getPaymentMethods(self, **params: Any) -> Any:
+    def getPaymentMethods(self, *, customerId: str | None = None, companyID: str | None = None, timeoutMs: float | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("payment.getPaymentMethods", params)
+        return self._c._call("payment.getPaymentMethods", _omit_none({"customerId": customerId, "companyID": companyID, "timeoutMs": timeoutMs}))
 
-    def payUpdateLevel(self, **params: Any) -> Any:
+    def payUpdateLevel(self, *, customerId: str | None = None, companyID: str | None = None, subId: str | None = None, subscriptionId: str | None = None, level: float | None = None, isUpgrade: bool | None = None, isCancel: bool | None = None, timeoutMs: float | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("payment.payUpdateLevel", params)
+        return self._c._call("payment.payUpdateLevel", _omit_none({"customerId": customerId, "companyID": companyID, "subId": subId, "subscriptionId": subscriptionId, "level": level, "isUpgrade": isUpgrade, "isCancel": isCancel, "timeoutMs": timeoutMs}))
 
-    def removePayment(self, **params: Any) -> Any:
+    def removePayment(self, *, customerId: str | None = None, companyID: str | None = None, paymentId: str | None = None, timeoutMs: float | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("payment.removePayment", params)
+        return self._c._call("payment.removePayment", _omit_none({"customerId": customerId, "companyID": companyID, "paymentId": paymentId, "timeoutMs": timeoutMs}))
 
 
 class _Presetir:

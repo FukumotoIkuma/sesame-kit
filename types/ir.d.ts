@@ -1,25 +1,39 @@
 /**
+ * getRemoteList / searchRemoteList の戻り値。
+ * vendor (useRemoteCtrl.js:43-57) の応答 `message.data` は {data:[...], pagination:{...}} の
+ * ラッパーで、一覧本体は `message.data.data`、ページング情報は `message.data.pagination`
+ * (currentPage / pageSize / hasMore 等。次ページは currentPage+1, hasMore で打ち切り —
+ *  loadMoreRemotes, useRemoteCtrl.js:431-441)。
+ * @typedef {{ list: any[], pagination: {currentPage?:number, pageSize?:number, hasMore?:boolean} | null }} RemoteListPage
+ */
+/**
  * 登録済みリモコン一覧を取得 (ページング)。
+ * 次ページは戻り値 pagination の currentPage+1 を page に渡す (hasMore が false なら終端 —
+ * vendor loadMoreRemotes, useRemoteCtrl.js:431-441)。
  * @param {WsClient} client
  * @param {{type:number, companyID:string, page?:number, pageSize?:number}} p
  *   type は **実 remote.type** (自己学習=0xFE00, UI メニューの 0xFEFF ではない / 上記トラップ参照)
+ * @returns {Promise<RemoteListPage>}
  */
 export function getRemoteList(client: WsClient, p: {
     type: number;
     companyID: string;
     page?: number;
     pageSize?: number;
-}): Promise<{}>;
+}): Promise<RemoteListPage>;
 /**
- * プリセットリモコン (メーカー DB) 検索。最大 1000 件返却。
+ * プリセットリモコン (メーカー DB) 検索。最大 1000 件返却
+ * (vendor は page=1/pageSize=1000 固定で frame にページング引数を露出しない —
+ *  useRemoteCtrl.js:406-414)。
  * @param {WsClient} client
  * @param {{type:number, companyID:string, searchTerm:string}} p
+ * @returns {Promise<RemoteListPage>}
  */
 export function searchRemoteList(client: WsClient, p: {
     type: number;
     companyID: string;
     searchTerm: string;
-}): Promise<{}>;
+}): Promise<RemoteListPage>;
 /**
  * リモコンを追加 (Hub3 1 台あたり 3 個上限がサーバ側にある)。
  * `remote` の形は biz3 がそのまま remoteDevice オブジェクトを渡しているので、
@@ -180,6 +194,21 @@ export function learnIRKey(client: WsClient, p: {
     captured: any;
     saved: any;
 }>;
+/**
+ * getRemoteList / searchRemoteList の戻り値。
+ * vendor (useRemoteCtrl.js:43-57) の応答 `message.data` は {data:[...], pagination:{...}} の
+ * ラッパーで、一覧本体は `message.data.data`、ページング情報は `message.data.pagination`
+ * (currentPage / pageSize / hasMore 等。次ページは currentPage+1, hasMore で打ち切り —
+ *  loadMoreRemotes, useRemoteCtrl.js:431-441)。
+ */
+export type RemoteListPage = {
+    list: any[];
+    pagination: {
+        currentPage?: number;
+        pageSize?: number;
+        hasMore?: boolean;
+    } | null;
+};
 /**
  * 下位 WS トランスポート (transport.js の Hub3WsClient)。
  */

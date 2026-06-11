@@ -3,21 +3,31 @@
 // 移植元 (1:1):
 //   _sesame_sdk_ref/sesame-sdk/.../ble/os3/CHWifiModule2Device.kt
 //
-// WM2 は SESAME 5 系ロックと **同じ SesameOS3 BLE スタック** (CCM 暗号セグメント・[item][data]
-// 送信フレーム・[op][item][body] 受信フレーム・SegmentAssembler) の上で動く。違いは 2 点だけ:
+// WM2 は SESAME 5 系ロックと同じ低レベル輸送 (20B セグメント分割・[item][data] 送信フレーム・
+// [op][item][body] 受信フレーム・SegmentAssembler) の上で動くが、**セッション確立はロックと
+// 非互換** である点に注意。違いは次の 3 系統:
 //   (1) GATT サービス/特性 UUID が WM2 専用 (CHWifiModule2Device.kt:533-537 Wm2Chracs)。
 //       fd81 系の SESAME ロックとは別サービスなので、transport 層で WM2 用 UUID を使う必要がある。
 //   (2) cmdItCode が SesameItemCode ではなく **WM2ActionCode** (src/itemcodes.js:WM2_ACTION_CODES)。
 //       数値空間が SesameItemCode と重複する (例 3=UPDATE_WIFI_SSID ≠ USER) ため別 enum で扱う。
+//   (3) **login/register/initial/暗号が CHSesameOS3 基底からオーバーライドされている**
+//       (CHWifiModule2Device.kt:279-321, 521-528)。差分:
+//         - initial publish の itemCode = WM2ActionCode.INITIAL = **13** (ロックは 14)
+//         - login: cipher 鍵 = secretKey **生 16B** / payload = [LOGIN_WM2(2)] ++
+//           CMAC(secretKey, token4) **16B 全量** (ロックは鍵 = CMAC、payload 先頭 4B)
+//         - register: data = pubK64 のみ (timestamp 無し) / 応答 payload[0..63] を ECDH /
+//           cipher 鍵 = ecdhSecret_pre16 **生** (ロックは pubK64++ts4、鍵 = CMAC(pre16, token4))
+//         - CCM sault = mSesameToken (4B) → nonce 12B (ロックは 0x00++token → 13B、
+//           SesameOS3BleCipher.kt:8-32)
+//       この差分は session.js の profile "wm2" (protocol.js SESSION_PROFILES) が実装する。
+//       SesameBle ファサードは kind===WIFI のとき自動で profile "wm2" を渡す (index.js)。
 //
 // この層は protocol.js / session.js の純関数を再利用し、WM2 固有の「コマンド data 生成」と
-// 「publish/応答 payload 解析」だけを担う (無線 I/O は transport の責務、暗号・分割は protocol.js)。
+// 「publish/応答 payload 解析」だけを担う (無線 I/O は transport の責務、暗号・分割は protocol.js、
+// セッション確立は session.js profile "wm2")。
 //
-// 注: 鍵導出・nonce/カウンタ・login/register ハンドシェイクは SESAME ロックと完全に共通
-// (CHWifiModule2Device は CHSesameOS3 を継承し、register=ECDH→ecdhSecretPre16、
-//  login=CMAC(secretKey, token4) を基底からそのまま使う)。よって session.js (register/connect/
-//  request) をそのまま利用でき、ここで再実装しない。本モジュールが足すのは WM2 固有の
-//  action code を request() に乗せるための data builder と publish parser である。
+// @experimental WM2 BLE 経路 (profile "wm2" のハンドシェイクを含む) は SDK Kotlin の静的読みからの
+//   移植で **実機未検証** (参照: CHWifiModule2Device.kt:279-321,521-528 / SesameOS3BleCipher.kt:8-32)。
 
 import { Buffer } from "node:buffer";
 import { t } from "../i18n.js";

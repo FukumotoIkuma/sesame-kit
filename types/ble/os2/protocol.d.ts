@@ -92,10 +92,12 @@ export function buildSendFrame(opCode: number, itemCode: number, data?: Buffer):
  * 受信フレーム (復号後 or 平文) を分解。
  * SesameNotifypayload (notifyOpCode=buf[0], payload=buf[1:]) → SSM2ResponsePayload / SSM3PublishPayload。
  *   notify[0]      = notifyOpCode (response=7 / publish=8)
- *   response body  = [cmdOpCode, cmdItemCode, cmdResultCode, ...payload]
- *   publish  body  = [cmdItemCode, ...payload]
+ *   response body  = [cmdItemCode, cmdOpCode, cmdResultCode, ...payload]   (SesameProtocols.kt:15-19)
+ *   publish  body  = [cmdItemCode, ...payload]                             (SesameProtocols.kt:5-8)
  * 親 OS3 protocol.parseRecvFrame は op+item の 2B ヘッダだったが、OS2 は notify 種別で構造が
  * 変わる (response は 3B ヘッダ、publish は 1B ヘッダ) ため OS2 専用に分解する。
+ * ★response は **itemCode が先頭** (cmdItCode=data[0], cmdOPCode=data[1])。送信フレーム
+ *   (toDataWithHeader = [opCode, itemCode]) とは順序が逆である点に注意。
  *
  * @param {Buffer} buf notify ペイロード全体 (SesameNotifypayload 入力)
  * @returns {{notifyOpCode:number} & ({type:"response", cmdOpCode:number, itemCode:number,
@@ -119,25 +121,20 @@ export function parseRecvFrame(buf: Buffer): {
     body: Buffer;
 });
 /**
- * lock/unlock/click/toggle の history tag data。
- * SDK の sesame2KeyData.createHistag(historytag) (CHDBModel.kt) はタグ種別ヘッダ無しで
- * historyTag をそのまま (なければ空) 送る (OS2 lock/unlock/click は createHistag(tag) を data に渡す:
- * CHSesame2Device.kt:185,201 / CHSesameBotDevice.kt:370,408)。
- * tag 省略時は空バイト列。
- * @param {Buffer|Uint8Array} [tag] 履歴タグ (バイト列)
- * @returns {Buffer}
- */
-export function historyTag(tag?: Buffer | Uint8Array): Buffer;
-/**
  * SDK の createHistag(histag) (CHDBModel.kt:18-23) を 1:1 で移植する。
  *   limitedHistag = histag.take(21)                       // 先頭 21B に切り詰め
  *   padding       = 22 - limitedHistag.size - 1           // 全長 22B に 0 埋め
  *   結果          = [size:1B] ++ limitedHistag ++ 0*padding  // 常に 22B
  * tag 省略 (null) 時は size=0、本体 0B、padding=21 → [0x00] ++ 0*21 = 22B の全 0。
  *
- * ★lock/unlock/click の historyTag() (ヘッダ無し raw 透過) とは別物。
- *   configureLockPosition / Bot updateSetting は SDK 上 createHistag(...) を連結する
- *   (CHSesame2Device.kt:557 / CHSesameBotDevice.kt:421-422) ため、この 22B 構造を使う。
+ * ★OS2 の **履歴タグを伴うコマンドはすべてこの 22B 構造を送る**:
+ *   - lock/unlock      : CHSesame2Device.kt:185,201 (data = createHistag(historytag))
+ *   - Bot lock/unlock/click : CHSesameBotDevice.kt:370,387,408
+ *   - Bike unlock      : CHSesameBikeDevice.kt:311
+ *   - autolock         : CHSesame2Device.kt:141 (2B LE 秒数 ++ createHistag)
+ *   - configureLockPosition / Bot updateSetting : CHSesame2Device.kt:557 / CHSesameBotDevice.kt:421-422
+ *   タグ無しでも全 0 の 22B を送る (実機は先頭 1B を長さとしてパースするため、生バイト透過や
+ *   0B 送信はフォーマット不正になる)。
  * @param {Buffer|Uint8Array|null} [tag] 履歴タグ (バイト列)。省略/null 時は全 0 の 22B。
  * @returns {Buffer} 常に 22B
  */
@@ -207,46 +204,54 @@ export function botUpdateSettingData(setting: BotMechSetting, tag?: Buffer | Uin
  */
 export function enableDfuData(): Buffer;
 /**
- * autolock の data = 2B LE 秒数 (delay.toShort().toReverseBytes()) ++ historyTag。
- * (CHSesame2Device.kt:141: SSM2OpCode.update, autolock, delay.toShort().toReverseBytes() ++ createHistag)
- * 0 で無効化 (disableAutolock = enableAutolock(0), CHSesame2Device.kt:151)。
+ * autolock の data = 2B LE 秒数 (delay.toShort().toReverseBytes()) ++ createHistag(tag) = 24B。
+ * (CHSesame2Device.kt:141: SSM2OpCode.update, autolock, delay.toShort().toReverseBytes() ++ createHistag(historytag))
+ * 0 で無効化 (disableAutolock = enableAutolock(0), CHSesame2Device.kt:150-152)。
  * @param {number} seconds 0..65535
  * @param {Buffer|Uint8Array} [tag] 履歴タグ
- * @returns {Buffer}
+ * @returns {Buffer} 24B (2B LE 秒数 ++ 22B createHistag)
  */
 export function autolockData(seconds: number, tag?: Buffer | Uint8Array): Buffer;
 /**
  * OS2 の mech_status を解析する。
  *
- * SESAME2/3/4 (CHSesame2MechStatus) — 8B mech_status_t (CHSesame2Device.kt:631 mech_status_t = [20..27]):
+ * SESAME2/3/4 (CHSesame2MechStatus, open/devices/CHSesame2.kt:31-40) — 8B mech_status_t
+ * (CHSesame2Device.kt:631 mech_status_t = [20..27]):
  *   data[0..1]: 電池電圧 ADC 生値 (LE)
- *   data[2..3]: target   (i16 LE、Short.MIN_VALUE=-32768 は「未設定」→ null。CHSesame2Device.kt:548)
+ *   data[2..3]: target   (i16 LE、Short.MIN_VALUE=-32768 は「未設定」→ null。CHSesame2.kt:34)
  *   data[4..5]: position (i16 LE)
- *   data[6]   : flags  (bit1 isInLockRange / bit2 isInUnlockRange / ほか SDK CHSesame2MechStatus)
- *   data[7]   : retCode (0 以外は履歴読み出しトリガ。CHSesame2Device.kt:545)
+ *   data[6]   : retCode (0 以外は履歴読み出しトリガ。CHSesame2.kt:35 / CHSesame2Device.kt:545)
+ *   data[7]   : flags  (bit1=2 isInLockRange / bit2=4 isInUnlockRange / bit5=32 isBatteryCritical。
+ *                       CHSesame2.kt:37-40: flags and 2 / and 4 / and 32)
  *
- * Bot/Bike (CHSesameBotMechStatus) — 7B mech_status_t:
- *   data[0..1]: 電池電圧 ADC 生値 (LE)
- *   data[2..3]: target   (i16 LE)
- *   data[4..5]: position (i16 LE)  ※Bot は motorStatus を含む実装だが lock-range 判定は flags で行う
- *   data[6]   : flags (bit1 isInLockRange / bit2 isInUnlockRange)
+ * Bot/Bike (CHSesameBotMechStatus, open/devices/CHSesameBot.kt:22-29) も同じ 8B レイアウトで、
+ * Bot 固有に motorStatus = data[4] (noPower=0/forward=1/hold=2/backward=3) を持つ
+ * (CHSesameBot.kt:23 / CHSesameBotDevice.kt:286-293 の isStop 判定)。
+ * flags は同じく data[7] (CHSesameBot.kt:24-28)。
+ *
+ * ★retCode=data[6] / flags=data[7] の順 (CHSesame2.kt:35-37)。旧実装はこれを逆 (flags=buf[6])
+ *   に読んでおり、施錠/解錠判定・電池警告・履歴トリガが全機種で誤値だった (BLE2-02)。
  *
  * 施錠/解錠/中間は isInLockRange / isInUnlockRange の 2 ビットで判定する
  * (CHSesame2Device.kt:551 / CHSesameBikeDevice.kt:299: lock / unlock / else=moved)。
  *
- * @param {Buffer} buf mech_status_t (7B or 8B)
- * @returns {{state:string, isInLockRange:boolean, isInUnlockRange:boolean,
- *            target:number|null, position:number|null, batteryRaw:number, retCode:number|null, flags:number}}
+ * @param {Buffer} buf mech_status_t (8B。Kotlin は data[7] まで読む固定レイアウト)
+ * @returns {{state:string, isInLockRange:boolean, isInUnlockRange:boolean, isBatteryCritical:boolean,
+ *            target:number|null, position:number|null, batteryRaw:number, retCode:number, flags:number,
+ *            motorStatus:number, isStop:boolean}}
  */
 export function parseMechStatus(buf: Buffer): {
     state: string;
     isInLockRange: boolean;
     isInUnlockRange: boolean;
+    isBatteryCritical: boolean;
     target: number | null;
     position: number | null;
     batteryRaw: number;
-    retCode: number | null;
+    retCode: number;
     flags: number;
+    motorStatus: number;
+    isStop: boolean;
 };
 /**
  * OS2 login 応答ペイロードを解析する。

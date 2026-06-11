@@ -112,6 +112,18 @@ describe("capabilitiesForModel / supportsOp (型×経路の和集合)", () => {
       expect(capabilitiesForModel(m).ops).toEqual([]);
     }
   });
+  it("WM2 は IR/relay/LED を持たない (CHWifiModule2.kt:30-39 — Hub3 専用。P1-9 で捏造を削除)", () => {
+    const c = capabilitiesForModel("wm_2");
+    expect(c.cloud).toEqual([]);
+    expect(c.ble).toEqual([]);
+    expect(c.ops).toEqual([]);
+    expect(supportsOp("wm_2", "ir")).toBe(false);
+    expect(supportsOp("wm_2", "relay")).toBe(false);
+    expect(supportsOp("wm_2", "led")).toBe(false);
+    // WM2 の公開 API 面はプロビジョニング (scanWifiSSID 等) のみ。
+    expect(c.wifiProvisioning).toBe(true);
+    expect(c.bleSupported).toBe(false);
+  });
 });
 
 describe("transportsForOp (型×op→経路) / isOperable", () => {
