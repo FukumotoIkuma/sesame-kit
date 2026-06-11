@@ -7,6 +7,32 @@
 > The CLI commands, grouped by area. Each subcommand also accepts `sesame <cmd> --help` for its full options.
 > When calling from another language via `sesame serve`, `sesame rpc` (or `rpc.discover`) lists every method and its parameters, machine-readably.
 
+## Auth & setup
+
+Sign-in, config bootstrap, and meta commands:
+
+```bash
+sesame login <email>           # start passwordless sign-in (a code is emailed)
+sesame verify [code]           # complete sign-in (interactive input if omitted); imports devices with keys
+sesame refresh                 # force a Cognito token refresh
+sesame logout                  # revoke this session's token + ForgetDevice server-side, then clear local tokens
+sesame whoami                  # logged-in user info (biz3GetLoginUser); saves companyID to config
+
+sesame init                    # create the config directory and a config.json skeleton
+sesame setup                   # re-run the post-auth auto-import (companyID / locks / Hub3 IR)
+sesame migrate [srcDir]        # import a legacy .env / keys.json (tokens are NOT imported — run `sesame login`)
+sesame config                  # show settings (redacted)
+sesame bootstrap               # restore a full app-login token backup from JSON on stdin
+sesame meta                    # show the Cognito config (region / userPoolId / clientId)
+sesame ping                    # check the cloud WS connection
+```
+
+> `sesame migrate [srcDir]`: the legacy files do **not** have to sit in the repository root — point `srcDir` at the directory that holds them (default: the current directory).
+>
+> `sesame logout` is a deliberate **hardening over the official apps** (which only sign out locally): it additionally calls Cognito `ForgetDevice` and `RevokeToken`, scoped to this session/device only (no `GlobalSignOut`).
+
+---
+
 ## Device operations (device as the subject)
 
 The subject is the **device**. `sesame <device> <action>` mirrors the SDK's `device.action()` ordering.
@@ -88,12 +114,16 @@ sesame ir key rm ac 試運転                # delete a key
 
 # Remote CRUD (server side)
 sesame ir remote-list ac              # registered remotes (by irType)
+sesame ir remote-add --json <file|->     # add a remote object on the server (accepts an `ir search` / `ir match` result as-is)
 sesame ir remote-rm ac                   # delete from server
 sesame ir remote-rename "リビング" ac      # change the server alias
 
 # Preset DB
 sesame ir search ac ダイキン           # manufacturer DB search (max 1000)
 sesame ir match ac <hex波形>           # match a learned waveform against known remotes
+
+# Matter bridge (experimental, untested on real hardware)
+sesame ir remote-add-matter              # register an IR remote as a Matter on/off device on Hub3 (RPC: ir.addRemoteToMatter)
 ```
 
 > To refer to a self-learned remote, use the real type `0xFE00` (65024) for `irType`. Passing the menu id `0xFEFF` makes the server match fail and the remote is not found. See [architecture.md](./architecture.md) for details.
@@ -120,16 +150,24 @@ sesame device user-ls                    # list personal devices
 sesame device status <uuid>              # current state
 sesame device rename <uuid> "玄関 SESAME"  # rename
 sesame device rm <uuid>                  # remove from the company
+sesame device add '<items JSON>'         # add devices to the company (QR-derived key object or array)
+sesame device reorder <uuid1> <uuid2> …  # reorder devices (listed UUIDs first, the rest keep their order)
+sesame device notify [<uuid> --on|--off] # push-notification settings (list, or switch one device)
+sesame device recharge <uuid> --on|--off # switch rechargeable-battery mode
 
 sesame history <uuid>                    # lock open/close history
 sesame history                           # interactive selection (or `--json` requires a UUID)
 sesame history <uuid> --delete <ts>      # hide (soft-delete) one open/close record by its timestamp
+sesame history <uuid> --last-key <ts>    # paging cursor: timestamp of the last record of the previous page
+sesame history <uuid> --all              # fetch all pages automatically (continues while a page is full)
 sesame battery <uuid>                    # battery history (light/heavy voltage + percentage)
 sesame battery <uuid> --delete <ts>      # hide (soft-delete) one battery record by its ts (seconds)
+sesame battery <uuid> --last-key '<json>'  # paging cursor: the lastEvaluatedKey JSON from the previous page
 sesame firmware                          # list firmware currently being distributed
 ```
 
 > `--delete` hides a single record instead of listing: pass the `timestamp` of the open/close entry (`history`) or the `ts` in seconds of the battery entry (`battery`).
+> RPC counterparts: `devices.add` / `devices.reorder` / `devices.notifyStatus` / `devices.notifyManage` / `devices.switchRecharge`, and `device.history` / `device.battery` take the same paging params.
 
 ---
 
@@ -171,11 +209,12 @@ sesame access cards clear --device <uuid>                       # delete all car
 sesame access cards rm --json '[{"deviceID":"...","cardID":"..."}]'   # delete individually (no response)
 sesame access cards owner <cardID> [ownerSubUUID]               # assign an owner ('' to clear)
 sesame access passcodes ls --device <uuid>                      # list passcodes
+sesame access passcodes enroll --device <uuid>                  # [experimental] read passcodes over BLE (type on the keypad), bulk-register all
 ```
 
-> `rm` (delCards/delPasscodes) has no response handler in biz3 and is **fire-and-forget**. No completion response is returned.
+> `rm` (delCards/delPasscodes) is **fire-and-forget**, like biz3: the reference registers no callback and ignores any response (`useManageAuthData.js:265-267`), so no completion is reported.
 
-> `enroll` (**experimental, hardware-unverified**) connects to the Touch over BLE, enters register mode, collects **every** card you tap (the CARD_NOTIFY stream carries multiple records), then bulk-registers them to the cloud DB in one call (`registerCards` → `postCards`). Interactive: tap cards, press Enter when done; non-interactive: `--timeout <sec>` (default 20). Phones read several cards per session — this brings the same to the CLI instead of one-at-a-time.
+> `enroll` (**experimental, hardware-unverified**) connects to the device over BLE, enters register mode, collects **every** card you tap / passcode you type (the notify stream carries multiple records), then bulk-registers them to the cloud DB in one call (`registerCards` → `postCards` for cards, `registerPasscodes` → `postPasscodes` for passcodes). Interactive: enroll, press Enter when done; non-interactive: `--timeout <sec>` (default 20). Phones read several entries per session — this brings the same to the CLI instead of one-at-a-time.
 
 ---
 
@@ -192,7 +231,7 @@ sesame company payment             # get billing settings
 
 # Payment / Stripe-side Biz3 ops
 sesame payment methods             # list payment methods
-sesame payment client-secret       # SetupIntent client secret (for Stripe.js confirmSetup)
+sesame payment client-secret       # SetupIntent client secret (confirm with the Stripe public API or Stripe.js — this kit does not handle card data; pass the resulting payment_method to `payment default`)
 sesame payment default <pm_id> --yes
 sesame payment remove <payment_id> --yes
 sesame payment level <encoded_level> --upgrade --yes
@@ -236,6 +275,7 @@ sesame iot led --get --device <uuid> --secret <hex># get the current dimming lev
 sesame iot relay on  --device <uuid> --secret <hex># LTE relay open/close
 sesame iot firmware-update --device <uuid> --secret <hex> --wait 60
 sesame iot matter-code --device <uuid> --secret <hex>   # Matter pairing code
+sesame iot raw --topic <topic> --payload <hex> --cmd <n>   # [experimental] raw iot cmd escape hatch (RPC: iot.sendIotCmd / iot.sendIotCmdAwait)
 ```
 
 > `relay` is fire-and-forget: the Hub3 sends no acknowledgement, so a successful send is not a confirmed switch. The confirmed biz3 operation is `toggle` (`on` is kept as a compatibility alias for the same toggle op); there is no separate `off` command.
@@ -248,11 +288,12 @@ Emit air conditioners and the like **from preset DB commands** rather than by "l
 
 ```bash
 sesame preset-ir air --device <hub3uuid> --code <n> --power --temp 26 --mode 1 --fan 2
+sesame preset-ir air --remote ac --power --temp 26       # resolve device/code/irType/state from a synced config remote
 sesame preset-ir button --device <hub3uuid> --code <n> --button power --irtype 8192
 sesame preset-ir send --device <hub3uuid> --command <hex> --irtype 49152   # emit raw hex
 ```
 
-`air` and `button` generate the 16-byte HXD command locally (ported from biz3's `HXDCommandProcessor`) and emit it through the same `remoteEmit` frame as learned IR. `send` is the low-level path when you already have the HEX command.
+`air` and `button` generate the 16-byte HXD command locally (ported from biz3's `HXDCommandProcessor`) and emit it through the same `remoteEmit` frame as learned IR. `send` is the low-level path when you already have the HEX command. `--remote <name>` resolves `deviceId` / `code` / `irType` / saved state from a config remote (explicit flags win).
 
 ---
 
@@ -275,7 +316,7 @@ sesame front autolock 0          # disable
 
 ### `sesame ble` — direct BLE utility ops
 
-The `ble` command group exposes keyless scan, factory registration, and read-focused BLE inspection directly. Write/provisioning/firmware operations with no dedicated CLI command are reachable from Node and from `sesame serve` via `ble.invoke` / `ble.os2.invoke`. See [ble.md](./ble.md).
+The `ble` command group exposes keyless scan, factory registration, read-focused BLE inspection, generic facade invocation, and device maintenance ops directly. Anything without a dedicated CLI command is reachable through `sesame ble invoke` / `os2-invoke`, from Node, or from `sesame serve` via `ble.invoke` / `ble.os2.invoke`. See [ble.md](./ble.md).
 
 ```bash
 sesame ble scan [--timeout <ms>]         # keyless nearby scan (no secretKey needed)
@@ -288,11 +329,19 @@ sesame ble faces <device>                # list enrolled faces (Face)
 sesame ble palms <device>                # list enrolled palms (Palm)
 sesame ble mode <device> <type>          # get the current enroll mode (type: card/passcode/finger/face/palm)
 sesame ble script <device> [--index <n>] # list Bot2/Bot3 script names + the current script
+
+# Generic + maintenance (RPC twins: ble.invoke / ble.os2.invoke / ble.updateFirmware / ble.reset / ble.wifi.* / ble.position)
+sesame ble invoke <device> <op> [--args '<json>']      # any allowlisted OS3 facade op by dotted path (e.g. biometric.insertSesame)
+sesame ble os2-invoke <device> <op> [--args '<json>']  # same for the OS2 facade (SESAME 2/3/4, Bot1, Bike1)
+sesame ble ota <device>                  # start BLE firmware update (WM2: OPEN_OTA_SERVER / Hub3: MOVE_TO / OS3 locks: SDK no-op path)
+sesame ble reset <device>                # factory-reset an OS3 device (destructive: invalidates its keys)
+sesame ble wifi <device> scan|ssid <v>|password <v>|connect   # Wi-Fi provisioning for WM2/Hub3 (kind auto-detected from model)
+sesame ble position <device> <lock> <unlock>   # configure lock/unlock angles (configureLockPosition)
 ```
 
-`<device>` is a config lock name or a deviceUUID. On the connect-based subcommands (everything except `scan`), `--secret <hex>` and `--model <model>` let you target a device that is not in your config locks, and `--timeout <ms>` sets the publish collection timeout (default 8000). `scan` is keyless and needs neither. For registered OS3 devices that require server-signed login, such as guest or time-limited keys, pass `--server-auth`. The register REST API host is resolved from `--register-base-url <url>` or `config.registerBaseUrl`, and authentication uses `getValidIdToken()` against the existing TokenStore created by `sesame login`.
+`<device>` is a config lock name or a deviceUUID. On the connect-based subcommands (everything except `scan`), `--secret <hex>` and `--model <model>` let you target a device that is not in your config locks, and `--timeout <ms>` sets the publish collection timeout (default 8000). `scan` is keyless and needs neither. For registered OS3 devices that require server-signed login, such as guest or time-limited keys, pass `--server-auth`. The register REST API host is resolved from `--register-base-url <url>` or `config.registerBaseUrl` (default: the official `https://app.candyhouse.co/prod`), and requests are SigV4-signed with Identity Pool credentials derived from the TokenStore created by `sesame login`.
 
-> These commands are the same BLE code paths as the library/RPC surface and are unit-tested but **not yet confirmed against real hardware**. The list/mode/script commands are read-only; enrollment / mode-set / script select / write / run are available through Node or the generic BLE RPC path.
+> These commands are the same BLE code paths as the library/RPC surface and are unit-tested but **not yet confirmed against real hardware**. The list/mode/script commands are read-only; enrollment / mode-set / script select / write / run go through `ble invoke`, Node, or the BLE RPCs.
 
 > **BLE errors are given meaning via `SesameResultCode`** — when a device returns a non-zero result, the library throws
 > `BleResultError` (`.resultCode` / `.resultName`). `resultName` matches the official SesameSDK's

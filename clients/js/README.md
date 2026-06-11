@@ -23,7 +23,8 @@ try {
 ```
 
 Use this when you want a **thin, minimal-dependency, multi-transport** client
-(Unix socket / stdio / HTTP / WebSocket) or a generic `call()` escape hatch.
+(Unix socket / HTTP / WebSocket; the bundled Python client additionally speaks
+stdio) or a generic `call()` escape hatch.
 Failures throw `SesameRpcError(message, kind)` (`kind`: `not_authenticated` /
 `connection_lost` / `timeout` …). The old name `SesameError` is kept as a
 **deprecated alias** for one release (renamed to avoid clashing with the core

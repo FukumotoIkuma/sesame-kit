@@ -7,6 +7,32 @@
 > CLI のコマンドを領域別にまとめています。各サブコマンドの全オプションは `sesame <cmd> --help` で引けます。
 > `sesame serve` 経由で他言語から叩く場合は、`sesame rpc`（または `rpc.discover`）で全メソッドと引数を機械可読に取得できます。
 
+## 認証とセットアップ (Auth & setup)
+
+ログイン・config 初期化・メタ系のコマンド:
+
+```bash
+sesame login <email>           # パスワードレス sign-in 開始 (email にコードが届く)
+sesame verify [code]           # sign-in 完了 (省略時は対話入力)。デバイスを鍵ごと取り込む
+sesame refresh                 # Cognito トークンを強制 refresh
+sesame logout                  # このセッションの token を失効 + サーバ側 ForgetDevice、ローカル token を削除
+sesame whoami                  # ログインユーザー情報 (biz3GetLoginUser)。companyID を config に保存
+
+sesame init                    # 設定ディレクトリと config.json スケルトンを作成
+sesame setup                   # 認証後の自動取り込みを再実行 (companyID / locks / Hub3 IR)
+sesame migrate [srcDir]        # 旧 .env / keys.json を取り込み (トークンは取り込まない — `sesame login` を実行)
+sesame config                  # 設定を表示 (秘匿値はマスク)
+sesame bootstrap               # stdin の JSON からアプリログイン token バックアップを復元
+sesame meta                    # Cognito 設定 (region / userPoolId / clientId) を表示
+sesame ping                    # クラウド WS 接続を確認
+```
+
+> `sesame migrate [srcDir]`: 旧ファイルを**リポジトリ直下に置く必要はありません** — それらが置いてあるディレクトリを `srcDir` で指定します（省略時はカレントディレクトリ）。
+>
+> `sesame logout` は**公式アプリ（ローカル signOut のみ）に対する意図的な強化**です: Cognito の `ForgetDevice` と `RevokeToken` を追加で呼びます。対象はこのセッション / このデバイスのみです（`GlobalSignOut` は使いません）。
+
+---
+
 ## デバイス操作（デバイス主語）
 
 主語は**デバイス**です。`sesame <device> <action>` は SDK の `device.action()` と同じ並びです。
@@ -89,12 +115,16 @@ sesame ir key rm ac 試運転                # キー削除
 
 # リモコン CRUD (server 側)
 sesame ir remote-list ac              # 登録済みリモコン (irType 指定)
+sesame ir remote-add --json <file|->     # server にリモコンオブジェクトを追加 (`ir search` / `ir match` の結果をそのまま渡せる)
 sesame ir remote-rm ac                   # server から削除
 sesame ir remote-rename "リビング" ac      # server alias 変更
 
 # プリセット DB
 sesame ir search ac ダイキン           # メーカー DB 検索 (max 1000)
 sesame ir match ac <hex波形>           # 学習波形 → 既知リモコン照合
+
+# Matter ブリッジ (experimental・実機未検証)
+sesame ir remote-add-matter              # IR リモコンを Hub3 上の Matter on/off デバイスとして登録 (RPC: ir.addRemoteToMatter)
 ```
 
 > 自己学習リモコンを指すときは `irType` に実 type `0xFE00`(65024) を使います。メニュー id の `0xFEFF` を渡すと
@@ -122,16 +152,24 @@ sesame device user-ls                    # 個人デバイス一覧
 sesame device status <uuid>              # 現在状態
 sesame device rename <uuid> "玄関 SESAME"  # 名前変更
 sesame device rm <uuid>                  # company から削除
+sesame device add '<items JSON>'         # company にデバイスを追加 (QR 由来の鍵オブジェクト or 配列)
+sesame device reorder <uuid1> <uuid2> …  # 並び替え (指定 UUID を先頭に、残りは現状の順序を維持)
+sesame device notify [<uuid> --on|--off] # push 通知設定 (一覧、または 1 台を切替)
+sesame device recharge <uuid> --on|--off # 充電式電池モードの切替
 
 sesame history <uuid>                    # ロック開閉履歴
 sesame history                           # 対話選択 (--json では UUID 必須)
 sesame history <uuid> --delete <ts>      # 開閉履歴 1 件を timestamp で hide（ソフト削除）
+sesame history <uuid> --last-key <ts>    # ページングカーソル: 前ページ最終レコードの timestamp
+sesame history <uuid> --all              # 全ページを自動取得 (ページが満杯の間続行)
 sesame battery <uuid>                    # 電池履歴 (light/heavy 電圧 + 割合)
 sesame battery <uuid> --delete <ts>      # 電池履歴 1 件を ts（秒）で hide（ソフト削除）
+sesame battery <uuid> --last-key '<json>'  # ページングカーソル: 前ページの lastEvaluatedKey JSON
 sesame firmware                          # 配信中ファームウェア一覧
 ```
 
 > `--delete` は一覧ではなく 1 件を hide します: 開閉履歴（`history`）はそのエントリの `timestamp`、電池履歴（`battery`）は秒単位の `ts` を渡します。
+> RPC 対応: `devices.add` / `devices.reorder` / `devices.notifyStatus` / `devices.notifyManage` / `devices.switchRecharge`。`device.history` / `device.battery` は同じページング param を受けます。
 
 ---
 
@@ -173,11 +211,12 @@ sesame access cards clear --device <uuid>                       # 指定デバ�
 sesame access cards rm --json '[{"deviceID":"...","cardID":"..."}]'   # 個別削除 (応答なし)
 sesame access cards owner <cardID> [ownerSubUUID]               # 所有者割当 ('' で解除)
 sesame access passcodes ls --device <uuid>                      # 暗証番号一覧
+sesame access passcodes enroll --device <uuid>                  # [experimental] 暗証番号を BLE 読み取り(キーパッド入力)→ 一括登録
 ```
 
-> `rm` (delCards/delPasscodes) は biz3 に応答ハンドラが無く **fire-and-forget**。完了応答は返りません。
+> `rm` (delCards/delPasscodes) は biz3 と同じ **fire-and-forget** です: 参照はコールバックを登録せず応答を無視します (`useManageAuthData.js:265-267`)。完了は報告されません。
 
-> `enroll` (**experimental・実機未検証**) は Touch に BLE 接続して register モードに入り、タップした **すべて** のカードを集約 (CARD_NOTIFY は複数レコードを含む) → クラウド DB へ 1 回で一括登録します (`registerCards` → `postCards`)。対話時はタップ後 Enter、非対話は `--timeout <sec>` (既定 20)。スマホが 1 セッションで複数枚読めるのと同じことを、1 枚ずつでなく CLI でも行えます。
+> `enroll` (**experimental・実機未検証**) はデバイスに BLE 接続して register モードに入り、タップしたカード / 入力した暗証番号を**すべて**集約 (notify ストリームは複数レコードを含む) → クラウド DB へ 1 回で一括登録します (カードは `registerCards` → `postCards`、暗証番号は `registerPasscodes` → `postPasscodes`)。対話時は入力後 Enter、非対話は `--timeout <sec>` (既定 20)。スマホが 1 セッションで複数件読めるのと同じことを、1 件ずつでなく CLI でも行えます。
 
 ---
 
@@ -194,7 +233,7 @@ sesame company payment             # 課金設定取得
 
 # 支払い / Stripe 側 Biz3 op
 sesame payment methods             # 支払い方法一覧
-sesame payment client-secret       # SetupIntent client secret (Stripe.js confirmSetup 用)
+sesame payment client-secret       # SetupIntent client secret (confirm は Stripe 公開 API か Stripe.js で — 本 kit はカード情報を扱いません。得た payment_method は `payment default` へ)
 sesame payment default <pm_id> --yes
 sesame payment remove <payment_id> --yes
 sesame payment level <encoded_level> --upgrade --yes
@@ -238,6 +277,7 @@ sesame iot led --get --device <uuid> --secret <hex># 現在の調光取得
 sesame iot relay on  --device <uuid> --secret <hex># LTE リレー開閉
 sesame iot firmware-update --device <uuid> --secret <hex> --wait 60
 sesame iot matter-code --device <uuid> --secret <hex>   # Matter ペアリングコード
+sesame iot raw --topic <topic> --payload <hex> --cmd <n>   # [experimental] 生 iot cmd の逃げ道 (RPC: iot.sendIotCmd / iot.sendIotCmdAwait)
 ```
 
 > `relay` は fire-and-forget で、Hub3 から応答が返りません（送信成功＝切替成功ではありません）。biz3 ソースで確認できる操作は `toggle` です（`on` は同じ toggle op への互換 alias として残しています）。独立した `off` command はありません。
@@ -250,11 +290,12 @@ sesame iot matter-code --device <uuid> --secret <hex>   # Matter ペアリング
 
 ```bash
 sesame preset-ir air --device <hub3uuid> --code <n> --power --temp 26 --mode 1 --fan 2
+sesame preset-ir air --remote ac --power --temp 26       # sync 済み config リモコンから device/code/irType/state を解決
 sesame preset-ir button --device <hub3uuid> --code <n> --button power --irtype 8192
 sesame preset-ir send --device <hub3uuid> --command <hex> --irtype 49152   # 生 hex 発射
 ```
 
-`air` / `button` は biz3 の `HXDCommandProcessor` から移植した 16 byte HXD command をローカル生成し、学習 IR と同じ `remoteEmit` frame で発射します。`send` は生成済み HEX command をそのまま発射する低レベル経路です。
+`air` / `button` は biz3 の `HXDCommandProcessor` から移植した 16 byte HXD command をローカル生成し、学習 IR と同じ `remoteEmit` frame で発射します。`send` は生成済み HEX command をそのまま発射する低レベル経路です。`--remote <name>` は config リモコンから `deviceId` / `code` / `irType` / 保存済み state を解決します (明示フラグが優先)。
 
 ---
 
@@ -278,7 +319,7 @@ sesame front autolock 0          # 無効化
 
 ### `sesame ble` — BLE 直接の補助 op
 
-`ble` コマンドグループは、鍵なしスキャン、工場出荷デバイスの初期登録、読み取り中心の BLE 調査を直接公開します。専用 CLI コマンドの無い書き込み / プロビジョニング / ファームウェア操作は Node と `sesame serve` の `ble.invoke` / `ble.os2.invoke` から呼べます — [ble.md](./ble.md) を参照してください。
+`ble` コマンドグループは、鍵なしスキャン、工場出荷デバイスの初期登録、読み取り中心の BLE 調査、汎用ファサード呼び出し、デバイス保守 op を直接公開します。専用 CLI コマンドの無い操作は `sesame ble invoke` / `os2-invoke`、Node、または `sesame serve` の `ble.invoke` / `ble.os2.invoke` から呼べます — [ble.md](./ble.md) を参照してください。
 
 ```bash
 sesame ble scan [--timeout <ms>]         # 鍵なしの近接スキャン（secretKey 不要）
@@ -291,11 +332,19 @@ sesame ble faces <device>                # 登録済み顔一覧（Face）
 sesame ble palms <device>                # 登録済み掌紋一覧（Palm）
 sesame ble mode <device> <type>          # 現在の登録モードを取得（type: card/passcode/finger/face/palm）
 sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧 + 現在スクリプト
+
+# 汎用 + 保守 (RPC の対応: ble.invoke / ble.os2.invoke / ble.updateFirmware / ble.reset / ble.wifi.* / ble.position)
+sesame ble invoke <device> <op> [--args '<json>']      # allowlist 済み OS3 ファサード op を dotted path で呼ぶ (例: biometric.insertSesame)
+sesame ble os2-invoke <device> <op> [--args '<json>']  # OS2 ファサード版 (SESAME 2/3/4・Bot1・Bike1)
+sesame ble ota <device>                  # BLE ファームウェア更新開始 (WM2: OPEN_OTA_SERVER / Hub3: MOVE_TO / OS3 ロック: SDK の no-op 経路)
+sesame ble reset <device>                # OS3 デバイスの工場出荷リセット (破壊的: 鍵が無効になる)
+sesame ble wifi <device> scan|ssid <v>|password <v>|connect   # WM2/Hub3 の Wi-Fi プロビジョニング (kind は model から自動判定)
+sesame ble position <device> <lock> <unlock>   # 施錠 / 解錠角度の設定 (configureLockPosition)
 ```
 
-`<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドでは、`--secret <hex>` と `--model <model>` で config のロックに無いデバイスを対象にでき、`--timeout <ms>` で publish 収集のタイムアウト（既定 8000）を指定します。`scan` は鍵なしでどちらも不要です。ゲスト鍵 / 期限付き鍵などサーバ署名 login が必要な登録済み OS3 デバイスでは `--server-auth` を付けます。このとき register REST API の host は `--register-base-url <url>` または `config.registerBaseUrl` から解決され、認証は `sesame login` が保存した既存 TokenStore の `getValidIdToken()` を使います。
+`<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドでは、`--secret <hex>` と `--model <model>` で config のロックに無いデバイスを対象にでき、`--timeout <ms>` で publish 収集のタイムアウト（既定 8000）を指定します。`scan` は鍵なしでどちらも不要です。ゲスト鍵 / 期限付き鍵などサーバ署名 login が必要な登録済み OS3 デバイスでは `--server-auth` を付けます。このとき register REST API の host は `--register-base-url <url>` または `config.registerBaseUrl` から解決され（既定は公式の `https://app.candyhouse.co/prod`）、リクエストは `sesame login` が保存した TokenStore から導出した Identity Pool credentials で SigV4 署名されます。
 
-> これらのコマンドはライブラリ / RPC と同じ BLE コード経路で、ユニットテスト済みですが**実機未確認**です。list / mode / script は読み取り専用であり、生体登録 / モード設定 / スクリプト切替 / 書き込み / 実行は Node または BLE 汎用 RPC から呼べます。
+> これらのコマンドはライブラリ / RPC と同じ BLE コード経路で、ユニットテスト済みですが**実機未確認**です。list / mode / script は読み取り専用であり、生体登録 / モード設定 / スクリプト切替 / 書き込み / 実行は `ble invoke`・Node・BLE RPC から呼べます。
 
 > **BLE エラーは `SesameResultCode` で意味づけ済み** — デバイスが非 0 の結果を返すと、ライブラリは
 > `BleResultError`（`.resultCode` / `.resultName`）を投げます。`resultName` は公式 SesameSDK の

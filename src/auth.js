@@ -489,7 +489,8 @@ async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, de
 }
 
 /**
- * ログアウト。公式アプリ相当にサーバ側もクリーンにする:
+ * ログアウト。公式アプリは**ローカル signOut のみ**で、以下のサーバ側クリーンアップは
+ * 本 kit の意図的な強化 (公式挙動の再現ではない):
  *   1. ForgetDevice — このデバイスの remembered 登録を解除 (ConfirmDevice の対。これが無いと
  *      login のたびに remembered device がアカウントに溜まり続ける)。
  *   2. RevokeToken  — この refresh token を失効 (ローカル削除だけでは生き残るため)。

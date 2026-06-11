@@ -137,6 +137,27 @@ import { learnIRKey } from "sesame-kit/ir";
 import { lockLock } from "sesame-kit/lock";
 ```
 
+## エラー処理: message ではなく `err.code` で分岐する
+
+ライブラリが throw するエラーの **message はロケール依存**です (CLI と同じ i18n 層を通るため、`--lang` / `config.uiLang` で文言が変わります)。機械的な分岐には `SesameError` の構造化フィールドを使ってください:
+
+```js
+import { SesameError } from "sesame-kit";
+
+try {
+  await hub.unlock("front");
+} catch (e) {
+  if (e instanceof SesameError) {
+    // e.code: "not_connected" | "timeout" | "rejected" | "bad_request" | "unauthenticated"
+    // e.retryable: 一時的失敗 (timeout / not_connected) で true
+    // e.data: 付随情報 (例: "rejected" のとき上流クラウド自身の code)
+    if (e.retryable) scheduleRetry();
+  }
+}
+```
+
+`sesame serve` 経由でも同じ原則です: JSON-RPC エラーは (`code` から写像された) `error.data.kind` を持ちます — `error.message` は決して parse しないでください。
+
 ## TypeScript
 
 `.d.ts` 型定義を同梱しています (`types/`、JSDoc から `tsc` で生成)。`moduleResolution: "node16" / "nodenext" / "bundler"` で

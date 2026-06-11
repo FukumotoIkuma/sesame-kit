@@ -99,9 +99,10 @@ export function postPasscodes(client: import("./transport.js").Hub3WsClient, { d
  * ⚠️ これは「BLE 削除 ack 後の DB 後始末」。実削除は BLE
  *    (SesameBle.biometric.cardDelete, src/ble/biometric.js) 経由で行う 2 段構造。
  *    !items.length なら何もしない (biz3:356)。
- * ⚠️ biz3 では delCards に応答ハンドラもコールバック登録も無い (useManageAuthData.js:265-267)。
- *    サーバは応答 op を返さないため、request で待つと必ず timeout する。biz3 と同じく
- *    **fire-and-forget (send)** にする。!items.length なら何もしない。
+ * ⚠️ biz3 の応答ハンドラには `case 'delCards':` が存在するが中身は空で、コールバック登録も
+ *    無い (useManageAuthData.js:265-267) — つまり参照は応答を**無視**する (サーバが応答 op を
+ *    返すかどうかは参照からは確定できない)。biz3 と同じく **fire-and-forget (send)** にする
+ *    (request で待つ設計は参照に無い)。!items.length なら何もしない。
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{items:Array<{deviceID:string, cardID:string}>}} params
@@ -118,8 +119,8 @@ export function delCards(client: import("./transport.js").Hub3WsClient, { items 
  * items 要素は { deviceID, passwordID }。!items.length なら何もしない。
  *
  * ⚠️ biz3 では delPasscodes の応答ハンドラに専用 case が無く default に落ちる (272-273)。
- *    = 専用応答を期待していない。delCards と同様 **fire-and-forget (send)** にする
- *    (request で待つと応答 op が来ず timeout する)。!items.length なら何もしない。
+ *    = 参照は専用応答を期待せず無視する (サーバが応答 op を返すかは参照から確定できない)。
+ *    delCards と同様 **fire-and-forget (send)** にする。!items.length なら何もしない。
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{items:Array<{deviceID:string, passwordID:string}>}} params

@@ -97,7 +97,7 @@ This is the device-layer (SesameOS3) taxonomy and is only available over BLE; th
 
 ### BLE could not initialize
 
-If BLE cannot start, the CLI prints a friendly one-line message and exits with code `2` (in `--json` mode it emits `{ "error": "…", "code": 2, "bleCode": "…" }` on stderr) instead of crashing silently. (Historically `@abandonware/noble`'s native CoreBluetooth binding called `abort()` — a process-level `SIGABRT`, exit `134` — the instant it initialized without permission or an adapter, and that cannot be caught with `try`/`catch`. The CLI now probes BLE in an isolated child process first, so the in-process backend is never touched when it would abort.)
+If BLE cannot start, the CLI prints a friendly one-line message and exits with code `1` — a runtime failure of the execution environment, not a usage error (in `--json` mode it emits `{ "error": "…", "code": 1, "bleCode": "…" }` on stderr) instead of crashing silently. (Historically `@abandonware/noble`'s native CoreBluetooth binding called `abort()` — a process-level `SIGABRT`, exit `134` — the instant it initialized without permission or an adapter, and that cannot be caught with `try`/`catch`. The CLI now probes BLE in an isolated child process first, so the in-process backend is never touched when it would abort.)
 
 The message tells you which case you hit:
 

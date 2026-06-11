@@ -17,6 +17,10 @@
 //   - 同 (action, op) の並行 request を FIFO で正しく解決
 //     (biz3 の useCallbacks は同一 op の全 callback に同じ response を流すバグがあるが、
 //      こちらは FIFO で意味的に正しい)
+//   - 再接続 queue は同一 action のメッセージを 1 通に圧縮**しない** (意図的逸脱:
+//     WebSocketManager.ts:373-381 は queue 内の同一 action を上書きするが、action は
+//     同じでも op/payload が異なる request を握り潰すため、こちらは全件保持し
+//     QUEUE_ENTRY_MAX_AGE_MS の鮮度切りだけ行う)
 
 // 型は devDependencies の @types/ws が提供する (REFACTORING_PLAN P5-7/ARCH-15:
 // 旧 @ts-expect-error + 自前 WsLike 最小 typedef を正式型へ置き換え)。
