@@ -2,18 +2,8 @@
 // biz3GetLoginUser フレーム (op なし) + 応答 data.customerInfo/quotas を検証。
 import { describe, it, expect } from "vitest";
 import { getLoginUser } from "../../src/account.js";
-
-// 最小 mock client: request(frame) を記録し、固定応答を返す。
-function mockClient(reply) {
-  const sent = [];
-  return {
-    sent,
-    async request(frame) {
-      sent.push(frame);
-      return reply;
-    },
-  };
-}
+// 共有 fake (P5-7 / ARCH-16): request(frame) を記録し、固定応答を返す。
+import { mockClient } from "../helpers/mock-ws.js";
 
 describe("getLoginUser", () => {
   it("email 必須", async () => {

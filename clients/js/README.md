@@ -24,8 +24,10 @@ try {
 
 Use this when you want a **thin, minimal-dependency, multi-transport** client
 (Unix socket / stdio / HTTP / WebSocket) or a generic `call()` escape hatch.
-Failures throw `SesameError(message, kind)` (`kind`: `not_authenticated` /
-`connection_lost` / `timeout` …).
+Failures throw `SesameRpcError(message, kind)` (`kind`: `not_authenticated` /
+`connection_lost` / `timeout` …). The old name `SesameError` is kept as a
+**deprecated alias** for one release (renamed to avoid clashing with the core
+`SesameError` from `sesame-kit`, whose `code` is a string).
 
 ## When to use the generated SDK instead
 

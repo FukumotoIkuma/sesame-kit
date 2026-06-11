@@ -246,6 +246,7 @@ Watch events (SSE):
     "serve.grpc.unauthorized": "unauthorized",
     "serve.grpc.fieldMustBeJson": "field \"{f}\" must be JSON",
     "serve.grpc.unknownTopics": "unknown topic(s): {topics}",
+    "serve.grpc.missingDeps": "gRPC framing needs optional packages that are not installed. Run `npm i @grpc/grpc-js @grpc/proto-loader` to enable --grpc.",
   },
   ja: {
     // ---- cli/serve.js ----
@@ -492,5 +493,6 @@ Watch events (SSE):
     "serve.grpc.unauthorized": "unauthorized",
     "serve.grpc.fieldMustBeJson": "field \"{f}\" must be JSON",
     "serve.grpc.unknownTopics": "unknown topic(s): {topics}",
+    "serve.grpc.missingDeps": "gRPC フレーミングに必要な optional パッケージが未導入です。`npm i @grpc/grpc-js @grpc/proto-loader` を実行すると --grpc が使えます。",
   },
 };

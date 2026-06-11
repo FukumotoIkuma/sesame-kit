@@ -34,7 +34,8 @@
 
 import { describe, it, expect } from "vitest";
 import { createECDH } from "node:crypto";
-import { aesCmac } from "node-aes-cmac";
+// AES-CMAC は内製実装 (src/aes-cmac.js, RFC 4493)。旧 node-aes-cmac は P5-2 で除去。
+import { aesCmac } from "../../src/aes-cmac.js";
 import { Buffer } from "node:buffer";
 import {
   deriveRegisterPriKey,

@@ -12,7 +12,9 @@
 
 import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
-import { aesCmac } from "node-aes-cmac";
+// AES-CMAC は内製実装 (RFC 4493 準拠, src/aes-cmac.js)。旧 node-aes-cmac は無メンテ +
+// deprecated Buffer コンストラクタ使用のため置き換えた (REFACTORING_PLAN P5-2)。
+import { aesCmac } from "../aes-cmac.js";
 import { t } from "../i18n.js";
 import { ITEM_CODES, WM2_ACTION_CODES } from "../itemcodes.js";
 
@@ -117,8 +119,8 @@ export function deriveSessionKey(secretKey, token) {
   const key = Buffer.isBuffer(secretKey) ? secretKey : Buffer.from(secretKey, "hex");
   if (key.length !== 16) throw new Error(t("ble.secretKeyMustBe16", { len: key.length }));
   if (!Buffer.isBuffer(token) || token.length !== 4) throw new Error(t("ble.tokenMustBe4Byte"));
-  const mac = aesCmac(key, token, { returnAsBuffer: true });
-  return Buffer.isBuffer(mac) ? mac : Buffer.from(mac, "hex");
+  // 内製 aesCmac は常に 16B Buffer を返す (旧 node-aes-cmac の hex/Buffer 揺れ正規化は不要)。
+  return aesCmac(key, token);
 }
 
 /**

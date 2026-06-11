@@ -20,9 +20,10 @@
 // OS2/OS3 共通の BLE 下層 (SesameBleTransmit/SesameBleReceiver) なので、親 protocol.js の
 // splitSegments/SegmentAssembler/SEG を再利用する (二重実装を避ける)。
 
-/// <reference path="../../types/node-aes-cmac.d.ts" />
 import { Buffer } from "node:buffer";
-import { aesCmac } from "node-aes-cmac";
+// AES-CMAC は内製実装 (RFC 4493 準拠, src/aes-cmac.js)。旧 node-aes-cmac は無メンテ +
+// deprecated Buffer コンストラクタ使用のため置き換えた (REFACTORING_PLAN P5-2)。
+import { aesCmac } from "../../aes-cmac.js";
 import { ITEM_CODES } from "../../itemcodes.js";
 // セグメント下層・op コード・toUInt32ByteArray は OS2/OS3 共通。親 protocol.js を再利用 (編集はしない)。
 // registrationTimestampBytes は SDK の Long.toUInt32ByteArray() (DataExtention.kt:138-147、
@@ -45,16 +46,8 @@ export { OP, SEG, splitSegments, SegmentAssembler, RESULT, resultName };
  */
 export const ITEM = ITEM_CODES;
 
-/**
- * CMAC の戻りを Buffer に正規化 (node-aes-cmac は環境により hex / Buffer を返す)。
- * @param {Buffer} key
- * @param {Buffer} msg
- * @returns {Buffer}
- */
-function cmacBuf(key, msg) {
-  const mac = aesCmac(key, msg, { returnAsBuffer: true });
-  return Buffer.isBuffer(mac) ? mac : Buffer.from(mac, "hex");
-}
+// 注: 旧 node-aes-cmac の hex/Buffer 揺れを吸収していた cmacBuf ラッパは、内製 aesCmac
+// (src/aes-cmac.js) が常に 16B Buffer を返すため不要となり削除した (P5-2)。
 
 /**
  * @param {Buffer|Uint8Array|string} v
@@ -99,7 +92,7 @@ export function deriveSessionKey(ecdhSecretPre16, sessionToken8) {
   if (!Buffer.isBuffer(sessionToken8) || sessionToken8.length !== 8) {
     throw new Error(`sessionToken must be 8 bytes (got ${Buffer.isBuffer(sessionToken8) ? sessionToken8.length : "non-buffer"})`);
   }
-  return cmacBuf(pre, sessionToken8);
+  return aesCmac(pre, sessionToken8);
 }
 
 /**
@@ -125,7 +118,7 @@ export function sessionAuth(secretKey, userIdx, appPublicKey64, sessionToken8) {
     throw new Error(`sessionToken must be 8 bytes (got ${Buffer.isBuffer(sessionToken8) ? sessionToken8.length : "non-buffer"})`);
   }
   const signPayload = Buffer.concat([idx, pub, sessionToken8]);
-  return cmacBuf(key, signPayload);
+  return aesCmac(key, signPayload);
 }
 
 /**
@@ -179,9 +172,9 @@ export function deriveRegisterKeys(ecdhSecretPre16, serverToken, mSesameToken) {
   const ssm = asBuf(mSesameToken, "mSesameToken");
   if (ssm.length !== 4) throw new Error(`mSesameToken must be 4 bytes (got ${ssm.length})`);
   const stoken = Buffer.concat([srv, ssm]);
-  const registerKey = cmacBuf(pre, stoken);
-  const ownerKey = cmacBuf(registerKey, Buffer.from("owner_key", "utf8"));
-  const sessionKey = cmacBuf(registerKey, stoken);
+  const registerKey = aesCmac(pre, stoken);
+  const ownerKey = aesCmac(registerKey, Buffer.from("owner_key", "utf8"));
+  const sessionKey = aesCmac(registerKey, stoken);
   return { registerKey, ownerKey, sessionKey, sessionToken: stoken };
 }
 

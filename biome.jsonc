@@ -1,0 +1,61 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  // P5-8 (ARCH-18): linter のみ導入。formatter は既存スタイル維持 (巨大 diff 回避) のため無効。
+  // 対象は出荷コード (src/ scripts/ bin/ clients/js) のみ — tests/ vendor/ types/ sdk/ schema/
+  // references_web/ _sesame_sdk_ref/ promo/ は files.includes に載せず対象外。
+  "vcs": { "enabled": false, "clientKind": "git", "useIgnoreFile": false },
+  "files": {
+    "includes": [
+      "src/**",
+      "scripts/**",
+      "bin/**",
+      "clients/js/**",
+      "!src/serve/*.generated.json"
+    ]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "complexity": {
+        // 既存コードの意図的なスタイル (正規表現エスケープの明示、`a && a.b` 形、forEach) は
+        // バグ検出ではないため off。実バグ系 (noUselessCatch 等) は recommended のまま有効。
+        "noUselessEscapeInRegex": "off",
+        "useOptionalChain": "off",
+        "noForEach": "off",
+        // presetir.js の IR バイトテーブルは biz3 1:1 移植の 16 進キー ({ 0x30: ... })。
+        // 10 進への書き換えは可読性を落とすだけなので off。
+        "useSimpleNumberKeys": "off"
+      },
+      "style": {
+        "noUselessElse": "off",
+        "useTemplate": "off",
+        "useNodejsImportProtocol": "error"
+      },
+      "suspicious": {
+        // 実バグ検出系は明示的に error で固定 (recommended から外れても残す)。
+        "noDoubleEquals": "error",
+        "noAssignInExpressions": "off",
+        "noExplicitAny": "off"
+      },
+      "correctness": {
+        // 実バグ検出系 (未使用変数/未使用 import) は error で固定。
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
+        "noUnusedFunctionParameters": "error"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // React hook 系ルールは React コンポーネントにのみ意味がある。CLI 側の
+      // `SesameBle.use(...)` / `SesameHub3.use(...)` (リソース管理ヘルパ) を hook と
+      // 誤認して useHookAtTopLevel が誤検出するため、React を使う session-ui.js 以外では off。
+      "includes": ["src/cli/**", "src/**", "scripts/**", "bin/**", "clients/js/**", "!src/session-ui.js"],
+      "linter": { "rules": { "correctness": { "useHookAtTopLevel": "off" } } }
+    }
+  ]
+}

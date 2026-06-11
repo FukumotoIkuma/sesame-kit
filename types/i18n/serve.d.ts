@@ -195,6 +195,7 @@ declare namespace _default {
         "serve.grpc.unauthorized": string;
         "serve.grpc.fieldMustBeJson": string;
         "serve.grpc.unknownTopics": string;
+        "serve.grpc.missingDeps": string;
     };
     let ja: {
         "serve.invalidPort": string;
@@ -392,6 +393,7 @@ declare namespace _default {
         "serve.grpc.unauthorized": string;
         "serve.grpc.fieldMustBeJson": string;
         "serve.grpc.unknownTopics": string;
+        "serve.grpc.missingDeps": string;
     };
 }
 export default _default;

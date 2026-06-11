@@ -1,0 +1,9 @@
+# P5-8 (ARCH-18): 生成物を linguist-generated にして GitHub の diff を既定で折り畳む
+# (レビューノイズ対策 — types/ だけで直近 30 コミット中 311 ファイルが変更されていた)。
+# いずれも `npm run build` (tsc / gen-*.mjs) の決定的な出力で、CI の drift ガードが
+# ソースとの同期を保証する。手編集禁止。
+types/** linguist-generated=true
+sdk/** linguist-generated=true
+schema/openrpc.json linguist-generated=true
+src/serve/*.generated.json linguist-generated=true
+src/serve/sesame.proto linguist-generated=true

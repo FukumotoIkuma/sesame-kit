@@ -62,6 +62,29 @@ cd sesame-kit && npm install && npm link
 
 ### Dependencies & security posture
 
+The production dependency tree is intentionally small. `npm install sesame-kit` pulls in only:
+
+- `ws` — cloud WebSocket transport (core)
+- `commander` — CLI argument parsing (core to the `sesame` bin)
+- `@inquirer/prompts` — interactive CLI prompts (login / setup flows)
+
+These three stay in `dependencies` because the CLI and the cloud transport — the primary entry points of the kit — cannot function without them. Everything heavier is opt-in:
+
+- **AES-CMAC is implemented in-house** (`src/aes-cmac.js`, RFC 4493, built on `node:crypto` AES-128-ECB/CBC only). The previously used `node-aes-cmac` package was unmaintained since 2014 and used the deprecated `Buffer` constructor in a security-critical spot (lock command MAC / session key derivation), so it was removed. All RFC 4493 §4 test vectors (Examples 1–4) are pinned in `tests/crypto/aes-cmac.test.js`.
+- **gRPC framing** (`sesame serve --grpc`) needs `@grpc/grpc-js` + `@grpc/proto-loader`. They are **optional peerDependencies** and are imported lazily; without them every other framing (stdio / UDS / HTTP / WS) works as usual, and `--grpc` fails with a clear install hint. Enable with:
+
+  ```bash
+  npm i @grpc/grpc-js @grpc/proto-loader
+  ```
+
+- **The interactive session TUI** (`sesame session`) needs `ink` + `react` + `ink-select-input` + `ink-text-input` (also optional peerDependencies, dynamically imported). Enable with:
+
+  ```bash
+  npm i ink react ink-select-input ink-text-input
+  ```
+
+- Note for `npx sesame-kit` / global installs: npm does not auto-install optional peers, so the gRPC / session-TUI extras above must be installed alongside (e.g. `npm i -g sesame-kit @grpc/grpc-js @grpc/proto-loader`) if you want those two subcommands. All other commands work out of the box.
+
 BLE support depends on the **optional** native package `@abandonware/noble` (listed under `optionalDependencies`). The cloud / CLI / `sesame serve` paths do **not** require it — if it fails to build (e.g. no Bluetooth toolchain) the rest of the kit still installs and works.
 
 The native BLE toolchain pulls in `node-gyp`, which historically dragged in vulnerable transitive copies of `node-tar`. We pin it to a patched release with a package.json `overrides` field:

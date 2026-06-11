@@ -8,17 +8,8 @@ import {
   payUpdateLevel,
   removePayment,
 } from "../../src/payment.js";
-
-function mockClient(reply) {
-  const sent = [];
-  return {
-    sent,
-    async request(frame) {
-      sent.push(frame);
-      return reply;
-    },
-  };
-}
+// 共有 fake (P5-7 / ARCH-16): request(frame) を記録し、固定応答を返す。
+import { mockClient } from "../helpers/mock-ws.js";
 
 describe("payment namespace", () => {
   it("getPaymentMethods sends biz3ManagePayment/getPaymentMethods and returns array data", async () => {

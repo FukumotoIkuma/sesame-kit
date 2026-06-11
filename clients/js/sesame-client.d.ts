@@ -12,11 +12,11 @@
 //   const h = SesameClient.http("http://127.0.0.1:8080"); // token from serve.token
 //   const w = await SesameClient.ws("ws://127.0.0.1:8081");
 //
-// Failures throw SesameError(message, kind, code)
+// Failures throw SesameRpcError(message, kind, code)
 // (kind: not_authenticated / connection_lost / timeout / not_implemented / bad_params /
 //  rejected / internal — matches the 7 `error.data.kind` values emitted by `sesame serve`).
 
-/** Category of a SesameError. Runtime values are free-form strings; these are the known kinds
+/** Category of a SesameRpcError. Runtime values are free-form strings; these are the known kinds
  * (the 7 kinds emitted by `sesame serve` — see src/serve/jsonrpc.js KIND. SURF-21). */
 export type SesameErrorKind =
   | "not_authenticated"
@@ -29,7 +29,7 @@ export type SesameErrorKind =
   | (string & {});
 
 /**
- * HTTP status → SesameError.kind mapping (canonical table: REFACTORING_PLAN.md P4-5/SURF-10,
+ * HTTP status → SesameRpcError.kind mapping (canonical table: REFACTORING_PLAN.md P4-5/SURF-10,
  * pinned by tests/fixtures/http-kind-map.json — shared with sdk/ts, sdk/python and clients/python).
  * Exported for test cross-checking.
  */
@@ -38,15 +38,24 @@ export declare function httpKind(status: number): SesameErrorKind;
 /** Callback invoked for each subscription event. `topic` is the event name (`event.` prefix stripped). */
 export type SesameEventHandler = (topic: string, params: any) => void;
 
-/** Error thrown by every client failure path. */
-export declare class SesameError extends Error {
-  name: "SesameError";
+/** Error thrown by every client failure path.
+ * (P5-9 / ARCH-19: renamed from `SesameError` to resolve the homonym with the core
+ *  `SesameError` in src/errors.js, whose `code` is a string. Matches the sdk/ts name.) */
+export declare class SesameRpcError extends Error {
+  name: "SesameRpcError";
   /** Coarse failure category, e.g. "not_authenticated" / "connection_lost" / "timeout". */
   kind?: SesameErrorKind;
   /** Optional JSON-RPC / HTTP-style error code (e.g. 401, 1008), when available. */
   code?: number;
   constructor(message: string, kind?: SesameErrorKind, code?: number);
 }
+
+/**
+ * @deprecated Old name. Renamed to {@link SesameRpcError} to resolve the homonym with the
+ * core `SesameError` (string `code`). Kept as a backward-compatible alias for one release;
+ * scheduled for removal in the next minor.
+ */
+export { SesameRpcError as SesameError };
 
 /**
  * Thin client for a running `sesame serve` daemon.

@@ -25,57 +25,21 @@ import {
   deleteAuthenticationData,
 } from "../../src/access.js";
 
+// 共有 fake (P5-7 / ARCH-16)。strict オプションで誤経路 (request 系 op が send/subscribe を
+// 呼ぶ等) を throw で検知する旧 requestClient/pushClient の振る舞いを維持する。
+import { mockClient, chunkMockClient } from "../helpers/mock-ws.js";
+
 // ---------- request 系 mock client ----------
-// request(frame) を記録し固定応答を返す。
+// request(frame) を記録し固定応答を返す。get 系を誤って呼んだら throw で検知。
 function requestClient(reply) {
-  const sent = [];
-  return {
-    sent,
-    async request(frame) {
-      sent.push(frame);
-      return reply;
-    },
-    // get 系を誤って呼んだら検知できるようにダミー
-    send() {
-      throw new Error("unexpected send() call");
-    },
-    subscribe() {
-      throw new Error("unexpected subscribe() call");
-    },
-  };
+  return mockClient(reply, { strictRequestOnly: true });
 }
 
 // ---------- subscribe/send 系 mock client (getCards/getPasscodes 用) ----------
 // subscribe(key, fn) でハンドラを登録、send(frame) を記録。
-// テスト側から emit(key, msg) で push を流せる。
+// テスト側から push(key, msg) で push を流せる。request を誤って呼んだら throw で検知。
 function pushClient() {
-  const sent = [];
-  /** @type {Map<string, Set<Function>>} */
-  const subs = new Map();
-  return {
-    sent,
-    subs,
-    send(frame) {
-      sent.push(frame);
-    },
-    subscribe(key, fn) {
-      let set = subs.get(key);
-      if (!set) {
-        set = new Set();
-        subs.set(key, set);
-      }
-      set.add(fn);
-      return () => set.delete(fn);
-    },
-    emit(key, msg) {
-      const set = subs.get(key);
-      if (!set) return;
-      for (const fn of [...set]) fn(msg);
-    },
-    request() {
-      throw new Error("unexpected request() call");
-    },
-  };
+  return chunkMockClient({ strictPushOnly: true });
 }
 
 const ACTION = "biz3ManageAccessCtlAuthData";
@@ -217,7 +181,7 @@ describe("getCards", () => {
       op: "getCards",
     });
     // 完了通知で解決させる
-    c.emit(`${ACTION}:getCards`, { action: ACTION, op: "getCards" });
+    c.push(`${ACTION}:getCards`, { action: ACTION, op: "getCards" });
     await p;
   });
 
@@ -226,7 +190,7 @@ describe("getCards", () => {
     const p = getCards(c, { deviceUUIDs: ["dev1", "dev2"] });
 
     // dev1 page1 (置換)
-    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
       action: ACTION,
       op: "pubCardLinkedIDs",
       data: {
@@ -236,7 +200,7 @@ describe("getCards", () => {
       },
     });
     // dev1 page2 (累積)
-    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
       action: ACTION,
       op: "pubCardLinkedIDs",
       data: {
@@ -246,7 +210,7 @@ describe("getCards", () => {
       },
     });
     // dev2 page1 — C1 を共有 (横断集約で uuids が 2件になる)
-    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
       action: ACTION,
       op: "pubCardLinkedIDs",
       data: {
@@ -256,7 +220,7 @@ describe("getCards", () => {
       },
     });
 
-    c.emit(`${ACTION}:getCards`, { action: ACTION, op: "getCards" });
+    c.push(`${ACTION}:getCards`, { action: ACTION, op: "getCards" });
     const r = await p;
 
     expect(r.byDevice.dev1).toHaveLength(2);
@@ -272,13 +236,13 @@ describe("getCards", () => {
   it("page===1 が後から来たら置換 (累積ではない)", async () => {
     const c = pushClient();
     const p = getCards(c, { deviceUUIDs: ["dev1"] });
-    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
       data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "OLD" }] },
     });
-    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
       data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "NEW" }] },
     });
-    c.emit(`${ACTION}:getCards`, {});
+    c.push(`${ACTION}:getCards`, {});
     const r = await p;
     expect(r.byDevice.dev1.map((x) => x.cardID)).toEqual(["NEW"]);
   });
@@ -301,9 +265,9 @@ describe("getCards", () => {
     const c = pushClient();
     const p = getCards(c, { deviceUUIDs: ["dev1"], graceMs: 50 });
     // 完了通知が先に届く (ack→pub の逆順)
-    c.emit(`${ACTION}:getCards`, { action: ACTION, op: "getCards" });
+    c.push(`${ACTION}:getCards`, { action: ACTION, op: "getCards" });
     // grace window 内に残 push が届く
-    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
       data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
     });
     const r = await p;
@@ -315,10 +279,10 @@ describe("getCards", () => {
     // graceMs を timeout より長くする = 即確定でなければこのテストは timeout で落ちる構成。
     const c = pushClient();
     const p = getCards(c, { deviceUUIDs: ["dev1"], timeoutMs: 200, graceMs: 60_000 });
-    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
       data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
     });
-    c.emit(`${ACTION}:getCards`, {});
+    c.push(`${ACTION}:getCards`, {});
     const r = await p;
     expect(r.byDevice.dev1).toHaveLength(1);
   });
@@ -326,10 +290,10 @@ describe("getCards", () => {
   it("完了通知後も pub が来ないデバイスは grace 経過後に手持ちの結果で resolve (reject しない)", async () => {
     const c = pushClient();
     const p = getCards(c, { deviceUUIDs: ["dev1", "dev2"], graceMs: 30 });
-    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
       data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
     });
-    c.emit(`${ACTION}:getCards`, {});
+    c.push(`${ACTION}:getCards`, {});
     const r = await p;
     expect(r.byDevice.dev1).toHaveLength(1);
     expect(r.byDevice.dev2).toBeUndefined();
@@ -338,11 +302,11 @@ describe("getCards", () => {
   it("逆順 + 複数ページ: grace window 内の後続ページも吸収する", async () => {
     const c = pushClient();
     const p = getCards(c, { deviceUUIDs: ["dev1"], graceMs: 50 });
-    c.emit(`${ACTION}:getCards`, {});
-    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+    c.push(`${ACTION}:getCards`, {});
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
       data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
     });
-    c.emit(`${ACTION}:pubCardLinkedIDs`, {
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
       data: { deviceUUID: "dev1", page: 2, list: [{ cardID: "C2" }] },
     });
     const r = await p;
@@ -359,14 +323,14 @@ describe("getPasscodes", () => {
       obj: { devices: "dev1" },
       op: "getPasscodes",
     });
-    c.emit(`${ACTION}:pubPasscodeLinkedIDs`, {
+    c.push(`${ACTION}:pubPasscodeLinkedIDs`, {
       data: {
         deviceUUID: "dev1",
         page: 1,
         list: [{ passwordID: "P1", keyBoardPassCode: "0102", name: "pc1" }],
       },
     });
-    c.emit(`${ACTION}:getPasscodes`, {});
+    c.push(`${ACTION}:getPasscodes`, {});
     const r = await p;
     expect(r.items).toHaveLength(1);
     expect(r.items[0].passwordID).toBe("P1");

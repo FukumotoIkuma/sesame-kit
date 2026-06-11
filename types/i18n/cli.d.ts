@@ -207,6 +207,7 @@ declare namespace _default {
         "cli.bleBackgroundConnecting": string;
         "cli.bleScanning": string;
         "cli.bleNoneAndNotLoggedIn": string;
+        "cli.sessionMissingDeps": string;
         "cli.bleConnectFailedDebug": string;
         "cli.disconnected": string;
         "cli.unknownAction": string;
@@ -577,6 +578,7 @@ declare namespace _default {
         "cli.bleBackgroundConnecting": string;
         "cli.bleScanning": string;
         "cli.bleNoneAndNotLoggedIn": string;
+        "cli.sessionMissingDeps": string;
         "cli.bleConnectFailedDebug": string;
         "cli.disconnected": string;
         "cli.unknownAction": string;

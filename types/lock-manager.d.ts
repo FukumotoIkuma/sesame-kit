@@ -16,6 +16,7 @@ export class LockManager {
     /**
      * lock 設定を name から解決。name 省略時は default.lock、
      * 無ければ locks が 1 つだけならそれ。
+     * 解決ロジックは resolveByName (src/resolve.js) に一本化 (P5-4)。失敗は SesameError(BAD_REQUEST)。
      * @param {string|null} [name]
      * @returns {{name: string, lock: import("./config.js").LockView}}
      */

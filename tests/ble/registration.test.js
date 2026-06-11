@@ -15,7 +15,8 @@
 
 import { describe, it, expect } from "vitest";
 import { Buffer } from "node:buffer";
-import { aesCmac } from "node-aes-cmac";
+// AES-CMAC は内製実装 (src/aes-cmac.js, RFC 4493)。旧 node-aes-cmac は P5-2 で除去。
+import { aesCmac } from "../../src/aes-cmac.js";
 import {
   registrationTimestampBytes,
   registrationData,
@@ -192,13 +193,13 @@ describe("session 鍵導出 (deriveSessionKey vs deriveSessionKeyFromEcdh)", () 
     expect(viaEcdh.equals(viaLogin)).toBe(true);
   });
 
-  it("RFC 4493 標準鍵で CMAC 整合 (node-aes-cmac は RFC 4493 実装)", () => {
+  it("RFC 4493 標準鍵で CMAC 整合 (内製 aes-cmac.js は RFC 4493 実装)", () => {
     // RFC 4493 §4 のテスト鍵 K。メッセージは token4 相当の 4B。
     const rfcKey = Buffer.from("2b7e151628aed2a6abf7158809cf4f3c", "hex");
     const msg4 = Buffer.from("6bc1bee2", "hex"); // RFC メッセージ先頭 4B
     const out = deriveSessionKeyFromEcdh(rfcKey, msg4);
     expect(out.length).toBe(16);
-    // node-aes-cmac (RFC 4493) を真値として照合 (鍵=RFC鍵, msg=4B)。
+    // 内製 aesCmac (src/aes-cmac.js, RFC 4493 — Test Vector 全件固定済み) を真値として照合 (鍵=RFC鍵, msg=4B)。
     const ref = aesCmac(rfcKey, msg4, { returnAsBuffer: true });
     expect(out.equals(Buffer.isBuffer(ref) ? ref : Buffer.from(ref, "hex"))).toBe(true);
     expect(out.toString("hex")).toBe("71c5a229ba6db8c471075ac5b9c64ffe");

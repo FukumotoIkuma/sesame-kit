@@ -57,7 +57,8 @@
  */
 
 import { Hub3WsClient, sendIR, getIRCodes } from "./transport.js";
-import { ConfigStore, normalizeConfig } from "./config.js";
+import { ConfigStore, normalizeConfig, migrateConfig } from "./config.js";
+import { resolveByName, REMOTE_RESOLVE_ERRORS } from "./resolve.js";
 import { FileTokenStore } from "./tokens.js";
 import { getValidIdToken, jwtSub } from "./auth.js";
 import { makeCognitoCredentialsProvider, DEFAULT_CH_API_BASE_URL } from "./aws-credentials.js";
@@ -75,7 +76,7 @@ import * as iot from "./iot.js";
 import * as presetir from "./presetir.js";
 import * as payment from "./payment.js";
 import { setAutolock as setAutolockRaw } from "./lock.js";
-import { subscribeChunks, timeoutError } from "./util.js";
+import { subscribeChunks, timeoutError, badRequest } from "./util.js";
 import { t } from "./i18n.js";
 
 /**
@@ -183,7 +184,9 @@ export class SesameHub3 {
   constructor({ config, tokenStore, configStore = null, debug = false }) {
     if (!config) throw new Error(t("domain.client.configRequired"));
     if (!tokenStore) throw new Error(t("domain.client.tokenStoreRequired"));
-    this._config = normalizeConfig({ ...DEFAULT_CONFIG, ...config });
+    // P5-6: 直接構築 (embedded) の config は旧 shape (locks/hub3s 永続化) でも受け付ける。
+    // 旧 shape の解釈は migrateConfig、最新 shape の正規化は normalizeConfig (役割分担)。
+    this._config = normalizeConfig(migrateConfig({ ...DEFAULT_CONFIG, ...config }));
     this._configStore = configStore;
     this._tokenStore = tokenStore;
     this._debug = debug;
@@ -246,16 +249,13 @@ export class SesameHub3 {
    */
   resolveRemote(name) {
     if (this._configStore) return this._configStore.resolveRemote(name);
-    // configStore なしで直接構築された場合: 手動で解決
+    // configStore なしで直接構築された場合: resolveByName (src/resolve.js) で解決 (P5-4 で
+    // ConfigStore.resolveRemote と一本化。失敗は SesameError(BAD_REQUEST) に統一)。
     const cfg = this._config;
-    const remotes = cfg.remotes || {};
-    const names = Object.keys(remotes);
-    const chosen = name || cfg.default?.remote || (names.length === 1 ? names[0] : null);
-    if (!chosen) throw new Error(t("domain.client.noRemoteNoDefault"));
-    const remote = remotes[chosen];
-    if (!remote) throw new Error(t("domain.client.unknownRemote", { name: chosen }));
+    const { name: chosen, entry: remote } =
+      resolveByName(cfg.remotes, name, cfg.default?.remote, REMOTE_RESOLVE_ERRORS);
     const hub3 = cfg.hub3s?.[remote.hub3];
-    if (!hub3) throw new Error(t("domain.client.remoteMissingHub3", { name: chosen, hub3: remote.hub3 }));
+    if (!hub3) throw badRequest("domain.client.remoteMissingHub3", { name: chosen, hub3: remote.hub3 });
     return { name: chosen, remote, hub3Name: remote.hub3, hub3 };
   }
 

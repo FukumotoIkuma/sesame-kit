@@ -24,6 +24,8 @@
 import { Buffer } from "node:buffer";
 import { ITEM_CODES, STP_ITEM_CODES } from "../itemcodes.js";
 import { capabilitiesForModel } from "./devicemodel.js";
+// hex 変換の検証は crypto.js の hexToBuf/bufToHex に一本化 (REFACTORING_PLAN P5-4 / ARCH-08)。
+import { hexToBuf, bufToHex } from "../crypto.js";
 
 const ITEM = ITEM_CODES;
 const STP_ITEM = STP_ITEM_CODES;
@@ -41,14 +43,17 @@ const TYPE_CLOUD_BASE = 0x00;      // CARD_TYPE_CLOUD_BASE / KB_TYPE_CLOUD
 
 /**
  * hex 文字列 → Buffer (奇数長 / 非 hex は throw)。SDK hexStringToByteArray 相当。
+ * 検証ロジックは crypto.js:hexToBuf に委譲し、エラー文言だけ従来の biometric 形式を維持
+ * (挙動互換, P5-4)。
  * @param {string} hex
  * @returns {Buffer}
  */
 function hexToBytes(hex) {
-  if (typeof hex !== "string" || hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) {
+  try {
+    return hexToBuf(/** @type {string} */ (hex));
+  } catch {
     throw new Error(`biometric: invalid hex string: ${hex}`);
   }
-  return Buffer.from(hex, "hex");
 }
 
 /** UUID 文字列/hex 文字列からハイフンを除去した 16B UUID を得る。
@@ -64,12 +69,12 @@ function uuidToBytes(id) {
 }
 
 /**
- * Buffer → hex 文字列 (小文字)。SDK toHexString 相当。
+ * Buffer → hex 文字列 (小文字)。SDK toHexString 相当。crypto.js:bufToHex の薄い別名 (P5-4)。
  * @param {Buffer|Uint8Array} buf
  * @returns {string}
  */
 function bytesToHex(buf) {
-  return Buffer.from(buf).toString("hex");
+  return bufToHex(buf);
 }
 
 /**

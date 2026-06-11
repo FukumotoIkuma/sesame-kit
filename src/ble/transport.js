@@ -22,6 +22,8 @@ import { spawnSync } from "node:child_process";
 import { t } from "../i18n.js";
 import { GATT, COMPANY_ID } from "./protocol.js";
 import { PRODUCT_TYPES, KIND } from "./devicemodel.js";
+// hex 検証は crypto.js の hexToBuf に一本化 (REFACTORING_PLAN P5-4 / ARCH-08)。
+import { hexToBuf } from "../crypto.js";
 
 // 既定 GATT は SESAME ロック (protocol.js fd81 系)。WM2 のように別サービス UUID で discover/
 // subscribe する必要があるデバイスは、createBleTransport/NobleTransport/scanSesames に
@@ -108,10 +110,14 @@ const WRITE_RETRY_BASE_MS = 20;     // バックオフ初期遅延 (20,40,80,160
 
 /**
  * hex 文字列 (32桁) を UUID 文字列に整形する (noHashtoUUID, DataExtention.kt:41-46)。
+ * 入力検証 (32 hex = 16B) は crypto.js:hexToBuf に委譲 (P5-4)。呼び出し元は
+ * Buffer.toString("hex") + 固定 prefix の連結なので通常ここでは絶対に落ちないが、
+ * slice ベースの整形は不正長を黙って通すため防壁として明示検証する。
  * @param {string} hex 32 桁の hex
  * @returns {string} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字)
  */
 function hexToUuid(hex) {
+  hexToBuf(hex, { bytes: 16 }); // 検証のみ (32hex / 16B 以外は明示エラー)
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 

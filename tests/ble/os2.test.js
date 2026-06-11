@@ -4,7 +4,8 @@
 import { describe, it, expect } from "vitest";
 import { Buffer } from "node:buffer";
 import crypto, { createECDH } from "node:crypto";
-import { aesCmac } from "node-aes-cmac";
+// AES-CMAC は内製実装 (src/aes-cmac.js, RFC 4493)。旧 node-aes-cmac は P5-2 で除去。
+import { aesCmac } from "../../src/aes-cmac.js";
 
 import { SesameOS2BleCipher, __test__ as cipherTest } from "../../src/ble/os2/cipher.js";
 import {

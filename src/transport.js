@@ -18,24 +18,11 @@
 //     (biz3 の useCallbacks は同一 op の全 callback に同じ response を流すバグがあるが、
 //      こちらは FIFO で意味的に正しい)
 
-// `ws` は型定義 (@types/ws) を同梱せず、本リポジトリにも追加していないため
-// implicit any になる。ランタイム挙動には影響しないので import だけ抑制し、
-// 実際に使う socket メソッドは下の WsLike typedef で型付けする。
-// @ts-expect-error -- ws ships no type declarations and @types/ws is not installed
+// 型は devDependencies の @types/ws が提供する (REFACTORING_PLAN P5-7/ARCH-15:
+// 旧 @ts-expect-error + 自前 WsLike 最小 typedef を正式型へ置き換え)。
 import WebSocket from "ws";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { t } from "./i18n.js";
-
-/**
- * transport が利用する WebSocket socket の最小インターフェース。
- * `ws` の WebSocket インスタンスがこれを満たす (型定義非同梱のため自前定義)。
- * @typedef {object} WsLike
- * @property {(data: string) => void} send
- * @property {() => void} close
- * @property {(event?: string) => void} removeAllListeners
- * @property {(event: string, listener: (...args: any[]) => void) => void} on
- * @property {(event: string, listener: (...args: any[]) => void) => void} once
- */
 
 /**
  * WS 接続状態。
@@ -130,7 +117,7 @@ export class Hub3WsClient {
     this.onReopen = cfg.onReopen || null;
     this._everConnected = false;
 
-    /** @type {WsLike | null} */
+    /** @type {WebSocket | null} */
     this.ws = null;
     /** @type {WsStatus} */
     this.status = STATUS.DISCONNECTED;
@@ -338,7 +325,6 @@ export class Hub3WsClient {
       this.ws = null;
     }
 
-    /** @type {WsLike} */
     const ws = new WebSocket(url);
     this.ws = ws;
 
@@ -431,7 +417,7 @@ export class Hub3WsClient {
     if (this.ws && this.status === STATUS.CONNECTING) return;
 
     const delay = Math.min(
-      MIN_RECONNECT_DELAY_MS * Math.pow(RECONNECT_BACKOFF_BASE, this.retryCount),
+      MIN_RECONNECT_DELAY_MS * RECONNECT_BACKOFF_BASE ** this.retryCount,
       MAX_RECONNECT_DELAY_MS,
     );
     this.log(`reconnect scheduled (attempt ${this.retryCount + 1}, delay=${Math.floor(delay)}ms)`);
@@ -627,7 +613,7 @@ export class Hub3WsClient {
     try {
       // ws が null の場合は元実装同様に TypeError を発生させ、下の catch で握って return する
       // (heartbeat を送れない接続では pongTimer を張らない、という挙動を保つ)。
-      const ws = /** @type {WsLike} */ (this.ws);
+      const ws = /** @type {WebSocket} */ (this.ws);
       ws.send(JSON.stringify({ action: KEEPALIVE_ACTION }));
     } catch (e) {
       this.log("keepalive send err:", asErrMsg(e));

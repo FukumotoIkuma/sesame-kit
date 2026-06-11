@@ -7,45 +7,8 @@
 // テスト側から呼び出して push を疑似再現する。
 import { describe, it, expect } from "vitest";
 import * as org from "../../src/org.js";
-
-// 同期 op 用 mock: request(frame) を記録し固定 reply を返す。
-function mockClient(reply) {
-  const sent = [];
-  return {
-    sent,
-    async request(frame) {
-      sent.push(frame);
-      return reply;
-    },
-    send(frame) {
-      sent.push(frame);
-    },
-    subscribe() {
-      return () => {};
-    },
-  };
-}
-
-// chunk op 用 mock: subscribe で登録した fn を保持し、send 後にテストが push を流せる。
-function chunkMockClient() {
-  const sent = [];
-  const subs = new Map();
-  return {
-    sent,
-    request: async (f) => { sent.push(f); },
-    send(frame) { sent.push(frame); },
-    subscribe(key, fn) {
-      subs.set(key, fn);
-      return () => subs.delete(key);
-    },
-    // テスト用: 指定 key の subscriber に push を流す。
-    push(key, msg) {
-      const fn = subs.get(key);
-      if (fn) fn(msg);
-    },
-    hasSub(key) { return subs.has(key); },
-  };
-}
+// 共有 fake (P5-7 / ARCH-16): mockClient = 同期 op 用、chunkMockClient = push 集約 op 用。
+import { mockClient, chunkMockClient } from "../helpers/mock-ws.js";
 
 // ════════════════════════════ employee ════════════════════════════
 

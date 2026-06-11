@@ -28,7 +28,7 @@ import { ecdhSecretPre16 } from "../../src/crypto.js";
 //
 //   loginTag = AES-128-CMAC(secretKey, token4)            … CHWifiModule2Device.kt:316
 //            = f50c4785a936182f84ace9dda414343f            (RFC4493 を AES-ECB から独立実装して算出。
-//                                                          runtime の node-aes-cmac とも一致確認済み)
+//                                                          runtime の内製 aesCmac (src/aes-cmac.js) とも一致確認済み)
 //   login frame = [LOGIN_WM2(2)] ++ loginTag 16B 全量      … kt:318 (先頭 4B に切り詰めない)
 //   cipher 鍵 = secretKey 生 16B / sault = token4          … kt:317 (CMAC 鍵ではない・0x00 を挟まない)
 //   nonce(count) = count 8B LE ++ token4 = 12B             … SesameOS3BleCipher.kt:13-14

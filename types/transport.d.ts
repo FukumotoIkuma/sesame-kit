@@ -98,8 +98,8 @@ export class Hub3WsClient {
     idToken: string;
     onTokenRefreshNeeded: ((oldToken: string) => Promise<string | null>) | null;
     onReopen: (() => void) | null;
-    /** @type {WsLike | null} */
-    ws: WsLike | null;
+    /** @type {WebSocket | null} */
+    ws: WebSocket | null;
     /** @type {WsStatus} */
     status: WsStatus;
     /** @type {Map<string, ((msg: WsMessage|CodedError)=>void)[]>} action+op → FIFO の resolver 配列 */
@@ -179,17 +179,6 @@ export type CodedError = Error & {
     code?: string;
 };
 /**
- * transport が利用する WebSocket socket の最小インターフェース。
- * `ws` の WebSocket インスタンスがこれを満たす (型定義非同梱のため自前定義)。
- */
-export type WsLike = {
-    send: (data: string) => void;
-    close: () => void;
-    removeAllListeners: (event?: string) => void;
-    on: (event: string, listener: (...args: any[]) => void) => void;
-    once: (event: string, listener: (...args: any[]) => void) => void;
-};
-/**
  * WS 接続状態。
  */
 export type WsStatus = "disconnected" | "connecting" | "open" | "closing";
@@ -245,4 +234,5 @@ export type Hub3WsClientConfig = {
      */
     onReopen?: (() => void) | null | undefined;
 };
+import WebSocket from "ws";
 //# sourceMappingURL=transport.d.ts.map

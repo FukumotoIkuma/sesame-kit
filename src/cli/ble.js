@@ -24,12 +24,14 @@
 import { t } from "../i18n.js";
 import {
   SesameBle, SesameOS2Ble, createBleTransport, capabilitiesForModel,
-  BLE_RPC_ALLOWLIST, OS2_BLE_RPC_ALLOWLIST, resultName,
+  BLE_RPC_ALLOWLIST, OS2_BLE_RPC_ALLOWLIST,
 } from "../ble/index.js";
 // ble.invoke RPC と「同じドット op パス・同じ JSON 引数 revive 規約・同じ allowlist 照合」を
 // 共有するため、単一実装 (serve/registry.js) を import する (P4-1 段階1: CLI 汎用脱出口)。
 import { invokePath, collectWifiScan, wifiViewOf, bleCommandAck } from "../serve/registry.js";
 import { resolveRegisterTransport } from "../devices.js";
+// hex 検証は crypto.js の hexToBuf に一本化 (REFACTORING_PLAN P5-4 / ARCH-08)。
+import { hexToBuf } from "../crypto.js";
 
 /**
  * ble サブコマンドの commander options。値は string|undefined (boolean フラグは無い)。
@@ -791,12 +793,14 @@ function bufToText(v) {
  * @returns {Buffer|undefined}
  */
 function parseHexOption(ctx, value, name) {
-  const hex = String(value || "");
-  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) {
+  // 検証 + 変換は crypto.js:hexToBuf に委譲 (P5-4)。CLI のエラー文言 (i18n ble.cli.badHex)
+  // と exit code 2 は従来どおり維持する (挙動互換)。
+  try {
+    return hexToBuf(String(value || ""));
+  } catch {
     ctx.die(t("ble.cli.badHex", { name }), 2);
     return undefined;
   }
-  return Buffer.from(hex, "hex");
 }
 
 /**

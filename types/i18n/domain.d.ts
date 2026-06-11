@@ -3,8 +3,6 @@ declare namespace _default {
         "domain.client.useUsage": string;
         "domain.client.configRequired": string;
         "domain.client.tokenStoreRequired": string;
-        "domain.client.noRemoteNoDefault": string;
-        "domain.client.unknownRemote": string;
         "domain.client.remoteMissingHub3": string;
         "domain.client.notConnected": string;
         "domain.client.keyRequired": string;
@@ -12,8 +10,6 @@ declare namespace _default {
         "domain.client.emailNotInStore": string;
         "domain.client.getCompanyDeviceTimeout": string;
         "domain.client.requiresConfigStore": string;
-        "domain.client.noLockNoDefault": string;
-        "domain.client.unknownLock": string;
         "domain.client.subUUIDNotAvailableConnect": string;
         "domain.client.lockMissingDeviceUUID": string;
         "domain.client.lockMissingSecretKey": string;
@@ -95,8 +91,6 @@ declare namespace _default {
         "domain.client.useUsage": string;
         "domain.client.configRequired": string;
         "domain.client.tokenStoreRequired": string;
-        "domain.client.noRemoteNoDefault": string;
-        "domain.client.unknownRemote": string;
         "domain.client.remoteMissingHub3": string;
         "domain.client.notConnected": string;
         "domain.client.keyRequired": string;
@@ -104,8 +98,6 @@ declare namespace _default {
         "domain.client.emailNotInStore": string;
         "domain.client.getCompanyDeviceTimeout": string;
         "domain.client.requiresConfigStore": string;
-        "domain.client.noLockNoDefault": string;
-        "domain.client.unknownLock": string;
         "domain.client.subUUIDNotAvailableConnect": string;
         "domain.client.lockMissingDeviceUUID": string;
         "domain.client.lockMissingSecretKey": string;

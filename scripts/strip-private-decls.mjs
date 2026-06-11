@@ -47,7 +47,7 @@ export function stripPrivateMembers(text, label = "(input)") {
   const out = [];
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
-    if (!/^    (?:private\s+)?_[A-Za-z0-9_]+\??[:(]/.test(line)) {
+    if (!/^ {4}(?:private\s+)?_[A-Za-z0-9_]+\??[:(]/.test(line)) {
       out.push(line);
       continue;
     }

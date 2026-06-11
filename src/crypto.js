@@ -6,10 +6,11 @@
 //   - vendor reference: references_web/src/constants/cmdCode.js (item code)
 //   - vendor reference: references_web/src/constants/sesameDeviceModel.js (productType)
 //
-// biz3 Web は Web Crypto API + 自前 CMAC 実装、Node では node-aes-cmac (RFC 4493) を使用。
+// biz3 Web は Web Crypto API + 自前 CMAC 実装、Node では内製の src/aes-cmac.js (RFC 4493) を使用
+// (旧 node-aes-cmac は無メンテ + deprecated Buffer コンストラクタ使用のため内製化。P5-2)。
 // 公式 BLE 実装と同じ AES-CMAC で、用途のみ異なる (biz3 は時刻署名 / BLE は session key 派生)。
 
-import { aesCmac } from "node-aes-cmac";
+import { aesCmac } from "./aes-cmac.js";
 import { randomUUID, randomBytes, createECDH } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { t } from "./i18n.js";
@@ -42,10 +43,10 @@ export function generateUUID() {
  *   3. AES-CMAC(secretKey, message) → 16B MAC
  *   4. hex 化して先頭 8 文字 (= 4B) を返す
  *
- * `node-aes-cmac` は RFC 4493 標準実装。RFC 4493 §4 の Test Vector 2
- * (key=2b7e1516..., msg=6bc1bee2..., expected=070a16b4...) で動作検証済み
- * (tests/crypto/cmacTime.test.js:217 "RFC 4493 Test Vector 2 を aesCmac 単体で検証"
- * が当該ベクタを assert。biz3 Cmac.js も同じ RFC 4493 標準を Web Crypto 上で自前
+ * AES-CMAC は内製の src/aes-cmac.js (RFC 4493 準拠)。RFC 4493 §4 の全 Test Vector
+ * (Example 1-4) を tests/crypto/aes-cmac.test.js で固定し、Test Vector 2
+ * (key=2b7e1516..., msg=6bc1bee2..., expected=070a16b4...) は tests/crypto/cmacTime.test.js
+ * でも検証している (biz3 Cmac.js も同じ RFC 4493 標準を Web Crypto 上で自前
  * 実装しているため出力は一致する)。
  *
  * @param {string} hexKey 16B (32hex) の secretKey
@@ -66,13 +67,53 @@ export function cmacTime(hexKey) {
   const buf = Buffer.alloc(4);
   buf.writeUInt32LE(ts, 0);
   const msg = buf.subarray(1, 4); // 上位 3B
-  // 戻り値の Buffer 正規化は cmacBuf() に一本化 (node-aes-cmac は環境により hex / Buffer)。
-  // cmacBuf は function 宣言なので巻き上げにより定義順より前のここから呼べる。
-  const macBuf = cmacBuf(key, msg);
-  return macBuf.toString("hex").slice(0, 8);
+  // 内製 aesCmac (src/aes-cmac.js) は常に 16B Buffer を返す (旧 node-aes-cmac の
+  // hex/Buffer 揺れ正規化ラッパ cmacBuf は不要になったため削除済み。P5-2)。
+  return aesCmac(key, msg).toString("hex").slice(0, 8);
 }
 
 // ---------- binary helpers ----------
+
+/**
+ * hex 文字列 → Buffer (奇数長 / 非 hex 文字は明示エラー)。
+ *
+ * ★一本化の動機 (REFACTORING_PLAN P5-4 / ARCH-08): hex 変換が biometric/iot/transport/cli に
+ *   4+ 実装され、検証強度がバラバラだった (Buffer.from(hex,"hex") や parseInt は不正入力を
+ *   黙って切り詰め/0 化する)。検証付き変換をここに集約し、各所はエラー文言 (i18n) だけ
+ *   ローカルに保ちつつ内部検証を本関数へ委譲する。
+ *
+ * @param {string} hex 偶数長の hex 文字列 ("" は 0B Buffer)
+ * @param {{bytes?: number}} [opts] bytes 指定でデコード後のバイト長も検証する
+ * @returns {Buffer}
+ */
+export function hexToBuf(hex, { bytes } = {}) {
+  if (typeof hex !== "string") {
+    throw new Error(`hexToBuf: hex must be a string (got ${typeof hex})`);
+  }
+  if (hex.length % 2 !== 0) {
+    throw new Error(`hexToBuf: hex string must be even-length (got length ${hex.length})`);
+  }
+  if (!/^[0-9a-fA-F]*$/.test(hex)) {
+    throw new Error("hexToBuf: non-hex characters found");
+  }
+  const buf = Buffer.from(hex, "hex");
+  if (bytes !== undefined && buf.length !== bytes) {
+    throw new Error(`hexToBuf: expected ${bytes} byte(s) (got ${buf.length})`);
+  }
+  return buf;
+}
+
+/**
+ * Buffer/Uint8Array → 小文字 hex 文字列 (SDK の toHexString 相当)。
+ * @param {Buffer|Uint8Array} buf
+ * @returns {string}
+ */
+export function bufToHex(buf) {
+  if (!Buffer.isBuffer(buf) && !(buf instanceof Uint8Array)) {
+    throw new Error(`bufToHex: buf must be a Buffer/Uint8Array (got ${typeof buf})`);
+  }
+  return Buffer.from(buf).toString("hex");
+}
 
 /**
  * UUID (32hex with hyphens) → 18B base64 (prefix '000c' 付き)。
@@ -386,20 +427,6 @@ export function ecdhSecretPre16(keyPair, remotePubKey64) {
 export const SERVER_AUTH_PUBKEY =
   "04a040fcc7386b2a08304a3a2f0834df575c936794209729f0d42bd84218b35803932bea522200b2ebcbf17ab57c4509b4a3f1e268b2489eb3b75f7a765adbe181";
 
-// AES-CMAC の戻りを Buffer に正規化 (node-aes-cmac は環境により hex 文字列 / Buffer)。
-// crypto.js 内の唯一の正規化ポイント。cmacTime() もこの helper 経由で揃える
-// (l.69 参照)。別モジュールの src/ble/protocol.js:78 は独立した正規化を持つが、
-// モジュール境界をまたぐため統一は任意。
-/**
- * @param {Buffer} key 16B 鍵
- * @param {Buffer} msg 署名対象メッセージ
- * @returns {Buffer}
- */
-function cmacBuf(key, msg) {
-  const mac = aesCmac(key, msg);
-  return Buffer.isBuffer(mac) ? mac : Buffer.from(mac, "hex");
-}
-
 // ★長さ検証: SDK が想定する e / ak / n の長さ。
 //   getRegisterKey の CMAC メッセージ (e そのもの / ak / n) は長さ非依存なので、長さ違いでも
 //   黙って (誤った) priKey/sig1 を生んでしまう。assertValidP256Scalar と同じ「明示エラー」方針で
@@ -494,8 +521,8 @@ export function deriveRegisterPriKey(e) {
     throw new Error(`e must be >= ${MIN_E_BYTES} byte(s) (got ${eBytes.length})`);
   }
   const keyBytes = Buffer.from("Sesame2_key_pair"); // CHServerAuth.kt:43
-  const oneKey = cmacBuf(keyBytes, eBytes);
-  const twoKey = cmacBuf(oneKey, eBytes);
+  const oneKey = aesCmac(keyBytes, eBytes);
+  const twoKey = aesCmac(oneKey, eBytes);
   return Buffer.concat([oneKey, twoKey]); // 16B ‖ 16B = 32B
 }
 
@@ -579,7 +606,7 @@ export function getRegisterKey(data, opts = {}) {
   const msg = Buffer.concat([akBytes, sessionToken]);
 
   // 5. sig1 = CMAC(secret, msg)[0..3]。
-  const sig1 = cmacBuf(secret, msg).subarray(0, 4);
+  const sig1 = aesCmac(secret, msg).subarray(0, 4);
 
   const result = {
     sig1: Buffer.from(sig1).toString("base64"),

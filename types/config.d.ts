@@ -1,7 +1,17 @@
 /**
- * config オブジェクトを実行時 shape に正規化する。
- * ConfigStore.load() を通らない embedded 利用でも、保存正準形 `devices` から
- * 互換 view の `locks` / `hub3s` を必ず再投影する。
+ * 旧 shape の config を現行 shape (SCHEMA_VERSION) へ段階的に移行する。
+ * schemaVersion が現行より**新しい** config (新版で書かれたファイルを旧版で開いた =
+ * ダウングレード) には何もしない: 版数も未知キーもそのまま保持し、save() で消さない。
+ * @param {Partial<ConfigData> & Record<string, unknown>} raw
+ * @returns {Partial<ConfigData> & Record<string, unknown>}
+ */
+export function migrateConfig(raw?: Partial<ConfigData> & Record<string, unknown>): Partial<ConfigData> & Record<string, unknown>;
+/**
+ * config オブジェクトを実行時 shape に正規化する (**最新 shape 専用**)。
+ * 既定値の穴埋めと、保存正準形 `devices` からの互換 view `locks`/`hub3s` の再投影のみを行う。
+ * 旧 shape (v1 の locks/hub3s 永続化) の解釈は {@link migrateConfig} が担うため、
+ * ConfigStore.load() を通らない embedded 利用では migrateConfig → normalizeConfig の順で通すこと
+ * (SesameHub3 のコンストラクタはそうしている)。
  *
  * @param {Partial<ConfigData>} raw
  * @returns {LoadedConfig}
@@ -27,6 +37,13 @@ export function isLockModel(model: string | null | undefined): boolean;
  * @returns {boolean}
  */
 export function isHub3Model(model: string | null | undefined): boolean;
+/**
+ * 現行 config スキーマ版数 (P5-6 / ARCH-12)。
+ *   v1: locks/hub3s をトップレベルに永続化していた旧 shape (schemaVersion フィールド無し)。
+ *   v2: devices{} が単一の真実。locks/hub3s は派生 view (保存しない)。schemaVersion を明記。
+ * 旧版からの変換は {@link MIGRATIONS} に登録する。
+ */
+export const SCHEMA_VERSION: 2;
 export class ConfigStore {
     /**
      * @param {string} configDir
@@ -61,6 +78,7 @@ export class ConfigStore {
     }): boolean;
     /**
      * name 省略時は default.remote、無ければ remotes が 1 つだけならそれ。
+     * 解決ロジックは resolveByName (src/resolve.js) に一本化 (P5-4)。失敗は SesameError(BAD_REQUEST)。
      * @param {string} [name]
      * @returns {{name: string, remote: RemoteEntry, hub3Name: string, hub3: Hub3View}}
      */
@@ -105,6 +123,7 @@ export class ConfigStore {
     updateRemoteKeys(name: string, keys: Record<string, string>): void;
     /**
      * name 省略時は default.lock、無ければ locks が 1 つだけならそれ。
+     * 解決ロジックは resolveByName (src/resolve.js) に一本化 (P5-4)。失敗は SesameError(BAD_REQUEST)。
      * @param {string} [name]
      * @returns {{name: string, lock: LockView}}
      */
@@ -273,6 +292,10 @@ export type ConfigDefault = {
  * config.json 全体のドメインモデル。
  */
 export type ConfigData = {
+    /**
+     * config スキーマ版数 (P5-6)。現行は {@link SCHEMA_VERSION}。
+     */
+    schemaVersion?: number | undefined;
     companyID?: string | undefined;
     wsUrl?: string | undefined;
     lang?: string | undefined;

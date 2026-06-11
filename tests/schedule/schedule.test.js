@@ -4,18 +4,8 @@
 // 一次資料: useManageSchedule.js:11-24 / :50-64。
 import { describe, it, expect } from "vitest";
 import { getScheduleList, cancelSchedule } from "../../src/schedule.js";
-
-// 最小 mock client: request(frame) を記録し、固定応答を返す (getLoginUser.test.js が手本)。
-function mockClient(reply) {
-  const sent = [];
-  return {
-    sent,
-    async request(frame) {
-      sent.push(frame);
-      return reply;
-    },
-  };
-}
+// 共有 fake (P5-7 / ARCH-16): request(frame) を記録し、固定応答を返す。
+import { mockClient } from "../helpers/mock-ws.js";
 
 describe("getScheduleList", () => {
   it("subUUID 必須", async () => {

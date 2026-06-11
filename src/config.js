@@ -23,6 +23,8 @@ import { configPaths } from "./paths.js";
 import { writeSecretJson } from "./secure-fs.js";
 import { DEFAULT_IR_TYPE } from "./crypto.js";
 import { t } from "./i18n.js";
+import { badRequest } from "./util.js";
+import { resolveByName, LOCK_RESOLVE_ERRORS, REMOTE_RESOLVE_ERRORS } from "./resolve.js";
 
 /**
  * config に格納する SESAME device レコード。サーバ応答 (getCompanyDevice 等) を
@@ -80,6 +82,7 @@ import { t } from "./i18n.js";
 /**
  * config.json 全体のドメインモデル。
  * @typedef {Object} ConfigData
+ * @property {number} [schemaVersion] config スキーマ版数 (P5-6)。現行は {@link SCHEMA_VERSION}。
  * @property {string} [companyID]
  * @property {string} [wsUrl]
  * @property {string} [lang]
@@ -123,9 +126,18 @@ const LEGACY_WS_URL =
 const DEFAULT_LANG = "ja";
 const DEFAULT_COMPANY_ID = "ch_CandyhouseMobile";
 
+/**
+ * 現行 config スキーマ版数 (P5-6 / ARCH-12)。
+ *   v1: locks/hub3s をトップレベルに永続化していた旧 shape (schemaVersion フィールド無し)。
+ *   v2: devices{} が単一の真実。locks/hub3s は派生 view (保存しない)。schemaVersion を明記。
+ * 旧版からの変換は {@link MIGRATIONS} に登録する。
+ */
+export const SCHEMA_VERSION = 2;
+
 /** @returns {ConfigData} */
 function emptyConfig() {
   return {
+    schemaVersion: SCHEMA_VERSION,
     companyID: DEFAULT_COMPANY_ID,
     wsUrl: DEFAULT_WS_URL,
     lang: DEFAULT_LANG,
@@ -140,10 +152,16 @@ function emptyConfig() {
   };
 }
 
-// 永続化する正準キー (locks/hub3s は派生 view なので保存しない)。
-// これは意図的なハードホワイトリスト: ここに無いトップレベルキーは save() で落とす。
-// 将来フィールドを足すときはこの配列にも必ず追加すること (追加し忘れると黙って消える)。
-const PERSISTED_KEYS = ["companyID", "wsUrl", "lang", "uiLang", "default", "devices", "remotes", "apiKeyId", "biometricsBaseUrl", "registerBaseUrl", "appIdentifyId"];
+// 永続化キーの方針 (P5-6): save() は**未知キーを保持する** (新旧バージョン併用・ダウングレード時に、
+// 新しい版が書いたキーを古い版が黙って消すのを防ぐ)。正準キーの一覧は ConfigData typedef が単一の
+// 真実。旧実装の PERSISTED_KEYS ハードホワイトリストは「列挙し忘れたキー」「新しい版が書いたキー」を
+// save() で黙って落としていたため廃止し、除外は派生 view (DERIVED_KEYS) のブラックリストに限定する。
+
+// 派生 view (devices{} からの正規化結果 = _reproject の出力)。これだけは保存しない。
+// 「派生」の定義: load()/save() のたびに devices{} + category 判定から決定的に再生成でき、
+// ディスク上の値を読むことが無いキー。locks (lockView) / hub3s (hub3View) が該当する。
+// remotes は派生ではない (IR リモコン定義はユーザ操作で編集される独立エンティティ)。
+const DERIVED_KEYS = ["locks", "hub3s"];
 
 // device レコードのうち config ローカルにだけ存在する注釈キー (サーバ応答には無い)。
 // sync 更新時にサーバ由来フィールドで丸ごと置き換えても、これらは引き継ぐ。
@@ -168,10 +186,94 @@ function hub3View(rec, name) {
   return { deviceId: rec.deviceUUID, name: rec.deviceName || name, model: rec.deviceModel || "hub_3", secretKey: rec.secretKey || null };
 }
 
+// ---- スキーマ移行 (P5-6 / ARCH-12) ----
+//
+// 旧 shape からの変換は版数ごとにこのテーブルへ登録する (MIGRATIONS[v] = v → v+1 の変換)。
+// normalizeConfig は**最新 shape の正規化のみ**を担い、旧 shape の解釈はここに集約する。
+// schemaVersion フィールドが無い config は v1 (locks/hub3s をトップレベルに永続化していた
+// 旧 shape) とみなす。
+
 /**
- * config オブジェクトを実行時 shape に正規化する。
- * ConfigStore.load() を通らない embedded 利用でも、保存正準形 `devices` から
- * 互換 view の `locks` / `hub3s` を必ず再投影する。
+ * v1 → v2: トップレベル永続化されていた locks/hub3s を単一の真実 devices{} へ取り込む。
+ * 旧 shape の locks/hub3s は派生 view より広い (deviceModel/deviceName/model/alias 等の
+ * レガシーフィールドを持ちうる) ため、移行入力は緩い型で受ける。
+ * 変換後の locks/hub3s キーは消費済みとして削除する (以降は _reproject が再生成する派生 view)。
+ * @param {Partial<ConfigData> & Record<string, unknown>} raw
+ * @returns {Partial<ConfigData> & Record<string, unknown>}
+ */
+function migrateV1toV2(raw) {
+  const cfg = { ...raw };
+  /** @type {Record<string, DeviceRecord>} */
+  const devices = { ...(cfg.devices || {}) };
+  /** @param {unknown} uuid */
+  const hasDevice = (uuid) => Object.values(devices).some((r) => normalizeUuid(r?.deviceUUID) === normalizeUuid(uuid));
+  /** @typedef {Record<string, string|null|undefined>} LegacyEntry */
+  const legacyLocks = /** @type {Record<string, LegacyEntry>} */ (raw?.locks || {});
+  const legacyHub3s = /** @type {Record<string, LegacyEntry>} */ (raw?.hub3s || {});
+  for (const [name, lock] of Object.entries(legacyLocks)) {
+    if (!lock?.deviceUUID || hasDevice(lock.deviceUUID)) continue;
+    const { model, alias, ...rest } = lock;
+    devices[name] = {
+      ...rest,
+      deviceUUID: lock.deviceUUID,
+      secretKey: lock.secretKey,
+      deviceModel: lock.deviceModel ?? model ?? null,
+      deviceName: lock.deviceName ?? alias ?? null,
+      category: "lock",
+    };
+  }
+  for (const [name, hub3] of Object.entries(legacyHub3s)) {
+    const deviceUUID = hub3?.deviceUUID || hub3?.deviceId;
+    if (!deviceUUID || hasDevice(deviceUUID)) continue;
+    devices[name] = {
+      ...hub3,
+      deviceUUID,
+      secretKey: hub3.secretKey || null,
+      deviceModel: hub3.deviceModel || hub3.model || "hub_3",
+      deviceName: hub3.deviceName || hub3.name || name,
+      category: "hub3",
+    };
+  }
+  cfg.devices = devices;
+  delete cfg.locks;
+  delete cfg.hub3s;
+  return cfg;
+}
+
+/**
+ * 版数 → 「その版から次版への変換」のテーブル。新しい版を切ったらここへ追加する。
+ * @type {Record<number, (raw: Partial<ConfigData> & Record<string, unknown>) => Partial<ConfigData> & Record<string, unknown>>}
+ */
+const MIGRATIONS = {
+  1: migrateV1toV2,
+};
+
+/**
+ * 旧 shape の config を現行 shape (SCHEMA_VERSION) へ段階的に移行する。
+ * schemaVersion が現行より**新しい** config (新版で書かれたファイルを旧版で開いた =
+ * ダウングレード) には何もしない: 版数も未知キーもそのまま保持し、save() で消さない。
+ * @param {Partial<ConfigData> & Record<string, unknown>} raw
+ * @returns {Partial<ConfigData> & Record<string, unknown>}
+ */
+export function migrateConfig(raw = {}) {
+  let cfg = { ...(raw || {}) };
+  let v = Number(cfg.schemaVersion) || 1; // フィールド無し = v1 (旧 shape)
+  while (v < SCHEMA_VERSION && MIGRATIONS[v]) {
+    cfg = MIGRATIONS[v](cfg);
+    v += 1;
+    cfg.schemaVersion = v;
+  }
+  // v >= SCHEMA_VERSION ならそのまま (ダウングレード安全: 新しい版数を巻き戻さない)。
+  if (!cfg.schemaVersion) cfg.schemaVersion = SCHEMA_VERSION;
+  return cfg;
+}
+
+/**
+ * config オブジェクトを実行時 shape に正規化する (**最新 shape 専用**)。
+ * 既定値の穴埋めと、保存正準形 `devices` からの互換 view `locks`/`hub3s` の再投影のみを行う。
+ * 旧 shape (v1 の locks/hub3s 永続化) の解釈は {@link migrateConfig} が担うため、
+ * ConfigStore.load() を通らない embedded 利用では migrateConfig → normalizeConfig の順で通すこと
+ * (SesameHub3 のコンストラクタはそうしている)。
  *
  * @param {Partial<ConfigData>} raw
  * @returns {LoadedConfig}
@@ -184,37 +286,6 @@ export function normalizeConfig(raw = {}) {
   if (!cfg.devices) cfg.devices = {};
   if (!cfg.remotes) cfg.remotes = {};
   if (cfg.wsUrl === LEGACY_WS_URL) cfg.wsUrl = DEFAULT_WS_URL;
-  /** @param {unknown} uuid */
-  const hasDevice = (uuid) => Object.values(cfg.devices || {}).some((r) => normalizeUuid(r?.deviceUUID) === normalizeUuid(uuid));
-  // 旧 shape の locks/hub3s は派生 view より広い (deviceModel/deviceName/model/alias 等の
-  // レガシーフィールドを持ちうる) ため、移行入力は緩い型で受ける。
-  /** @typedef {Record<string, string|null|undefined>} LegacyEntry */
-  const legacyLocks = /** @type {Record<string, LegacyEntry>} */ (raw?.locks || {});
-  const legacyHub3s = /** @type {Record<string, LegacyEntry>} */ (raw?.hub3s || {});
-  for (const [name, lock] of Object.entries(legacyLocks)) {
-    if (!lock?.deviceUUID || hasDevice(lock.deviceUUID)) continue;
-    const { model, alias, ...rest } = lock;
-    cfg.devices[name] = {
-      ...rest,
-      deviceUUID: lock.deviceUUID,
-      secretKey: lock.secretKey,
-      deviceModel: lock.deviceModel ?? model ?? null,
-      deviceName: lock.deviceName ?? alias ?? null,
-      category: "lock",
-    };
-  }
-  for (const [name, hub3] of Object.entries(legacyHub3s)) {
-    const deviceUUID = hub3?.deviceUUID || hub3?.deviceId;
-    if (!deviceUUID || hasDevice(deviceUUID)) continue;
-    cfg.devices[name] = {
-      ...hub3,
-      deviceUUID,
-      secretKey: hub3.secretKey || null,
-      deviceModel: hub3.deviceModel || hub3.model || "hub_3",
-      deviceName: hub3.deviceName || hub3.name || name,
-      category: "hub3",
-    };
-  }
   cfg.locks = {};
   cfg.hub3s = {};
   for (const [name, rec] of Object.entries(cfg.devices || {})) {
@@ -264,7 +335,9 @@ export class ConfigStore {
     // 「禁止エンドポイントを焼き付けさせない」防御。
     let forced = false;
     if (raw.wsUrl === LEGACY_WS_URL) forced = true;
-    this.data = normalizeConfig(raw);
+    // P5-6: 旧 shape の解釈は migrateConfig (MIGRATIONS テーブル)、最新 shape の正規化は
+    // normalizeConfig という役割分担で通す。
+    this.data = normalizeConfig(migrateConfig(raw));
     if (forced) { try { this.save(); } catch { /* 読み取り専用環境では in-memory のみ */ } }
     return /** @type {LoadedConfig} */ (this.data);
   }
@@ -283,13 +356,21 @@ export class ConfigStore {
   }
 
   save() {
+    // load() 前の save() はライブラリ利用側のコーディングミス = 内部不変条件違反なので
+    // plain Error のまま (errors.js のエラー設計方針 3)。
     if (!this.data) throw new Error(t("domain.config.nothingToSave"));
     this._reproject(); // 書き込み前に view を最新化 (読み手が直後に参照しても整合)
-    // 永続化は正準キーのみ (派生 view の locks/hub3s は書かない)
+    // P5-6: 派生 view (DERIVED_KEYS = locks/hub3s) 以外は**未知キーも含めて全て保持**する。
+    // 旧実装の PERSISTED_KEYS ホワイトリストは「列挙し忘れたキー」「新しい版が書いたキー」を
+    // save() で黙って消していた (ダウングレード/新旧併用で破壊的)。ホワイトリストは
+    // ドキュメントとしてのみ残し、除外は派生 view 専用のブラックリストに限定する。
     /** @type {Record<string, unknown>} */
     const persist = {};
     const data = /** @type {Record<string, unknown>} */ (this.data);
-    for (const k of PERSISTED_KEYS) if (data[k] !== undefined) persist[k] = data[k];
+    for (const [k, v] of Object.entries(data)) {
+      if (DERIVED_KEYS.includes(k)) continue; // locks/hub3s は devices からの再生成物なので書かない
+      if (v !== undefined) persist[k] = v;
+    }
     // config.json には ロックの secretKey (32hex 平文) が入るので tokens.json 同様
     // mode 0600 / 親 0700 でアトミックに保存する (secure-fs.js に一本化)。
     writeSecretJson(this.configPath, persist);
@@ -318,30 +399,18 @@ export class ConfigStore {
 
   /**
    * name 省略時は default.remote、無ければ remotes が 1 つだけならそれ。
+   * 解決ロジックは resolveByName (src/resolve.js) に一本化 (P5-4)。失敗は SesameError(BAD_REQUEST)。
    * @param {string} [name]
    * @returns {{name: string, remote: RemoteEntry, hub3Name: string, hub3: Hub3View}}
    */
   resolveRemote(name) {
     const cfg = this.load();
-    const remotes = cfg.remotes || {};
-    const names = Object.keys(remotes);
-    const chosen =
-      name ||
-      cfg.default?.remote ||
-      (names.length === 1 ? names[0] : null);
-    if (!chosen) {
-      throw new Error(
-        t("domain.config.noRemoteNoDefault", { names: names.join(", ") || "(none)" }),
-      );
-    }
-    const remote = remotes[chosen];
-    if (!remote) {
-      throw new Error(t("domain.config.unknownRemote", { name: chosen, names: names.join(", ") || "(none)" }));
-    }
+    const { name: chosen, entry: remote } =
+      resolveByName(cfg.remotes, name, cfg.default?.remote, REMOTE_RESOLVE_ERRORS);
     const hub3Name = remote.hub3;
     const hub3 = cfg.hub3s?.[hub3Name];
     if (!hub3) {
-      throw new Error(t("domain.config.remoteRefMissingHub3", { name: chosen, hub3: hub3Name }));
+      throw badRequest("domain.config.remoteRefMissingHub3", { name: chosen, hub3: hub3Name });
     }
     return { name: chosen, remote, hub3Name, hub3 };
   }
@@ -352,8 +421,8 @@ export class ConfigStore {
    */
   addHub3(name, hub3) {
     const cfg = this.load();
-    if (!name) throw new Error(t("domain.config.hub3NameRequired"));
-    if (!hub3?.deviceId) throw new Error(t("domain.config.hub3DeviceIdRequired"));
+    if (!name) throw badRequest("domain.config.hub3NameRequired");
+    if (!hub3?.deviceId) throw badRequest("domain.config.hub3DeviceIdRequired");
     cfg.devices[name] = {
       deviceUUID: hub3.deviceId,
       deviceName: hub3.name || name,
@@ -372,10 +441,10 @@ export class ConfigStore {
    */
   addRemote(name, remote) {
     const cfg = this.load();
-    if (!name) throw new Error(t("domain.config.remoteNameRequired"));
-    if (!remote?.hub3) throw new Error(t("domain.config.remoteHub3Required"));
+    if (!name) throw badRequest("domain.config.remoteNameRequired");
+    if (!remote?.hub3) throw badRequest("domain.config.remoteHub3Required");
     if (!cfg.hub3s[remote.hub3]) {
-      throw new Error(t("domain.config.hub3NotRegisteredAddFirst", { hub3: remote.hub3 }));
+      throw badRequest("domain.config.hub3NotRegisteredAddFirst", { hub3: remote.hub3 });
     }
     cfg.remotes[name] = {
       hub3: remote.hub3,
@@ -396,7 +465,7 @@ export class ConfigStore {
   /** @param {string} name */
   setDefaultRemote(name) {
     const cfg = this.load();
-    if (!cfg.remotes[name]) throw new Error(t("domain.config.unknownRemoteName", { name }));
+    if (!cfg.remotes[name]) throw badRequest("domain.config.unknownRemoteName", { name });
     cfg.default.remote = name;
     this.save();
   }
@@ -408,7 +477,7 @@ export class ConfigStore {
   updateRemoteKeys(name, keys) {
     const cfg = this.load();
     const r = cfg.remotes[name];
-    if (!r) throw new Error(t("domain.config.unknownRemoteName", { name }));
+    if (!r) throw badRequest("domain.config.unknownRemoteName", { name });
     r.keys = keys;
     this.save();
   }
@@ -417,19 +486,14 @@ export class ConfigStore {
 
   /**
    * name 省略時は default.lock、無ければ locks が 1 つだけならそれ。
+   * 解決ロジックは resolveByName (src/resolve.js) に一本化 (P5-4)。失敗は SesameError(BAD_REQUEST)。
    * @param {string} [name]
    * @returns {{name: string, lock: LockView}}
    */
   resolveLock(name) {
     const cfg = this.load();
-    const locks = cfg.locks || {};
-    const names = Object.keys(locks);
-    const chosen = name || cfg.default?.lock || (names.length === 1 ? names[0] : null);
-    if (!chosen) {
-      throw new Error(t("domain.config.noLockNoDefault", { names: names.join(", ") || "(none)" }));
-    }
-    const lock = locks[chosen];
-    if (!lock) throw new Error(t("domain.config.unknownLock", { name: chosen, names: names.join(", ") || "(none)" }));
+    const { name: chosen, entry: lock } =
+      resolveByName(cfg.locks, name, cfg.default?.lock, LOCK_RESOLVE_ERRORS);
     return { name: chosen, lock };
   }
 
@@ -439,9 +503,9 @@ export class ConfigStore {
    */
   addLock(name, lock) {
     const cfg = this.load();
-    if (!name) throw new Error(t("domain.config.lockNameRequired"));
-    if (!lock?.deviceUUID) throw new Error(t("domain.config.lockDeviceUUIDRequired"));
-    if (!lock?.secretKey) throw new Error(t("domain.config.lockSecretKeyRequired"));
+    if (!name) throw badRequest("domain.config.lockNameRequired");
+    if (!lock?.deviceUUID) throw badRequest("domain.config.lockDeviceUUIDRequired");
+    if (!lock?.secretKey) throw badRequest("domain.config.lockSecretKeyRequired");
     cfg.devices[name] = {
       deviceUUID: lock.deviceUUID,
       secretKey: lock.secretKey,
@@ -456,7 +520,7 @@ export class ConfigStore {
   /** @param {string} name */
   setDefaultLock(name) {
     const cfg = this.load();
-    if (!cfg.locks[name]) throw new Error(t("domain.config.unknownLockName", { name }));
+    if (!cfg.locks[name]) throw badRequest("domain.config.unknownLockName", { name });
     cfg.default.lock = name;
     this.save();
   }
@@ -464,7 +528,7 @@ export class ConfigStore {
   /** @param {string} name */
   removeLock(name) {
     const cfg = this.load();
-    if (!cfg.locks[name]) throw new Error(t("domain.config.unknownLockName", { name }));
+    if (!cfg.locks[name]) throw badRequest("domain.config.unknownLockName", { name });
     delete cfg.devices[name]; // devices が真実。view (cfg.locks) は save()→_reproject で更新
     if (cfg.default.lock === name) cfg.default.lock = null;
     this.save();
@@ -660,7 +724,7 @@ export class ConfigStore {
   syncRemotesFromServer(remoteList, hub3Name) {
     const cfg = this.load();
     if (!cfg.hub3s[hub3Name]) {
-      throw new Error(t("domain.config.hub3NotRegisteredSyncFirst", { hub3: hub3Name }));
+      throw badRequest("domain.config.hub3NotRegisteredSyncFirst", { hub3: hub3Name });
     }
     /** @type {{added:string[], updated:string[]}} */
     const result = { added: [], updated: [] };
@@ -812,7 +876,8 @@ function normalizeUuid(s) {
  * @returns {DeviceRecord}
  */
 function sanitizeDeviceRecord(d) {
-  const { stateInfo, ...rest } = d; // eslint-disable-line no-unused-vars
+  // stateInfo を rest 分解で取り除く (rest sibling の除去用変数は biome の noUnusedVariables が許容)
+  const { stateInfo, ...rest } = d;
   return { ...rest };
 }
 

@@ -230,6 +230,7 @@ export default {
     "cli.bleBackgroundConnecting": "[ble] connecting in background... (cloud operations available)",
     "cli.bleScanning": "[ble] scanning... ({names})",
     "cli.bleNoneAndNotLoggedIn": "No devices in BLE range, and not logged in to the cloud. Move closer to a device or run `sesame login <email>` → `sesame verify`.",
+    "cli.sessionMissingDeps": "`sesame session` needs the optional TUI packages. Install them with: npm i ink react ink-select-input ink-text-input",
     "cli.bleConnectFailedDebug": "[ble] connection failed: {message}",
     "cli.disconnected": "Disconnected.",
 
@@ -633,6 +634,7 @@ export default {
     "cli.bleBackgroundConnecting": "[ble] バックグラウンドで接続中... (クラウドで操作可能)",
     "cli.bleScanning": "[ble] スキャン中... ({names})",
     "cli.bleNoneAndNotLoggedIn": "BLE 圏内のデバイスが無く、クラウドも未ログインです。デバイスに近づくか `sesame login <email>` → `sesame verify` してください。",
+    "cli.sessionMissingDeps": "`sesame session` には任意の TUI パッケージが必要です。`npm i ink react ink-select-input ink-text-input` で導入してください。",
     "cli.bleConnectFailedDebug": "[ble] 接続失敗: {message}",
     "cli.disconnected": "切断しました。",
 

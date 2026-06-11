@@ -5,10 +5,14 @@
 // 認証はデーモンに載せない (CLI 専用)。デーモンは既存トークン前提で起動し、
 // 未認証/クラウド不通でも死なず degraded で待ち受ける。
 
-import net from "node:net";
 import { readFileSync, unlinkSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+// `sesame rpc` のクライアント実装は公式 JS クライアント (clients/js) に一元化する (P5-4 / ARCH-20)。
+// CLI 固有なのは i18n メッセージ・rpcError マーカー・timeout の橋渡しだけ (toServeError)。
+// パッケージ自己参照 (exports "./client") で import する: 実行時は clients/js/sesame-client.mjs、
+// 型は clients/js/sesame-client.d.ts が使われる (相対 import だと .mjs 本体が strict 検査に入る)。
+import { SesameClient, SesameError as SesameRpcClientError } from "sesame-kit/client";
 import { SesameHub3 } from "../client.js";
 import { configPaths } from "../paths.js";
 import { writeSecretFile } from "../secure-fs.js";
@@ -154,39 +158,71 @@ export function registerServeCommand(program) {
 }
 
 /**
+ * SesameClient (clients/js) の SesameError を CLI のエラー契約へ橋渡しする。
+ *   - 接続不能/未起動・timeout・HTTP 401 は従来の i18n メッセージへ写像 (人間向け案内を維持)。
+ *   - サーバが返した JSON-RPC error は data.kind / rpcError マーカー付き ServeError へ変換し、
+ *     外側の CLI ハンドラが stale config 誤案内 (withStaleHint) を避けられるようにする。
+ * @param {unknown} e
+ * @param {{ socketPath?: string, url?: string }} [where]
+ * @returns {Error}
+ */
+function toServeError(e, { socketPath, url } = {}) {
+  if (!(e instanceof SesameRpcClientError)) return /** @type {Error} */ (e);
+  if (e.kind === "timeout") return new Error(t("serve.rpcTimeout"));
+  if (e.kind === "connection_lost") {
+    // クライアント側で生成される接続エラー (ENOENT/ECONNREFUSED/fetch 失敗)。未起動の案内へ。
+    return new Error(url ? t("serve.httpNotRunning", { url }) : t("serve.notRunning", { socketPath: /** @type {string} */ (socketPath) }));
+  }
+  // HTTP 経路の認証失敗 (401 封筒 / token 未取得) は従来どおり --token/serve.token を案内する。
+  // 注: serve の HTTP 401 封筒は kind=not_authenticated の JSON-RPC error で返るため、
+  // SesameClient 越しには HTTP ステータスを直接観測できず kind で判定する。
+  if (url && (e.code === 401 || e.kind === "not_authenticated")) {
+    return new Error(t("serve.httpUnauthorized"));
+  }
+  // サーバ由来の JSON-RPC error: code/data.kind を保ち rpcError マーカーを立てる。
+  const err = /** @type {ServeError} */ (new Error(e.message));
+  err.code = e.code;
+  err.data = e.kind ? { kind: e.kind } : undefined;
+  err.rpcError = true;
+  return err;
+}
+
+/**
+ * promise に timeout を被せる。SesameClient 内蔵の 20s より CLI 既定 (15s) が短いため自前で巻く。
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} timeoutMs
+ * @returns {Promise<T>}
+ */
+function withTimeout(promise, timeoutMs) {
+  /** @type {ReturnType<typeof setTimeout>} */
+  let to;
+  const timer = new Promise((_, reject) => {
+    to = setTimeout(() => reject(new Error(t("serve.rpcTimeout"))), timeoutMs);
+  });
+  return Promise.race([promise, timer]).finally(() => clearTimeout(to));
+}
+
+/**
  * UDS を保持し events を購読、各イベントを 1 行 JSON で出し続ける (Ctrl-C で終了)。
  * @param {string} socketPath
  * @param {string[]} topics
  * @returns {Promise<void>}
  */
-function rpcSubscribe(socketPath, topics) {
-  return new Promise((/** @type {() => void} */ resolve, reject) => {
-    const sock = net.connect(socketPath);
-    let buf = "";
-    sock.on("connect", () => {
-      sock.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "events.subscribe", params: { topics } }) + "\n");
-      console.error(t("serve.subscribed", { topics: topics.join(",") }));
+async function rpcSubscribe(socketPath, topics) {
+  const client = SesameClient.unix(socketPath);
+  try {
+    await client.subscribe(topics, (/** @type {string} */ topic, /** @type {unknown} */ payload) => {
+      if (topic === "ready") return; // 接続時の event.ready 通知は出力しない (従来挙動)
+      console.log(JSON.stringify({ topic, payload }));
     });
-    sock.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
-        if (!line.trim()) continue;
-        /** @type {RpcMessage} */
-        let msg; try { msg = JSON.parse(line); } catch { continue; }
-        if (typeof msg.method === "string" && msg.method.startsWith("event.")) {
-          if (msg.method === "event.ready") continue;
-          console.log(JSON.stringify({ topic: msg.method.slice(6), payload: msg.params }));
-        }
-      }
-    });
-    sock.on("error", (/** @type {ErrnoError} */ e) => {
-      if (e.code === "ENOENT" || e.code === "ECONNREFUSED") {
-        reject(new Error(t("serve.notRunning", { socketPath })));
-      } else reject(e);
-    });
-    process.on("SIGINT", () => { sock.destroy(); resolve(); });
+  } catch (e) {
+    client.close();
+    throw toServeError(e, { socketPath });
+  }
+  console.error(t("serve.subscribed", { topics: topics.join(",") }));
+  await new Promise((/** @type {(value?: void) => void} */ resolveP) => {
+    process.on("SIGINT", () => { client.close(); resolveP(); });
   });
 }
 
@@ -194,49 +230,20 @@ function rpcSubscribe(socketPath, topics) {
  * UDS 経由で 1 リクエスト送り result を返す。未起動は分かりやすいエラーに。
  * @param {string} socketPath
  * @param {string} method
- * @param {unknown} params
+ * @param {Record<string, any>|undefined} params
  * @param {number} [timeoutMs]
  * @returns {Promise<unknown>}
  */
-function rpcCall(socketPath, method, params, timeoutMs = 15000) {
-  return new Promise((/** @type {(result: unknown) => void} */ resolve, reject) => {
-    const sock = net.connect(socketPath);
-    let buf = "";
-    const to = setTimeout(() => { sock.destroy(); reject(new Error(t("serve.rpcTimeout"))); }, timeoutMs);
-    sock.on("connect", () => sock.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) + "\n"));
-    sock.on("data", (d) => {
-      buf += d.toString();
-      // 1 接続につき event.ready 等の通知が応答より先に届くため、行ごとに走査し
-      // 自分のリクエスト (id:1) の応答だけを拾う。通知 (event.*) は読み飛ばす。
-      let nl;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        if (!line.trim()) continue;
-        /** @type {RpcMessage} */
-        let msg; try { msg = JSON.parse(line); } catch { continue; }
-        if (typeof msg.method === "string" && msg.method.startsWith("event.")) continue;
-        if (msg.id !== 1) continue;
-        clearTimeout(to); sock.destroy();
-        if (msg.error) {
-          // JSON-RPC error をそのまま CLI エラーへ橋渡し。data.kind を失わず、外側の
-          // CLI ハンドラが stale config 誤案内を避けられるよう rpcError マーカーも立てる。
-          const e = /** @type {ServeError} */ (new Error(msg.error.message));
-          e.code = msg.error.code;
-          e.data = msg.error.data;
-          e.rpcError = true;
-          return reject(e);
-        }
-        return resolve(msg.result);
-      }
-    });
-    sock.on("error", (/** @type {ErrnoError} */ e) => {
-      clearTimeout(to);
-      if (e.code === "ENOENT" || e.code === "ECONNREFUSED") {
-        reject(new Error(t("serve.notRunning", { socketPath })));
-      } else reject(e);
-    });
-  });
+async function rpcCall(socketPath, method, params, timeoutMs = 15000) {
+  const client = SesameClient.unix(socketPath);
+  try {
+    // event.ready の読み飛ばし・行フレーミング・id 対応付けは SesameClient が担う。
+    return await withTimeout(client.call(method, params), timeoutMs);
+  } catch (e) {
+    throw toServeError(e, { socketPath });
+  } finally {
+    client.close();
+  }
 }
 
 /**
@@ -244,40 +251,19 @@ function rpcCall(socketPath, method, params, timeoutMs = 15000) {
  * @param {string} url
  * @param {string|null} token
  * @param {string} method
- * @param {unknown} params
+ * @param {Record<string, any>|undefined} params
  * @param {number} [timeoutMs]
  * @returns {Promise<unknown>}
  */
 async function rpcCallHttp(url, token, method, params, timeoutMs = 15000) {
-  // 末尾スラッシュ除去は線形ループで (正規表現 /\/+$/ は ReDoS 懸念のため避ける)。
-  let end = url.length;
-  while (end > 0 && url.charCodeAt(end - 1) === 0x2f /* "/" */) end--;
-  const endpoint = url.slice(0, end) + "/rpc";
-  const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), timeoutMs);
-  let resp;
+  const client = SesameClient.http(url, token);
   try {
-    resp = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      signal: ctrl.signal,
-    });
+    return await withTimeout(client.call(method, params), timeoutMs);
   } catch (e) {
-    if (e instanceof Error && e.name === "AbortError") throw new Error(t("serve.rpcTimeout"));
-    throw new Error(t("serve.httpNotRunning", { url })); // 接続拒否 (未起動) 等
-  } finally { clearTimeout(to); }
-  if (resp.status === 401) throw new Error(t("serve.httpUnauthorized"));
-  const msg = /** @type {RpcMessage} */ (await resp.json());
-  if (msg.error) {
-    // UDS 経路と同様、data.kind / rpcError マーカーを引き継ぐ (誤った stale config 案内を回避)。
-    const e = /** @type {ServeError} */ (new Error(msg.error.message));
-    e.code = msg.error.code;
-    e.data = msg.error.data;
-    e.rpcError = true;
-    throw e;
+    throw toServeError(e, { url });
+  } finally {
+    client.close();
   }
-  return msg.result;
 }
 
 /**
@@ -319,7 +305,7 @@ async function cmdRpc(method, opts, program) {
   }
 
   const m = method || "rpc.discover";
-  /** @type {unknown} */
+  /** @type {Record<string, any>|undefined} */
   let params = {};
   if (opts.params) {
     try {

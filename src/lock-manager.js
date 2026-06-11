@@ -16,6 +16,7 @@ import { lockLock, lockUnlock, lockToggle, botClick, triggerLock, setAutolock } 
 import { CMD } from "./crypto.js";
 import { t } from "./i18n.js";
 import { SesameError, ERR } from "./errors.js";
+import { resolveByName, LOCK_RESOLVE_ERRORS } from "./resolve.js";
 
 export class LockManager {
   /**
@@ -45,19 +46,14 @@ export class LockManager {
   /**
    * lock 設定を name から解決。name 省略時は default.lock、
    * 無ければ locks が 1 つだけならそれ。
+   * 解決ロジックは resolveByName (src/resolve.js) に一本化 (P5-4)。失敗は SesameError(BAD_REQUEST)。
    * @param {string|null} [name]
    * @returns {{name: string, lock: import("./config.js").LockView}}
    */
   resolveLock(name) {
     const cfg = this._getConfig();
-    const locks = cfg.locks || {};
-    const names = Object.keys(locks);
-    const chosen = name || cfg.default?.lock || (names.length === 1 ? names[0] : null);
-    if (!chosen) {
-      throw new SesameError(t("domain.client.noLockNoDefault", { names: names.join(", ") || "(none)" }), { code: ERR.BAD_REQUEST });
-    }
-    const lock = locks[chosen];
-    if (!lock) throw new SesameError(t("domain.client.unknownLock", { name: chosen, names: names.join(", ") || "(none)" }), { code: ERR.BAD_REQUEST });
+    const { name: chosen, entry: lock } =
+      resolveByName(cfg.locks, name, cfg.default?.lock, LOCK_RESOLVE_ERRORS);
     return { name: chosen, lock };
   }
 

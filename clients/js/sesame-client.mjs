@@ -9,8 +9,9 @@
 //   const h = SesameClient.http("http://127.0.0.1:8080"); // token は serve.token から自動
 //   const w = await SesameClient.ws("ws://127.0.0.1:8081"); // Windows でも全二重 (要 Node22+ or ws)
 //
-// 失敗は SesameError(message, kind) を throw (kind: not_authenticated / connection_lost / timeout /
+// 失敗は SesameRpcError(message, kind) を throw (kind: not_authenticated / connection_lost / timeout /
 // not_implemented / bad_params / rejected / internal — serve の error.data.kind 7 種と一致)。
+// (旧名 SesameError は deprecated alias として 1 リリース維持。)
 // subscribe は **常に await** すること (接続/認証エラーを取りこぼさないため)。
 
 import net from "node:net";
@@ -39,9 +40,17 @@ function defaultToken() {
   try { return readFileSync(defaultTokenPath(), "utf8").trim(); } catch { return null; }
 }
 
-export class SesameError extends Error {
-  constructor(message, kind, code) { super(message); this.name = "SesameError"; this.kind = kind; this.code = code; }
+// P5-9 (ARCH-19): core の SesameError (src/errors.js, code:string) との同名異義を解消するため、
+// sdk/ts と同じ SesameRpcError (kind / code:number) に改名した。name はクラス名と同期する。
+export class SesameRpcError extends Error {
+  constructor(message, kind, code) { super(message); this.name = "SesameRpcError"; this.kind = kind; this.code = code; }
 }
+
+/**
+ * @deprecated 旧名。core の SesameError (code:string) との同名異義解消のため SesameRpcError に
+ * 改名した。後方互換 alias として 1 リリース維持し、次 minor で削除予定。
+ */
+export { SesameRpcError as SesameError };
 
 // HTTP ステータス → SesameError.kind 写像 (出典: REFACTORING_PLAN.md P4-5/SURF-10)。
 // sdk/ts・sdk/python・clients/python と共通の正で、tests/fixtures/http-kind-map.json に固定。
@@ -59,9 +68,9 @@ export function httpKind(status) {
 
 function sesameErrorFromRpc(error, fallbackKind, fallbackCode) {
   if (error && typeof error === "object") {
-    return new SesameError(error.message || "JSON-RPC error", error.data?.kind || fallbackKind, error.code ?? fallbackCode);
+    return new SesameRpcError(error.message || "JSON-RPC error", error.data?.kind || fallbackKind, error.code ?? fallbackCode);
   }
-  return new SesameError(String(error || "HTTP error"), fallbackKind, fallbackCode);
+  return new SesameRpcError(String(error || "HTTP error"), fallbackKind, fallbackCode);
 }
 
 export class SesameClient {
@@ -69,7 +78,7 @@ export class SesameClient {
 
   static unix(path = defaultSocketPath()) {
     if (process.platform === "win32") {
-      throw new SesameError("Unix socket は POSIX 専用です。Windows では SesameClient.http() か .ws() を使ってください", "not_implemented");
+      throw new SesameRpcError("Unix socket は POSIX 専用です。Windows では SesameClient.http() か .ws() を使ってください", "not_implemented");
     }
     return new SesameClient(new StreamTransport(path));
   }
@@ -82,7 +91,7 @@ export class SesameClient {
     // 無ければ global WebSocket (ブラウザ/Node22+) にフォールバックし URL ?token= を使う。
     const pkg = await import("ws").then((m) => m.WebSocket).catch(() => null);
     const WS = pkg || globalThis.WebSocket;
-    if (!WS) throw new SesameError("WebSocket が無い。Node 20+ で `npm i ws`、または Node 22+ が必要です", "not_implemented");
+    if (!WS) throw new SesameRpcError("WebSocket が無い。Node 20+ で `npm i ws`、または Node 22+ が必要です", "not_implemented");
     const t = new WsTransport(WS, url, token, /* useHeader */ !!pkg);
     await t.ready();
     return new SesameClient(t);
@@ -97,7 +106,7 @@ export class SesameClient {
   async subscribe(topics, onEvent) {
     const resp = await this._t.subscribe(topics, onEvent);
     // UDS/WS は購読要求の応答 (msg) を返す。error があれば握り潰さず throw (不正 topic 等)。
-    if (resp && resp.error) throw new SesameError(resp.error.message, resp.error.data?.kind, resp.error.code);
+    if (resp && resp.error) throw new SesameRpcError(resp.error.message, resp.error.data?.kind, resp.error.code);
     return resp?.result;
   }
   async discover() { return this.call("rpc.discover"); }
@@ -128,7 +137,7 @@ class StreamTransport {
       const msg = (e.code === "ENOENT" || e.code === "ECONNREFUSED")
         ? `sesame serve が起動していません (socket: ${path})。別ターミナルで \`sesame serve\` を実行してください`
         : `socket エラー: ${e.message}`;
-      this._fatal = new SesameError(msg, "connection_lost");
+      this._fatal = new SesameRpcError(msg, "connection_lost");
       for (const { reject } of this._pending.values()) reject(this._fatal);
       this._pending.clear();
       this._scheduleIdleClose();
@@ -170,7 +179,7 @@ class StreamTransport {
         this._scheduleIdleClose();
         fn(value);
       };
-      const to = setTimeout(() => finish(reject, new SesameError("request timed out", "timeout")), 20000);
+      const to = setTimeout(() => finish(reject, new SesameRpcError("request timed out", "timeout")), 20000);
       this._pending.set(id, { resolve: (m) => finish(resolve, m), reject: (e) => finish(reject, e) });
       this._sock.write(JSON.stringify({ ...msg, id }) + "\n");
     });
@@ -198,11 +207,11 @@ class WsTransport {
       // 握手 401 (verifyClient 拒否) は error として届く。message に 401 を含めば認証失敗。
       this._ws.addEventListener("error", (ev) => {
         const m = String(ev?.message || ev?.error?.message || "");
-        if (/401|403|unauthorized/i.test(m)) fail(new SesameError("unauthorized (token 不一致/未指定)", "not_authenticated", 401));
-        else fail(new SesameError(`ws 接続失敗 (${url})。sesame serve --ws を起動しましたか?`, "connection_lost"));
+        if (/401|403|unauthorized/i.test(m)) fail(new SesameRpcError("unauthorized (token 不一致/未指定)", "not_authenticated", 401));
+        else fail(new SesameRpcError(`ws 接続失敗 (${url})。sesame serve --ws を起動しましたか?`, "connection_lost"));
       });
       // 念のため close 1008 も認証失敗として扱う (open が先勝ちした場合の保険)。
-      this._ws.addEventListener("close", (ev) => { if (ev.code === 1008) fail(new SesameError("unauthorized (token)", "not_authenticated", 1008)); });
+      this._ws.addEventListener("close", (ev) => { if (ev.code === 1008) fail(new SesameRpcError("unauthorized (token)", "not_authenticated", 1008)); });
     });
     this._open.catch(() => {}); // unhandled rejection 抑止 (ready() で受ける)
     this._ws.addEventListener("message", (ev) => routeMessage(this, typeof ev.data === "string" ? ev.data : ev.data.toString()));
@@ -214,7 +223,7 @@ class WsTransport {
     if (this._fatal) return Promise.reject(this._fatal);
     const id = ++this._ids;
     return new Promise((resolve, reject) => {
-      const to = setTimeout(() => { this._pending.delete(id); reject(new SesameError("request timed out", "timeout")); }, 20000);
+      const to = setTimeout(() => { this._pending.delete(id); reject(new SesameRpcError("request timed out", "timeout")); }, 20000);
       this._pending.set(id, { resolve: (m) => { clearTimeout(to); resolve(m); }, reject });
       this._ws.send(JSON.stringify({ ...msg, id }));
     });
@@ -228,8 +237,8 @@ class HttpTransport {
   _headers() { return this._token ? { "content-type": "application/json", authorization: `Bearer ${this._token}` } : { "content-type": "application/json" }; }
   _unauthorized() {
     return this._token
-      ? new SesameError("unauthorized (token 不一致)", "not_authenticated", 401)
-      : new SesameError(`token が見つかりません。\`sesame serve --http\` で起動すると ${defaultTokenPath()} に保存されます`, "not_authenticated", 401);
+      ? new SesameRpcError("unauthorized (token 不一致)", "not_authenticated", 401)
+      : new SesameRpcError(`token が見つかりません。\`sesame serve --http\` で起動すると ${defaultTokenPath()} に保存されます`, "not_authenticated", 401);
   }
   async request(msg) {
     const id = ++this._ids;
@@ -237,7 +246,7 @@ class HttpTransport {
     try {
       r = await fetch(`${this._base}/rpc`, { method: "POST", headers: this._headers(), body: JSON.stringify({ ...msg, id }) });
     } catch (e) {
-      throw new SesameError(`接続失敗: ${e.message}。\`sesame serve --http\` を起動しましたか?`, "connection_lost");
+      throw new SesameRpcError(`接続失敗: ${e.message}。\`sesame serve --http\` を起動しましたか?`, "connection_lost");
     }
     if (r.status === 204) return { id, result: null };
     let body;
@@ -251,11 +260,11 @@ class HttpTransport {
     const url = `${this._base}/events?topics=${encodeURIComponent(topics.join(","))}`;
     let res;
     try { res = await fetch(url, { headers: this._headers() }); }
-    catch (e) { throw new SesameError(`events 接続失敗: ${e.message}`, "connection_lost"); }
+    catch (e) { throw new SesameRpcError(`events 接続失敗: ${e.message}`, "connection_lost"); }
     if (res.status === 401) throw this._unauthorized();
     if (res.status >= 400) { // 400 = 不正 topic 等。黙ってストリームを張らず明示エラーに。
       let detail = ""; try { detail = JSON.stringify(await res.json()); } catch { /* ignore */ }
-      throw new SesameError(`events 購読失敗 (HTTP ${res.status}): ${detail}`, "bad_params", res.status);
+      throw new SesameRpcError(`events 購読失敗 (HTTP ${res.status}): ${detail}`, "bad_params", res.status);
     }
     const reader = res.body.getReader();
     const dec = new TextDecoder();

@@ -16,6 +16,7 @@
 
 import { Buffer } from "node:buffer";
 import { t } from "../i18n.js";
+import { badRequest, timeoutError } from "../util.js";
 import { SesameBleSession } from "./session.js";
 import { createBleTransport } from "./transport.js";
 import {
@@ -250,7 +251,7 @@ export class SesameBle {
   constructor(opts = {}) {
     const { secretKey, deviceUUID, address, model = null, registerMode = false, needAuthFromServer = false, registerTransport = null, debug = false, scanTimeoutMs, transport } = opts;
     // register モードでは secretKey は未確定 (登録ハンドシェイクで導出する) ため要求しない。
-    if (!registerMode && !secretKey) throw new Error(t("ble.secretKeyRequired"));
+    if (!registerMode && !secretKey) throw badRequest("ble.secretKeyRequired");
     // WM2 は SESAME ロックとは別 GATT サービス (WM2_GATT) で discover/subscribe する。
     // 既定 transport を作る場合のみ、WM2 model なら GATT を注入する (外部 transport 指定時は尊重)。
     const isWm2 = capabilitiesForModel(model).wifiProvisioning;
@@ -330,18 +331,18 @@ export class SesameBle {
    */
   get biometric() {
     if (!this._caps.biometric) {
-      throw new Error(t("ble.biometricNotSupported", {
+      throw badRequest("ble.biometricNotSupported", {
         label: this._caps.label,
         modelSuffix: this._model ? ` (${this._model})` : "",
-      }));
+      });
     }
     // 空集合機種 (open sensor / remote 系) は enroll API を一切持たない (DeviceProfiles の
     // setOf()) ため、何も持たないビューを返さず明示エラーにする (P3-15)。
     if (this._caps.bioCaps.length === 0) {
-      throw new Error(t("ble.biometricNoCaps", {
+      throw badRequest("ble.biometricNoCaps", {
         label: this._caps.label,
         modelSuffix: this._model ? ` (${this._model})` : "",
-      }));
+      });
     }
     if (!this._biometric) {
       // model を渡して publish ディスパッチへ機種文脈を伝搬する (BLEP-09/BLEP-11)。
@@ -391,10 +392,10 @@ export class SesameBle {
    */
   get fingerPrint() {
     if (!this._caps.fingerprint) {
-      throw new Error(t("ble.fingerPrintNotSupported", {
+      throw badRequest("ble.fingerPrintNotSupported", {
         label: this._caps.label,
         modelSuffix: this._model ? ` (${this._model})` : "",
-      }));
+      });
     }
     if (!this._fingerPrint) {
       // BiometricCommands を共用しつつ、指紋系メソッドだけを bind した限定ビューを返す
@@ -432,10 +433,10 @@ export class SesameBle {
    */
   get script() {
     if (!this._caps.script) {
-      throw new Error(t("ble.bot2NotSupported", {
+      throw badRequest("ble.bot2NotSupported", {
         label: this._caps.label,
         modelSuffix: this._model ? ` (${this._model})` : "",
-      }));
+      });
     }
     if (!this._bot2) this._bot2 = new Bot2Commands(this._session, historyTagBLE);
     return this._bot2;
@@ -462,10 +463,10 @@ export class SesameBle {
    */
   wifi({ companyId } = {}) {
     if (!this._caps.wifiProvisioning) {
-      throw new Error(t("ble.wm2NotSupported", {
+      throw badRequest("ble.wm2NotSupported", {
         label: this._caps.label,
         modelSuffix: this._model ? ` (${this._model})` : "",
-      }));
+      });
     }
     if (!this._wifi) {
       this._wifi = new WifiModule2({ session: this._session, companyId, deviceUUID: this._deviceUUID });
@@ -504,10 +505,10 @@ export class SesameBle {
    */
   hub3() {
     if (!this._caps.hubProvisioning) {
-      throw new Error(t("ble.hub3NotSupported", {
+      throw badRequest("ble.hub3NotSupported", {
         label: this._caps.label,
         modelSuffix: this._model ? ` (${this._model})` : "",
-      }));
+      });
     }
     if (!this._hub3) {
       this._hub3 = new Hub3Commands({ session: this._session });
@@ -553,10 +554,10 @@ export class SesameBle {
       // CHSesameOS3.kt:441-449: コマンド無送信・カウンタ消費無し。接続ハンドルを返すのみ。
       return dfuUpdateFirmware(this._session);
     }
-    throw new Error(t("ble.dfuNotSupported", {
+    throw badRequest("ble.dfuNotSupported", {
       label: this._caps.label,
       modelSuffix: this._model ? ` (${this._model})` : "",
-    }));
+    });
   }
 
   /**
@@ -566,12 +567,12 @@ export class SesameBle {
   _assertOp(op) {
     if (!this._caps.ble.includes(op)) {
       const ok = this._caps.ble.length ? this._caps.ble.join("/") : t("ble.noBleLockOps");
-      throw new Error(t("ble.opNotSupported", {
+      throw badRequest("ble.opNotSupported", {
         label: this._caps.label,
         modelSuffix: this._model ? ` (${this._model})` : "",
         op,
         ok,
-      }));
+      });
     }
   }
 
@@ -586,11 +587,11 @@ export class SesameBle {
    */
   _assertLock5(api) {
     if (!(this._caps.os === 3 && this._caps.kind === KIND.LOCK5)) {
-      throw new Error(t("ble.lock5OnlyNotSupported", {
+      throw badRequest("ble.lock5OnlyNotSupported", {
         label: this._caps.label,
         modelSuffix: this._model ? ` (${this._model})` : "",
         api,
-      }));
+      });
     }
   }
 
@@ -625,8 +626,8 @@ export class SesameBle {
     // (本来の login エラーを覆い隠さないため)。
     try {
       if (this._needAuthFromServer) {
-        if (typeof this._registerTransport !== "function") throw new Error(t("ble.needAuthRequiresTransport"));
-        if (!this._deviceUUID) throw new Error(t("ble.registerDeviceUUIDRequired"));
+        if (typeof this._registerTransport !== "function") throw badRequest("ble.needAuthRequiresTransport");
+        if (!this._deviceUUID) throw badRequest("ble.registerDeviceUUIDRequired");
         // narrow した値をクロージャ捕捉前に局所束縛する (型ガードはクロージャ内へ伝播しないため)。
         const registerTransport = this._registerTransport;
         const deviceUUID = this._deviceUUID;
@@ -671,7 +672,7 @@ export class SesameBle {
     // (「session を鍵無しで構築せよ」) が表面化し、ファサード利用者に session を直せと誤誘導する。
     // ここで registerMode: true を渡せ / secretKey 無しで構築せよ、というファサード文脈の案内を出す
     // (session.register の _secretKey ガードに到達する前に弾く)。
-    if (!this._registerMode && this._secretKey) throw new Error(t("ble.registerNeedsFactoryFacade"));
+    if (!this._registerMode && this._secretKey) throw badRequest("ble.registerNeedsFactoryFacade");
     return this._session.register({
       // session.register() は実行時に !deviceUUID を自前で reject する (session.js:213) ため undefined 流入は
       // 正規の制御フロー。session.register の opts.deviceUUID 契約が string 必須なのは過剰に厳しく、本来は
@@ -733,7 +734,8 @@ export class SesameBle {
   status({ timeoutMs = STATUS_WAIT_MS } = {}) {
     if (this._session.lastStatus) return Promise.resolve(this._session.lastStatus);
     return new Promise((resolve, reject) => {
-      const to = setTimeout(() => { off(); reject(new Error(t("ble.mechStatusTimeout"))); }, timeoutMs);
+      // P5-5: 応答待ちタイムアウトは SesameError(TIMEOUT, retryable=true) (serve 経由で kind=timeout)。
+      const to = setTimeout(() => { off(); reject(timeoutError(t("ble.mechStatusTimeout"))); }, timeoutMs);
       const off = this._session.onStatus((/** @type {unknown} */ s) => { clearTimeout(to); off(); resolve(s); });
     });
   }
@@ -802,10 +804,10 @@ export class SesameBle {
    */
   setBleTxPower(txPower) {
     if (!(this._caps.os === 3 && (this._caps.kind === KIND.LOCK5 || this._caps.biometric))) {
-      throw new Error(t("ble.txPowerNotSupported", {
+      throw badRequest("ble.txPowerNotSupported", {
         label: this._caps.label,
         modelSuffix: this._model ? ` (${this._model})` : "",
-      }));
+      });
     }
     return this._session.setBleTxPower(txPower);
   }
@@ -820,10 +822,10 @@ export class SesameBle {
    */
   reset() {
     if (this._caps.os !== 3) {
-      throw new Error(t("ble.resetNotSupported", {
+      throw badRequest("ble.resetNotSupported", {
         label: this._caps.label,
         modelSuffix: this._model ? ` (${this._model})` : "",
-      }));
+      });
     }
     return this._session.reset();
   }
@@ -955,7 +957,7 @@ export class SesameBle {
    * @returns {SesameBle}
    */
   static fromDiscovery(entry, opts = {}) {
-    if (!entry || !entry.peripheral) throw new Error(t("ble.discoveryEntryRequired"));
+    if (!entry || !entry.peripheral) throw badRequest("ble.discoveryEntryRequired");
     const { debug = false, ...rest } = opts;
     return new SesameBle({
       deviceUUID: entry.deviceUUID,

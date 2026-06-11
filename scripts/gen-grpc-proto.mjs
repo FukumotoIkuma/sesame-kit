@@ -87,7 +87,9 @@ export async function generateProto() {
   L.push("");
   for (const m of methods) {
     L.push(`message ${m.pascal}Request {`);
-    m.fields.forEach((f, i) => L.push(`  ${f.type} ${f.name} = ${i + 1};`));
+    m.fields.forEach((f, i) => {
+      L.push(`  ${f.type} ${f.name} = ${i + 1};`);
+    });
     L.push("}");
   }
   L.push("");
