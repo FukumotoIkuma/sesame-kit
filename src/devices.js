@@ -14,6 +14,12 @@ import { assertSuccess, subscribeChunks, badRequest, timeoutError, rejected } fr
 import { t } from "./i18n.js";
 import { productTypeFromModelName } from "./crypto.js";
 import { getValidIdToken } from "./auth.js";
+import {
+  makeCognitoCredentialsProvider,
+  makeApiGatewayTransport,
+  resolveAppIdentifyId,
+  DEFAULT_CH_API_BASE_URL,
+} from "./aws-credentials.js";
 
 /**
  * 下位 WS トランスポート。完全な型は transport.js の Hub3WsClient。
@@ -307,21 +313,23 @@ export function webapiSendCmd(client, { apiKeyId, deviceId, cmd, sign, history }
 
 // ---------- BLE デバイス登録 / 初期ペアリング REST API クライアント (reg-guestkey-sign-client) ----------
 //
-// ★★ 移植忠実性: 未確定 (UNVERIFIED PORT) ★★
-//   このブロック (signGuestKey / registerSesame5) は OS3 デバイス登録 (SESAME5 系) の
-//   REST API クライアントである。リクエスト整形 (パス / フィールド名 / 大文字化 / hex) は
-//   原典 SDK の該当 Kotlin を 1:1 で移植したが、以下は **未照合**:
-//     - REST ホスト (BuildConfig.ch_server)。SDK では gradle ext (candyhouse.sesame.api.*)
-//       由来でリポジトリに焼き込まれておらず、biz3 web (aws-exports.js) も WS gateway しか
-//       持たない。よって本番ホストは config 注入を必須とし、ここでは決め打ちしない。
-//     - API Gateway の認証方式 (IAM SigV4 + Cognito identity pool か idToken Bearer か)。
-//       SDK は ApiClientConfigBuilder で AWSCredentialsProvider (identity pool) を使うが、
-//       本 kit の既存クラウド認証は Cognito idToken (getValidIdToken) のみ。ここでは既存
-//       認証を再利用し Authorization: Bearer <idToken> を付すが、実機 API Gateway が
-//       これを受理するかは E2E 未検証。
-//   本ブロックは SesameBle の needAuthFromServer / registerTransport 経路から任意に呼ばれる。
-//   BLE session-layer の登録ハンドシェイクは実装済みだが、この REST 認証方式そのものは
-//   実機 OS3 register キャプチャで突き合わせるまで未検証として扱う。
+// 認可方式 (参照実装と一致。REFACTORING_PLAN P2-1 / AUTH-01 + AUTH-02):
+//   公式の REST (API Gateway) 認可は「SigV4 (Cognito Identity Pool の一時 credentials) +
+//   x-api-key + appidentifyid」である:
+//     - ApiClientConfigBuilder.kt:34-46 — ApiClientFactory()
+//         .credentialsProvider(credentialsProvider).apiKey(apiKey).region("ap-northeast-1")
+//     - BaseApp.kt:95-102 — setCHAPIClient(): credentialsProvider = AWSMobileClient.getInstance(),
+//       apiKey = BuildConfig.API_GATEWAY_API_KEY (= app.properties:5)
+//     - AppIdentifyIdUtil.kt:42 — appidentifyid = "ap-northeast-1:<ANDROID_ID 相当の安定 ID>"
+//   idToken を Authorization: Bearer に使う箇所は参照 SDK に存在しないため、旧 Bearer 経路は
+//   撤去した。REST ホストは _sesame_sdk_ref/app.properties:2-3 にチェックインされている
+//   (prod = https://app.candyhouse.co/prod)。旧注記の「REST ホストは参照に無い」は虚偽
+//   だったため削除し、既定ホストとして焼き込む (config 上書きは維持)。
+//   実装基盤は src/aws-credentials.js (CognitoCachingCredentialsProvider / ApiClientFactory 相当)
+//   + src/sigv4.js (SigV4 自前実装)。
+//
+// ★ 実機未検証マーカー: ヘッダ構成は参照実装から導出したが、実機 API Gateway での受理は
+//   未検証 (REFACTORING_PLAN §9 V4/V5)。
 //
 // 原典 (CANDY-HOUSE SesameSDK):
 //   co/candyhouse/sesame/server/CHAPIClient.kt:84-96 — エンドポイント定義:
@@ -369,48 +377,61 @@ function assertHttpOk(res, op) {
 }
 
 /**
- * 末尾のスラッシュを線形時間で除去する (正規表現 `/\/+$/` は crafted 入力で
- * ポリノミアル backtracking = ReDoS のため使わない)。
- * @param {string} s
- * @returns {string}
+ * 既定の REST ホスト (app.properties:3 candyhouse.sesame.api.prod = BuildConfig.ch_server)。
+ * config.registerBaseUrl や明示引数で上書き可能。
  */
-function stripTrailingSlashes(s) {
-  let end = s.length;
-  while (end > 0 && s.charCodeAt(end - 1) === 0x2f /* "/" */) end--;
-  return s.slice(0, end);
-}
+export const DEFAULT_REGISTER_BASE_URL = DEFAULT_CH_API_BASE_URL;
 
 /**
- * デフォルト REST transport を作る。原典は API Gateway (AWSCredentialsProvider) だが、
- * 本 kit は既存の Cognito idToken (getValidIdToken) を再利用し Authorization に乗せる。
+ * デフォルト REST transport を作る。
+ * 公式アプリと同じ「SigV4 (Cognito Identity Pool 一時 credentials) + x-api-key +
+ * appidentifyid」を付ける (ApiClientConfigBuilder.kt:34-46, BaseApp.kt:95-102,
+ * AppIdentifyIdUtil.kt:42。冒頭ブロック注記参照)。
  *
- * ★ホストは UNVERIFIED (上記ブロック注記参照)。`baseUrl` を必ず注入すること。
+ * 認可の入力は次のどちらか:
+ *   - tokenStore — 既存ログイン (`sesame login`) の idToken を Identity Pool に連携して
+ *     一時 credentials を取得する (BaseApp.kt:99 の AWSMobileClient.getInstance() 相当)。
+ *   - credentialsProvider — 取得済み provider を直接注入 (テスト / 上級用)。
  *
- * @param {{baseUrl?:string, tokenStore?:import("./tokens.js").TokenStore, fetchImpl?:typeof globalThis.fetch}} [opts]
+ * appidentifyid は明示注入 > config 保存値 > 新規生成 (config へ書き戻し) の順に解決する
+ * (AppIdentifyIdUtil.kt:26-48 の SharedPreferences 永続化相当)。
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
+ *
+ * @param {{baseUrl?:string,
+ *          tokenStore?:import("./tokens.js").TokenStore,
+ *          credentialsProvider?:import("./aws-credentials.js").CredentialsProviderLike,
+ *          appIdentifyId?:string|null,
+ *          config?:import("./aws-credentials.js").AppIdConfigLike|null,
+ *          configStore?:import("./aws-credentials.js").AppIdConfigStoreLike|null,
+ *          apiKey?:string,
+ *          fetchImpl?:typeof globalThis.fetch}} [opts]
  * @returns {RegisterTransport}
  */
-export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalThis.fetch } = {}) {
-  if (!baseUrl) throw badRequest("domain.devices.registerBaseUrlRequired");
-  if (!tokenStore) throw badRequest("domain.devices.registerTokenStoreRequired");
+export function makeRegisterTransport({
+  baseUrl = DEFAULT_REGISTER_BASE_URL,
+  tokenStore,
+  credentialsProvider,
+  appIdentifyId,
+  config,
+  configStore,
+  apiKey,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  if (!credentialsProvider && !tokenStore) throw badRequest("domain.devices.registerAuthRequired");
   if (typeof fetchImpl !== "function") throw badRequest("domain.devices.registerFetchRequired");
-  const base = stripTrailingSlashes(baseUrl); // 末尾スラッシュ除去 (パスと二重化させない)
-  return async ({ method, path, body }) => {
-    // path 未指定で base + undefined = '...undefined' という無効 URL を作らない (低優先の防御)。
-    if (typeof path !== "string" || !path) throw badRequest("domain.devices.registerPathRequired");
-    const idToken = await getValidIdToken(tokenStore);
-    const res = await fetchImpl(base + path, {
-      method,
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${idToken}`,
-      },
-      body: body != null ? JSON.stringify(body) : undefined,
-    });
-    const text = await res.text();
-    let json;
-    try { json = text ? JSON.parse(text) : null; } catch { json = null; }
-    return { status: res.status, text, json };
-  };
+  const store = /** @type {import("./tokens.js").TokenStore} */ (tokenStore);
+  const provider = credentialsProvider
+    // CognitoCachingCredentialsProvider 相当: 既存ログインの idToken (getValidIdToken が
+    // 失効前 refresh を担う) を Identity Pool に連携して一時 credentials を取得・キャッシュ。
+    || makeCognitoCredentialsProvider({ getIdToken: () => getValidIdToken(store), fetchImpl });
+  return makeApiGatewayTransport({
+    baseUrl: baseUrl || DEFAULT_REGISTER_BASE_URL,
+    credentialsProvider: provider,
+    appIdentifyId: resolveAppIdentifyId({ appIdentifyId, config, configStore }),
+    apiKey,
+    fetchImpl,
+  });
 }
 
 /**
@@ -418,24 +439,33 @@ export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalT
  *
  * register / guest-key signing の REST API は BLE 経路からも使われるが、Cognito の
  * idToken/refreshToken ライフサイクルは `sesame login` が確立した TokenStore に集約する。
- * ここを通すことで CLI/RPC が別ログインや生 Bearer token を持たず、Consumer Client +
+ * ここを通すことで CLI/RPC が別ログインや生 credentials を持たず、Consumer Client +
  * ConfirmDevice による refreshToken 維持をそのまま再利用する。
  *
- * baseUrl は明示値を最優先し、無ければ config.registerBaseUrl を使う。どちらも無い場合、
- * required=false では undefined を返して BLE-only 登録を維持し、required=true では明示エラー。
+ * baseUrl は明示値 > config.registerBaseUrl > DEFAULT_REGISTER_BASE_URL の順。既定ホストが
+ * app.properties:2-3 で確定したため、baseUrl 未設定でも常に transport を返す
+ * (旧「baseUrl 必須 throw / undefined 返し」は撤廃。`required` は後方互換のため受理するが無視)。
  *
- * @param {{baseUrl?:string|null, config?:{registerBaseUrl?:string|null}|null,
- *          tokenStore?:import("./tokens.js").TokenStore, fetchImpl?:typeof globalThis.fetch,
+ * @param {{baseUrl?:string|null,
+ *          config?:({registerBaseUrl?:string|null} & import("./aws-credentials.js").AppIdConfigLike)|null,
+ *          configStore?:import("./aws-credentials.js").AppIdConfigStoreLike|null,
+ *          tokenStore?:import("./tokens.js").TokenStore,
+ *          credentialsProvider?:import("./aws-credentials.js").CredentialsProviderLike,
+ *          appIdentifyId?:string|null,
+ *          fetchImpl?:typeof globalThis.fetch,
  *          required?:boolean}} [opts]
- * @returns {RegisterTransport|undefined}
+ * @returns {RegisterTransport}
  */
-export function resolveRegisterTransport({ baseUrl, config, tokenStore, fetchImpl, required = false } = {}) {
-  const resolvedBaseUrl = baseUrl || config?.registerBaseUrl || null;
-  if (!resolvedBaseUrl) {
-    if (required) throw badRequest("domain.devices.registerBaseUrlRequired");
-    return undefined;
-  }
-  return makeRegisterTransport({ baseUrl: resolvedBaseUrl, tokenStore, fetchImpl });
+export function resolveRegisterTransport({ baseUrl, config, configStore, tokenStore, credentialsProvider, appIdentifyId, fetchImpl } = {}) {
+  return makeRegisterTransport({
+    baseUrl: baseUrl || config?.registerBaseUrl || DEFAULT_REGISTER_BASE_URL,
+    config,
+    configStore,
+    tokenStore,
+    credentialsProvider,
+    appIdentifyId,
+    fetchImpl,
+  });
 }
 
 /**

@@ -43,6 +43,37 @@ function makeAuthHub() {
   };
 }
 
+/**
+ * registerTransport 用 fetch スタブ。SigV4 化 (P2-1) に伴い、API 本体の前に
+ * Cognito Identity Pool (GetId / GetCredentialsForIdentity) への 2 リクエストが入るため、
+ * cognito-identity 向けは固定 credentials 応答を返し、それ以外 (API 本体) のみ記録する。
+ */
+function makeRegisterFetchStub() {
+  const apiCalls = [];
+  const fn = vi.fn(async (url, init) => {
+    if (String(url).startsWith("https://cognito-identity.ap-northeast-1.amazonaws.com/")) {
+      const target = init?.headers?.["x-amz-target"];
+      if (target === "AWSCognitoIdentityService.GetId") {
+        return { status: 200, text: async () => JSON.stringify({ IdentityId: "ap-northeast-1:id-1" }) };
+      }
+      return {
+        status: 200,
+        text: async () => JSON.stringify({
+          IdentityId: "ap-northeast-1:id-1",
+          Credentials: {
+            AccessKeyId: "AKFROMPOOL", SecretKey: "SK", SessionToken: "ST",
+            Expiration: Date.now() / 1000 + 3600,
+          },
+        }),
+      };
+    }
+    apiCalls.push([url, init]);
+    return { status: 200, text: async () => "{}" };
+  });
+  fn.apiCalls = apiCalls;
+  return fn;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -109,7 +140,7 @@ describe("registry: 新規 top-level メソッドの結線", () => {
 
   it("ble.register は hub.tokenStore + config.registerBaseUrl から registerTransport を渡す", async () => {
     const regSpy = vi.spyOn(SesameBle, "registerOnce").mockResolvedValue({ ok: true });
-    const fetchSpy = vi.fn(async () => ({ status: 200, text: async () => "{}" }));
+    const fetchSpy = makeRegisterFetchStub();
     vi.stubGlobal("fetch", fetchSpy);
 
     const e = reg.get("ble.register");
@@ -118,13 +149,15 @@ describe("registry: 新規 top-level メソッドの結線", () => {
     const opts = regSpy.mock.calls[0][0];
     expect(typeof opts.registerTransport).toBe("function");
     await opts.registerTransport({ method: "POST", path: "/device/v1/sesame5/U", body: { t: "1", pk: "s" } });
-    expect(fetchSpy.mock.calls[0][0]).toBe("https://register.example.invalid/root/device/v1/sesame5/U");
-    expect(fetchSpy.mock.calls[0][1].headers.authorization).toMatch(/^Bearer /);
+    expect(fetchSpy.apiCalls[0][0]).toBe("https://register.example.invalid/root/device/v1/sesame5/U");
+    // P2-1: idToken Bearer は撤去。Identity Pool credentials による SigV4 + x-api-key で署名される。
+    expect(fetchSpy.apiCalls[0][1].headers.authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=AKFROMPOOL\//);
+    expect(fetchSpy.apiCalls[0][1].headers["x-api-key"]).toBeTruthy();
   });
 
   it("ble.invoke の needAuthFromServer は hub.tokenStore 由来の registerTransport を SesameBle.use に渡す", async () => {
     const useSpy = vi.spyOn(SesameBle, "use").mockResolvedValue({ ok: true });
-    const fetchSpy = vi.fn(async () => ({ status: 200, text: async () => "{}" }));
+    const fetchSpy = makeRegisterFetchStub();
     vi.stubGlobal("fetch", fetchSpy);
 
     const e = reg.get("ble.invoke");
@@ -138,7 +171,9 @@ describe("registry: 新規 top-level メソッドの結線", () => {
     expect(opts.needAuthFromServer).toBe(true);
     expect(typeof opts.registerTransport).toBe("function");
     await opts.registerTransport({ method: "POST", path: "/device/v1/sesame2/sign", body: { token: "t" } });
-    expect(fetchSpy.mock.calls[0][0]).toBe("https://register.example.invalid/root/device/v1/sesame2/sign");
-    expect(fetchSpy.mock.calls[0][1].headers.authorization).toMatch(/^Bearer /);
+    expect(fetchSpy.apiCalls[0][0]).toBe("https://register.example.invalid/root/device/v1/sesame2/sign");
+    // P2-1: idToken Bearer は撤去。Identity Pool credentials による SigV4 + x-api-key で署名される。
+    expect(fetchSpy.apiCalls[0][1].headers.authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=AKFROMPOOL\//);
+    expect(fetchSpy.apiCalls[0][1].headers["x-api-key"]).toBeTruthy();
   });
 });

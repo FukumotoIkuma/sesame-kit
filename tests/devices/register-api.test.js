@@ -16,9 +16,10 @@
 //   co/candyhouse/sesame/server/dto/CHHistoryUploadRequest.kt:8 — CHRemoveSignKeyRequest(deviceId, token, secretKey)
 //   co/candyhouse/sesame/server/dto/CHSS2RegisterReq.kt:5 — CHOS3RegisterReq(t, pk) → JSON {t, pk}
 //
-// ★検証範囲: fake transport を注入し **リクエスト整形のみ** を検証する
-//   (フィールド名 / deviceId 大文字化 / token hex / パス / productType 文字列化)。
-//   本番ホスト・API Gateway 認証方式は UNVERIFIED (src/devices.js のブロック注記参照)。
+// ★検証範囲: fake transport / fetch モックで **リクエスト整形とヘッダ構成** を検証する
+//   (フィールド名 / deviceId 大文字化 / token hex / パス / productType 文字列化 /
+//    SigV4 + x-api-key + appidentifyid)。実機 API Gateway での受理は未検証
+//   (REFACTORING_PLAN §9 V4/V5。src/devices.js のブロック注記参照)。
 
 import { describe, it, expect } from "vitest";
 import {
@@ -184,7 +185,12 @@ describe("registerSesame5 (CHHub3Device.kt:183-186)", () => {
   });
 });
 
-describe("makeRegisterTransport (Cognito idToken 再利用 + fetch 注入)", () => {
+describe("makeRegisterTransport (SigV4 + x-api-key + appidentifyid)", () => {
+  // 認可方式の出典 (REFACTORING_PLAN P2-1):
+  //   ApiClientConfigBuilder.kt:34-46 (credentialsProvider + apiKey + region),
+  //   BaseApp.kt:95-102 (apiKey = API_GATEWAY_API_KEY), AppIdentifyIdUtil.kt:42,
+  //   app.properties:2-5,8-9 (ホスト / API key / IdentityPool / UserPool の実値)。
+
   // idToken 検証 (exp claim) を通すため getValidIdToken が refresh せず返せる token を用意する。
   // exp が十分未来の JWT を組む (署名検証はしないので header/payload のみで足りる)。
   function fakeJwt(expSec) {
@@ -196,36 +202,100 @@ describe("makeRegisterTransport (Cognito idToken 再利用 + fetch 注入)", () 
     const data = { idToken: fakeJwt(far), refreshToken: "r", clientId: CONSUMER_CLIENT_ID, ...CONFIRMED_DEVICE };
     return { load: () => data, save: () => {} };
   }
+  /** Identity Pool を経由しない注入 provider (ヘッダ検証用の固定 credentials)。 */
+  const fakeCredentialsProvider = {
+    getCredentials: async () => ({
+      accessKeyId: "ASIAEXAMPLE",
+      secretAccessKey: "fakeSecret",
+      sessionToken: "SESSION-TOKEN",
+      expiration: new Date(Date.now() + 3600_000),
+      identityId: "ap-northeast-1:identity",
+    }),
+  };
 
-  it("baseUrl + path を結合し Authorization: Bearer <idToken> と JSON body を fetch に渡す", async () => {
+  it("既定ホスト app.candyhouse.co/prod (app.properties:3) へ SigV4 + x-api-key + appidentifyid を付けて送る", async () => {
     let captured;
     const fetchImpl = async (url, init) => {
       captured = { url, init };
       return { status: 200, text: async () => '{"data":"tok"}' };
     };
     const transport = makeRegisterTransport({
-      baseUrl: "https://example.invalid/api/",   // 末尾スラッシュは除去されること
-      tokenStore: makeTokenStore(),
+      credentialsProvider: fakeCredentialsProvider,
+      appIdentifyId: "ap-northeast-1:fixed-id",
       fetchImpl,
     });
     const res = await transport({ method: "POST", path: "/device/v1/sesame2/sign", body: { a: 1 } });
 
-    // 末尾スラッシュ除去の確認: base "https://example.invalid/api" + path
-    expect(captured.url).toBe("https://example.invalid/api/device/v1/sesame2/sign");
+    // baseUrl 未指定でも既定ホストが使われる (旧「baseUrl 必須 throw」は撤廃)
+    expect(captured.url).toBe("https://app.candyhouse.co/prod/device/v1/sesame2/sign");
     expect(captured.init.method).toBe("POST");
-    expect(captured.init.headers.authorization).toMatch(/^Bearer /);
-    expect(captured.init.headers["content-type"]).toBe("application/json");
+    const h = captured.init.headers;
+    // idToken Bearer は撤去済み (参照 SDK に存在しない認可方式)
+    expect(h.authorization).not.toMatch(/^Bearer /);
+    // SigV4: credential scope = <date>/ap-northeast-1/execute-api/aws4_request
+    expect(h.authorization).toMatch(
+      /^AWS4-HMAC-SHA256 Credential=ASIAEXAMPLE\/\d{8}\/ap-northeast-1\/execute-api\/aws4_request, SignedHeaders=appidentifyid;content-type;host;x-amz-date;x-amz-security-token;x-api-key, Signature=[0-9a-f]{64}$/,
+    );
+    expect(h["x-api-key"]).toBe("iGgXj9GorS4PeH90mAysg1l7kdvoIPxM25mPFl3k"); // app.properties:5
+    expect(h.appidentifyid).toBe("ap-northeast-1:fixed-id");
+    expect(h["x-amz-security-token"]).toBe("SESSION-TOKEN");
+    expect(h["content-type"]).toBe("application/json");
     expect(captured.init.body).toBe(JSON.stringify({ a: 1 }));
     expect(res).toEqual({ status: 200, text: '{"data":"tok"}', json: { data: "tok" } });
   });
 
+  it("tokenStore 経路: idToken を Identity Pool (GetId/GetCredentialsForIdentity) に連携して署名する", async () => {
+    const calls = [];
+    const expSec = Date.now() / 1000 + 3600;
+    const fetchImpl = async (url, init) => {
+      calls.push({ url, init });
+      if (url.startsWith("https://cognito-identity.ap-northeast-1.amazonaws.com/")) {
+        const target = init.headers["x-amz-target"];
+        if (target === "AWSCognitoIdentityService.GetId") {
+          return { status: 200, text: async () => JSON.stringify({ IdentityId: "ap-northeast-1:id-1" }) };
+        }
+        return {
+          status: 200,
+          text: async () => JSON.stringify({
+            IdentityId: "ap-northeast-1:id-1",
+            Credentials: { AccessKeyId: "AKFROMPOOL", SecretKey: "SK", SessionToken: "ST", Expiration: expSec },
+          }),
+        };
+      }
+      return { status: 200, text: async () => "{}" };
+    };
+    const tokenStore = makeTokenStore();
+    const transport = makeRegisterTransport({ tokenStore, appIdentifyId: "ap-northeast-1:x", fetchImpl });
+    await transport({ method: "POST", path: "/device/v1/sesame2/sign", body: { k: "v" } });
+
+    // GetId → GetCredentialsForIdentity → API 本体 の 3 リクエスト
+    expect(calls).toHaveLength(3);
+    const getIdBody = JSON.parse(calls[0].init.body);
+    // logins = "cognito-idp.ap-northeast-1.amazonaws.com/<userPoolId>" → 保存済み idToken
+    expect(getIdBody.Logins["cognito-idp.ap-northeast-1.amazonaws.com/ap-northeast-1_bY2byhlCa"])
+      .toBe(tokenStore.load().idToken);
+    expect(getIdBody.IdentityPoolId).toBe("ap-northeast-1:0a1820f1-dbb3-4bca-9227-2a92f6abf0ae"); // app.properties:8
+    // API 本体は Identity Pool から得た AccessKeyId で署名されている
+    const apiCall = calls[2];
+    expect(apiCall.url).toBe("https://app.candyhouse.co/prod/device/v1/sesame2/sign");
+    expect(apiCall.init.headers.authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=AKFROMPOOL\//);
+    expect(apiCall.init.headers["x-amz-security-token"]).toBe("ST");
+  });
+
+  it("appIdentifyId 未注入なら config から解決し、無ければ生成して config に書き戻す", async () => {
+    let captured;
+    const fetchImpl = async (url, init) => { captured = { url, init }; return { status: 200, text: async () => "{}" }; };
+    const config = { appIdentifyId: null };
+    const transport = makeRegisterTransport({ credentialsProvider: fakeCredentialsProvider, config, fetchImpl });
+    await transport({ method: "POST", path: "/x" });
+    // ANDROID_ID 相当: "ap-northeast-1:<uuid>" を初回生成して config に保持 (AppIdentifyIdUtil.kt:42)
+    expect(config.appIdentifyId).toMatch(/^ap-northeast-1:/);
+    expect(captured.init.headers.appidentifyid).toBe(config.appIdentifyId);
+  });
+
   it("不正 JSON 応答は json:null として text を保持する", async () => {
     const fetchImpl = async () => ({ status: 502, text: async () => "<html>bad gateway" });
-    const transport = makeRegisterTransport({
-      baseUrl: "https://example.invalid",
-      tokenStore: makeTokenStore(),
-      fetchImpl,
-    });
+    const transport = makeRegisterTransport({ credentialsProvider: fakeCredentialsProvider, fetchImpl });
     const res = await transport({ method: "POST", path: "/x" });
     expect(res.status).toBe(502);
     expect(res.json).toBeNull();
@@ -235,43 +305,47 @@ describe("makeRegisterTransport (Cognito idToken 再利用 + fetch 注入)", () 
   it("path 未指定 (undefined) なら fetch せず明示エラー (base + undefined URL を作らない)", async () => {
     let called = false;
     const fetchImpl = async () => { called = true; return { status: 200, text: async () => "" }; };
-    const transport = makeRegisterTransport({
-      baseUrl: "https://example.invalid",
-      tokenStore: makeTokenStore(),
-      fetchImpl,
-    });
+    const transport = makeRegisterTransport({ credentialsProvider: fakeCredentialsProvider, fetchImpl });
     await expect(transport({ method: "POST" })).rejects.toThrow(/path required/);
     await expect(transport({ method: "POST", path: "" })).rejects.toThrow(/path required/);
     expect(called).toBe(false);
   });
 
-  it("入力バリデーション (baseUrl / tokenStore / fetchImpl)", () => {
-    expect(() => makeRegisterTransport({ tokenStore: {}, fetchImpl: () => {} })).toThrow(/baseUrl required/);
-    expect(() => makeRegisterTransport({ baseUrl: "x", fetchImpl: () => {} })).toThrow(/tokenStore required/);
-    expect(() => makeRegisterTransport({ baseUrl: "x", tokenStore: {}, fetchImpl: null })).toThrow(/fetchImpl must be a function/);
+  it("入力バリデーション (認可材料 / fetchImpl)", () => {
+    // tokenStore も credentialsProvider も無ければ署名できない
+    expect(() => makeRegisterTransport({ fetchImpl: () => {} })).toThrow(/credentialsProvider/);
+    expect(() => makeRegisterTransport({ tokenStore: {}, fetchImpl: null })).toThrow(/fetchImpl must be a function/);
   });
 
-  it("resolveRegisterTransport は config.registerBaseUrl と既存 TokenStore から transport を作る", async () => {
+  it("resolveRegisterTransport は config.registerBaseUrl で既定ホストを上書きできる", async () => {
     let captured;
     const fetchImpl = async (url, init) => {
       captured = { url, init };
       return { status: 200, text: async () => "{}" };
     };
     const transport = resolveRegisterTransport({
-      config: { registerBaseUrl: "https://register.example.invalid/root/" },
-      tokenStore: makeTokenStore(),
+      config: { registerBaseUrl: "https://register.example.invalid/root/" }, // 末尾スラッシュは除去される
+      credentialsProvider: fakeCredentialsProvider,
       fetchImpl,
     });
     expect(typeof transport).toBe("function");
 
     await transport({ method: "POST", path: "/device/v1/sesame2/sign", body: { k: "v" } });
     expect(captured.url).toBe("https://register.example.invalid/root/device/v1/sesame2/sign");
-    expect(captured.init.headers.authorization).toMatch(/^Bearer /);
+    expect(captured.init.headers.authorization).toMatch(/^AWS4-HMAC-SHA256 /);
     expect(captured.init.body).toBe(JSON.stringify({ k: "v" }));
   });
 
-  it("resolveRegisterTransport は baseUrl 未設定なら任意時 undefined / 必須時エラー", () => {
-    expect(resolveRegisterTransport({ config: {}, tokenStore: makeTokenStore() })).toBeUndefined();
-    expect(() => resolveRegisterTransport({ config: {}, tokenStore: makeTokenStore(), required: true })).toThrow(/baseUrl required/);
+  it("resolveRegisterTransport は baseUrl 未設定でも既定ホストで常に transport を返す", async () => {
+    let captured;
+    const fetchImpl = async (url, init) => { captured = { url, init }; return { status: 200, text: async () => "{}" }; };
+    const transport = resolveRegisterTransport({
+      config: {},
+      credentialsProvider: fakeCredentialsProvider,
+      fetchImpl,
+    });
+    expect(typeof transport).toBe("function");
+    await transport({ method: "POST", path: "/x" });
+    expect(captured.url).toBe("https://app.candyhouse.co/prod/x");
   });
 });

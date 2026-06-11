@@ -33,6 +33,12 @@ import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { assertSuccess, subscribeChunks, timeoutError, badRequest, rejected } from "./util.js";
 import { t } from "./i18n.js";
 import { generateUUID } from "./crypto.js";
+import {
+  makeCognitoCredentialsProvider,
+  makeApiGatewayTransport,
+  resolveAppIdentifyId,
+  DEFAULT_CH_API_BASE_URL,
+} from "./aws-credentials.js";
 
 // action 文字列は vendor (biz3 messageConstants:9) から引く (手書きしない)。
 const ACTION = ACTION_TYPES.BIZ3_MANAGE_AC_AUTHDATA; // "biz3ManageAccessCtlAuthData"
@@ -51,12 +57,20 @@ const BIOMETRICS_PATH = "/device/v1/biometrics";
 
 /**
  * 認証情報を含む biometrics transport 構築オプション。
+ * 正準は SigV4 (credentialsProvider / getIdToken)。authorization 系は参照に無い互換注入口
+ * (非推奨。makeBiometricsTransport の注記参照)。
  * @typedef {object} BiometricsAuthOptions
- * @property {BiometricsTransport} [transport] 既製 transport を注入 (テスト/IAM 環境用)。
- * @property {string} [baseUrl] REST ルート URL (https のみ)。
- * @property {string} [authorization] 完成済み Authorization ヘッダ値。
- * @property {string} [bearerToken] Bearer トークン (ヘッダ未指定時)。
- * @property {() => Promise<string>} [authorizationProvider] 都度 Authorization を解決する関数。
+ * @property {BiometricsTransport} [transport] 既製 transport を注入 (テスト/特殊環境用)。
+ * @property {string} [baseUrl] REST ルート URL (https のみ。既定 https://app.candyhouse.co/prod)。
+ * @property {import("./aws-credentials.js").CredentialsProviderLike} [credentialsProvider] Identity Pool 一時 credentials の供給元。
+ * @property {() => Promise<string>} [getIdToken] idToken 供給コールバック (credentialsProvider を内部構築)。
+ * @property {string|null} [appIdentifyId] appidentifyid ヘッダ値 (省略時 config から解決/生成)。
+ * @property {import("./aws-credentials.js").AppIdConfigLike|null} [config] appIdentifyId の保存先 config。
+ * @property {import("./aws-credentials.js").AppIdConfigStoreLike|null} [configStore] appIdentifyId を即永続化する store。
+ * @property {string} [apiKey] x-api-key (省略時 app.properties:5 の実値)。
+ * @property {string} [authorization] [非推奨] 完成済み Authorization ヘッダ値。
+ * @property {string} [bearerToken] [非推奨] Bearer トークン (ヘッダ未指定時)。
+ * @property {() => Promise<string>} [authorizationProvider] [非推奨] 都度 Authorization を解決する関数。
  * @property {typeof fetch} [fetchImpl] fetch 実装 (テスト差し替え用)。
  */
 
@@ -128,25 +142,61 @@ function assertHttpOk(res, op) {
 
 /**
  * Kotlin SDK の CHAPIClient#biometricsOperation と同じ POST /device/v1/biometrics transport。
- * 認証ヘッダは呼び出し側が明示的に渡す。実 API Gateway が IAM SigV4 のみを要求する環境では、
- * 呼び出し側が互換 transport を注入する。
+ *
+ * 認可は公式アプリと同じ「SigV4 (Cognito Identity Pool の一時 credentials) + x-api-key +
+ * appidentifyid」(REFACTORING_PLAN P2-1 / BIZ-07。基盤 = src/aws-credentials.js + src/sigv4.js):
+ *   - ApiClientConfigBuilder.kt:34-46 — credentialsProvider + apiKey + region
+ *   - BaseApp.kt:95-102 — credentialsProvider = AWSMobileClient.getInstance(),
+ *     apiKey = BuildConfig.API_GATEWAY_API_KEY
+ *   - ホストは app.properties:3 (https://app.candyhouse.co/prod) を既定とする。
+ * credentialsProvider か getIdToken (idToken 供給コールバック) のどちらかで SigV4 経路になる。
+ *
+ * 互換 (非推奨): authorization / bearerToken / authorizationProvider は Authorization ヘッダを
+ * そのまま付ける旧経路。参照 SDK に idToken Bearer の REST 認可は存在せず実 API Gateway
+ * (IAM 認可) には拒否される見込みのため、SesameClient (client.js:921) が SigV4 へ移行する
+ * までの互換注入口としてのみ残す。
+ *
+ * @experimental SigV4 経路の実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
  *
  * @param {BiometricsAuthOptions} opts
  * @returns {BiometricsTransport}
  */
 export function makeBiometricsTransport({
-  baseUrl,
+  baseUrl = DEFAULT_CH_API_BASE_URL,
+  credentialsProvider,
+  getIdToken,
+  appIdentifyId,
+  config,
+  configStore,
+  apiKey,
   authorization,
   bearerToken,
   authorizationProvider,
   fetchImpl = globalThis.fetch,
 } = {}) {
-  if (!baseUrl) throw badRequest("access.err.biometricsBaseUrlRequired");
   if (typeof fetchImpl !== "function") throw badRequest("access.err.fetchRequired");
+  const root = normalizeBiometricsBaseUrl(baseUrl || DEFAULT_CH_API_BASE_URL);
+
+  // ---- 正準経路: SigV4 + x-api-key + appidentifyid (devices.js register と同じ基盤) ----
+  if (credentialsProvider || typeof getIdToken === "function") {
+    const provider = credentialsProvider
+      || makeCognitoCredentialsProvider({
+        getIdToken: /** @type {() => Promise<string>} */ (getIdToken),
+        fetchImpl,
+      });
+    return makeApiGatewayTransport({
+      baseUrl: root,
+      credentialsProvider: provider,
+      appIdentifyId: resolveAppIdentifyId({ appIdentifyId, config, configStore }),
+      apiKey,
+      fetchImpl,
+    });
+  }
+
+  // ---- 互換経路 (非推奨): 呼び出し側が組んだ Authorization をそのまま付ける ----
   if (!authorization && !bearerToken && typeof authorizationProvider !== "function") {
     throw badRequest("access.err.biometricsAuthorizationRequired");
   }
-  const root = normalizeBiometricsBaseUrl(baseUrl);
   return async ({ method, path, body }) => {
     // 上の guard で authorization / bearerToken / authorizationProvider のいずれかは必ず存在する。
     const auth = authorization
@@ -167,9 +217,9 @@ export function makeBiometricsTransport({
 }
 
 /** @param {BiometricsAuthOptions} opts @returns {BiometricsTransport} */
-function resolveBiometricsTransport({ transport, baseUrl, authorization, bearerToken, authorizationProvider, fetchImpl }) {
+function resolveBiometricsTransport({ transport, ...opts }) {
   if (typeof transport === "function") return transport;
-  return makeBiometricsTransport({ baseUrl, authorization, bearerToken, authorizationProvider, fetchImpl });
+  return makeBiometricsTransport(opts);
 }
 
 /** @param {string|undefined} operation @param {string} suffix @returns {string} */

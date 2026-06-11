@@ -164,7 +164,6 @@
     "release": "bash scripts/release.sh"
   },
   "dependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.1057.0",
     "@grpc/grpc-js": "^1.14.4",
     "@grpc/proto-loader": "^0.8.1",
     "@inquirer/prompts": "^8.5.2",

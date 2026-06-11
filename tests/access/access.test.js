@@ -76,8 +76,50 @@ function pushClient() {
 
 const ACTION = "biz3ManageAccessCtlAuthData";
 
-describe("makeBiometricsTransport", () => {
-  it("normalizes trailing slashes without regex backtracking and sends the authenticated biometrics request", async () => {
+describe("makeBiometricsTransport (SigV4 + x-api-key + appidentifyid — BIZ-07)", () => {
+  // 認可方式の出典: ApiClientConfigBuilder.kt:34-46 / BaseApp.kt:95-102 /
+  // app.properties:3,5 (ホスト・API key の実値)。基盤は src/aws-credentials.js + src/sigv4.js
+  // (devices.js makeRegisterTransport と共通)。実機 API Gateway での受理は未検証 (§9 V5)。
+
+  /** Identity Pool を経由しない注入 provider (ヘッダ検証用の固定 credentials)。 */
+  const fakeCredentialsProvider = {
+    getCredentials: async () => ({
+      accessKeyId: "ASIAEXAMPLE",
+      secretAccessKey: "fakeSecret",
+      sessionToken: "SESSION-TOKEN",
+      expiration: new Date(Date.now() + 3600_000),
+      identityId: "ap-northeast-1:identity",
+    }),
+  };
+
+  it("既定ホスト app.candyhouse.co/prod へ SigV4 + x-api-key + appidentifyid を付けて送る", async () => {
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push({ url, init });
+      return { status: 200, text: async () => JSON.stringify({ ok: true }) };
+    };
+    const transport = makeBiometricsTransport({
+      credentialsProvider: fakeCredentialsProvider,
+      appIdentifyId: "ap-northeast-1:fixed-id",
+      fetchImpl,
+    });
+
+    const res = await transport({ method: "POST", path: "/device/v1/biometrics", body: { op: "x" } });
+
+    expect(res).toEqual({ status: 200, text: '{"ok":true}', json: { ok: true } });
+    // baseUrl 未指定でも既定ホスト (app.properties:3) が使われる
+    expect(calls[0].url).toBe("https://app.candyhouse.co/prod/device/v1/biometrics");
+    const h = calls[0].init.headers;
+    expect(h.authorization).toMatch(
+      /^AWS4-HMAC-SHA256 Credential=ASIAEXAMPLE\/\d{8}\/ap-northeast-1\/execute-api\/aws4_request, SignedHeaders=appidentifyid;content-type;host;x-amz-date;x-amz-security-token;x-api-key, Signature=[0-9a-f]{64}$/,
+    );
+    expect(h["x-api-key"]).toBe("iGgXj9GorS4PeH90mAysg1l7kdvoIPxM25mPFl3k"); // app.properties:5
+    expect(h.appidentifyid).toBe("ap-northeast-1:fixed-id");
+    expect(h["x-amz-security-token"]).toBe("SESSION-TOKEN");
+    expect(calls[0].init.body).toBe('{"op":"x"}');
+  });
+
+  it("normalizes trailing slashes without regex backtracking (SigV4 経路でも同じ正規化)", async () => {
     const calls = [];
     const fetchImpl = async (url, init) => {
       calls.push({ url, init });
@@ -86,30 +128,76 @@ describe("makeBiometricsTransport", () => {
     const trailing = "/".repeat(5000);
     const transport = makeBiometricsTransport({
       baseUrl: `https://api.example.test/root${trailing}`,
-      bearerToken: "id-token",
+      credentialsProvider: fakeCredentialsProvider,
       fetchImpl,
     });
 
-    const res = await transport({ method: "POST", path: "/device/v1/biometrics", body: { op: "x" } });
-
-    expect(res).toEqual({ status: 200, text: "{\"ok\":true}", json: { ok: true } });
+    await transport({ method: "POST", path: "/device/v1/biometrics", body: { op: "x" } });
     expect(calls[0].url).toBe("https://api.example.test/root/device/v1/biometrics");
-    expect(calls[0].init.headers.authorization).toBe("Bearer id-token");
-    expect(calls[0].init.body).toBe("{\"op\":\"x\"}");
+  });
+
+  it("getIdToken コールバック経路: Identity Pool (GetId/GetCredentialsForIdentity) を経由して署名する", async () => {
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push({ url, init });
+      if (url.startsWith("https://cognito-identity.ap-northeast-1.amazonaws.com/")) {
+        const target = init.headers["x-amz-target"];
+        if (target === "AWSCognitoIdentityService.GetId") {
+          return { status: 200, text: async () => JSON.stringify({ IdentityId: "ap-northeast-1:id-1" }) };
+        }
+        return {
+          status: 200,
+          text: async () => JSON.stringify({
+            IdentityId: "ap-northeast-1:id-1",
+            Credentials: {
+              AccessKeyId: "AKFROMPOOL", SecretKey: "SK", SessionToken: "ST",
+              Expiration: Date.now() / 1000 + 3600,
+            },
+          }),
+        };
+      }
+      return { status: 200, text: async () => "{}" };
+    };
+    const transport = makeBiometricsTransport({
+      getIdToken: async () => "ID-TOKEN",
+      appIdentifyId: "ap-northeast-1:x",
+      fetchImpl,
+    });
+    await transport({ method: "POST", path: "/device/v1/biometrics", body: { op: "x" } });
+
+    expect(calls).toHaveLength(3); // GetId → GetCredentialsForIdentity → API 本体
+    const getIdBody = JSON.parse(calls[0].init.body);
+    expect(getIdBody.Logins["cognito-idp.ap-northeast-1.amazonaws.com/ap-northeast-1_bY2byhlCa"]).toBe("ID-TOKEN");
+    expect(calls[2].init.headers.authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=AKFROMPOOL\//);
   });
 
   it("rejects non-HTTPS and credential-bearing biometrics base URLs", () => {
-    expect(() => makeBiometricsTransport({ baseUrl: "http://api.example.test", bearerToken: "t", fetchImpl: () => {} }))
+    expect(() => makeBiometricsTransport({ baseUrl: "http://api.example.test", credentialsProvider: fakeCredentialsProvider, fetchImpl: () => {} }))
       .toThrow(/HTTPS/);
-    expect(() => makeBiometricsTransport({ baseUrl: "https://user:pass@api.example.test", bearerToken: "t", fetchImpl: () => {} }))
+    expect(() => makeBiometricsTransport({ baseUrl: "https://user:pass@api.example.test", credentialsProvider: fakeCredentialsProvider, fetchImpl: () => {} }))
       .toThrow(/baseUrl/);
-    expect(() => makeBiometricsTransport({ baseUrl: "https://api.example.test/path?x=1", bearerToken: "t", fetchImpl: () => {} }))
+    expect(() => makeBiometricsTransport({ baseUrl: "https://api.example.test/path?x=1", credentialsProvider: fakeCredentialsProvider, fetchImpl: () => {} }))
       .toThrow(/baseUrl/);
+  });
+
+  it("互換 (非推奨): authorizationProvider / bearerToken 経路は維持される (client.js が移行するまで)", async () => {
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push({ url, init });
+      return { status: 200, text: async () => "{}" };
+    };
+    const transport = makeBiometricsTransport({
+      baseUrl: "https://api.example.test",
+      authorizationProvider: async () => "Bearer legacy-token",
+      fetchImpl,
+    });
+    await transport({ method: "POST", path: "/device/v1/biometrics", body: { op: "x" } });
+    expect(calls[0].init.headers.authorization).toBe("Bearer legacy-token");
   });
 
   it("requires an explicit authorization source", () => {
     expect(() => makeBiometricsTransport({ baseUrl: "https://api.example.test", fetchImpl: () => {} }))
-      .toThrow(/authorization/);
+      .toThrow(/credentialsProvider/);
   });
 });
 

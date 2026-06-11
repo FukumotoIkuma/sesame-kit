@@ -273,6 +273,12 @@ export type ConfigData = {
      */
     registerBaseUrl?: string | undefined;
     /**
+     * appidentifyid ヘッダ用の安定 ID (PERSISTED)。
+     * ANDROID_ID 相当としてランダム UUID を初回生成して保持する (AppIdentifyIdUtil.kt:26-48 の
+     * SharedPreferences 永続化相当。生成は src/aws-credentials.js resolveAppIdentifyId)。
+     */
+    appIdentifyId?: string | null | undefined;
+    /**
      * devices からの派生 view (保存しない)。
      */
     locks?: Record<string, LockView> | undefined;

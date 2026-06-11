@@ -60,6 +60,7 @@ import { Hub3WsClient, sendIR, getIRCodes } from "./transport.js";
 import { ConfigStore, normalizeConfig } from "./config.js";
 import { FileTokenStore } from "./tokens.js";
 import { getValidIdToken, jwtSub } from "./auth.js";
+import { makeCognitoCredentialsProvider, DEFAULT_CH_API_BASE_URL } from "./aws-credentials.js";
 import { configPaths } from "./paths.js";
 import { LockManager } from "./lock-manager.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
@@ -268,12 +269,13 @@ export class SesameHub3 {
       idToken,
       lang: this._config.lang,
       debug: this._debug,
-      // 再接続が MAX_RETRIES_BEFORE_TOKEN_CHECK に達した時、
-      // token を強制 refresh して再接続を継続する。
+      // 再接続が MAX_RETRIES_BEFORE_TOKEN_CHECK に達した時に呼ばれる。
+      // 参照 (references_web/src/api/useAuthState.js:50-60 checkTokenExpiration) と同じく
+      // exp を確認し、期限内なら refresh せず現 token を返す (= transport 側は同一 token
+      // なので差し替えず backoff 継続)。期限切れ/閾値内のみ getValidIdToken が refresh する。
       onTokenRefreshNeeded: async () => {
         try {
-          // marginSec を大きくして必ず refresh する
-          return await getValidIdToken(this._tokenStore, { marginSec: 999999 });
+          return await getValidIdToken(this._tokenStore);
         } catch (e) {
           if (this._debug) console.error("[hub3] token refresh failed:", errMsg(e));
           return null;
@@ -907,19 +909,46 @@ export class SesameHub3 {
   }
 
   /**
-   * biometrics REST のベース URL を解決する。引数 > config.biometricsBaseUrl > config.registerBaseUrl。
+   * biometrics REST のベース URL を解決する。引数 > config.biometricsBaseUrl > config.registerBaseUrl
+   * > 公式既定 (app.properties:3 = https://app.candyhouse.co/prod)。
    * @param {string} [baseUrl]
    * @returns {string}
    */
   _biometricsBaseUrl(baseUrl) {
-    const url = baseUrl || this._config.biometricsBaseUrl || this._config.registerBaseUrl;
-    if (!url) throw new Error("biometrics baseUrl required (set config.biometricsBaseUrl or pass baseUrl)");
-    return url;
+    return baseUrl || this._config.biometricsBaseUrl || this._config.registerBaseUrl
+      || DEFAULT_CH_API_BASE_URL;
   }
 
-  /** @returns {() => Promise<string>} 都度 idToken から Bearer を発行する provider */
-  _biometricsAuthorizationProvider() {
-    return async () => `Bearer ${await getValidIdToken(this._tokenStore)}`;
+  /**
+   * biometrics REST 用の Identity Pool credentials provider (SigV4 経路、P2-1/BIZ-07)。
+   * 公式の認可は SigV4 + x-api-key + appidentifyid (ApiClientConfigBuilder.kt:34-46) で、
+   * 旧 idToken Bearer は参照に存在しないため撤去した。provider はキャッシュを持つので
+   * インスタンスで 1 つを共有する。
+   * @returns {import("./aws-credentials.js").CredentialsProviderLike}
+   */
+  _biometricsCredentialsProvider() {
+    if (!this._bioCredentialsProvider) {
+      this._bioCredentialsProvider = makeCognitoCredentialsProvider({
+        getIdToken: () => getValidIdToken(this._tokenStore),
+      });
+    }
+    return this._bioCredentialsProvider;
+  }
+
+  /**
+   * biometrics 4 メソッド共通の transport 解決オプション (SigV4 + appidentifyid 永続化)。
+   * @param {string} [baseUrl]
+   * @param {import("./access.js").BiometricsTransport} [transport]
+   */
+  _biometricsTransportOpts(baseUrl, transport) {
+    if (transport) return { transport };
+    return {
+      transport: undefined,
+      baseUrl: this._biometricsBaseUrl(baseUrl),
+      credentialsProvider: this._biometricsCredentialsProvider(),
+      config: this._config,
+      configStore: this._configStore ?? undefined,
+    };
   }
 
   /** @param {import("./client.js").BiometricAuthBag} [args] */
@@ -928,9 +957,7 @@ export class SesameHub3 {
       operation,
       deviceID,
       items,
-      transport,
-      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
-      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+      ...this._biometricsTransportOpts(baseUrl, transport),
     });
   }
 
@@ -940,9 +967,7 @@ export class SesameHub3 {
       operation,
       deviceID,
       items,
-      transport,
-      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
-      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+      ...this._biometricsTransportOpts(baseUrl, transport),
     });
   }
 
@@ -952,9 +977,7 @@ export class SesameHub3 {
       operation,
       deviceID,
       items,
-      transport,
-      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
-      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+      ...this._biometricsTransportOpts(baseUrl, transport),
     });
   }
 
@@ -964,9 +987,7 @@ export class SesameHub3 {
       request,
       kind,
       ...rest,
-      transport,
-      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
-      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+      ...this._biometricsTransportOpts(baseUrl, transport),
     });
   }
 

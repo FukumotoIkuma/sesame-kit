@@ -1,12 +1,25 @@
 /**
  * Kotlin SDK の CHAPIClient#biometricsOperation と同じ POST /device/v1/biometrics transport。
- * 認証ヘッダは呼び出し側が明示的に渡す。実 API Gateway が IAM SigV4 のみを要求する環境では、
- * 呼び出し側が互換 transport を注入する。
+ *
+ * 認可は公式アプリと同じ「SigV4 (Cognito Identity Pool の一時 credentials) + x-api-key +
+ * appidentifyid」(REFACTORING_PLAN P2-1 / BIZ-07。基盤 = src/aws-credentials.js + src/sigv4.js):
+ *   - ApiClientConfigBuilder.kt:34-46 — credentialsProvider + apiKey + region
+ *   - BaseApp.kt:95-102 — credentialsProvider = AWSMobileClient.getInstance(),
+ *     apiKey = BuildConfig.API_GATEWAY_API_KEY
+ *   - ホストは app.properties:3 (https://app.candyhouse.co/prod) を既定とする。
+ * credentialsProvider か getIdToken (idToken 供給コールバック) のどちらかで SigV4 経路になる。
+ *
+ * 互換 (非推奨): authorization / bearerToken / authorizationProvider は Authorization ヘッダを
+ * そのまま付ける旧経路。参照 SDK に idToken Bearer の REST 認可は存在せず実 API Gateway
+ * (IAM 認可) には拒否される見込みのため、SesameClient (client.js:921) が SigV4 へ移行する
+ * までの互換注入口としてのみ残す。
+ *
+ * @experimental SigV4 経路の実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
  *
  * @param {BiometricsAuthOptions} opts
  * @returns {BiometricsTransport}
  */
-export function makeBiometricsTransport({ baseUrl, authorization, bearerToken, authorizationProvider, fetchImpl, }?: BiometricsAuthOptions): BiometricsTransport;
+export function makeBiometricsTransport({ baseUrl, credentialsProvider, getIdToken, appIdentifyId, config, configStore, apiKey, authorization, bearerToken, authorizationProvider, fetchImpl, }?: BiometricsAuthOptions): BiometricsTransport;
 /**
  * 対象デバイスの NFC カード一覧を取得する。
  * 応答は op='pubCardLinkedIDs' の async push で deviceUUID/page ごとに届くため、
@@ -335,26 +348,52 @@ export type BiometricsTransport = (req: {
 }>;
 /**
  * 認証情報を含む biometrics transport 構築オプション。
+ * 正準は SigV4 (credentialsProvider / getIdToken)。authorization 系は参照に無い互換注入口
+ * (非推奨。makeBiometricsTransport の注記参照)。
  */
 export type BiometricsAuthOptions = {
     /**
-     * 既製 transport を注入 (テスト/IAM 環境用)。
+     * 既製 transport を注入 (テスト/特殊環境用)。
      */
     transport?: BiometricsTransport | undefined;
     /**
-     * REST ルート URL (https のみ)。
+     * REST ルート URL (https のみ。既定 https://app.candyhouse.co/prod)。
      */
     baseUrl?: string | undefined;
     /**
-     * 完成済み Authorization ヘッダ値。
+     * Identity Pool 一時 credentials の供給元。
+     */
+    credentialsProvider?: import("./aws-credentials.js").CredentialsProviderLike | undefined;
+    /**
+     * idToken 供給コールバック (credentialsProvider を内部構築)。
+     */
+    getIdToken?: (() => Promise<string>) | undefined;
+    /**
+     * appidentifyid ヘッダ値 (省略時 config から解決/生成)。
+     */
+    appIdentifyId?: string | null | undefined;
+    /**
+     * appIdentifyId の保存先 config。
+     */
+    config?: import("./aws-credentials.js").AppIdConfigLike | null | undefined;
+    /**
+     * appIdentifyId を即永続化する store。
+     */
+    configStore?: import("./aws-credentials.js").AppIdConfigStoreLike | null | undefined;
+    /**
+     * x-api-key (省略時 app.properties:5 の実値)。
+     */
+    apiKey?: string | undefined;
+    /**
+     * [非推奨] 完成済み Authorization ヘッダ値。
      */
     authorization?: string | undefined;
     /**
-     * Bearer トークン (ヘッダ未指定時)。
+     * [非推奨] Bearer トークン (ヘッダ未指定時)。
      */
     bearerToken?: string | undefined;
     /**
-     * 都度 Authorization を解決する関数。
+     * [非推奨] 都度 Authorization を解決する関数。
      */
     authorizationProvider?: (() => Promise<string>) | undefined;
     /**

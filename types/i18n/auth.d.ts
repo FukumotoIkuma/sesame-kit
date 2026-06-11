@@ -4,12 +4,14 @@ declare namespace _default {
         "auth.noPending": string;
         "auth.anotherChallenge": string;
         "auth.wrongCodeRetry": string;
+        "auth.staleDeviceRetry": string;
     };
     let ja: {
         "auth.noTokens": string;
         "auth.noPending": string;
         "auth.anotherChallenge": string;
         "auth.wrongCodeRetry": string;
+        "auth.staleDeviceRetry": string;
     };
 }
 export default _default;

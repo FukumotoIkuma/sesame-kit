@@ -1,66 +1,25 @@
 // Unit tests for getValidIdToken(store, {marginSec}) in src/auth.js
 //
 // Strategy:
-//   - vi.mock("@aws-sdk/client-cognito-identity-provider") で
-//     CognitoIdentityProviderClient.send() を差し替え、Cognito 呼び出しを観測可能にする。
-//   - InitiateAuthCommand は実体 (引数を保持する単純な class) を差し替えて、
-//     send() に渡された input を取り出せるようにする。
+//   - P2-2: auth.js は Cognito を素 fetch (src/cognito-http.js) で叩くため、
+//     global.fetch を vi.stubGlobal で差し替えて観測する (cognito-fetch-mock.js)。
+//     アサート対象のリクエスト形 (AuthFlow / AuthParameters 等) は SDK 時代と不変。
 //   - in-memory TokenStore モックを毎テスト fresh に作る。
 //   - JWT は本物の base64url payload を組み立てて jwtExp が exp を取れるようにする
 //     (本当の署名検証はしないので header / signature は dummy で OK)。
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import {
+  fetchMock,
+  installFetchMock,
+  cognitoOk,
+  cognitoError,
+  cognitoCalls,
+} from "./cognito-fetch-mock.js";
 
-// --- mock @aws-sdk/client-cognito-identity-provider ----------------------------------
-//
-// CognitoIdentityProviderClient: send() を vi.fn() で持つコンストラクタ。
-// InitiateAuthCommand: input を保持する単純な class (元実装も実質これ)。
-// 他のコマンドも空 class でスタブしておく (auth.js が import している)。
-//
-// auth.js は `new CognitoIdentityProviderClient(...)` をモジュール先頭で 1 回呼び、
-// そのインスタンスを使い回す。だから sendMock を module スコープで保持し、
-// 各 it で mockReset() する。
+installFetchMock();
 
-const sendMock = vi.fn();
-
-vi.mock("@aws-sdk/client-cognito-identity-provider", () => {
-  class CognitoIdentityProviderClient {
-    constructor(cfg) {
-      this.cfg = cfg;
-    }
-    send(...args) {
-      return sendMock(...args);
-    }
-  }
-  class InitiateAuthCommand {
-    constructor(input) {
-      this.input = input;
-      this.__name = "InitiateAuthCommand";
-    }
-  }
-  class RespondToAuthChallengeCommand {
-    constructor(input) { this.input = input; this.__name = "RespondToAuthChallengeCommand"; }
-  }
-  class SignUpCommand {
-    constructor(input) { this.input = input; this.__name = "SignUpCommand"; }
-  }
-  const command = (name) => class {
-    constructor(input) { this.input = input; this.__name = name; }
-  };
-  return {
-    CognitoIdentityProviderClient,
-    InitiateAuthCommand,
-    RespondToAuthChallengeCommand,
-    SignUpCommand,
-    ConfirmDeviceCommand: command("ConfirmDeviceCommand"),
-    UpdateDeviceStatusCommand: command("UpdateDeviceStatusCommand"),
-    ForgetDeviceCommand: command("ForgetDeviceCommand"),
-    RevokeTokenCommand: command("RevokeTokenCommand"),
-  };
-});
-
-// auth.js は mock 後に import する (vi.mock は hoist されるので順序は OK だが明示的に下に置く)
-const { getValidIdToken, CONSUMER_CLIENT_ID } = await import("../../src/auth.js");
+import { getValidIdToken, CONSUMER_CLIENT_ID } from "../../src/auth.js";
 
 // --- helpers ------------------------------------------------------------------------
 
@@ -107,11 +66,12 @@ function makeStore(initial) {
 
 describe("getValidIdToken", () => {
   beforeEach(() => {
-    sendMock.mockReset();
+    fetchMock.mockReset();
     vi.useRealTimers();
   });
 
-  afterEach(() => {
+  afterAll(() => {
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -131,8 +91,22 @@ describe("getValidIdToken", () => {
       const got = await getValidIdToken(store);
 
       expect(got).toBe(idToken);
-      expect(sendMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
       expect(store.save).not.toHaveBeenCalled();
+    });
+
+    it("既定 marginSec=120 (CognitoIdentityProviderClientConfig.java:40): 残り 121 秒なら refresh しない", async () => {
+      const now = 1_700_000_000;
+      vi.useFakeTimers();
+      vi.setSystemTime(now * 1000);
+
+      const idToken = makeJwt(now + 121); // 120 より 1 秒だけ余裕
+      const store = makeStore({ idToken, refreshToken: "rt", clientId: CONSUMER_CLIENT_ID });
+
+      const got = await getValidIdToken(store);
+
+      expect(got).toBe(idToken);
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("marginSec をカスタム値にしても、それより余裕があれば refresh しない", async () => {
@@ -146,7 +120,7 @@ describe("getValidIdToken", () => {
       const got = await getValidIdToken(store, { marginSec: 300 }); // 5 分
 
       expect(got).toBe(idToken);
-      expect(sendMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("未失効 idToken でも ConfirmDevice 済み device credentials が無ければ拒否する", async () => {
@@ -165,7 +139,7 @@ describe("getValidIdToken", () => {
       });
 
       await expect(getValidIdToken(store)).rejects.toThrow(/missing confirmed Cognito device credentials/);
-      expect(sendMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 
@@ -173,7 +147,7 @@ describe("getValidIdToken", () => {
     it("store.load() が null を返したら 'No tokens stored' で throw", async () => {
       const store = makeStore(null);
       await expect(getValidIdToken(store)).rejects.toThrow(/No tokens stored/);
-      expect(sendMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("idToken は expired だが refreshToken が無いと throw", async () => {
@@ -185,7 +159,7 @@ describe("getValidIdToken", () => {
       const store = makeStore({ idToken, refreshToken: null, clientId: CONSUMER_CLIENT_ID });
 
       await expect(getValidIdToken(store)).rejects.toThrow(/idToken expired and no refreshToken/);
-      expect(sendMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("idToken が壊れていて exp=0 (= 大過去扱い) + refreshToken 無しでも throw", async () => {
@@ -200,7 +174,7 @@ describe("getValidIdToken", () => {
       vi.useFakeTimers();
       vi.setSystemTime(now * 1000);
 
-      const oldToken = makeJwt(now + 30); // 30秒後 (margin 60 以内)
+      const oldToken = makeJwt(now + 30); // 30秒後 (margin 120 以内)
       const newToken = makeJwt(now + 3600);
       const store = makeStore({
         idToken: oldToken,
@@ -208,20 +182,20 @@ describe("getValidIdToken", () => {
         clientId: CONSUMER_CLIENT_ID,
       });
 
-      sendMock.mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce(cognitoOk({
         AuthenticationResult: {
           IdToken: newToken,
           AccessToken: "at-new",
         },
-      });
+      }));
 
       const got = await getValidIdToken(store);
 
       expect(got).toBe(newToken);
-      expect(sendMock).toHaveBeenCalledTimes(1);
-      const cmd = sendMock.mock.calls[0][0];
-      expect(cmd.__name).toBe("InitiateAuthCommand");
-      expect(cmd.input).toEqual({
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const call = cognitoCalls()[0];
+      expect(call.op).toBe("InitiateAuth");
+      expect(call.input).toEqual({
         AuthFlow: "REFRESH_TOKEN_AUTH",
         ClientId: CONSUMER_CLIENT_ID,
         AuthParameters: { REFRESH_TOKEN: "rt-old", DEVICE_KEY: CONFIRMED_DEVICE.deviceKey },
@@ -229,6 +203,21 @@ describe("getValidIdToken", () => {
       expect(store.save).toHaveBeenCalledTimes(1);
       expect(store._peek().idToken).toBe(newToken);
       expect(store._peek().accessToken).toBe("at-new");
+    });
+
+    it("既定 marginSec=120: 残り 100 秒 (60 < 100 < 120) でも refresh する", async () => {
+      const now = 1_700_000_000;
+      vi.useFakeTimers();
+      vi.setSystemTime(now * 1000);
+
+      const oldToken = makeJwt(now + 100);
+      const newToken = makeJwt(now + 3600);
+      const store = makeStore({ idToken: oldToken, refreshToken: "rt", clientId: CONSUMER_CLIENT_ID });
+      fetchMock.mockResolvedValueOnce(cognitoOk({ AuthenticationResult: { IdToken: newToken } }));
+
+      const got = await getValidIdToken(store);
+      expect(got).toBe(newToken);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it("すでに expired でも refreshToken があれば refresh する", async () => {
@@ -240,11 +229,11 @@ describe("getValidIdToken", () => {
       const fresh   = makeJwt(now + 3600);
       const store = makeStore({ idToken: expired, refreshToken: "rt", clientId: CONSUMER_CLIENT_ID });
 
-      sendMock.mockResolvedValueOnce({ AuthenticationResult: { IdToken: fresh } });
+      fetchMock.mockResolvedValueOnce(cognitoOk({ AuthenticationResult: { IdToken: fresh } }));
 
       const got = await getValidIdToken(store);
       expect(got).toBe(fresh);
-      expect(sendMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it("ConfirmDevice 済み token は AuthParameters に DEVICE_KEY を含める", async () => {
@@ -257,12 +246,11 @@ describe("getValidIdToken", () => {
         refreshToken: "rt",
         clientId: CONSUMER_CLIENT_ID,
       });
-      sendMock.mockResolvedValueOnce({ AuthenticationResult: { IdToken: makeJwt(now + 3600) } });
+      fetchMock.mockResolvedValueOnce(cognitoOk({ AuthenticationResult: { IdToken: makeJwt(now + 3600) } }));
 
       await getValidIdToken(store);
 
-      const cmd = sendMock.mock.calls[0][0];
-      expect(cmd.input.AuthParameters).toEqual({
+      expect(cognitoCalls()[0].input.AuthParameters).toEqual({
         REFRESH_TOKEN: "rt",
         DEVICE_KEY: CONFIRMED_DEVICE.deviceKey,
       });
@@ -278,12 +266,11 @@ describe("getValidIdToken", () => {
         refreshToken: "rt",
         // clientId 未設定
       });
-      sendMock.mockResolvedValueOnce({ AuthenticationResult: { IdToken: makeJwt(now + 3600) } });
+      fetchMock.mockResolvedValueOnce(cognitoOk({ AuthenticationResult: { IdToken: makeJwt(now + 3600) } }));
 
       await getValidIdToken(store);
 
-      const cmd = sendMock.mock.calls[0][0];
-      expect(cmd.input.ClientId).toBe(CONSUMER_CLIENT_ID);
+      expect(cognitoCalls()[0].input.ClientId).toBe(CONSUMER_CLIENT_ID);
     });
 
     it("store.clientId が Consumer Client 以外なら refresh せず拒否する", async () => {
@@ -297,10 +284,10 @@ describe("getValidIdToken", () => {
         refreshToken: "rt",
         clientId: customClient,
       });
-      sendMock.mockResolvedValueOnce({ AuthenticationResult: { IdToken: makeJwt(now + 3600) } });
+      fetchMock.mockResolvedValueOnce(cognitoOk({ AuthenticationResult: { IdToken: makeJwt(now + 3600) } }));
 
       await expect(getValidIdToken(store)).rejects.toThrow(/unsupported Cognito clientId|Only the SESAME consumer app client/);
-      expect(sendMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("refresh 前に ConfirmDevice 済み device credentials が無ければ拒否する", async () => {
@@ -318,10 +305,10 @@ describe("getValidIdToken", () => {
       });
 
       await expect(getValidIdToken(store)).rejects.toThrow(/missing confirmed Cognito device credentials/);
-      expect(sendMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("rotation: response.RefreshToken があれば store に新 refreshToken を保存する", async () => {
+    it("rotation: response.RefreshToken があれば store に新 refreshToken を保存する (参照 SDK は旧 token 維持だが意図的逸脱)", async () => {
       const now = 1_700_000_000;
       vi.useFakeTimers();
       vi.setSystemTime(now * 1000);
@@ -331,13 +318,13 @@ describe("getValidIdToken", () => {
         refreshToken: "rt-old",
         clientId: CONSUMER_CLIENT_ID,
       });
-      sendMock.mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce(cognitoOk({
         AuthenticationResult: {
           IdToken: makeJwt(now + 3600),
           AccessToken: "at-new",
           RefreshToken: "rt-new-rotated",
         },
-      });
+      }));
 
       await getValidIdToken(store);
 
@@ -355,13 +342,41 @@ describe("getValidIdToken", () => {
         refreshToken: "rt-old-keep",
         clientId: CONSUMER_CLIENT_ID,
       });
-      sendMock.mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce(cognitoOk({
         AuthenticationResult: { IdToken: makeJwt(now + 3600) },
-      });
+      }));
 
       await getValidIdToken(store);
 
       expect(store._peek().refreshToken).toBe("rt-old-keep");
+    });
+
+    it("P2-5: refresh 応答に NewDeviceMetadata が来ても再 ConfirmDevice しない (CognitoUser.java:2865-2876 に処理は無い)", async () => {
+      const now = 1_700_000_000;
+      vi.useFakeTimers();
+      vi.setSystemTime(now * 1000);
+
+      const store = makeStore({
+        idToken: makeJwt(now - 1),
+        refreshToken: "rt",
+        clientId: CONSUMER_CLIENT_ID,
+      });
+      fetchMock.mockResolvedValueOnce(cognitoOk({
+        AuthenticationResult: {
+          IdToken: makeJwt(now + 3600),
+          AccessToken: "at",
+          NewDeviceMetadata: { DeviceKey: "rotated-dev", DeviceGroupKey: "rotated-grp" },
+        },
+      }));
+
+      await getValidIdToken(store);
+
+      // ConfirmDevice の追加 fetch は発生せず、保存済み device 3 点は不変
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(cognitoCalls().map((c) => c.op)).toEqual(["InitiateAuth"]);
+      expect(store._peek().deviceKey).toBe(CONFIRMED_DEVICE.deviceKey);
+      expect(store._peek().deviceGroupKey).toBe(CONFIRMED_DEVICE.deviceGroupKey);
+      expect(store._peek().devicePassword).toBe(CONFIRMED_DEVICE.devicePassword);
     });
 
     it("lastRefresh を ISO 文字列で更新する", async () => {
@@ -375,9 +390,9 @@ describe("getValidIdToken", () => {
         refreshToken: "rt",
         clientId: CONSUMER_CLIENT_ID,
       });
-      sendMock.mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce(cognitoOk({
         AuthenticationResult: { IdToken: makeJwt(now + 3600) },
-      });
+      }));
 
       await getValidIdToken(store);
 
@@ -396,7 +411,7 @@ describe("getValidIdToken", () => {
         refreshToken: "rt",
         clientId: CONSUMER_CLIENT_ID,
       });
-      sendMock.mockResolvedValueOnce({ ChallengeName: "SOMETHING_ELSE" });
+      fetchMock.mockResolvedValueOnce(cognitoOk({ ChallengeName: "SOMETHING_ELSE" }));
 
       await expect(getValidIdToken(store)).rejects.toThrow(/Cognito refresh returned no IdToken/);
       expect(store.save).not.toHaveBeenCalled();
@@ -412,13 +427,13 @@ describe("getValidIdToken", () => {
         refreshToken: "rt",
         clientId: CONSUMER_CLIENT_ID,
       });
-      sendMock.mockResolvedValueOnce({ AuthenticationResult: { AccessToken: "at" } });
+      fetchMock.mockResolvedValueOnce(cognitoOk({ AuthenticationResult: { AccessToken: "at" } }));
 
       await expect(getValidIdToken(store)).rejects.toThrow(/no IdToken/);
       expect(store.save).not.toHaveBeenCalled();
     });
 
-    it("cognito.send が reject したら、その error をそのまま伝播し store.save は呼ばれない", async () => {
+    it("P2-6: NotAuthorizedException で store.clear() し pending は残す (CognitoUser.java:1306-1311 clearCachedTokens)", async () => {
       const now = 1_700_000_000;
       vi.useFakeTimers();
       vi.setSystemTime(now * 1000);
@@ -428,12 +443,47 @@ describe("getValidIdToken", () => {
         refreshToken: "rt-bad",
         clientId: CONSUMER_CLIENT_ID,
       });
-      const err = Object.assign(new Error("NotAuthorizedException: refresh token expired"), {
-        name: "NotAuthorizedException",
-      });
-      sendMock.mockRejectedValueOnce(err);
+      fetchMock.mockResolvedValueOnce(cognitoError("NotAuthorizedException", "Refresh Token has been revoked"));
 
-      await expect(getValidIdToken(store)).rejects.toThrow(/NotAuthorizedException/);
+      await expect(getValidIdToken(store)).rejects.toThrow(/Refresh Token has been revoked/);
+      expect(store.save).not.toHaveBeenCalled();
+      // 失効トークンは破棄 (clearCachedTokens 相当)。pending verify 状態は壊さない。
+      expect(store.clear).toHaveBeenCalledTimes(1);
+      expect(store.clearPending).not.toHaveBeenCalled();
+      expect(store._peek()).toBeNull();
+    });
+
+    it("P2-6: UserNotFoundException でも store.clear() する (CognitoUser.java:1309-1311)", async () => {
+      const now = 1_700_000_000;
+      vi.useFakeTimers();
+      vi.setSystemTime(now * 1000);
+
+      const store = makeStore({
+        idToken: makeJwt(now - 1),
+        refreshToken: "rt",
+        clientId: CONSUMER_CLIENT_ID,
+      });
+      fetchMock.mockResolvedValueOnce(cognitoError("UserNotFoundException", "User does not exist."));
+
+      await expect(getValidIdToken(store)).rejects.toThrow(/User does not exist/);
+      expect(store.clear).toHaveBeenCalledTimes(1);
+      expect(store.clearPending).not.toHaveBeenCalled();
+    });
+
+    it("その他のエラー (例: InternalErrorException) では store.clear() しない", async () => {
+      const now = 1_700_000_000;
+      vi.useFakeTimers();
+      vi.setSystemTime(now * 1000);
+
+      const store = makeStore({
+        idToken: makeJwt(now - 1),
+        refreshToken: "rt",
+        clientId: CONSUMER_CLIENT_ID,
+      });
+      fetchMock.mockResolvedValueOnce(cognitoError("InternalErrorException", "boom", { status: 500 }));
+
+      await expect(getValidIdToken(store)).rejects.toThrow(/boom/);
+      expect(store.clear).not.toHaveBeenCalled();
       expect(store.save).not.toHaveBeenCalled();
     });
   });
@@ -452,14 +502,14 @@ describe("getValidIdToken", () => {
 
       const newToken1 = makeJwt(now + 3600, { iat: 1 });
       const newToken2 = makeJwt(now + 3600, { iat: 2 });
-      sendMock
-        .mockResolvedValueOnce({ AuthenticationResult: { IdToken: newToken1 } })
-        .mockResolvedValueOnce({ AuthenticationResult: { IdToken: newToken2 } });
+      fetchMock
+        .mockResolvedValueOnce(cognitoOk({ AuthenticationResult: { IdToken: newToken1 } }))
+        .mockResolvedValueOnce(cognitoOk({ AuthenticationResult: { IdToken: newToken2 } }));
 
       const [a, b] = await Promise.all([getValidIdToken(store), getValidIdToken(store)]);
 
-      // 現実装は per-call cognito.send なので 2 回叩かれる (de-dup なし) ことを確認
-      expect(sendMock).toHaveBeenCalledTimes(2);
+      // 現実装は per-call fetch なので 2 回叩かれる (de-dup なし) ことを確認
+      expect(fetchMock).toHaveBeenCalledTimes(2);
       // 両方とも有効な idToken を返す
       expect([newToken1, newToken2]).toContain(a);
       expect([newToken1, newToken2]).toContain(b);

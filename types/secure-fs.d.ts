@@ -24,6 +24,23 @@ export function writeSecretJson(path: string, obj: any): void;
  * @param {string} path
  */
 export function restrictSecretFile(path: string): void;
+/**
+ * `<path>.lock` による advisory lock の下で fn を実行する。
+ * load-modify-save の系列をプロセス間で直列化したいとき (tokens.json 等) に使う。
+ *
+ * @template T
+ * @param {string} path ロック対象 (実体ファイル)。lock は `<path>.lock` に作られる。
+ * @param {() => T} fn ロック保持中に実行する処理。
+ * @param {{ timeoutMs?: number, staleMs?: number, retryIntervalMs?: number }} [opts]
+ *   テスト等で待ち時間を縮めるためのオーバーライド。
+ * @returns {T} fn の戻り値。
+ * @throws {Error} timeoutMs 以内にロックを取得できなかった場合。
+ */
+export function withFileLock<T>(path: string, fn: () => T, opts?: {
+    timeoutMs?: number;
+    staleMs?: number;
+    retryIntervalMs?: number;
+}): T;
 /** 秘匿ファイルのパーミッション。鍵入りファイルは所有者のみ読み書き可。 */
 export const SECRET_FILE_MODE: 384;
 /** 設定ディレクトリのパーミッション。所有者のみアクセス可。 */

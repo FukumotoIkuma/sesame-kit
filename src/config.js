@@ -85,6 +85,9 @@ import { t } from "./i18n.js";
  * @property {string|null} [apiKeyId]
  * @property {string} [biometricsBaseUrl] biometrics REST base URL (PERSISTED)。
  * @property {string} [registerBaseUrl] register REST base URL (biometrics fallback)。
+ * @property {string|null} [appIdentifyId] appidentifyid ヘッダ用の安定 ID (PERSISTED)。
+ *   ANDROID_ID 相当としてランダム UUID を初回生成して保持する (AppIdentifyIdUtil.kt:26-48 の
+ *   SharedPreferences 永続化相当。生成は src/aws-credentials.js resolveAppIdentifyId)。
  * @property {Record<string, LockView>} [locks] devices からの派生 view (保存しない)。
  * @property {Record<string, Hub3View>} [hub3s] devices からの派生 view (保存しない)。
  */
@@ -128,13 +131,14 @@ function emptyConfig() {
     devices: {},
     remotes: {}, // IR リモコンは device ではない子エンティティ (親 hub3 + irType + 学習 keys)
     apiKeyId: null, // biz3 dev console で発行する REST WebAPI 用キー
+    appIdentifyId: null, // appidentifyid ヘッダ用の安定 ID (初回利用時に生成して永続化)
   };
 }
 
 // 永続化する正準キー (locks/hub3s は派生 view なので保存しない)。
 // これは意図的なハードホワイトリスト: ここに無いトップレベルキーは save() で落とす。
 // 将来フィールドを足すときはこの配列にも必ず追加すること (追加し忘れると黙って消える)。
-const PERSISTED_KEYS = ["companyID", "wsUrl", "lang", "uiLang", "default", "devices", "remotes", "apiKeyId", "biometricsBaseUrl", "registerBaseUrl"];
+const PERSISTED_KEYS = ["companyID", "wsUrl", "lang", "uiLang", "default", "devices", "remotes", "apiKeyId", "biometricsBaseUrl", "registerBaseUrl", "appIdentifyId"];
 
 // device レコードのうち config ローカルにだけ存在する注釈キー (サーバ応答には無い)。
 // sync 更新時にサーバ由来フィールドで丸ごと置き換えても、これらは引き継ぐ。

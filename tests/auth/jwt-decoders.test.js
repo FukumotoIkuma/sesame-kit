@@ -11,75 +11,19 @@
 // (segment 数不足、空文字、invalid base64, malformed JSON, claim 欠落) は jwtSub の
 // 直接テストで網羅し、aud/exp 側は claim 抽出と fallback default だけ確認する。
 //
-// Cognito SDK は ESM module level で client を 1 度だけ instantiate する設計のため、
-// vi.mock で `@aws-sdk/client-cognito-identity-provider` 自体を mock。InitiateAuthCommand
-// が呼ばれたかどうかで「refresh が走ったか = idToken が expired と判定されたか」を観測する。
+// P2-2 以降 Cognito は素 fetch (src/cognito-http.js)。global.fetch を差し替え、
+// InitiateAuth (X-Amz-Target) が呼ばれたかどうかで「refresh が走ったか = idToken が
+// expired と判定されたか」を観測する。
 //
-// NOTE: src/auth.js は触らずテストファイルのみ追加するという制約のため、jwtAud / jwtExp の
-// 直接 import は不可能。テスト名で「(via bootstrap)」「(via getValidIdToken)」と明示する。
+// NOTE: jwtAud / jwtExp は module-private のため直接 import は不可能。
+// テスト名で「(via bootstrap)」「(via getValidIdToken)」と明示する。
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchMock, installFetchMock, cognitoOk } from "./cognito-fetch-mock.js";
 
-// ─── Cognito SDK mock ─────────────────────────────────────────────────────────
-// auth.js の module-level `new CognitoIdentityProviderClient()` が外部に出ないよう、
-// SDK 全体を mock。送信内容は sendMock の calls で観測する。
-const sendMock = vi.fn();
-vi.mock("@aws-sdk/client-cognito-identity-provider", () => {
-  return {
-    CognitoIdentityProviderClient: class {
-      send(cmd) {
-        return sendMock(cmd);
-      }
-    },
-    InitiateAuthCommand: class {
-      constructor(input) {
-        this.input = input;
-        this.__type = "InitiateAuthCommand";
-      }
-    },
-    RespondToAuthChallengeCommand: class {
-      constructor(input) {
-        this.input = input;
-        this.__type = "RespondToAuthChallengeCommand";
-      }
-    },
-    SignUpCommand: class {
-      constructor(input) {
-        this.input = input;
-        this.__type = "SignUpCommand";
-      }
-    },
-    ConfirmDeviceCommand: class {
-      constructor(input) {
-        this.input = input;
-        this.__type = "ConfirmDeviceCommand";
-      }
-    },
-    UpdateDeviceStatusCommand: class {
-      constructor(input) {
-        this.input = input;
-        this.__type = "UpdateDeviceStatusCommand";
-      }
-    },
-    ForgetDeviceCommand: class {
-      constructor(input) {
-        this.input = input;
-        this.__type = "ForgetDeviceCommand";
-      }
-    },
-    RevokeTokenCommand: class {
-      constructor(input) {
-        this.input = input;
-        this.__type = "RevokeTokenCommand";
-      }
-    },
-  };
-});
+installFetchMock();
 
-// mock 確定後に SUT を import
-const { jwtSub, bootstrap, getValidIdToken, CONSUMER_CLIENT_ID } = await import(
-  "../../src/auth.js"
-);
+import { jwtSub, bootstrap, getValidIdToken, CONSUMER_CLIENT_ID } from "../../src/auth.js";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -132,7 +76,11 @@ function makeMemStore(initial = null) {
 }
 
 beforeEach(() => {
-  sendMock.mockReset();
+  fetchMock.mockReset();
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
 });
 
 afterEach(() => {
@@ -296,16 +244,16 @@ describe("jwtAud (via bootstrap)", () => {
 // jwtExp  (getValidIdToken 経由で観測)
 //
 // getValidIdToken(store, {marginSec}) のロジック:
-//   - exp - now > marginSec  → そのまま return  (refresh しない = sendMock 呼ばれない)
-//   - それ以外               → refresh 試行       (sendMock 呼ばれる)
+//   - exp - now > marginSec  → そのまま return  (refresh しない = fetchMock 呼ばれない)
+//   - それ以外               → refresh 試行       (fetchMock 呼ばれる)
 // jwtExp が壊れる入力では戻り値 0 となり、0 - now < margin で必ず refresh path に入る。
 // ═════════════════════════════════════════════════════════════════════════════
 describe("jwtExp (via getValidIdToken)", () => {
   // 共通の fake refresh 結果 (refresh 経路に入ったか観測したいだけ)
   function setRefreshSuccess(newIdToken = "new-id-token") {
-    sendMock.mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce(cognitoOk({
       AuthenticationResult: { IdToken: newIdToken },
-    });
+    }));
   }
 
   it("exp が十分先 (now+1h) なら refresh せずそのまま返す", async () => {
@@ -318,20 +266,20 @@ describe("jwtExp (via getValidIdToken)", () => {
 
     const out = await getValidIdToken(store);
     expect(out).toBe(idToken);
-    expect(sendMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("exp が margin (60s) ぎりぎりなら refresh が走る", async () => {
+  it("exp が既定 margin (120s) ぎりぎりなら refresh が走る", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-01T00:00:00Z"));
     const now = Math.floor(Date.now() / 1000);
-    const idToken = makeJwt({ sub: "u", exp: now + 30 }); // margin 60 以下
+    const idToken = makeJwt({ sub: "u", exp: now + 30 }); // margin 120 以下
     const store = makeMemStore({ idToken, refreshToken: "rt" });
 
     setRefreshSuccess("refreshed");
     const out = await getValidIdToken(store);
     expect(out).toBe("refreshed");
-    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("exp が過去 (期限切れ) なら refresh が走る", async () => {
@@ -344,7 +292,7 @@ describe("jwtExp (via getValidIdToken)", () => {
     setRefreshSuccess("refreshed-expired");
     const out = await getValidIdToken(store);
     expect(out).toBe("refreshed-expired");
-    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("idToken に exp claim が無い → jwtExp が 0 → 必ず refresh", async () => {
@@ -356,7 +304,7 @@ describe("jwtExp (via getValidIdToken)", () => {
     setRefreshSuccess("refreshed-no-exp");
     const out = await getValidIdToken(store);
     expect(out).toBe("refreshed-no-exp");
-    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("idToken が malformed → jwtExp が catch → 0 → 必ず refresh", async () => {
@@ -367,7 +315,7 @@ describe("jwtExp (via getValidIdToken)", () => {
     setRefreshSuccess("refreshed-bogus");
     const out = await getValidIdToken(store);
     expect(out).toBe("refreshed-bogus");
-    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("marginSec を明示的に 0 にすると exp が 1 秒先でも refresh しない", async () => {
@@ -379,7 +327,7 @@ describe("jwtExp (via getValidIdToken)", () => {
 
     const out = await getValidIdToken(store, { marginSec: 0 });
     expect(out).toBe(idToken);
-    expect(sendMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("marginSec を大きく (=3600) すると 30 分先 exp でも refresh が走る", async () => {
@@ -392,7 +340,7 @@ describe("jwtExp (via getValidIdToken)", () => {
     setRefreshSuccess("refreshed-large-margin");
     const out = await getValidIdToken(store, { marginSec: 3600 });
     expect(out).toBe("refreshed-large-margin");
-    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("時刻が進んで exp を跨ぐと、同じ token でも次回呼出しで refresh される", async () => {
@@ -405,13 +353,13 @@ describe("jwtExp (via getValidIdToken)", () => {
     // 1 回目: まだ有効
     const out1 = await getValidIdToken(store);
     expect(out1).toBe(idToken);
-    expect(sendMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
 
     // 時計を 2 時間進める → exp 過去 → refresh
     vi.setSystemTime(new Date("2026-06-01T02:00:00Z"));
     setRefreshSuccess("refreshed-after-advance");
     const out2 = await getValidIdToken(store);
     expect(out2).toBe("refreshed-after-advance");
-    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
