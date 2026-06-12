@@ -104,28 +104,16 @@ const SENSITIVE_LOG_KEYS = new Set([
  * @returns {string}
  */
 function redactPayloadForLog(payload) {
-  const seen = new WeakSet();
-  /** @param {unknown} v @returns {unknown} */
-  const walk = (v) => {
-    if (!v || typeof v !== "object") return v;
-    if (seen.has(/** @type {object} */ (v))) return "[circular]";
-    seen.add(/** @type {object} */ (v));
-    if (Array.isArray(v)) return v.map(walk);
-    /** @type {Record<string, unknown>} */
-    const out = {};
-    for (const [k, val] of Object.entries(v)) {
-      // prototype 汚染キー (__proto__ / constructor / prototype) は動的書き込みすると
-      // out の prototype を汚染し得る (remote-property-injection)。ログ伏字では落とす
-      // (registry.js reviveJsonArg と同じ防御。実 payload には現れない)。
-      if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
-      out[k] = SENSITIVE_LOG_KEYS.has(k) ? "***" : walk(val);
-    }
-    return out;
-  };
   try {
-    return JSON.stringify(walk(payload)).replace(/\n|\r/g, "");
+    // 走査と直列化を JSON.stringify に委ね、replacer は「値を返すだけ」にする。
+    // 手書き再帰で out[k]=… と動的キー代入すると、payload 由来のキー (__proto__ 等) で
+    // out の prototype を汚染し得る (remote-property-injection)。replacer 方式なら
+    // 動的書き込みのシンク自体が無く、伏字も同時に行える。
+    return JSON.stringify(payload, (key, value) =>
+      (SENSITIVE_LOG_KEYS.has(key) ? "***" : value),
+    ).replace(/\n|\r/g, "");
   } catch {
-    return "[unserializable payload]";
+    return "[unserializable payload]"; // 循環参照等
   }
 }
 
