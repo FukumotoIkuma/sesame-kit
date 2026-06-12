@@ -1,0 +1,13 @@
+{
+  "//": "sesame-kit (CLI/serve/SDK) の型生成 + 厳格型検査 (JSDoc → types/)。@sesame-kit/core は project reference + workspace node_modules シンボリックリンク経由で解決する。共有設定は ../../tsconfig.base.json。",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "types",
+    "tsBuildInfoFile": "types/.tsbuildinfo"
+  },
+  "references": [{ "path": "../core" }],
+  "include": ["src/**/*.js"],
+  "exclude": ["node_modules", "tests", "types"]
+}

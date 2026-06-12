@@ -12,8 +12,8 @@
 import { writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildRegistry } from "../src/serve/registry.js";
-import { stabilityOf } from "../src/serve/stability.js";
+import { buildRegistry } from "../packages/kit/src/serve/registry.js";
+import { stabilityOf } from "../packages/kit/src/serve/stability.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -114,8 +114,8 @@ export async function generateProto() {
   return { protoText, nameMap, count: methods.length };
 }
 
-export const PROTO_PATH = resolve(ROOT, "src", "serve", "sesame.proto");
-export const MAP_PATH = resolve(ROOT, "src", "serve", "grpc-methods.generated.json");
+export const PROTO_PATH = resolve(ROOT, "packages/kit/src", "serve", "sesame.proto");
+export const MAP_PATH = resolve(ROOT, "packages/kit/src", "serve", "grpc-methods.generated.json");
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { protoText, nameMap, count } = await generateProto();

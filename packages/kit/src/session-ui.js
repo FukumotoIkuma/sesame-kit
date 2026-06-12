@@ -1,0 +1,284 @@
+// SESAME セッションのライブダッシュボード (Ink / React)。
+//
+// inquirer の 1 問 1 答だと「入力待ちでブロック → 外部イベントで再描画できない」ため、
+// 状態が変わった瞬間に描き直す Ink (React for CLI) で実装する。BLE の mechStatus publish や
+// バックグラウンド接続の完了を `bus` の "update" イベントで受け、React state を更新して再描画する。
+//
+// 操作: ↑↓ 移動 / → か Enter で決定 / ← か Esc で戻る / q で終了。
+// アクション実行後はホームに戻らず、その操作メニューに留まる (続けて操作できる)。
+//
+// JSX は使わない (本リポは src を素の ESM で実行しビルド工程が無いため)。React.createElement = h。
+//
+// 型付け方針 (P5-7 で @ts-nocheck 撤廃):
+// - デバイスはジェネリック D (extends SessionUIDeviceLike) で受ける。UI が読むのは
+//   kind / ble / entry.model だけなので最小形で制約し、cli/session.js の SessionDevice を
+//   キャスト無しでそのまま渡せるようにする (コールバックの反変性ギャップを D で解消)。
+// - メニュー項目は MenuItem (ink-select-input の Item<string> と構造互換)。
+
+import React from "react";
+import { render, Box, Text, useApp, useInput } from "ink";
+import SelectInput from "ink-select-input";
+import TextInput from "ink-text-input";
+import { t } from "@sesame-kit/core/i18n";
+
+const h = React.createElement;
+
+/**
+ * ink-select-input はジェネリック (Item<V>) だが createElement 経由では V を推論できないため、
+ * 本 UI のメニュー項目 (MenuItem = Item<string> と構造互換) に固定して使う (実行時は同一コンポーネント)。
+ * @type {React.FC<{ items: MenuItem[], onHighlight?: (item: MenuItem) => void, onSelect?: (item: MenuItem) => void }>}
+ */
+const Select = /** @type {any} */ (SelectInput);
+
+/**
+ * メニュー 1 項目 (ink-select-input の Item<string> と構造互換)。
+ * @typedef {{ label: string, value: string }} MenuItem
+ */
+
+/**
+ * UI が直接読むデバイスの最小形。cli/session.js の SessionDevice はこれを満たす
+ * (entry/ble の残りのフィールドは exec/actionsFor/fmtState コールバック側だけが使う)。
+ * @typedef {object} SessionUIDeviceLike
+ * @property {string} [kind] "lock" | "hub3" (省略時はロック扱い)
+ * @property {{ model?: string|null }} entry config 由来のデバイス定義 (UI は model のみ参照)
+ * @property {object|null} ble BLE 接続済みなら truthy (UI は真偽のみ参照)
+ */
+
+/**
+ * セッション UI の props。D は呼び出し側のデバイス型 (cli/session.js では SessionDevice)。
+ * @template {SessionUIDeviceLike} D
+ * @typedef {object} SessionUIProps
+ * @property {Map<string, D>} devices 表示対象デバイス (key = 表示名)
+ * @property {boolean} hasCloud クラウド経路が使えるか (タグ表示用)
+ * @property {import("node:events").EventEmitter} bus "update" で再描画
+ * @property {(op: string, d: D, extra?: any) => Promise<string>} exec 1 操作を実行し結果文字列を返す
+ * @property {(d: D) => MenuItem[]} actionsFor 型の能力に応じた操作 (status 含む)
+ * @property {(d: D) => string} fmtState ヘッダの状態表示
+ * @property {(d: D) => MenuItem[]} [hub3RemotesFor] IR: Hub3 配下のリモコン一覧 (Hub3 を含む場合)
+ * @property {(remoteName: string) => MenuItem[]|Promise<MenuItem[]>} [listKeysFor] IR: リモコンのキー一覧
+ */
+
+/**
+ * 画面 mode (画面遷移の状態機械)。
+ * @typedef {"devices"|"actions"|"autolock"|"led"|"ir-remote"|"ir-key"|"busy"} SessionMode
+ */
+
+/**
+ * セッション UI を起動し、ユーザーが終了するまで待つ。
+ * @template {SessionUIDeviceLike} D
+ * @param {SessionUIProps<D>} props
+ */
+export async function runSessionUI(props) {
+  // createElement はジェネリックなコンポーネントの型引数を props から推論できないため、
+  // ここで D に固定した FunctionComponent として渡す (実行時は同一関数)。
+  const App = /** @type {React.FunctionComponent<SessionUIProps<D>>} */ (SessionApp);
+  const { waitUntilExit } = render(h(App, props));
+  await waitUntilExit();
+}
+
+/**
+ * @template {SessionUIDeviceLike} D
+ * @param {SessionUIProps<D>} props
+ */
+export function SessionApp({ devices, hasCloud, bus, exec, actionsFor, fmtState, hub3RemotesFor, listKeysFor }) {
+  const { exit } = useApp();
+  const names = [...devices.keys()];
+  const single = names.length === 1;
+
+  const [, setTick] = React.useState(0);
+  // mode: devices | actions | autolock | led | ir-remote | ir-key | busy
+  const [mode, setMode] = React.useState(/** @type {SessionMode} */ (single ? "actions" : "devices"));
+  const [selName, setSelName] = React.useState(/** @type {string|null} */ (single ? names[0] : null));
+  const [msg, setMsg] = React.useState("");
+  const [numVal, setNumVal] = React.useState("");      // autolock 秒数 / LED duty 入力
+  const [selRemote, setSelRemote] = React.useState(/** @type {string|null} */ (null)); // IR: 選択中リモコン
+  const [irKeys, setIrKeys] = React.useState(/** @type {MenuItem[]|null} */ (null));   // IR: 取得したキー一覧 (null=未取得)
+  const [hi, setHi] = React.useState(/** @type {MenuItem|null} */ (null));             // → 決定用: ハイライト中の項目
+
+  // 選択中デバイス。actions 系 mode に入る時点で selName は必ず設定済み (UI 遷移が保証)。
+  const cur = () => /** @type {D} */ (devices.get(/** @type {string} */ (selName)));
+
+  // BLE onStatus / 背景接続完了 → 再描画。
+  React.useEffect(() => {
+    const on = () => setTick((tick) => (tick + 1) % 1_000_000);
+    bus.on("update", on);
+    return () => { bus.off("update", on); };
+  }, [bus]);
+
+  // → 決定用ハイライト hi のリセット:
+  // ink-select-input の onHighlight は **初期項目では発火しない** ため、mode を変えた直後は
+  // 前メニューの hi が残る。そのまま → を押すと前メニューの項目を新メニューのハンドラに渡してしまう
+  // (例: デバイスを → で選ぶと actions に入るが hi=デバイス項目のまま → actions で → を押すと
+  //  selectAction にデバイス項目が渡り runExec(デバイス名) → exec が hub[デバイス名] を呼んで
+  //  "hub[op] is not a function")。mode が変わるたびに hi をクリアし、ユーザーが ↑↓ で動かして
+  // onHighlight が発火するまで goForward は menuItems()[0] にフォールバックさせる。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mode の変更そのものをトリガに hi をリセットする意図的依存 (本文では未参照)
+  React.useEffect(() => { setHi(null); }, [mode]);
+
+  const backToActions = () => { setMode("actions"); };
+
+  // ---- 各メニューの選択ハンドラ (SelectInput.onSelect と → 決定の両方から呼ぶ) ----
+  /** @param {MenuItem|undefined} it */
+  const selectDevice = (it) => {
+    if (!it) return;
+    if (it.value === "__quit") { exit(); return; }
+    setSelName(it.value); setMsg(""); setMode("actions");
+  };
+  /** @param {MenuItem|undefined} it */
+  const selectAction = (it) => {
+    if (!it) return;
+    if (it.value === "__back") { if (single) exit(); else { setMode("devices"); setMsg(""); } return; }
+    if (it.value === "autolock") { setNumVal(""); setMode("autolock"); return; }
+    if (it.value === "led") { setNumVal(""); setMode("led"); return; }
+    if (it.value === "ir") { setSelRemote(null); setIrKeys(null); setMode("ir-remote"); return; }
+    runExec(it.value, cur());
+  };
+  /** @param {MenuItem|undefined} it */
+  const selectIrRemote = (it) => {
+    if (!it) return;
+    if (it.value === "__back") { backToActions(); return; }
+    setSelRemote(it.value); setIrKeys(null); setMode("ir-key");
+    Promise.resolve(listKeysFor ? listKeysFor(it.value) : []).then(setIrKeys).catch(() => setIrKeys([]));
+  };
+  /** @param {MenuItem|undefined} it */
+  const selectIrKey = (it) => {
+    if (!it) return;
+    if (it.value === "__back") { setMode("ir-remote"); return; }
+    runExec("ir", cur(), { remote: selRemote, key: it.value });
+  };
+
+  // ← / Esc で 1 つ戻る。Esc は最上位 (devices / single の actions) では終了する。
+  // ← は最上位では何もしない (誤操作で終了しないように)。
+  /** @param {boolean} allowExitAtTop */
+  const goBack = (allowExitAtTop) => {
+    if (mode === "actions") {
+      if (single) { if (allowExitAtTop) exit(); }
+      else { setMode("devices"); setMsg(""); }
+    } else if (mode === "ir-key") setMode("ir-remote");
+    else if (mode === "devices") { if (allowExitAtTop) exit(); }
+    else backToActions(); // autolock / led / ir-remote
+  };
+
+  // 現在 mode のメニュー項目 (render と → 決定で共有。順序が両者で一致する)。
+  /** @returns {MenuItem[]} */
+  const menuItems = () => {
+    if (mode === "devices") return [...names.map((n) => ({ label: n, value: n })), { label: t("session.quit"), value: "__quit" }];
+    if (mode === "actions") return [...actionsFor(cur()), { label: single ? t("session.quit") : t("session.back"), value: "__back" }];
+    if (mode === "ir-remote") {
+      const r = hub3RemotesFor ? hub3RemotesFor(cur()) : [];
+      return r.length ? [...r, { label: t("session.back"), value: "__back" }] : [];
+    }
+    if (mode === "ir-key") return (irKeys && irKeys.length) ? [...irKeys, { label: t("session.back"), value: "__back" }] : [];
+    return [];
+  };
+
+  // → で決定。ink-select-input の onHighlight は初期項目では発火しないため、移動前は hi=null。
+  // その場合は先頭 (= 既定でハイライトされている項目) にフォールバックする。
+  const goForward = () => {
+    const it = hi || menuItems()[0];
+    if (!it) return;
+    if (mode === "devices") selectDevice(it);
+    else if (mode === "actions") selectAction(it);
+    else if (mode === "ir-remote") selectIrRemote(it);
+    else if (mode === "ir-key") selectIrKey(it);
+  };
+
+  const isList = mode === "devices" || mode === "actions" || mode === "ir-remote" || mode === "ir-key";
+
+  useInput((input, key) => {
+    if (mode === "busy") return;
+    // q は**メニュー系のみ**で終了。autolock/LED の数値入力中は文字として TextInput へ渡す。
+    if (input === "q" && isList) { exit(); return; }
+    if (key.escape) { goBack(true); return; }       // Esc: 戻る (最上位では終了)
+    // ← / → は数値入力 (autolock/led) ではテキストカーソル移動に使うので、リスト系のみで奪う。
+    if (isList && key.leftArrow) { goBack(false); return; }  // ←: 戻る (最上位では何もしない)
+    if (isList && key.rightArrow) { goForward(); return; }   // →: 決定
+  });
+
+  /**
+   * @param {string} op
+   * @param {D} d
+   * @param {any} [extra]
+   */
+  const runExec = (op, d, extra) => {
+    setMode("busy");
+    exec(op, d, extra)
+      .then((m) => setMsg(m))
+      .catch((e) => setMsg(`error: ${e?.message || e}`))
+      .finally(() => setMode("actions")); // ホームに戻らず操作メニューに留まる (続けて操作できる)
+  };
+
+  // ヘッダ: 全デバイスの現在状態 (ライブ) + 操作ヒント。
+  const header = h(
+    Box,
+    { flexDirection: "column" },
+    h(Text, { dimColor: true }, t("session.title")),
+    ...names.map((n) => {
+      const d = /** @type {D} */ (devices.get(n));
+      const tag = d.kind === "hub3" ? "hub3" : (d.ble ? "BLE" : (hasCloud ? "cloud" : "—"));
+      const label = d.kind === "hub3" ? "hub3" : (d.entry.model || "?");
+      return h(Text, { key: n, color: d.ble ? "green" : undefined },
+        `  ${n} [${label}·${tag}]: ${fmtState(d)}`);
+    }),
+    h(Text, { dimColor: true }, "  " + t("session.hints")),
+    msg ? h(Text, { color: "yellow" }, msg) : null,
+  );
+  /** @param {...React.ReactNode} kids */
+  const box = (...kids) => h(Box, { flexDirection: "column" }, header, ...kids);
+
+  if (mode === "busy") return box(h(Text, null, t("session.busy")));
+
+  // 数値入力 (autolock 秒数 / LED duty)。
+  if (mode === "autolock" || mode === "led") {
+    const d = cur();
+    const name = /** @type {string} */ (selName); // 数値入力 mode では選択済み
+    const isLed = mode === "led";
+    const prompt = isLed ? t("session.ledPrompt", { name }) : t("session.autolockPrompt", { name });
+    const max = isLed ? 255 : 65535;
+    return box(h(Box, null,
+      h(Text, null, prompt),
+      h(TextInput, {
+        value: numVal,
+        onChange: setNumVal,
+        onSubmit: (v) => {
+          const n = Number(v);
+          if (!Number.isInteger(n) || n < 0 || n > max) { setMsg(t("session.numRange", { max })); backToActions(); return; }
+          runExec(isLed ? "led" : "autolock", d, n);
+        },
+      }),
+    ));
+  }
+
+  // IR: リモコン選択。
+  if (mode === "ir-remote") {
+    const name = /** @type {string} */ (selName); // IR mode では選択済み
+    const remotes = hub3RemotesFor ? hub3RemotesFor(cur()) : [];
+    if (remotes.length === 0) {
+      return box(h(Text, null, t("session.noRemotes", { name })));
+    }
+    return box(h(Text, null, t("session.irPickRemote", { name })),
+      h(Select, { items: menuItems(), onHighlight: setHi, onSelect: selectIrRemote }),
+    );
+  }
+
+  // IR: キー選択 (非同期取得中はローディング表示)。
+  if (mode === "ir-key") {
+    const remote = /** @type {string} */ (selRemote); // ir-key mode では選択済み
+    if (irKeys === null) return box(h(Text, null, t("session.keysLoading", { remote })));
+    if (irKeys.length === 0) return box(h(Text, null, t("session.noKeys", { remote })));
+    return box(h(Text, null, t("session.irPickKey", { remote })),
+      h(Select, { items: menuItems(), onHighlight: setHi, onSelect: selectIrKey }),
+    );
+  }
+
+  if (mode === "actions") {
+    return box(h(Text, null, t("session.actionsTitle", { name: /** @type {string} */ (selName) })),
+      h(Select, { items: menuItems(), onHighlight: setHi, onSelect: selectAction }),
+    );
+  }
+
+  // mode === "devices"
+  return box(h(Text, null, t("session.devicesTitle")),
+    h(Select, { items: menuItems(), onHighlight: setHi, onSelect: selectDevice }),
+  );
+}

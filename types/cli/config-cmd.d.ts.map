@@ -1,1 +1,0 @@
-{"version":3,"file":"config-cmd.d.ts","sourceRoot":"","sources":["../../src/cli/config-cmd.js"],"names":[],"mappings":"AAoFA;;;;;GAKG;AACH,6CAJW,OAAO,QACP;IAAE,WAAW,EAAE,MAAM,OAAO,YAAY,EAAE,MAAM,GAAC,IAAI,CAAA;CAAE,QAMjE;AAED;;;GAGG;AACH,gDAFW,OAAO,QAUjB;sBA/Fa,OAAO,UAAU,EAAE,OAAO;sBAC1B,OAAO,UAAU,EAAE,OAAO"}

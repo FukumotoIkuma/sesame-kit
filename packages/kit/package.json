@@ -1,0 +1,84 @@
+{
+  "name": "sesame-kit",
+  "version": "0.6.2",
+  "description": "Control your SESAME smart lock from your own code — even directly over Bluetooth, offline. BLE + cloud, CLI, Node library, and a JSON-RPC server for any language. Hub3 IR, device management. Unofficial.",
+  "author": "Ikuma Fukumoto",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/cli.js",
+  "exports": {
+    "./client": {
+      "types": "./clients/js/sesame-client.d.ts",
+      "default": "./clients/js/sesame-client.mjs"
+    }
+  },
+  "bin": {
+    "sesame": "./bin/sesame.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "types/",
+    "clients/",
+    "!**/__pycache__",
+    "!**/*.pyc"
+  ],
+  "keywords": [
+    "sesame",
+    "candy-house",
+    "smart-lock",
+    "smart-home",
+    "cli",
+    "json-rpc",
+    "ble"
+  ],
+  "homepage": "https://github.com/FukumotoIkuma/sesame-kit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FukumotoIkuma/sesame-kit.git",
+    "directory": "packages/kit"
+  },
+  "bugs": {
+    "url": "https://github.com/FukumotoIkuma/sesame-kit/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^8.5.2",
+    "@sesame-kit/core": "0.6.2",
+    "commander": "^15.0.0",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
+    "ink": "^7.0.5",
+    "ink-select-input": "^6.2.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.7"
+  },
+  "peerDependenciesMeta": {
+    "@grpc/grpc-js": {
+      "optional": true
+    },
+    "@grpc/proto-loader": {
+      "optional": true
+    },
+    "ink": {
+      "optional": true
+    },
+    "ink-select-input": {
+      "optional": true
+    },
+    "ink-text-input": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "optionalDependencies": {
+    "@abandonware/noble": "^1.9.2-25"
+  }
+}

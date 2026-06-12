@@ -26,7 +26,11 @@ promo/
 /_aws_sdk_ref/
 
 # Python client build artifacts
-clients/python/build/
-clients/python/*.egg-info/
+packages/kit/clients/python/build/
+packages/kit/clients/python/*.egg-info/
 __pycache__/
 *.pyc
+
+# TypeScript project-references build state (composite tsc -b). Non-deterministic;
+# the committed .d.ts under packages/*/types/ are the real artifacts (drift-guarded).
+*.tsbuildinfo

@@ -6,7 +6,9 @@
 
 ## 実施状況(2026-06-12 更新)
 
-**v2 全 81 項目を Phase 1〜6 まで実装完了**(各 Phase 1 コミット、`refactor/r2-plan` ブランチ)。実装はワークフロー上の軽量エージェント(レーン分割)、監査(参照一次資料との突き合わせ・全ゲート)は統括が担当。完了時点のゲート: `typecheck` / `lint`(0 warning)/ `check:refs`(15/15)/ `build` 再生成ドリフト 0 / テスト **unit 1863 + e2e 356 全緑**(監査開始時 1571 + 319 から +329)。残件は §9 実機検証バックログ(V1〜V14、該当 API は `@experimental` 維持)と P5-14(workspace 分割・次 major)のみ。
+**v2 全 81 項目を Phase 1〜6 まで実装完了。さらに P5-14(workspace 分割)もユーザー指示(後方互換不要)で実施し、全項目完遂**(各 Phase 1 コミット、`refactor/r2-plan` ブランチ)。実装はワークフロー上の軽量エージェント(レーン分割)、監査(参照一次資料との突き合わせ・全ゲート)は統括が担当。完了時点のゲート: `typecheck` / `lint`(0 warning)/ `check:refs`(15/15)/ `build` 再生成ドリフト 0 / テスト **unit 1883 + e2e 337 = 2220 全緑**(監査開始時 2220 と一致 — jsonrpc.test.js の project 移動で内訳のみ ±19)。**残るは §9 実機検証バックログ(V1〜V14)のみ — これはコード実装は完遂済みで、実機(SESAME デバイス/実 Cognito/実 API Gateway)が無いと最終キャプチャ照合だけができない物理制約。該当 API は `@experimental` 維持(虚偽の「検証済み」を避ける正直さ)。**
+
+加えて、Phase 2 の申し送り(user SRP 二重実装)も統合済み(device-srp.js の `srpPasswordSecrets` に一本化、ゴールデンベクタで署名バイト不変を固定)。
 
 - **Phase 1(P1-1〜P1-8)実施済み**(Phase 1 コミット参照)。実装はワークフロー上の軽量エージェント、監査(参照突き合わせ・全ゲート)は統括が実施。
   - 付記: P1-4 で `devices.subscribeDevicesUpdate` の戻り値が `() => void` → `{unsubscribe, sendFrame}` に変更(ライブラリ公開面・experimental)。P1-7/P1-8 で RPC メソッド集合が変化(ble.scan 追加 = 199 メソッド、生体一覧 5 op の結果形が ack → records)。**いずれも P4-1 の CONTRACT_VERSION bump / changelog に記載すること**。
@@ -16,7 +18,7 @@
   - **Phase 6 へ繰越(P3-26)**: README の Known limitations に「SDK の OS2 自動履歴読み出し(`CHSesame2Device.kt:543-553`)は kit では手動 `history()`」の逸脱注記を追記する(session.js JSDoc は実装済み。README 編集は Phase 6 に集約)。
 - **Phase 4(P4-1〜P4-13)実施済み**(Phase 4 コミット参照)。CONTRACT_VERSION を 1.3.0 に bump(202 メソッド、stable 13 のシグネチャ不変・後方互換)し「メソッド集合ハッシュ ↔ version」連動テストで規範7 を機械強制。生体 REST 4op の CLI 公開、OS2 管理系 typed RPC(reset/configureLockPosition)、syncRemotesFromServer の RPC/CLI 対称化、BLE allowlist 逆方向テスト、status schema nullable 化、exit code 統一(bad_params→2)、thin client 表面統一、gRPC stability コメント、lock raw 非公開の明文化。
   - **統括修正(統合バグ)**: P4-10 の hub3DeviceId alias が presetir.js の JSDoc 型と registry.js パッチで**二重登録**され、生成 proto に `hub3DeviceId` が 2 回出て e2e 13 件が落ちた。registry パッチを削除し JSDoc 型方式に一本化(NAMESPACE_OPS 自動公開の単一経路)、未使用 i18n キーも除去。**教訓**: NAMESPACE_OPS 系の param 追加は JSDoc 型のみで足りる(registry パッチ併用は二重化)。レーンエージェントは build 後生成物を見ないため、この種の生成バグは統括の全量 build+test でのみ検出できる。
-- **Phase 5(P5-1〜P5-13)実施済み**(Phase 5 コミット参照。P5-14 workspace 分割は次 major 据え置き)。エラー設計の乖離是正(serve 到達面の plain Error→typed SesameError、テーブル駆動回帰テスト)、registry.js 808 行モノリスを `src/serve/entries/*.js` 7 ファイルへ機械分割(挙動不変)、CLI→serve 結合を `src/ble/rpc-helpers.js` 葉モジュールへ細線化、UUID 正規化 14+3 箇所を crypto.js に統合、JWT claim 4 重実装統合、secure-fs stale lock を rename ベースで競合窓除去、i18n 完全性テスト、CI に SDK コンパイル検査、未使用 export 整理。
+- **Phase 5(P5-1〜P5-14)実施済み**(Phase 5 コミット参照。**P5-14 workspace 分割も実施完了** — ユーザー指示で後方互換不要のため `@sesame-kit/core`(lib)/`sesame-kit`(CLI/serve)に物理分割。逆依存解消(jsonrpc.js を core へ)→ packages/ 移動 → import 全書き換え → 設定/生成スクリプト調整。全ゲート緑、509 ファイル rename で履歴保持)。エラー設計の乖離是正(serve 到達面の plain Error→typed SesameError、テーブル駆動回帰テスト)、registry.js 808 行モノリスを `src/serve/entries/*.js` 7 ファイルへ機械分割(挙動不変)、CLI→serve 結合を `src/ble/rpc-helpers.js` 葉モジュールへ細線化、UUID 正規化 14+3 箇所を crypto.js に統合、JWT claim 4 重実装統合、secure-fs stale lock を rename ベースで競合窓除去、i18n 完全性テスト、CI に SDK コンパイル検査、未使用 export 整理。
   - **統括修正**: P5-11 が tests/ を lint 対象化した結果、Phase 1〜5 で追加したテストの軽微な lint 違反(未使用 import/var 3 件・不要 biome-ignore)が露呈。実ゴミは削除し、テスト特有の正当パターン(リテラルキー・動的 namespace アクセス)は biome.jsonc の tests override で off にして完成させた(lint 0 warning/info)。
   - **申し送り(後方互換)**: P5-8 で偶発公開していた内部 API(`deriveIrOperation`/`PRODUCT_TYPE`/`AWS_REGION` 等)を d.ts から除去した。これらは本来非公開(experimental 相当)だが、外部利用者がいた場合は破壊的。次 major のリリースノートに記載すること。
 - **Phase 6(P6-1〜P6-9 + P3-26 繰越)実施済み**(Phase 6 コミット参照)。**v2 全 Phase 完了**。動かないコード例(rpc lock.click)の修正、ble.md の虚偽「専用 CLI 無し」訂正、メソッド数 stale(135→実測 202)・thin client トランスポート虚偽・overrides 記述の是正、commands.md 欠落コマンド追記、自リポ内 file:line 引用のシンボル名化と vendor 引用の行ズレ修正。
@@ -684,11 +686,15 @@
 - **対象/修正**: (1) `src/paths.js:19-20` — XDG_CONFIG_HOME が相対のとき cwd 基準で解決してしまう(仕様は相対を無視)。`if (xdg && isAbsolute(xdg))` ガードを追加。(2) `src/presetir.js:180` — deprecated `String.prototype.substr` を `slice(i, i+2)` へ。(3) `package.json` `files` に scripts/ 全体と docs/ が含まれ開発スクリプトを配布物に同梱。scripts/ を外す(SDK 再生成を許すなら gen-*.mjs のみ列挙)。
 - **受け入れ基準**: XDG 準拠、deprecated API 排除、配布物の最小化。
 
-#### P5-14. パッケージングの workspace 分割(v1 繰越・次 major)〔v1 P5-1 段階2〕
+#### P5-14. パッケージングの workspace 分割〔v1 P5-1 段階2〕**【実施済み】**
 
-- **対象**: ライブラリ利用者から CLI/TUI/serve 依存を外す段階2。段階1(optional peer 化)は v1 で実施済み(prod 依存は ws/commander/@inquirer/prompts まで縮小済み)。
-- **修正手順**: 次 major で `@sesame-kit/core`(lib のみ)/`sesame-kit`(CLI/serve)等に workspace 分割。本書 Phase 1-5 の構造改善(P5-2 registry 分割、P5-3 結合細線化)を前提にすると分割境界が綺麗になる。
-- **受け入れ基準**: core パッケージが CLI/serve/TUI を引かない。
+- **対象**: ライブラリ利用者から CLI/TUI/serve 依存を外す段階2。段階1(optional peer 化)は v1 で実施済み。
+- **実施内容**(ユーザー指示で後方互換不要として実施):
+  - **Phase0**: `jsonrpc.js` を `serve/` から `src` 直下(後に `packages/core/src`)へ移設し、ble(core 公開面)→ serve の唯一の逆依存を解消。
+  - **分割**: `packages/core/`(`@sesame-kit/core` = src/index.js 推移閉包 + ble + i18n + jsonrpc + vendor/biz3)と `packages/kit/`(`sesame-kit`, bin: sesame = cli/serve/prompts/session-ui/optional-deps + clients)に物理分割。ルートは npm workspaces + 共有 devDeps + scripts + 参照 dir + docs/schema/sdk。
+  - **import**: kit→core を `@sesame-kit/core/<subpath>` へ全書き換え(kit src 142 / tests 36)。深い ble import は ble/index.js 再 export 拡充で `@sesame-kit/core/ble` に集約。core exports に `./errors`/`./i18n`/`./secure-fs`/`./jsonrpc`/`./paths`/`./devices` 等を新設。
+  - **設定/生成**: tsconfig を base + per-package に、vitest/biome/.gitattributes/CI を packages/* 対応に、scripts/*.mjs のパス定数を packages/* へ向け直し。
+- **受け入れ基準(達成)**: core パッケージが CLI/serve/TUI を引かない。全ゲート緑(typecheck/lint 0warn/build drift 0/test 2220/check:refs)。509 ファイル rename で履歴保持。`npm pack --dry-run` で両パッケージの publish file set 健全。
 - **備考**: 破壊的変更を伴うため Phase 1-5 完了・実機検証(§9)進捗後の major リリースに合わせる。
 
 ---
@@ -879,7 +885,7 @@
 | High | 8 | P1-4, P1-6, P1-7, P1-8(公開契約)、P2-2(認証)、P5-1(エラー設計)、P6-1, P6-2(虚偽ドキュメント) |
 | Medium | 29 | P1-3, P1-5, P2-3, P2-4, P3-1〜P3-4, P3-14〜P3-17, P3-19, P4-1〜P4-6, P5-2, P5-3, P5-4, P5-7, P5-11, P6-3〜P6-6, P6-8 |
 | Low | 41 | P2-1, P2-5〜P2-10, P3-5〜P3-13, P3-18, P3-20〜P3-27, P4-7〜P4-13, P5-5, P5-6, P5-8〜P5-10, P5-12, P5-13, P6-7, P6-9 |
-| (major 繰越) | 1 | P5-14(workspace 分割・重大度未分類) |
+| (構造・実施済み) | 1 | P5-14(workspace 分割・ユーザー指示で実施) |
 
 合計 81 計画項目(Phase 1: 8 / Phase 2: 10 / Phase 3: 27 / Phase 4: 13 / Phase 5: 14 / Phase 6: 9 — うち P5-14 は v1 繰越、P6-9 は DOC-11/12 の 2 原典統合)。原典所見 89 件(§7 全掲載)を §0.3 と §7 で 81 項目に統合した。
 

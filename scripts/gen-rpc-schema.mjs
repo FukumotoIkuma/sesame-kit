@@ -1,5 +1,5 @@
-// ビルド時に types/*.d.ts から名前空間 op の param 型を抽出し、
-// src/serve/rpc-params.generated.json を生成する。
+// ビルド時に packages/core/types/*.d.ts から名前空間 op の param 型を抽出し、
+// packages/kit/src/serve/rpc-params.generated.json を生成する。
 // registry はこの JSON を実行時に読むだけ (tsc を実行時に走らせない)。
 //
 // 実行: npm run build:rpc-schema  (build:types の後に走らせる — .d.ts が要るため)
@@ -10,7 +10,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 // 名前空間一覧は registry の NS_MODULES が単一真実源 (P1-15: 本スクリプト側の手書きリストに
 // payment が漏れ、payment.* の型が openrpc/proto/SDK 全てでプレースホルダに劣化した再発防止)。
-import { NAMESPACE_MODULE_KEYS } from "../src/serve/registry.js";
+import { NAMESPACE_MODULE_KEYS } from "../packages/kit/src/serve/registry.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const NS_MODULES = NAMESPACE_MODULE_KEYS;
@@ -114,7 +114,7 @@ function resolveTypeLiteral(sf, type, depth = 0) {
  *  JSON で送れない関数型メンバ (コールバック等) は除外する。
  *  2 番目引数が `{ ... }` でなくても `Parameters<typeof other>[1]` 形なら参照先へ解決する。 */
 function extractModule(ns) {
-  const file = resolve(ROOT, "types", `${ns}.d.ts`);
+  const file = resolve(ROOT, "packages/core/types", `${ns}.d.ts`);
   const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
   const out = {};
   sf.forEachChild((n) => {
@@ -162,7 +162,7 @@ export async function generateSchema() {
   const result = {};
   for (const ns of NS_MODULES) {
     // 公開 op の allowlist だけ採用 (内部ヘルパは除外)。
-    const mod = await import(resolve(ROOT, "src", `${ns}.js`));
+    const mod = await import(resolve(ROOT, "packages/core/src", `${ns}.js`));
     const ops = new Set(Array.isArray(mod.NAMESPACE_OPS) ? mod.NAMESPACE_OPS : []);
     const extracted = extractModule(ns);
     for (const [fn, params] of Object.entries(extracted)) {
@@ -172,7 +172,7 @@ export async function generateSchema() {
   return result;
 }
 
-export const GENERATED_PATH = resolve(ROOT, "src", "serve", "rpc-params.generated.json");
+export const GENERATED_PATH = resolve(ROOT, "packages/kit/src", "serve", "rpc-params.generated.json");
 /** 文字列表現 (ファイルと byte 一致を比較するため統一)。 */
 export function serializeSchema(obj) {
   return JSON.stringify(obj, null, 2) + "\n";

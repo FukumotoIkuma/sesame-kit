@@ -48,16 +48,21 @@ See [command reference](./docs/en/commands.md), [library usage](./docs/en/librar
 Requires Node.js 20+ (matches CI; uses ESM and the `node:` protocol).
 
 ```bash
-npm install -g sesame-kit     # global CLI: `sesame ...`
-npx sesame-kit --help         # or run without installing
-npm install sesame-kit        # or as a library in your project
+npm install -g sesame-kit       # global CLI: `sesame ...` (+ the `sesame serve` daemon)
+npx sesame-kit --help           # or run without installing
+npm install @sesame-kit/core    # as a library in your project (BLE + cloud, no CLI/serve deps)
 ```
+
+This repo is an npm workspace split into two published packages:
+
+- **`@sesame-kit/core`** — the library (BLE + cloud transport, auth, crypto, device management). Import this for in-process use (`import { SesameHub3 } from "@sesame-kit/core"`).
+- **`sesame-kit`** — the `sesame` CLI, the `sesame serve` JSON-RPC daemon, and the bundled thin clients. Depends on `@sesame-kit/core`. Installing it pulls in core transitively, and `sesame-kit/client` still resolves to the bundled JS client.
 
 From source:
 
 ```bash
 git clone https://github.com/FukumotoIkuma/sesame-kit.git
-cd sesame-kit && npm install && npm link
+cd sesame-kit && npm install   # workspace install wires @sesame-kit/core ↔ sesame-kit
 ```
 
 ### Dependencies & security posture
@@ -70,7 +75,7 @@ The production dependency tree is intentionally small. `npm install sesame-kit` 
 
 These three stay in `dependencies` because the CLI and the cloud transport — the primary entry points of the kit — cannot function without them. Everything heavier is opt-in:
 
-- **AES-CMAC is implemented in-house** (`src/aes-cmac.js`, RFC 4493, built on `node:crypto` AES-128-ECB/CBC only). The previously used `node-aes-cmac` package was unmaintained since 2014 and used the deprecated `Buffer` constructor in a security-critical spot (lock command MAC / session key derivation), so it was removed. All RFC 4493 §4 test vectors (Examples 1–4) are pinned in `tests/crypto/aes-cmac.test.js`.
+- **AES-CMAC is implemented in-house** (`packages/core/src/aes-cmac.js`, RFC 4493, built on `node:crypto` AES-128-ECB/CBC only). The previously used `node-aes-cmac` package was unmaintained since 2014 and used the deprecated `Buffer` constructor in a security-critical spot (lock command MAC / session key derivation), so it was removed. All RFC 4493 §4 test vectors (Examples 1–4) are pinned in `tests/crypto/aes-cmac.test.js`.
 - **gRPC framing** (`sesame serve --grpc`) needs `@grpc/grpc-js` + `@grpc/proto-loader`. They are **optional peerDependencies** and are imported lazily; without them every other framing (stdio / UDS / HTTP / WS) works as usual, and `--grpc` fails with a clear install hint. Enable with:
 
   ```bash
@@ -234,7 +239,7 @@ This adds `OPTIONS` preflight handling and `Access-Control-Allow-Origin` to `/rp
 Two client layers ship in this repo and they serve different needs:
 
 - **`sdk/` — generated, typed, contract SDK (recommended for most users).** [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) and [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py) are **generated** from [`schema/openrpc.json`](./schema/openrpc.json) (`npm run build:sdk`), with one typed method per RPC (`client.lock.unlock({ name })`), typed params/results, and `SesameRpcError` (`kind` / `retryable`). They track the published OpenRPC contract — a CI drift gate keeps them in lockstep — and talk to the `sesame serve` JSON-RPC daemon over HTTP (+ SSE for events). **Do not hand-edit the generated `sesame-client.ts` / `sesame_client.py`** — change the schema and regenerate.
-- **`clients/` — hand-written, low-level transport clients (advanced / custom integrations).** [`clients/js/sesame-client.mjs`](./clients/js/sesame-client.mjs) and [`clients/python/sesame_client.py`](./clients/python/sesame_client.py) are the **薄い公式クライアント** ("thin official clients"): hand-written, minimal-dependency, with a generic `c.call("<method>", …)` plus a few conveniences (`c.unlock(…)`). They are **multi-transport** — the JS client speaks Unix socket / HTTP / WebSocket, the Python client speaks Unix socket / stdio / HTTP — which makes them a good fit for embedded (Python stdio child process), local-daemon, or full-duplex (JS WS) integrations. Neither covers gRPC (use stubs generated from `src/serve/sesame.proto` for that). They are **not generated** from the schema, so they are not statically typed against it.
+- **`clients/` — hand-written, low-level transport clients (advanced / custom integrations).** [`packages/kit/clients/js/sesame-client.mjs`](./packages/kit/clients/js/sesame-client.mjs) and [`packages/kit/clients/python/sesame_client.py`](./packages/kit/clients/python/sesame_client.py) are the **薄い公式クライアント** ("thin official clients"): hand-written, minimal-dependency, with a generic `c.call("<method>", …)` plus a few conveniences (`c.unlock(…)`). They are **multi-transport** — the JS client speaks Unix socket / HTTP / WebSocket, the Python client speaks Unix socket / stdio / HTTP — which makes them a good fit for embedded (Python stdio child process), local-daemon, or full-duplex (JS WS) integrations. Neither covers gRPC (use stubs generated from `packages/kit/src/serve/sesame.proto` for that). They are **not generated** from the schema, so they are not statically typed against it.
 
 In short: reach for **`sdk/`** for a typed, contract-tracked client over HTTP; reach for **`clients/`** when you need a thin, multi-transport client or a generic `call()` escape hatch. The `clients/` layer is what `sesame-kit/client` (`package.json` `exports`) points at.
 
@@ -264,8 +269,8 @@ print(c.call("device.history", deviceUUID="AB12CD34...", pageSize=10))  # any me
 
 See the [integration guide](./docs/en/integration.md) for the no-install HTTP path, Python install (incl. global npm installs), discovering methods/values, events, gRPC, and security.
 
-gRPC is typed. `src/serve/sesame.proto` has a typed method per op.
-Generate stubs from a source checkout (after `pip install grpcio-tools`): `python -m grpc_tools.protoc -I src/serve --python_out=. --grpc_python_out=. src/serve/sesame.proto`.
+gRPC is typed. `packages/kit/src/serve/sesame.proto` has a typed method per op.
+Generate stubs from a source checkout (after `pip install grpcio-tools`): `python -m grpc_tools.protoc -I packages/kit/src/serve --python_out=. --grpc_python_out=. packages/kit/src/serve/sesame.proto`.
 
 Auth boundary: interactive login is CLI-only and never runs in the daemon. A Unix socket can be used by any process of the same user (the same boundary as the CLI). HTTP / WS / gRPC are over TCP and require a loopback token generated at startup. POSIX only (Windows UDS is out of scope; stdio / HTTP / WS / gRPC work).
 
@@ -285,7 +290,7 @@ The JSON-RPC surface is a **versioned, machine-readable contract** so you can bu
 To control locks directly inside a Node app — without a separate daemon — use the library entry. It reads your CLI login from `~/.config/sesame-kit` (run `sesame login` once), then connects and closes automatically.
 
 ```js
-import { SesameHub3 } from "sesame-kit";
+import { SesameHub3 } from "@sesame-kit/core";
 
 await SesameHub3.use(async (hub) => {
   await hub.unlock("front");
@@ -302,7 +307,7 @@ See the [Node library guide](./docs/en/library.md) for the direct API (by `devic
 A factory-reset (unregistered) device can be paired directly over BLE — the facade runs the ECDH register handshake and hands you the `secretKey` to save. `SesameBle.registerOnce()` does scan → connect → register → close for you:
 
 ```js
-import { SesameBle } from "sesame-kit";
+import { SesameBle } from "@sesame-kit/core";
 
 const key = await SesameBle.registerOnce(
   { deviceUUID: "<uuid from advertise>", model: "sesame_5" },
@@ -334,8 +339,8 @@ Lower-level building blocks are also available:
 
 - `new SesameBle({ registerMode: true, deviceUUID, transport }).register()` — register against an already-scanned/injected transport. `register()` requires a factory-reset device, so it is only valid on a facade built with `registerMode: true` (no `secretKey`); calling it on a `secretKey`-bearing facade throws.
 - Registered devices that need **server authentication** (guest keys, time-limited keys) can log in via the server-signed token instead of a locally-derived one: construct with `{ secretKey, deviceUUID, needAuthFromServer: true, registerTransport }` and `connect()` will call `signGuestKey` and `login` with the returned token (ports `CHHub3Device.kt:163-174` / `CHSesameOS3.kt:473-487`). `registerTransport` is a `makeRegisterTransport(...)` result.
-- When CLI / RPC paths need `registerTransport`, the REST host is resolved from `--register-base-url`, RPC `registerBaseUrl`, or `config.registerBaseUrl`, defaulting to the official host `https://app.candyhouse.co/prod` (checked in at `_sesame_sdk_ref/app.properties:2-3`). Requests are authorized the same way as the official app — SigV4 with Cognito Identity Pool temporary credentials plus `x-api-key` and `appidentifyid` (`ApiClientConfigBuilder.kt:34-46`, `BaseApp.kt:95-102`, `AppIdentifyIdUtil.kt:42`) — where the Identity Pool credentials are derived from the idToken of the existing TokenStore created by `sesame login` (`src/aws-credentials.js` + `src/sigv4.js`). No separate login or manually supplied token is needed. Acceptance by the real API Gateway is still unverified on hardware.
-- **OS2 server-auth register** (factory pairing of SESAME 2/3/4 that requires the server's `getRegisterKey` step) is wired via a callback injection that mirrors the server-auth login path. `SesameOS2BleSession.register({ registerServer })` reads `IRER`, then asks `registerServer({ ak, n, e, appPubK64, ... })` for `{ sig1, st, pubkey }` and finishes the ECDH/register-key handshake (ports `CHSesame2Device.kt:406-482`). The server's role is `CHServerAuth.getRegisterKey` (`CHServerAuth.kt:41-65`); to run it **offline from your own code** (no cloud), pass `makeLocalRegisterServer()` (in `src/crypto.js`, re-exported from `sesame-kit/ble/os2`) as `registerServer`, or set `localServerAuth: true` on the `SesameOS2Ble` facade to have it auto-wired. The default BLE-only register paths are unchanged: with neither `registerServer` nor `localServerAuth`, `register()` still throws as before. `getRegisterKey` remains an **unverified port** (see [Known limitations](#known-limitations)) — its byte-level agreement with a real SESAME 2/3/4 capture is unconfirmed.
+- When CLI / RPC paths need `registerTransport`, the REST host is resolved from `--register-base-url`, RPC `registerBaseUrl`, or `config.registerBaseUrl`, defaulting to the official host `https://app.candyhouse.co/prod` (checked in at `_sesame_sdk_ref/app.properties:2-3`). Requests are authorized the same way as the official app — SigV4 with Cognito Identity Pool temporary credentials plus `x-api-key` and `appidentifyid` (`ApiClientConfigBuilder.kt:34-46`, `BaseApp.kt:95-102`, `AppIdentifyIdUtil.kt:42`) — where the Identity Pool credentials are derived from the idToken of the existing TokenStore created by `sesame login` (`packages/core/src/aws-credentials.js` + `packages/core/src/sigv4.js`). No separate login or manually supplied token is needed. Acceptance by the real API Gateway is still unverified on hardware.
+- **OS2 server-auth register** (factory pairing of SESAME 2/3/4 that requires the server's `getRegisterKey` step) is wired via a callback injection that mirrors the server-auth login path. `SesameOS2BleSession.register({ registerServer })` reads `IRER`, then asks `registerServer({ ak, n, e, appPubK64, ... })` for `{ sig1, st, pubkey }` and finishes the ECDH/register-key handshake (ports `CHSesame2Device.kt:406-482`). The server's role is `CHServerAuth.getRegisterKey` (`CHServerAuth.kt:41-65`); to run it **offline from your own code** (no cloud), pass `makeLocalRegisterServer()` (in `packages/core/src/crypto.js`, re-exported from `@sesame-kit/core/ble/os2`) as `registerServer`, or set `localServerAuth: true` on the `SesameOS2Ble` facade to have it auto-wired. The default BLE-only register paths are unchanged: with neither `registerServer` nor `localServerAuth`, `register()` still throws as before. `getRegisterKey` remains an **unverified port** (see [Known limitations](#known-limitations)) — its byte-level agreement with a real SESAME 2/3/4 capture is unconfirmed.
 
 > The register handshake and server-auth login are ported 1:1 from the SDK and covered by mock end-to-end tests, but the surrounding server-auth primitives and REST host remain **unverified against a real OS3 device** (see [Known limitations](#known-limitations)). Use against real hardware at your own risk.
 
@@ -392,10 +397,10 @@ Three tiers: **verified** (confirmed against the real cloud / real devices), **n
 ### Implemented, but hardware-unverified
 
 - **BLE pairing / registration** — OS3 (`sesame ble register` / `ble.register` / `SesameBle.registerOnce()`) and OS2 (`sesame ble os2-register` / `ble.os2.register`): the session-layer ECDH register handshake, including the length-branched `REGISTRATION` response (64 B Hub3-style / 77 B SESAME 5-style), is implemented and mock-vector-tested, but has not been confirmed against a real factory-reset device. Details in [BLE pairing / registration](#ble-pairing--registration-advanced).
-- **register / biometrics REST** (`signGuestKey` / `registerSesame5` in `src/devices.js`; `/device/v1/biometrics` in `src/access.js`): request shaping is ported 1:1, the official default host `https://app.candyhouse.co/prod` ships with the kit (`_sesame_sdk_ref/app.properties:2-3`), and authorization matches the official app — **SigV4 with Cognito Identity Pool temporary credentials + `x-api-key` + `appidentifyid`** (`ApiClientConfigBuilder.kt:34-46`, `BaseApp.kt:95-102`; implemented in `src/aws-credentials.js` + `src/sigv4.js`, no AWS SDK dependency). The Identity Pool credentials are derived from the idToken stored by `sesame login`; no extra login is needed. Tests pin the request shapes and signed header set via fetch mocks, but **acceptance by the real API Gateway is unverified**.
-- The OS2 server-auth primitive `getRegisterKey` (`src/crypto.js`, wired as the optional OS2 register path via `registerServer` / `localServerAuth`) is an **unverified port**: its byte-level agreement with a real SESAME 2/3/4 capture is unconfirmed. The OS3 register flow is pure ECDH and never uses it.
+- **register / biometrics REST** (`signGuestKey` / `registerSesame5` in `packages/core/src/devices.js`; `/device/v1/biometrics` in `packages/core/src/access.js`): request shaping is ported 1:1, the official default host `https://app.candyhouse.co/prod` ships with the kit (`_sesame_sdk_ref/app.properties:2-3`), and authorization matches the official app — **SigV4 with Cognito Identity Pool temporary credentials + `x-api-key` + `appidentifyid`** (`ApiClientConfigBuilder.kt:34-46`, `BaseApp.kt:95-102`; implemented in `packages/core/src/aws-credentials.js` + `packages/core/src/sigv4.js`, no AWS SDK dependency). The Identity Pool credentials are derived from the idToken stored by `sesame login`; no extra login is needed. Tests pin the request shapes and signed header set via fetch mocks, but **acceptance by the real API Gateway is unverified**.
+- The OS2 server-auth primitive `getRegisterKey` (`packages/core/src/crypto.js`, wired as the optional OS2 register path via `registerServer` / `localServerAuth`) is an **unverified port**: its byte-level agreement with a real SESAME 2/3/4 capture is unconfirmed. The OS3 register flow is pure ECDH and never uses it.
 - **OS2 BLE** (`SesameOS2Ble`: SESAME 2/3/4, Bot1, Bike1 — control, autolock, history, ECDH login, register, `mechSetting` writes): byte-order and protocol bugs were fixed against vectors derived from the Kotlin sources (Phase 1), but the result has not been confirmed on a real OS2 device.
-- **WM2 BLE**: a dedicated, lock-incompatible session layer (profile `"wm2"`: `INITIAL=13`, raw-secret cipher keys, 16-byte login payload, WM2-specific GATT — `src/ble/wm2.js`, per `CHWifiModule2Device.kt:279-321,521-528`) is implemented; hardware-unverified.
+- **WM2 BLE**: a dedicated, lock-incompatible session layer (profile `"wm2"`: `INITIAL=13`, raw-secret cipher keys, 16-byte login payload, WM2-specific GATT — `packages/core/src/ble/wm2.js`, per `CHWifiModule2Device.kt:279-321,521-528`) is implemented; hardware-unverified.
 - **Hub3 networkType (item 209)** does **not** exist in the official Android SDK — it is an inferred implementation (**UNVERIFIED**) derived from the biz3 web native bridge (`references_web/src/components/MobileWifiModule.js:219-235`), isolated in `UNVERIFIED_ITEM_CODES` and exposed only as an experimental path.
 - The remaining ported BLE surfaces — biometric / access-control enrollment (`SesameBle#biometric`), Bike3 fingerprint (`#fingerPrint`), Bot2/Bot3 scripts (`#script`), WM2 / Hub3 Wi-Fi provisioning (`#wifi` / `#hub3`), and the OTA start commands above — share one code path across the library, the CLI (`sesame ble …`, including the generic `invoke` / `os2-invoke` and `ota` / `reset` / `wifi` / `position`), and the `ble.*` RPCs, and are hardware-unverified. The most-exercised real path is OS3 lock/Bot/Bike control and reads. See [docs/en/ble.md](./docs/en/ble.md).
 

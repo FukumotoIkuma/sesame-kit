@@ -1,139 +1,14 @@
 {
-  "name": "sesame-kit",
+  "name": "sesame-kit-workspace",
   "version": "0.6.2",
-  "description": "Control your SESAME smart lock from your own code — even directly over Bluetooth, offline. BLE + cloud, CLI, Node library, and a JSON-RPC server for any language. Hub3 IR, device management. Unofficial.",
+  "private": true,
+  "description": "Monorepo for sesame-kit: @sesame-kit/core (library) + sesame-kit (CLI/serve/SDK). Control your SESAME smart lock from your own code — even directly over Bluetooth, offline. Unofficial.",
   "author": "Ikuma Fukumoto",
   "license": "MIT",
   "type": "module",
-  "main": "./src/index.js",
-  "types": "./types/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./types/index.d.ts",
-      "default": "./src/index.js"
-    },
-    "./auth": {
-      "types": "./types/auth.d.ts",
-      "default": "./src/auth.js"
-    },
-    "./transport": {
-      "types": "./types/transport.d.ts",
-      "default": "./src/transport.js"
-    },
-    "./config": {
-      "types": "./types/config.d.ts",
-      "default": "./src/config.js"
-    },
-    "./tokens": {
-      "types": "./types/tokens.d.ts",
-      "default": "./src/tokens.js"
-    },
-    "./crypto": {
-      "types": "./types/crypto.d.ts",
-      "default": "./src/crypto.js"
-    },
-    "./lock": {
-      "types": "./types/lock.d.ts",
-      "default": "./src/lock.js"
-    },
-    "./ir": {
-      "types": "./types/ir.d.ts",
-      "default": "./src/ir.js"
-    },
-    "./devices": {
-      "types": "./types/devices.d.ts",
-      "default": "./src/devices.js"
-    },
-    "./account": {
-      "types": "./types/account.d.ts",
-      "default": "./src/account.js"
-    },
-    "./schedule": {
-      "types": "./types/schedule.d.ts",
-      "default": "./src/schedule.js"
-    },
-    "./org": {
-      "types": "./types/org.d.ts",
-      "default": "./src/org.js"
-    },
-    "./company": {
-      "types": "./types/company.d.ts",
-      "default": "./src/company.js"
-    },
-    "./payment": {
-      "types": "./types/payment.d.ts",
-      "default": "./src/payment.js"
-    },
-    "./access": {
-      "types": "./types/access.d.ts",
-      "default": "./src/access.js"
-    },
-    "./iot": {
-      "types": "./types/iot.d.ts",
-      "default": "./src/iot.js"
-    },
-    "./presetir": {
-      "types": "./types/presetir.d.ts",
-      "default": "./src/presetir.js"
-    },
-    "./sharekey": {
-      "types": "./types/sharekey.d.ts",
-      "default": "./src/sharekey.js"
-    },
-    "./itemcodes": {
-      "types": "./types/itemcodes.d.ts",
-      "default": "./src/itemcodes.js"
-    },
-    "./ble": {
-      "types": "./types/ble/index.d.ts",
-      "default": "./src/ble/index.js"
-    },
-    "./ble/os2": {
-      "types": "./types/ble/os2/index.d.ts",
-      "default": "./src/ble/os2/index.js"
-    },
-    "./client": {
-      "types": "./clients/js/sesame-client.d.ts",
-      "default": "./clients/js/sesame-client.mjs"
-    },
-    "./sdk/ts/sesame-client": {
-      "default": "./sdk/ts/sesame-client.ts"
-    },
-    "./sdk/python/sesame_client.py": {
-      "default": "./sdk/python/sesame_client.py"
-    },
-    "./schema/openrpc.json": {
-      "default": "./schema/openrpc.json"
-    }
-  },
-  "bin": {
-    "sesame": "./bin/sesame.js"
-  },
-  "files": [
-    "bin/",
-    "src/",
-    "types/",
-    "vendor/",
-    "clients/",
-    "schema/",
-    "sdk/",
-    "scripts/",
-    "docs/",
-    "README.md",
-    "README.ja.md",
-    "LICENSE",
-    "LICENSE.biz3",
-    "!**/__pycache__",
-    "!**/*.pyc"
-  ],
-  "keywords": [
-    "sesame",
-    "candy-house",
-    "smart-lock",
-    "smart-home",
-    "cli",
-    "json-rpc",
-    "ble"
+  "workspaces": [
+    "packages/core",
+    "packages/kit"
   ],
   "homepage": "https://github.com/FukumotoIkuma/sesame-kit#readme",
   "repository": {
@@ -144,14 +19,14 @@
     "url": "https://github.com/FukumotoIkuma/sesame-kit/issues"
   },
   "scripts": {
-    "cli": "node bin/sesame.js",
+    "cli": "node packages/kit/bin/sesame.js",
     "test": "vitest run --project unit && vitest run --project e2e",
     "test:unit": "vitest run --project unit",
     "test:e2e": "vitest run --project e2e",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/kit/tsconfig.json --noEmit",
     "lint": "biome lint",
-    "build:types": "tsc -p tsconfig.json && node scripts/strip-private-decls.mjs",
+    "build:types": "tsc -b packages/core packages/kit && node scripts/strip-private-decls.mjs",
     "build:rpc-schema": "node scripts/gen-rpc-schema.mjs",
     "build:grpc-proto": "node scripts/gen-grpc-proto.mjs",
     "build:openrpc": "node scripts/gen-openrpc.mjs",
@@ -162,44 +37,7 @@
     "check:sdk:py": "python3 -B -m py_compile sdk/python/sesame_client.py",
     "check:refs": "node scripts/check-refs.mjs",
     "build": "npm run build:types && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs && node scripts/gen-openrpc.mjs && node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
-    "prepack": "npm run build",
     "release": "bash scripts/release.sh"
-  },
-  "dependencies": {
-    "@inquirer/prompts": "^8.5.2",
-    "commander": "^15.0.0",
-    "ws": "^8.18.0"
-  },
-  "peerDependencies": {
-    "@grpc/grpc-js": "^1.14.4",
-    "@grpc/proto-loader": "^0.8.1",
-    "ink": "^7.0.5",
-    "ink-select-input": "^6.2.0",
-    "ink-text-input": "^6.0.0",
-    "react": "^19.2.7"
-  },
-  "peerDependenciesMeta": {
-    "@grpc/grpc-js": {
-      "optional": true
-    },
-    "@grpc/proto-loader": {
-      "optional": true
-    },
-    "ink": {
-      "optional": true
-    },
-    "ink-select-input": {
-      "optional": true
-    },
-    "ink-text-input": {
-      "optional": true
-    },
-    "react": {
-      "optional": true
-    }
-  },
-  "engines": {
-    "node": ">=20"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
@@ -211,12 +49,8 @@
     "ink-select-input": "^6.2.0",
     "ink-testing-library": "^4.0.0",
     "ink-text-input": "^6.0.0",
-    "react": "^19.2.7",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
-  },
-  "optionalDependencies": {
-    "@abandonware/noble": "^1.9.2-25"
   },
   "overrides": {
     "@mapbox/node-pre-gyp": "^2.0.3",
@@ -224,5 +58,8 @@
     "make-fetch-happen": "^15.0.6",
     "node-gyp": "^12.4.0",
     "tar": "^7.5.16"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
