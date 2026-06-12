@@ -179,6 +179,23 @@ export function registerBleCommands(program, ctx) {
     .option("--index <n>", t("ble.cli.script.opt.index"))
     .action((device, options) => cmdScript(ctx, device, options));
 
+  // ---- ble script-run <device> <index> ---- (台本を番号指定で BLE 実行: click(170+index))
+  withTargetOpts(
+    ble.command("script-run <device> <index>").description(t("ble.cli.scriptRun.desc")),
+  ).action((device, index, options) => cmdScriptRun(ctx, device, index, options));
+
+  // ---- ble script-select <device> <index> ---- (アクティブ台本を切り替え: SCRIPT_SELECT 94)
+  withTargetOpts(
+    ble.command("script-select <device> <index>").description(t("ble.cli.scriptSelect.desc")),
+  ).action((device, index, options) => cmdScriptSelect(ctx, device, index, options));
+
+  // ---- ble script-write <device> <index> --json <{name,actions}> ---- (台本の書き込み: EDIT_SCRIPT 181)
+  withTargetOpts(
+    ble.command("script-write <device> <index>").description(t("ble.cli.scriptWrite.desc")),
+  )
+    .option("--json <script>", t("ble.cli.scriptWrite.opt.json"))
+    .action((device, index, options) => cmdScriptWrite(ctx, device, index, options));
+
   // ---- ble invoke <device> <op> [--args <json>] ----
   // P4-1 段階1: 汎用脱出口。serve の ble.invoke RPC と同じドット op パス / JSON 引数 revive /
   // allowlist (BLE_RPC_ALLOWLIST) でファサードを直接叩く (デーモン不要)。
@@ -411,6 +428,85 @@ async function cmdScript(ctx, device, options) {
       }, { ok: true, name: entry.name, deviceUUID: entry.deviceUUID, curIdx: list.curIdx, scripts: names, current });
     },
   );
+}
+
+/**
+ * Bot2/Bot3 用の script ファサードを解決して fn(dev.script, dev) を実行する共通ヘルパ。
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {string} device
+ * @param {BleOptions} options
+ * @param {(script: import("../ble/bot2.js").Bot2Commands, dev: any) => Promise<unknown>} fn
+ * @returns {Promise<void>}
+ */
+async function withScript(ctx, device, options, fn) {
+  const { opts, configStore, tokenStore } = ctx.loadCtx();
+  const entry = resolveBleEntry(ctx, device, options);
+  if (!entry) return;
+  const caps = capabilitiesForModel(entry.model);
+  if (!caps.script) { ctx.die(t("ble.cli.script.notSupported", { name: entry.name, model: entry.model || "?" }), 2); return; }
+  const serverAuth = resolveCliServerAuth({ configStore, tokenStore, options });
+  await SesameBle.use(
+    { secretKey: entry.secretKey, deviceUUID: entry.deviceUUID, model: entry.model, debug: !!opts.debug, ...serverAuth },
+    (dev) => fn(dev.script, dev),
+  );
+}
+
+/**
+ * 0..9 の台本 index をパースする (不正は exit 2)。
+ * @param {import("../cli.js").CliCtx} ctx @param {string} raw @returns {number|null}
+ */
+function parseScriptIndex(ctx, raw) {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 9) { ctx.die(t("ble.cli.scriptRun.badIndex", { index: String(raw) }), 2); return null; }
+  return n;
+}
+
+/**
+ * `ble script-run <device> <index>`: 台本を番号指定で実行 (click(170+index), CHSesameBot2Device.kt:73-97)。
+ * @param {import("../cli.js").CliCtx} ctx @param {string} device @param {string} index @param {BleOptions} options
+ */
+async function cmdScriptRun(ctx, device, index, options) {
+  const idx = parseScriptIndex(ctx, index);
+  if (idx == null) return;
+  const { opts } = ctx.loadCtx();
+  await withScript(ctx, device, options, async (script) => {
+    const r = await script.click(idx);
+    ctx.out(opts.json, () => console.log(t("ble.cli.scriptRun.done", { index: idx })),
+      { ok: true, scriptIndex: idx, resultCode: r?.resultCode ?? null });
+  });
+}
+
+/**
+ * `ble script-select <device> <index>`: アクティブ台本を切り替え (SCRIPT_SELECT 94)。
+ * @param {import("../cli.js").CliCtx} ctx @param {string} device @param {string} index @param {BleOptions} options
+ */
+async function cmdScriptSelect(ctx, device, index, options) {
+  const idx = parseScriptIndex(ctx, index);
+  if (idx == null) return;
+  const { opts } = ctx.loadCtx();
+  await withScript(ctx, device, options, async (script) => {
+    const r = await script.selectScript(idx);
+    ctx.out(opts.json, () => console.log(t("ble.cli.scriptSelect.done", { index: idx })),
+      { ok: true, scriptIndex: idx, resultCode: r?.resultCode ?? null });
+  });
+}
+
+/**
+ * `ble script-write <device> <index> --json '{"name":..,"actions":[{action,time},..]}'`:
+ * 台本を書き込む (EDIT_SCRIPT 181, CHSesameBot2Device.kt:99-110)。
+ * @param {import("../cli.js").CliCtx} ctx @param {string} device @param {string} index @param {BleOptions & {json?:string}} options
+ */
+async function cmdScriptWrite(ctx, device, index, options) {
+  const idx = parseScriptIndex(ctx, index);
+  if (idx == null) return;
+  if (!options.json) { ctx.die(t("ble.cli.scriptWrite.jsonRequired"), 2); return; }
+  const script = ctx.parseJson(options.json, "ble script-write --json");
+  const { opts } = ctx.loadCtx();
+  await withScript(ctx, device, options, async (s) => {
+    const r = await s.sendClickScript(idx, script);
+    ctx.out(opts.json, () => console.log(t("ble.cli.scriptWrite.done", { index: idx })),
+      { ok: true, scriptIndex: idx, resultCode: r?.resultCode ?? null });
+  });
 }
 
 /**

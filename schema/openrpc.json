@@ -3350,6 +3350,14 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "scriptIndex",
+          "required": false,
+          "description": "Bot2/Bot3 script number 0..9 to run (omit = click the selected script)",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {

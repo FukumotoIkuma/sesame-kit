@@ -51,6 +51,7 @@ export default {
     "domain.lock.secretKeyRequired": "secretKey required",
     "domain.lock.subUUIDRequired": "subUUID required",
     "domain.lock.cmdRequired": "cmd required (number)",
+    "domain.lock.scriptIndexRange": "scriptIndex must be an integer 0..9 (got {index})",
     "domain.lock.payloadOrSubUUID": "either payload or subUUID is required",
     "domain.lock.secondsRange": "seconds must be an integer 0..65535 (0 = disable autolock)",
 
@@ -160,6 +161,7 @@ export default {
     "domain.lock.secretKeyRequired": "secretKey required",
     "domain.lock.subUUIDRequired": "subUUID required",
     "domain.lock.cmdRequired": "cmd required (number)",
+    "domain.lock.scriptIndexRange": "scriptIndex は 0..9 の整数で指定してください (受信: {index})",
     "domain.lock.payloadOrSubUUID": "payload または subUUID のいずれかが必要です",
     "domain.lock.secondsRange": "seconds must be an integer 0..65535 (0 = disable autolock)",
 

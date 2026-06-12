@@ -356,7 +356,7 @@ export class SesameClient {
   };
 
   readonly lock = {
-    click: (params: { name?: string; deviceUUID?: string; secretKey?: string }): Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }> => this._call("lock.click", params) as Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }>,
+    click: (params: { name?: string; deviceUUID?: string; secretKey?: string; scriptIndex?: number }): Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }> => this._call("lock.click", params) as Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }>,
     lock: (params: { name?: string; deviceUUID?: string; secretKey?: string }): Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }> => this._call("lock.lock", params) as Promise<{ action: string; code?: number; success?: boolean; message?: string; op?: string; data?: unknown }>,
     /** @experimental unverified — may change without notice. */
     setAutolock: (params: { name?: string; deviceUUID?: string; secretKey?: string; seconds: number; timeoutMs?: number; transport?: "cloud" | "ble"; address?: string; model?: string; scanTimeoutMs?: number; debug?: boolean }): Promise<unknown> => this._call("lock.setAutolock", params) as Promise<unknown>,

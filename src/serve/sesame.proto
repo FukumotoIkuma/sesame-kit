@@ -549,6 +549,7 @@ message LockClickRequest {
   string name = 1;
   string deviceUUID = 2;
   string secretKey = 3;
+  double scriptIndex = 4;
 }
 message LockSetAutolockRequest {
   string name = 1;

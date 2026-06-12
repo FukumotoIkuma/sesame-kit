@@ -394,7 +394,28 @@ function topLevelEntries() {
     "lock.lock": { summary: t("serve.sum.lockLock"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("lock") },
     "lock.unlock": { summary: t("serve.sum.lockUnlock"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("unlock") },
     "lock.toggle": { summary: t("serve.sum.lockToggle"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("toggle") },
-    "lock.click": { summary: t("serve.sum.lockClick"), params: lockParams, result: t("serve.result.statePush"), handler: lockOp("botClick") },
+    // scriptIndex (0..9) 指定時は Bot2/Bot3 の台本を番号実行 (cmd=170+index, CHSesameBot2Device.kt:73-89)。
+    // 省略時は通常の Bot クリック (cmd=89 = 選択中の台本)。
+    "lock.click": {
+      summary: t("serve.sum.lockClick"),
+      params: [
+        ...lockParams,
+        { name: "scriptIndex", required: false, desc: t("serve.desc.lockScriptIndex"), schema: N },
+      ],
+      result: t("serve.result.statePush"),
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon);
+        const hasScript = params.scriptIndex !== undefined && params.scriptIndex !== null;
+        if (params.deviceUUID) {
+          need(params, ["deviceUUID", "secretKey"]);
+          return hasScript
+            ? hub.botClickScriptDevice({ deviceUUID: params.deviceUUID, secretKey: params.secretKey, scriptIndex: params.scriptIndex })
+            : hub.botClickDevice({ deviceUUID: params.deviceUUID, secretKey: params.secretKey });
+        }
+        need(params, ["name"]);
+        return hasScript ? hub.botClickScript(params.name, params.scriptIndex) : hub.botClick(params.name);
+      },
+    },
     // SURF-15: transport param で cloud / BLE 経路を選べる。
     //   - "cloud": biz3TriggerLocker cmd=11 (ack は返るが**実機反映は未確認** — §9。README の
     //     「autolock cloud 不可」観測とも整合)。

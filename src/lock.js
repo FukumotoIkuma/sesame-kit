@@ -151,6 +151,28 @@ export function lockToggle(client, p) { return triggerLock(client, { ...p, cmd: 
 export function botClick(client, p) { return triggerLock(client, { ...p, cmd: CMD.CLICK }); }
 
 /**
+ * SESAME Bot2/Bot3 の **台本 (スクリプト) を番号指定で実行**する (cloud 経由)。
+ *
+ * 参照 `CHSesameBot2Device.kt:73-97` の `click(index)` は itemCode を
+ * `BOT2_ITEM_CODE_RUN_SCRIPT_0(170) + index` に切り替え、BLE 不可時は **同じ itemCode** を
+ * `CHAPIClientBiz.cmdSesame` でクラウドへ送る (kt:84-89)。本関数はその cloud 側 1:1 で、
+ * `cmd = 170 + scriptIndex` を biz3TriggerLocker に乗せる。台本は 0..9 の最大 10 本
+ * (RUN_SCRIPT_0..9, SesameProtocols.kt:47)。
+ *
+ * 注: `cmd=89 (CLICK)` の `botClick` は「選択中の台本」を実行する別経路。番号指定はこちら。
+ *
+ * @param {WsClient} client
+ * @param {LockParams & {scriptIndex:number}} p
+ * @returns {Promise<any>}
+ */
+export function botClickScript(client, { scriptIndex, ...p }) {
+  if (!Number.isInteger(scriptIndex) || scriptIndex < 0 || scriptIndex > 9) {
+    throw new SesameError(t("domain.lock.scriptIndexRange", { index: String(scriptIndex) }), { code: ERR.BAD_REQUEST });
+  }
+  return triggerLock(client, { ...p, cmd: CMD.BOT2_ITEM_CODE_RUN_SCRIPT_0 + scriptIndex });
+}
+
+/**
  * 任意の SESAME ItemCode をクラウド経由 (biz3TriggerLocker) で送る汎用レール。
  *
  * フレームは lock/unlock と同型 `{action, cmd, sign:cmacTime(secretKey), history:base64(payload), device_id}`

@@ -70,6 +70,7 @@ declare namespace _default {
         "serve.desc.lockNameParam": string;
         "serve.desc.deviceUUIDParam": string;
         "serve.desc.secretKeyParam": string;
+        "serve.desc.lockScriptIndex": string;
         "serve.sum.rpcDiscover": string;
         "serve.result.openrpc": string;
         "serve.sum.status": string;
@@ -268,6 +269,7 @@ declare namespace _default {
         "serve.desc.lockNameParam": string;
         "serve.desc.deviceUUIDParam": string;
         "serve.desc.secretKeyParam": string;
+        "serve.desc.lockScriptIndex": string;
         "serve.sum.rpcDiscover": string;
         "serve.result.openrpc": string;
         "serve.sum.status": string;

@@ -44,6 +44,7 @@ declare namespace _default {
         "domain.lock.secretKeyRequired": string;
         "domain.lock.subUUIDRequired": string;
         "domain.lock.cmdRequired": string;
+        "domain.lock.scriptIndexRange": string;
         "domain.lock.payloadOrSubUUID": string;
         "domain.lock.secondsRange": string;
         "domain.ir.subscribeIRDataFailed": string;
@@ -134,6 +135,7 @@ declare namespace _default {
         "domain.lock.secretKeyRequired": string;
         "domain.lock.subUUIDRequired": string;
         "domain.lock.cmdRequired": string;
+        "domain.lock.scriptIndexRange": string;
         "domain.lock.payloadOrSubUUID": string;
         "domain.lock.secondsRange": string;
         "domain.ir.subscribeIRDataFailed": string;

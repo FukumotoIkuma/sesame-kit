@@ -296,3 +296,42 @@ describe("SURF-20: registry summary の i18n キー解決", () => {
     }
   });
 });
+
+describe("lock.click scriptIndex (Bot2/Bot3 台本の番号実行)", () => {
+  const reg = buildRegistry();
+
+  it("scriptIndex 省略時は通常クリック (botClick)", async () => {
+    const e = reg.get("lock.click");
+    const hub = { botClick: vi.fn(async () => ({ ok: true })), botClickScript: vi.fn() };
+    await e.handler({ hub, daemon, params: { name: "bot" } });
+    expect(hub.botClick).toHaveBeenCalledWith("bot");
+    expect(hub.botClickScript).not.toHaveBeenCalled();
+  });
+
+  it("scriptIndex 指定時は番号実行 (botClickScript)", async () => {
+    const e = reg.get("lock.click");
+    const hub = { botClick: vi.fn(), botClickScript: vi.fn(async () => ({ ok: true })) };
+    await e.handler({ hub, daemon, params: { name: "bot", scriptIndex: 3 } });
+    expect(hub.botClickScript).toHaveBeenCalledWith("bot", 3);
+    expect(hub.botClick).not.toHaveBeenCalled();
+  });
+
+  it("scriptIndex=0 も番号実行へ (falsy だが有効値)", async () => {
+    const e = reg.get("lock.click");
+    const hub = { botClick: vi.fn(), botClickScript: vi.fn(async () => ({ ok: true })) };
+    await e.handler({ hub, daemon, params: { name: "bot", scriptIndex: 0 } });
+    expect(hub.botClickScript).toHaveBeenCalledWith("bot", 0);
+  });
+
+  it("deviceUUID + scriptIndex は botClickScriptDevice へ", async () => {
+    const e = reg.get("lock.click");
+    const hub = { botClickDevice: vi.fn(), botClickScriptDevice: vi.fn(async () => ({ ok: true })) };
+    await e.handler({ hub, daemon, params: { deviceUUID: "U", secretKey: "K", scriptIndex: 5 } });
+    expect(hub.botClickScriptDevice).toHaveBeenCalledWith({ deviceUUID: "U", secretKey: "K", scriptIndex: 5 });
+  });
+
+  it("scriptIndex param が discover に出る", () => {
+    const e = reg.get("lock.click");
+    expect(e.params.some((p) => p.name === "scriptIndex")).toBe(true);
+  });
+});

@@ -333,6 +333,9 @@ sesame ble faces <device>                # 登録済み顔一覧（Face）
 sesame ble palms <device>                # 登録済み掌紋一覧（Palm）
 sesame ble mode <device> <type>          # 現在の登録モードを取得（type: card/passcode/finger/face/palm）
 sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧 + 現在スクリプト
+sesame ble script-run <device> <index>    # Bot2/Bot3 の台本を番号 0..9 指定で BLE 実行 (click 170+index)
+sesame ble script-select <device> <index> # アクティブ台本を切り替え (SCRIPT_SELECT)
+sesame ble script-write <device> <index> --json '{"name":"...","actions":[{"action":N,"time":N}]}'  # 台本を書き込み (EDIT_SCRIPT)
 
 # 汎用 + 保守 (RPC の対応: ble.invoke / ble.os2.invoke / ble.updateFirmware / ble.reset / ble.wifi.* / ble.position)
 sesame ble invoke <device> <op> [--args '<json>']      # allowlist 済み OS3 ファサード op を dotted path で呼ぶ (例: biometric.insertSesame)
@@ -345,7 +348,13 @@ sesame ble position <device> <lock> <unlock>   # 施錠 / 解錠角度の設定 
 
 `<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドでは、`--secret <hex>` と `--model <model>` で config のロックに無いデバイスを対象にでき、`--timeout <ms>` で publish 収集のタイムアウト（既定 8000）を指定します。`scan` は鍵なしでどちらも不要です。ゲスト鍵 / 期限付き鍵などサーバ署名 login が必要な登録済み OS3 デバイスでは `--server-auth` を付けます。このとき register REST API の host は `--register-base-url <url>` または `config.registerBaseUrl` から解決され（既定は公式の `https://app.candyhouse.co/prod`）、リクエストは `sesame login` が保存した TokenStore から導出した Identity Pool credentials で SigV4 署名されます。
 
-> これらのコマンドはライブラリ / RPC と同じ BLE コード経路で、ユニットテスト済みですが**実機未確認**です。list / mode / script は読み取り専用であり、生体登録 / モード設定 / スクリプト切替 / 書き込み / 実行は `ble invoke`・Node・BLE RPC から呼べます。
+> これらのコマンドはライブラリ / RPC と同じ BLE コード経路で、ユニットテスト済みですが**実機未確認**です。list / mode / script は読み取り専用であり、生体登録 / モード設定は `ble invoke`・Node・BLE RPC から呼べます。
+
+**SESAME Bot の台本.** Bot2/Bot3 は最大 10 個の台本（動作パターン）を保持し、台本 *N* の実行は item code `170+N`（`RUN_SCRIPT_0`..`RUN_SCRIPT_9`）を送ります。この `170+index` は BLE でもクラウドでも同一です（公式アプリは BLE 不可時に同じコードでクラウドへフォールバックする）。番号指定実行は 3 経路:
+> - **BLE**: `sesame ble script-run <device> <N>`（上記）、Node では `ble.script.click(N)`。
+> - **クラウド**: `sesame rpc lock.click --scriptIndex N`（RPC）、Node では `hub.botClickScript(name, N)` / `hub.botClickScriptDevice({deviceUUID, secretKey, scriptIndex})`。`scriptIndex` を省略すると**選択中**の台本をクリック（cmd 89）。
+>
+> 注: `cmd=83`（unlock）で「台本1」が動くのはファームウェアの legacy エイリアスで 1 本しか指せません — 汎用経路は `170+index` です。
 
 > **BLE エラーは `SesameResultCode` で意味づけ済み** — デバイスが非 0 の結果を返すと、ライブラリは
 > `BleResultError`（`.resultCode` / `.resultName`）を投げます。`resultName` は公式 SesameSDK の

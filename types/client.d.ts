@@ -253,6 +253,26 @@ export class SesameHub3 {
      */
     botClick(name?: string | null): Promise<object>;
     /**
+     * SESAME Bot2/Bot3 の **台本 (スクリプト) を番号指定で実行** (name-based, cloud 経由)。
+     * cmd = 170 + scriptIndex (`CHSesameBot2Device.kt:73-89` の click(index) 相当)。
+     * `botClick` (cmd=89) は「選択中の台本」を実行する別経路。
+     * @param {string|null} name ロック名 (null で default.lock)
+     * @param {number} scriptIndex 0..9
+     * @returns {Promise<object>}
+     */
+    botClickScript(name: string | null, scriptIndex: number): Promise<object>;
+    /**
+     * 直接 (config を介さず) Bot2/Bot3 台本を番号指定で実行。
+     * @param {{deviceUUID:string, secretKey:string, scriptIndex:number, timeoutMs?:number}} p
+     * @returns {Promise<object>}
+     */
+    botClickScriptDevice(p: {
+        deviceUUID: string;
+        secretKey: string;
+        scriptIndex: number;
+        timeoutMs?: number;
+    }): Promise<object>;
+    /**
      * デバッグ用: WS の全受信メッセージを購読する (戻り値で unsubscribe)。
      * fire-and-forget な op (autolock 等) のサーバ応答を観測するのに使う。
      * @param {(msg: import("./transport.js").WsMessage)=>void} fn

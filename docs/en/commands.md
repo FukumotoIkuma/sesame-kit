@@ -330,6 +330,9 @@ sesame ble faces <device>                # list enrolled faces (Face)
 sesame ble palms <device>                # list enrolled palms (Palm)
 sesame ble mode <device> <type>          # get the current enroll mode (type: card/passcode/finger/face/palm)
 sesame ble script <device> [--index <n>] # list Bot2/Bot3 script names + the current script
+sesame ble script-run <device> <index>    # run a Bot2/Bot3 script by number 0..9 over BLE (click 170+index)
+sesame ble script-select <device> <index> # set the active script (SCRIPT_SELECT)
+sesame ble script-write <device> <index> --json '{"name":"...","actions":[{"action":N,"time":N}]}'  # write a script (EDIT_SCRIPT)
 
 # Generic + maintenance (RPC twins: ble.invoke / ble.os2.invoke / ble.updateFirmware / ble.reset / ble.wifi.* / ble.position)
 sesame ble invoke <device> <op> [--args '<json>']      # any allowlisted OS3 facade op by dotted path (e.g. biometric.insertSesame)
@@ -342,7 +345,13 @@ sesame ble position <device> <lock> <unlock>   # configure lock/unlock angles (c
 
 `<device>` is a config lock name or a deviceUUID. On the connect-based subcommands (everything except `scan`), `--secret <hex>` and `--model <model>` let you target a device that is not in your config locks, and `--timeout <ms>` sets the publish collection timeout (default 8000). `scan` is keyless and needs neither. For registered OS3 devices that require server-signed login, such as guest or time-limited keys, pass `--server-auth`. The register REST API host is resolved from `--register-base-url <url>` or `config.registerBaseUrl` (default: the official `https://app.candyhouse.co/prod`), and requests are SigV4-signed with Identity Pool credentials derived from the TokenStore created by `sesame login`.
 
-> These commands are the same BLE code paths as the library/RPC surface and are unit-tested but **not yet confirmed against real hardware**. The list/mode/script commands are read-only; enrollment / mode-set / script select / write / run go through `ble invoke`, Node, or the BLE RPCs.
+> These commands are the same BLE code paths as the library/RPC surface and are unit-tested but **not yet confirmed against real hardware**. The list/mode/script commands are read-only; enrollment and mode-set go through `ble invoke`, Node, or the BLE RPCs.
+
+**SESAME Bot scripts (台本).** A Bot2/Bot3 stores up to 10 scripts (action patterns); running script *N* sends item code `170+N` (`RUN_SCRIPT_0`..`RUN_SCRIPT_9`). The same `170+index` is used over BLE and over the cloud (the official app falls back to cloud with the identical code). Run any script by number three ways:
+> - **BLE**: `sesame ble script-run <device> <N>` (above), or in Node `ble.script.click(N)`.
+> - **Cloud**: `sesame rpc lock.click --scriptIndex N` (RPC), or in Node `hub.botClickScript(name, N)` / `hub.botClickScriptDevice({deviceUUID, secretKey, scriptIndex})`. Omitting `scriptIndex` clicks the *currently selected* script (cmd 89).
+>
+> Note: `cmd=83` (unlock) triggering "script 1" is a firmware legacy alias and can only ever reach one script — the general path is `170+index`.
 
 > **BLE errors are given meaning via `SesameResultCode`** — when a device returns a non-zero result, the library throws
 > `BleResultError` (`.resultCode` / `.resultName`). `resultName` matches the official SesameSDK's

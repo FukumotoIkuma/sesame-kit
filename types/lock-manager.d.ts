@@ -35,6 +35,12 @@ export class LockManager {
     /** 任意 cmd 直指定 (上級用)。 @param {string|null} name @param {number} cmd */
     triggerRaw(name: string | null, cmd: number): Promise<any>;
     /**
+     * Bot2/Bot3 の台本を番号指定で実行 (name-based, cloud 経由, cmd=170+index)。
+     * @param {string|null} name ロック名 (null で default.lock)
+     * @param {number} scriptIndex 0..9
+     */
+    botClickScript(name: string | null, scriptIndex: number): Promise<any>;
+    /**
      * オートロック設定 (name-based)。解錠 N 秒後に自動施錠。`seconds=0` で無効。
      * @param {string|null} name ロック名 (null で default.lock)
      * @param {number} seconds 0..65535 (0=無効)
@@ -77,6 +83,16 @@ export class LockManager {
     botClickDevice(p: {
         deviceUUID: string;
         secretKey: string;
+        timeoutMs?: number;
+    }): Promise<any>;
+    /**
+     * 直接 Bot2/Bot3 台本を番号指定で実行 (cmd=170+index)。
+     * @param {{deviceUUID:string, secretKey:string, scriptIndex:number, timeoutMs?:number}} p
+     */
+    botClickScriptDevice({ scriptIndex, ...p }: {
+        deviceUUID: string;
+        secretKey: string;
+        scriptIndex: number;
         timeoutMs?: number;
     }): Promise<any>;
 }

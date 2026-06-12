@@ -638,8 +638,8 @@ class _Lock:
     def __init__(self, c: "SesameClient") -> None:
         self._c = c
 
-    def click(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None) -> LockClickResult:
-        return self._c._call("lock.click", _omit_none({"name": name, "deviceUUID": deviceUUID, "secretKey": secretKey}))
+    def click(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None, scriptIndex: float | None = None) -> LockClickResult:
+        return self._c._call("lock.click", _omit_none({"name": name, "deviceUUID": deviceUUID, "secretKey": secretKey, "scriptIndex": scriptIndex}))
 
     def lock(self, *, name: str | None = None, deviceUUID: str | None = None, secretKey: str | None = None) -> LockLockResult:
         return self._c._call("lock.lock", _omit_none({"name": name, "deviceUUID": deviceUUID, "secretKey": secretKey}))
