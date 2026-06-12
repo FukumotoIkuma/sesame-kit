@@ -92,8 +92,10 @@ Examples:
     "serve.connNotRegistered": "connection not registered",
     "serve.refreshAccountFailed": "[serve] refreshAccount failed (companyID injection keeps the config default): {detail}",
 
-    // ---- serve/registry.js ----
+    // ---- serve/registry.js / ble/rpc-helpers.js ----
     "serve.missingParam": "missing required param: {k}",
+    "serve.unsupportedJsonKey": "unsupported JSON argument key: {k}",
+    "serve.unsupportedBleOp": "unsupported BLE op: {op}",
     "serve.notAuthenticated": "not authenticated — run: sesame login <email>  (then restart the daemon)",
     "serve.cloudNotConnected": "cloud not connected",
     "serve.desc.lockNameParam": "lock name in config (not needed when deviceUUID is given)",
@@ -353,8 +355,10 @@ Watch events (SSE):
     "serve.connNotRegistered": "connection not registered",
     "serve.refreshAccountFailed": "[serve] refreshAccount に失敗 (companyID 自動注入は config 既定値のまま継続): {detail}",
 
-    // ---- serve/registry.js ----
+    // ---- serve/registry.js / ble/rpc-helpers.js ----
     "serve.missingParam": "missing required param: {k}",
+    "serve.unsupportedJsonKey": "unsupported JSON argument key: {k}",
+    "serve.unsupportedBleOp": "unsupported BLE op: {op}",
     "serve.notAuthenticated": "not authenticated — run: sesame login <email>  (then restart the daemon)",
     "serve.cloudNotConnected": "cloud not connected",
     "serve.desc.lockNameParam": "config 上のロック名 (deviceUUID 指定時は不要)",

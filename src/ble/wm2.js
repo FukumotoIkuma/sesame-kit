@@ -33,6 +33,7 @@ import { Buffer } from "node:buffer";
 import { t } from "../i18n.js";
 import { WM2_ACTION_CODES } from "../itemcodes.js";
 import { parseNetworkStatus } from "./protocol.js";
+import { hexToUuid } from "../crypto.js";
 
 // ---------- GATT (CHWifiModule2Device.kt:533-537 Wm2Chracs) ----------
 
@@ -77,7 +78,14 @@ function utf8(s) {
 }
 
 /**
- * ハイフン除去 (大小は保持)。
+ * ハイフン除去のみ (大文字・小文字は保持)。鍵導出用。
+ *
+ * ★ normalizeUuid (toLowerCase) を使わない理由 (P5-4):
+ *   `insertSesamesData` の noHashUUID は deviceUUID のハイフンを除いただけの 32hex 文字列を
+ *   そのまま Buffer.from(hex,"hex") でバイト列に変換する。UUID の hex 文字は大文字でも小文字でも
+ *   バイト値は同じなので toLowerCase の有無は結果に影響しないが、SDK 原文
+ *   (CHWifiModule2Device.kt:381 `sesame2KeyData.deviceUUID.replace("-","")`) は大小変換なしのため
+ *   意図的に揃えている (1:1 ポート規範)。比較・照合用途では normalizeUuid を使うこと。
  * @param {string} u
  * @returns {string}
  */
@@ -299,12 +307,12 @@ export function parseSesameKeys(payload) {
 
 /**
  * 16B → ハイフン付き UUID 文字列 (SDK の noHashtoUUID 相当)。
+ * crypto.js:hexToUuid に統合 (P5-4)。
  * @param {Buffer} raw 16B
  * @returns {string} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字)
  */
 function noHashToUUID(raw) {
-  const hex = raw.toString("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  return hexToUuid(raw.toString("hex"));
 }
 
 /**

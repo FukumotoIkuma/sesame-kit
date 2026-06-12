@@ -30,11 +30,12 @@ import {
 // CLI はここから import して差し替える (collect ロジックの単一実装 = biometric.js)。
 import { collectBiometricList, BIO_LIST } from "../ble/biometric.js";
 // ble.invoke RPC と「同じドット op パス・同じ JSON 引数 revive 規約・同じ allowlist 照合」を
-// 共有するため、単一実装 (serve/registry.js) を import する (P4-1 段階1: CLI 汎用脱出口)。
-import { invokePath, collectWifiScan, wifiViewOf, bleCommandAck } from "../serve/registry.js";
+// 共有する。P5-3: 実装を葉モジュール (ble/rpc-helpers.js) へ移設したため serve/registry.js
+// ではなく直接 import する (serve 層全体 = rpc-params.generated.json 等を巻き込まない)。
+import { invokePath, collectWifiScan, wifiViewOf, bleCommandAck } from "../ble/rpc-helpers.js";
 import { resolveRegisterTransport } from "../devices.js";
-// hex 検証は crypto.js の hexToBuf に一本化 (REFACTORING_PLAN P5-4 / ARCH-08)。
-import { hexToBuf } from "../crypto.js";
+// hex 検証/UUID 正規化は crypto.js に一本化 (REFACTORING_PLAN P5-4)。
+import { hexToBuf, normalizeUuid } from "../crypto.js";
 
 /**
  * ble サブコマンドの commander options。値は string|undefined (boolean フラグは無い)。
@@ -783,7 +784,7 @@ function resolveBleEntry(ctx, device, options) {
   let name = device;
   let rec = locks[device];
   if (!rec) {
-    const byUuid = Object.entries(locks).find(([, l]) => normUuid(l.deviceUUID) === normUuid(device));
+    const byUuid = Object.entries(locks).find(([, l]) => normalizeUuid(l.deviceUUID) === normalizeUuid(device));
     if (byUuid) { name = byUuid[0]; rec = byUuid[1]; }
   }
 
@@ -884,7 +885,3 @@ function scrubDiscovery(d) {
   return rest;
 }
 
-/** @param {unknown} s */
-function normUuid(s) {
-  return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
-}

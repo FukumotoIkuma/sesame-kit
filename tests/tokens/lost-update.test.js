@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileTokenStore } from "../../src/tokens.js";
 
-/** exp claim だけ持つ最小の擬似 JWT を作る (tokens.js の jwtExpSec が読める形)。 */
+/** exp claim だけ持つ最小の擬似 JWT を作る (auth.js の jwtClaim が読める形)。 */
 function fakeJwt(expSec) {
   const payload = Buffer.from(JSON.stringify({ exp: expSec })).toString("base64");
   return `eyJhbGciOiJub25lIn0.${payload}.sig`;

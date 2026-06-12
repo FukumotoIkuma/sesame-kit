@@ -77,6 +77,20 @@ jobs:
             exit 1
           fi
 
+      # P5-11 (ARCH-13): 生成 SDK のコンパイル検査。
+      # ドリフト確認後のクリーンな生成物に対して tsc と py_compile を通す。
+      # これにより生成器が不正構文/型を出すリグレッションを CI で検出できる。
+      - name: Typecheck generated TypeScript SDK
+        run: npm run typecheck:sdk
+
+      - name: Setup Python for SDK compile check
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Compile-check generated Python SDK
+        run: npm run check:sdk:py
+
       - name: Run tests
         run: npm test
 

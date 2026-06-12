@@ -5,6 +5,8 @@ declare namespace _default {
         "auth.anotherChallenge": string;
         "auth.wrongCodeRetry": string;
         "auth.staleDeviceRetry": string;
+        "auth.noRefreshToken": string;
+        "auth.noDeviceCredentials": string;
     };
     let ja: {
         "auth.noTokens": string;
@@ -12,6 +14,8 @@ declare namespace _default {
         "auth.anotherChallenge": string;
         "auth.wrongCodeRetry": string;
         "auth.staleDeviceRetry": string;
+        "auth.noRefreshToken": string;
+        "auth.noDeviceCredentials": string;
     };
 }
 export default _default;

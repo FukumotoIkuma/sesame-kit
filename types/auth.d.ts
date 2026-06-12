@@ -1,4 +1,14 @@
 /**
+ * JWT payload (base64url) をデコードして指定 claim の値を返す。
+ * token が null/undefined/不正形式/JSON 不正 いずれでも null を返す (catch で包む)。
+ * null/undefined → token.split が TypeError → catch → null の経路が意図的動作。
+ * P5-5: jwtExp / jwtAud / jwtSub の共通基底として抽出。tokens.js も import して使用。
+ * @param {string|null|undefined} token
+ * @param {string} name  claim 名 (例: "exp", "aud", "sub")
+ * @returns {string|number|null}
+ */
+export function jwtClaim(token: string | null | undefined, name: string): string | number | null;
+/**
  * idToken の `sub` claim (= Cognito user UUID) を返す。
  * biz3 が `gStripe.customerInfo.subUUID` として使っている値と同じで、
  * `biz3TriggerLocker` の `history` フィールドに乗せる必要がある。

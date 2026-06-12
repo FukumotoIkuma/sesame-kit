@@ -106,7 +106,7 @@ export async function cmdMigrate(srcDir, _opts, program) {
  * @param {string} content
  * @returns {Record<string, string>}
  */
-export function parseDotenv(content) {
+function parseDotenv(content) {
   /** @type {Record<string, string>} */
   const vars = {};
   for (const line of content.split(/\r?\n/)) {

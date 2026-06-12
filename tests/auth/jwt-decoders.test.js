@@ -1,29 +1,25 @@
 // JWT decoder ユニットテスト
 //
-// 対象は src/auth.js 内の 3 関数 (密結合, 同じ base64url payload decode 路):
-//   - jwtSub  (export 済)
-//   - jwtAud  (内部 helper)  → export 関数 `bootstrap` の app-client guard 経由で挙動を検証
-//   - jwtExp  (内部 helper)  → export 関数 `getValidIdToken` 経由で挙動を検証
+// 対象は src/auth.js 内の関数群:
+//   - jwtClaim (P5-5 で export: 4 重複製の共通基底)
+//   - jwtSub   (export 済。jwtClaim の 1 行ラッパ)
+//   - jwtAud   (内部 helper)  → export 関数 `bootstrap` の app-client guard 経由で挙動を検証
+//   - jwtExp   (内部 helper)  → export 関数 `getValidIdToken` 経由で挙動を検証
 //
 // jwtAud/jwtExp は module-private のため、観測点を「これらを使う公開関数」に置き換えて
-// 黒箱で振る舞いを検証する。3 関数の本体は同一構造 (split('.')[1] → Buffer.from(base64) →
-// JSON.parse → claim || fallback、catch で fallback) なので、共通の failure path
-// (segment 数不足、空文字、invalid base64, malformed JSON, claim 欠落) は jwtSub の
-// 直接テストで網羅し、aud/exp 側は claim 抽出と fallback default だけ確認する。
+// 黒箱で振る舞いを検証する。jwtClaim が共通路となったため failure path の網羅は
+// jwtClaim の直接テストで行い、jwtSub/aud/exp の独自挙動 (fallback default) だけ確認する。
 //
 // P2-2 以降 Cognito は素 fetch (src/cognito-http.js)。global.fetch を差し替え、
 // InitiateAuth (X-Amz-Target) が呼ばれたかどうかで「refresh が走ったか = idToken が
 // expired と判定されたか」を観測する。
-//
-// NOTE: jwtAud / jwtExp は module-private のため直接 import は不可能。
-// テスト名で「(via bootstrap)」「(via getValidIdToken)」と明示する。
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchMock, installFetchMock, cognitoOk } from "./cognito-fetch-mock.js";
 
 installFetchMock();
 
-import { jwtSub, bootstrap, getValidIdToken, CONSUMER_CLIENT_ID } from "../../src/auth.js";
+import { jwtClaim, jwtSub, bootstrap, getValidIdToken, CONSUMER_CLIENT_ID } from "../../src/auth.js";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -85,6 +81,58 @@ afterAll(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// jwtClaim  (P5-5 で export: jwtExp / jwtAud / jwtSub の共通基底)
+// ═════════════════════════════════════════════════════════════════════════════
+describe("jwtClaim", () => {
+  it("正常な JWT から指定 claim を返す", () => {
+    const token = makeJwt({ sub: "u1", aud: "cid", exp: 9999999999 });
+    expect(jwtClaim(token, "sub")).toBe("u1");
+    expect(jwtClaim(token, "aud")).toBe("cid");
+    expect(jwtClaim(token, "exp")).toBe(9999999999);
+  });
+
+  it("claim が存在しない場合は null を返す (undefined || null)", () => {
+    const token = makeJwt({ sub: "u" });
+    expect(jwtClaim(token, "nonexistent")).toBeNull();
+  });
+
+  it("claim が null の場合は null を返す (null || null)", () => {
+    const token = makeJwt({ sub: null });
+    expect(jwtClaim(token, "sub")).toBeNull();
+  });
+
+  it("claim が空文字なら null を返す (falsy || null)", () => {
+    const token = makeJwt({ sub: "" });
+    expect(jwtClaim(token, "sub")).toBeNull();
+  });
+
+  it("token が null なら null (TypeError → catch)", () => {
+    expect(jwtClaim(null, "sub")).toBeNull();
+  });
+
+  it("token が undefined なら null (TypeError → catch)", () => {
+    expect(jwtClaim(undefined, "sub")).toBeNull();
+  });
+
+  it("token が空文字なら null", () => {
+    expect(jwtClaim("", "sub")).toBeNull();
+  });
+
+  it("segment 数が 1 つ (ドット無し) なら null", () => {
+    expect(jwtClaim("not-a-jwt", "sub")).toBeNull();
+  });
+
+  it("payload 部が invalid JSON なら null (SyntaxError → catch)", () => {
+    const garbage = Buffer.from("not json", "utf8").toString("base64").replace(/=+$/, "");
+    expect(jwtClaim(`hdr.${garbage}.sig`, "sub")).toBeNull();
+  });
+
+  it("payload 部が空文字でも crash せず null", () => {
+    expect(jwtClaim("header..sig", "sub")).toBeNull();
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

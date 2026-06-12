@@ -3,7 +3,7 @@
 // `sesame session [names...]` / `sesame <device>` (action 省略 + TTY) の実体。
 // 対象デバイスへ BLE 接続を張ったまま保持し、runSessionMenu でメニュー操作させる。
 // session-ui.js (ink + react) は起動コスト削減のため cmdSession 内で動的 import する。
-// 依存方向: cli.js → session.js → lock-ops.js (bleExec/fmtMech) → ctx.js。
+// 依存方向: cli.js → session.js → exec.js / ctx.js (P5-7: lock-ops.js との循環を解消)。
 
 import { EventEmitter } from "node:events";
 import { t } from "../i18n.js";
@@ -12,13 +12,13 @@ import { die } from "./errors.js";
 import { loadCtx, withHub, hasCloudSession } from "./ctx.js";
 import { isInteractive } from "../prompts.js";
 import { SesameBle, capabilitiesForModel } from "../ble/index.js";
-import { bleExec, fmtMech } from "./lock-ops.js";
+import { bleExec, fmtMech } from "./exec.js";
 
 /** @typedef {import("./ctx.js").Program} Program */
 /** @typedef {import("./ctx.js").GlobalOpts} GlobalOpts */
 /** @typedef {import("./ctx.js").CliError} CliError */
 /** @typedef {import("./lock-ops.js").LockEntry} LockEntry */
-/** @typedef {import("./lock-ops.js").MechStatus} MechStatus */
+/** @typedef {import("./exec.js").MechStatus} MechStatus */
 /** @typedef {import("../client.js").SesameHub3} SesameHub3 */
 
 /**
@@ -80,7 +80,7 @@ function remotesForHub3(program, hub3Name) {
 // セッション UI で使う操作ラベル (ロック系 + Hub3 系)。
 // ロケールは run() 内で setLocale() してから確定するため、モジュール評価時に固定せず
 // 呼び出し時に t() を引く (lazy)。
-export function sessionLabel() {
+function sessionLabel() {
   return {
     unlock: t("cli.sessLabelUnlock"), lock: t("cli.sessLabelLock"), toggle: t("cli.sessLabelToggle"), click: t("cli.sessLabelClick"), status: t("cli.sessLabelStatus"), autolock: t("cli.sessLabelAutolock"),
     ir: t("cli.sessLabelIr"), "relay-on": t("cli.sessLabelRelayOn"), "relay-off": t("cli.sessLabelRelayOff"), led: t("cli.sessLabelLed"),
@@ -112,7 +112,7 @@ export function sessionLabel() {
  * @param {boolean} hasCloud クラウド経路が使えるか
  * @returns {Array<{label:string, value:string}>}
  */
-export function sessionActionsFor(d, hasCloud) {
+function sessionActionsFor(d, hasCloud) {
   const caps = capabilitiesForModel(d.entry.model);
   // 今使える経路で運べる op の集合。
   /** @type {Set<string>} */
@@ -149,7 +149,7 @@ export function sessionActionsFor(d, hasCloud) {
  * @param {SessionDevice} d
  * @returns {string}
  */
-export function sessionFmtState(d) {
+function sessionFmtState(d) {
   if (d.kind === "hub3") return t("cli.sessHub3State");
   return d.ble ? fmtMech(d.ble.lastStatus) : t("cli.sessBleNotConnected");
 }
@@ -161,7 +161,7 @@ export function sessionFmtState(d) {
  * @param {SesameHub3|null} hub クラウドクライアント (未ログイン時 null)
  * @returns {(op: string, d: SessionDevice, extra: any) => Promise<string>}
  */
-export function makeSessionExec(hub) {
+function makeSessionExec(hub) {
   return async (op, d, extra) => {
     if (d.kind === "hub3") {
       if (!hub) return t("cli.sessHub3NeedLogin");

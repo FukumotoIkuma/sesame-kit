@@ -20,9 +20,6 @@ import {
   parseMechStatus, parseLoginResponse, MECH_STATE,
 } from "../../src/ble/os2/protocol.js";
 import { SesameOS2BleSession } from "../../src/ble/os2/session.js";
-import {
-  buildSendFrame, OP, ITEM,
-} from "../../src/ble/os2/protocol.js";
 
 // ---------- parseMechStatus(buf, {kind:"os2bot"}) 直接テスト ----------
 

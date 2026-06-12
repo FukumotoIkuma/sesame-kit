@@ -244,7 +244,8 @@ describe("P2-3: 失効後の再ログインで DEVICE_KEY 付き回答 → DEVIC
 
     // 2回目: 後始末後の getValidIdToken は refreshToken=null なので別エラーを返す
     // (assertAppLoginTokens の requireConfirmedDevice は device が温存されているので通過)
-    await expect(getValidIdToken(store)).rejects.toThrow(/idToken expired and no refreshToken/);
+    // P5-1: メッセージは i18n 化済み。コード (UNAUTHENTICATED) で安定確認する。
+    await expect(getValidIdToken(store)).rejects.toMatchObject({ code: "unauthenticated" });
     // 2回目は fetch を呼ばない (refreshToken がないため Cognito にリクエストしない)
     expect(fetchMock).toHaveBeenCalledTimes(1);
 

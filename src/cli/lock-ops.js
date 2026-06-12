@@ -2,17 +2,23 @@
 //
 // トップレベル動詞 (`sesame <device> unlock` 等) の実行経路:
 //   - pickTransport: 経路選択ポリシー (auto は cloud 優先、BLE 必須 op のみ BLE)
-//   - bleExec: 接続済み SesameBle に op を実行する**唯一のコア** (単発・セッション共用)
+//   - bleExec: 接続済み SesameBle に op を実行する**唯一のコア** (単発・セッション共用、実体は exec.js)
 //   - runBleOp / runCloudOp: 単発実行 (接続/切断と表示込み)
 //   - cmdDeviceOp / cmdAct: デバイス主語コマンドの入口
-// 依存方向: cli.js → lock-ops.js → ctx.js。session.js へは**動的 import のみ**
-// (session.js が bleExec/fmtMech を静的 import するため、静的に張ると循環になる)。
+// 依存方向: cli.js → lock-ops.js → exec.js / ctx.js / session.js。
+// P5-7: bleExec/fmtMech を exec.js へ抽出し循環を解消。session.js は静的 import に昇格。
 
 import { t } from "../i18n.js";
 import { die } from "./errors.js";
 import { loadCtx, out, withHub, canPrompt, hasCloudSession } from "./ctx.js";
 import { isInteractive, selectFromList } from "../prompts.js";
 import { SesameBle, SesameOS2Ble, capabilitiesForModel, transportsForOp, CONTROL_OPS, createBleTransport } from "../ble/index.js";
+import { bleExec, fmtMech } from "./exec.js";
+import { cmdSession } from "./session.js";
+
+// bleExec / fmtMech / MechStatus は exec.js に移動した。後方互換のため re-export する。
+export { bleExec, fmtMech };
+/** @typedef {import("./exec.js").MechStatus} MechStatus */
 
 /** @typedef {import("./ctx.js").Program} Program */
 /** @typedef {import("./ctx.js").GlobalOpts} GlobalOpts */
@@ -40,7 +46,7 @@ export const DEVICE_ACTIONS = new Set([...CONTROL_OPS, "status"]);
  * @param {string|null|undefined} name
  * @returns {Promise<LockEntry|null>} die 済みなら null
  */
-export async function resolveLockEntry(program, name) {
+async function resolveLockEntry(program, name) {
   const { configStore } = loadCtx(program);
   if (!configStore.exists()) { die(t("cli.noConfigInitSync"), 2); return null; }
   const cfg = configStore.load();
@@ -112,23 +118,7 @@ export function pickTransport(op, options, model) {
   return allowed.includes("cloud") ? "cloud" : "ble";
 }
 
-/**
- * BLE の mechStatus (ble.status() の戻り)。
- * @typedef {{ state?: string, position?: number|null, isBatteryCritical?: boolean, isStop?: boolean, isCritical?: boolean }} MechStatus
- */
-
-/**
- * mechStatus を 1 行に整形。
- * @param {MechStatus|null|undefined} s
- * @returns {string}
- */
-export function fmtMech(s) {
-  if (!s) return t("cli.statusNotFetched");
-  const warn = [s.isBatteryCritical && t("cli.batteryLow"), s.isStop && t("cli.stop"), s.isCritical && t("cli.abnormal")].filter(Boolean).join(" ");
-  // position はロック (Sesame5/6) のみ。Bot/Bike は概念がないので state だけ表示する。
-  const pos = s.position == null ? "" : ` pos=${s.position}`;
-  return `state=${s.state}${pos}${warn ? " " + warn : ""}`;
-}
+// MechStatus typedef / fmtMech は exec.js に移動した (re-export 済み)。
 
 /**
  * cloud の device-status (stateInfo) を fmtMech と揃えた 1 行に整形。
@@ -154,26 +144,7 @@ export function sanitizeStatus(st) {
   return safe;
 }
 
-/**
- * 接続済み SesameBle / SesameOS2Ble に op を実行する**唯一のコア**。単発コマンド・セッションの両方がここを通る
- * (session は保持中の接続を、単発は都度張った接続を渡す。「保持接続があればそれで操作する」という
- * セッションモードの挙動が、両方の既定動作になる)。能力ゲートは SesameBle 側が担保。表示はしない。
- * OS2 ファサード (SesameOS2Ble) も lock/unlock/toggle/click/autolock/status の同名メソッドを持つため、
- * 型は SesameBle | SesameOS2Ble の共通サブタイプとして `any` で受ける (両者に共通 interface 無し)。
- * @param {string} op
- * @param {SesameBle|SesameOS2Ble} ble
- * @param {string|number|null|undefined} seconds
- * @returns {Promise<{result:any, status:MechStatus|null}>}
- */
-export async function bleExec(op, ble, seconds) {
-  /** @type {any} */
-  let result = null;
-  const bleAny = /** @type {Record<string, () => Promise<any>>} */ (/** @type {unknown} */ (ble));
-  if (op === "autolock") result = await ble.autolock(Number(seconds));
-  else if (op !== "status") result = await bleAny[op](); // lock/unlock/toggle/click (履歴タグ無し = SDK null-tag [00 0E])
-  const status = /** @type {MechStatus|null} */ (await ble.status().catch(() => null));
-  return { result, status };
-}
+// bleExec は exec.js に移動した (re-export 済み)。
 
 /**
  * 接続済みの SesameBle / SesameOS2Ble に対して 1 操作を実行し、単発コマンド向けに表示する (接続/切断は呼び出し側責務)。
@@ -287,9 +258,8 @@ export async function runCloudOp(op, entry, program) {
 export async function cmdDeviceOp(device, action, args, options, program, deps = {}) {
   if (!action) {
     if (isInteractive() && !program.opts().json) {
-      // セッション UI (ink/react を内部で遅延ロード) は必要時のみ読み込む。
-      // 静的 import にすると session.js → lock-ops.js (bleExec/fmtMech) と循環するため動的に。
-      const { cmdSession } = await import("./session.js");
+      // P5-7: bleExec/fmtMech を exec.js へ抽出したので循環が解消し、
+      // 静的 import の cmdSession をそのまま呼べる (動的 import 不要)。
       await cmdSession(device ? [device] : [], options, program);
       return;
     }

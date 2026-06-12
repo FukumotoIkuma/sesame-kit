@@ -12,9 +12,10 @@
 //     パーミッションは変えない) ため、作成後に明示 chmod して旧バージョンの 0755 も締める。
 import {
   chmodSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync, renameSync,
-  unlinkSync, writeFileSync, writeSync,
+  statSync, unlinkSync, writeFileSync, writeSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { t } from "./i18n.js";
 
 /** 秘匿ファイルのパーミッション。鍵入りファイルは所有者のみ読み書き可。 */
 export const SECRET_FILE_MODE = 0o600;
@@ -90,9 +91,12 @@ export function restrictSecretFile(path) {
 //     mtime が staleMs (既定 10s) を超えて古い、または記録された pid が既に
 //     存在しない (kill(pid,0) が ESRCH) なら放棄されたとみなして奪取する。
 //     これによりクラッシュしたプロセスのロックで永久に詰まることはない。
-//   - 奪取は「再 stat で stale を確認 → unlink → 再取得試行」。stat と unlink の
-//     間に第三のプロセスが奪取+再取得を完了する理論上の窓は残るが、窓は ms
-//     オーダーで staleMs は 10s なので実害はない (advisory lock として十分)。
+//   - 奪取は「stale 確認(fd ino も記録) → renameSync(lockPath, lockPath.reap.<pid>)
+//     → ino 突き合わせ → 退避ファイルを unlink → 再取得試行」。renameSync は
+//     原子的なため複数プロセスが同時に stale を観測しても rename 勝者は 1 つだけ。
+//     旧実装の unlink 方式では「P1 が O_EXCL 取得済みの新鮮な lock を P2 の遅延
+//     unlink が消す二重保持」の窓があったが、rename 方式ではこの窓が閉じている。
+//     (P5-12 / R2:ARCH-14)
 // ---------------------------------------------------------------------------
 
 /** ロック放棄とみなす閾値 (ms)。正常な load-merge-save は数 ms で終わる。 */
@@ -121,41 +125,47 @@ function asFsErr(e) {
 
 /**
  * 既存 lock が放棄されたものか判定する。
+ * stale と判定した場合は、その時点で fd から読んだ inode 番号も返す。
+ * 呼び出し元が rename ベースの奪取を行うとき、rename 後に inode を突き合わせて
+ * 「stale 判定した inode と rename した inode が同一か」を確認できるようにする
+ * (判定と rename の間に別プロセスが新鮮な lock を作っていた場合に検出可能)。
+ *
  * @param {string} lockPath
  * @param {number} staleMs
- * @returns {boolean}
+ * @returns {{ stale: true; ino: number } | { stale: false }}
  */
 function isLockStale(lockPath, staleMs) {
-  // mtime と pid を **同一 fd** から読む (open → fstat → read)。statSync→readFileSync の
-  // 2 syscall だと間でファイルが差し替わる TOCTOU (js/file-system-race) が生じるため、
+  // mtime・pid・inode を **同一 fd** から読む (open → fstat → read)。
+  // statSync→readFileSync の 2 syscall だと間でファイルが差し替わる TOCTOU が生じるため、
   // 1 つの fd に固定して同じ inode を見る。実排他は withFileLock の O_EXCL acquire が担保し、
   // ここは best-effort の stale 判定に過ぎないが、判定自体も race-free にしておく。
   let fd;
   try {
     fd = openSync(lockPath, "r");
   } catch {
-    return false; // 既に解放済み → 次の取得試行で普通に取れる
+    return { stale: false }; // 既に解放済み → 次の取得試行で普通に取れる
   }
   try {
+    const st = fstatSync(fd);
     // mtime が閾値超で古い = 保持プロセスが unlink せず消えたとみなす
-    if (Date.now() - fstatSync(fd).mtimeMs > staleMs) return true;
+    if (Date.now() - st.mtimeMs > staleMs) return { stale: true, ino: st.ino };
     // pid 死活: 記録された保持プロセスが既に存在しなければ mtime が若くても stale。
     // (クラッシュ直後でも staleMs を待たずに回収できる)
     let info;
     try {
       info = /** @type {{ pid?: number }} */ (JSON.parse(readFileSync(fd, "utf8")));
     } catch {
-      return false; // 読めない/壊れた lock は mtime 判定だけに頼る (書き込み途中の可能性)
+      return { stale: false }; // 読めない/壊れた lock は mtime 判定だけに頼る (書き込み途中の可能性)
     }
     if (typeof info.pid === "number" && info.pid > 0) {
       try {
         process.kill(info.pid, 0); // シグナル 0 = 存在確認のみ
       } catch (e) {
-        if (asFsErr(e).code === "ESRCH") return true; // 保持プロセス消滅
+        if (asFsErr(e).code === "ESRCH") return { stale: true, ino: st.ino }; // 保持プロセス消滅
         // EPERM 等 = プロセスは生きている (他ユーザー) → stale ではない
       }
     }
-    return false;
+    return { stale: false };
   } finally {
     try { closeSync(fd); } catch { /* ignore */ }
   }
@@ -193,14 +203,45 @@ export function withFileLock(path, fn, opts = {}) {
       break; // 取得成功
     } catch (e) {
       if (asFsErr(e).code !== "EEXIST") throw e;
-      if (isLockStale(lockPath, staleMs)) {
-        // 放棄された lock を奪取して即再試行 (unlink 失敗 = 他プロセスが先に
-        // 奪取しただけなので無視してよい)
-        try { unlinkSync(lockPath); } catch { /* 競合奪取: 次の試行で解決 */ }
+      const staleResult = isLockStale(lockPath, staleMs);
+      if (staleResult.stale) {
+        // P5-12: rename ベースの奪取。renameSync は原子的なので、複数プロセスが同時に
+        // stale を観測した場合でも rename 勝者は 1 つだけ (敗者は ENOENT)。
+        // 旧実装の unlinkSync は「P1 が取得した新鮮な lock を P2 の遅延 unlink が消す」
+        // 二重保持の競合窓を持っていた。rename 方式では:
+        //   1. 勝者がロック実体を <lockPath>.reap.<pid> へ退避 (rename = atomic)
+        //   2. 退避後に inode を突き合わせて stale 判定した inode と同一かを確認
+        //      (判定→rename の間に別プロセスが新鮮な lock を書いた場合は ino が異なる)
+        //   3. inode 一致なら退避ファイルを unlink して continue(= 次ループで O_EXCL 取得)
+        //   4. inode 不一致は「別の保持プロセスの lock を誤って移動した」ため rename 元を復元
+        //      (正常系では発生しないが、safety net として)
+        //   5. 敗者の rename は ENOENT → continue で通常 retry に戻る
+        const reapPath = `${lockPath}.reap.${process.pid}`;
+        try {
+          renameSync(lockPath, reapPath); // 勝者のみ成功、敗者は ENOENT
+          // inode 同一性確認: 判定した stale inode と rename した実体が同一か
+          let renamedIno;
+          try {
+            // fstatSync より statSync で十分 (rename 後は fd ではなくパスで参照)
+            renamedIno = statSync(reapPath).ino;
+          } catch {
+            // stat 失敗は通常起きないが safety net: inode 確認をスキップして unlink へ
+          }
+          if (renamedIno !== undefined && renamedIno !== staleResult.ino) {
+            // stale 判定後・rename 前に別プロセスが lock を書き換えた (inode が違う)
+            // → 誤って別プロセスの lock を奪った可能性: 元のパスへ戻して retry に回す
+            try { renameSync(reapPath, lockPath); } catch { /* 戻せない場合も stale 回収が後始末 */ }
+          } else {
+            try { unlinkSync(reapPath); } catch { /* best-effort */ }
+          }
+        } catch {
+          // rename 失敗 (ENOENT = 他プロセスが先に rename 済み) → 通常 retry に戻る
+        }
         continue;
       }
       if (Date.now() >= deadline) {
-        throw new Error(`failed to acquire file lock within ${timeoutMs}ms: ${lockPath} (held by another process?)`);
+        // P5-1: i18n 化 (元の英語ハードコードを domain.securefs.lockTimeout へ)。
+        throw new Error(t("domain.securefs.lockTimeout", { timeoutMs: String(timeoutMs), lockPath }));
       }
       sleepSync(retryIntervalMs);
     }

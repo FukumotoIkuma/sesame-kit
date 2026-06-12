@@ -8,26 +8,6 @@
  */
 export function cmdLogin(email: string | undefined, _opts: CmdOpts, program: Program): Promise<void>;
 /**
- * 認証後の自動セットアップ。接続して companyID 取得 → ロック / Hub3+リモコン を devices から取り込む。
- * best-effort: 各ステップは個別に try/catch し、失敗しても他を続行 (ネットワーク不調で認証成功を潰さない)。
- *
- * @typedef {{added:string[], updated:string[], removed?:string[]}} SyncResult
- * @typedef {object} BootstrapSummary
- * @property {string|null} companyID
- * @property {SyncResult|null} locks
- * @property {{added?:string[], updated?:string[]}|null} hub3s
- * @property {SyncResult|null} remotes
- * @property {string[]} errors
- * @property {boolean} [authExpired]
- *
- * @param {Program} program
- * @param {{ quiet?: boolean }} [opts]
- * @returns {Promise<BootstrapSummary>} 取り込みサマリ
- */
-export function bootstrapAfterLogin(program: Program, { quiet }?: {
-    quiet?: boolean;
-}): Promise<BootstrapSummary>;
-/**
  * @param {string|undefined} code
  * @param {CmdOpts} _opts
  * @param {Program} program

@@ -21,7 +21,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { configPaths } from "./paths.js";
 import { writeSecretJson, withFileLock } from "./secure-fs.js";
-import { DEFAULT_IR_TYPE } from "./crypto.js";
+import { DEFAULT_IR_TYPE, normalizeUuid } from "./crypto.js";
 import { t } from "./i18n.js";
 import { badRequest } from "./util.js";
 import { resolveByName, LOCK_RESOLVE_ERRORS, REMOTE_RESOLVE_ERRORS } from "./resolve.js";
@@ -374,6 +374,7 @@ export class ConfigStore {
    * @param {string} configPath 絶対パス
    */
   constructor(configPath) {
+    // P5-1 方針3: コンストラクタ必須引数の欠落 (プログラマエラー)。serve 非到達 (構築前)。
     if (!configPath) throw new Error(t("domain.config.configPathRequired"));
     this.configPath = configPath;
     /** @type {ConfigData|null} */
@@ -917,7 +918,7 @@ export class ConfigStore {
  * @param {number} irType
  * @returns {"learnEmit"|"remoteEmit"}
  */
-export function deriveIrOperation(irType) {
+function deriveIrOperation(irType) {
   return irType === 0xfe00 ? "learnEmit" : "remoteEmit";
 }
 
@@ -993,14 +994,6 @@ function canonicalize(value) {
   return "{" + Object.keys(obj).sort()
     .map((k) => JSON.stringify(k) + ":" + canonicalize(obj[k]))
     .join(",") + "}";
-}
-
-/**
- * @param {unknown} s
- * @returns {string}
- */
-function normalizeUuid(s) {
-  return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
 }
 
 /**

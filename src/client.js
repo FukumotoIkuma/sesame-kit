@@ -77,7 +77,9 @@ import * as presetir from "./presetir.js";
 import * as payment from "./payment.js";
 import { setAutolock as setAutolockRaw } from "./lock.js";
 import { subscribeChunks, timeoutError, badRequest } from "./util.js";
+import { SesameError, ERR } from "./errors.js";
 import { t } from "./i18n.js";
+import { normalizeUuid } from "./crypto.js";
 
 /**
  * 直接構築 (use) 時の既定値。`devices` は持たないため Partial。
@@ -102,11 +104,6 @@ const STATE_CHANGE_KEY = `${ACTION_TYPES.BIZ3_TRIGGER_LOCKER}:pubDeviceStateChan
  */
 function errMsg(e) {
   return e instanceof Error ? e.message : String(e);
-}
-
-/** @param {unknown} s @returns {string} */
-function normalizeUuid(s) {
-  return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
 }
 
 const UUID_RE = /^[0-9a-fA-F-]{32,}$/;
@@ -156,6 +153,7 @@ export class SesameHub3 {
     if (typeof fnOrOpts === "function") { fn = fnOrOpts; }
     else { opts = fnOrOpts || {}; fn = maybeFn; }
     if (typeof fn !== "function") {
+      // P5-1 方針3: SesameHub3.use() の API ミス (プログラマエラー)。serve 非到達。
       throw new Error(t("domain.client.useUsage"));
     }
 
@@ -182,6 +180,7 @@ export class SesameHub3 {
    * }} args
    */
   constructor({ config, tokenStore, configStore = null, debug = false }) {
+    // P5-1 方針3: コンストラクタ必須引数の欠落 (プログラマエラー)。serve 非到達 (構築前)。
     if (!config) throw new Error(t("domain.client.configRequired"));
     if (!tokenStore) throw new Error(t("domain.client.tokenStoreRequired"));
     // P5-6: 直接構築 (embedded) の config は旧 shape (locks/hub3s 永続化) でも受け付ける。
@@ -305,7 +304,10 @@ export class SesameHub3 {
    * @returns {Hub3WsClient}
    */
   _ensureConnected() {
-    if (!this._ws) throw new Error(t("domain.client.notConnected"));
+    // P5-1 方針1: 未接続状態 = retryable な NOT_CONNECTED。serve 到達時は CONNECTION_LOST に写像される。
+    // (registry の requireAuth() が先に connection_lost を投げるため、正常 RPC 経路では
+    //  ここまで到達しない。ライブラリ直利用のフォールバック保証として SesameError にする。)
+    if (!this._ws) throw new SesameError(t("domain.client.notConnected"), { code: ERR.NOT_CONNECTED, retryable: true });
     return this._ws;
   }
 
@@ -376,13 +378,14 @@ export class SesameHub3 {
    */
   async send(remoteName, keyOrUUID) {
     const ws = this._ensureConnected();
-    if (!keyOrUUID) throw new Error(t("domain.client.keyRequired"));
+    // P5-1 方針1: 利用者の入力ミス = BAD_REQUEST。RPC 経由で bad_params に写像される。
+    if (!keyOrUUID) throw badRequest("domain.client.keyRequired");
     const { remote, hub3 } = this.resolveRemote(remoteName ?? undefined);
     const isUUID = UUID_RE.test(keyOrUUID);
     const command = isUUID ? keyOrUUID : remote.keys?.[keyOrUUID];
     if (!command) {
       const avail = Object.keys(remote.keys || {}).join(", ") || "(none)";
-      throw new Error(t("domain.client.unknownKey", { key: keyOrUUID, avail }));
+      throw badRequest("domain.client.unknownKey", { key: keyOrUUID, avail });
     }
     return sendIR(ws, {
       deviceId: /** @type {string} */ (hub3.deviceId),
@@ -430,7 +433,8 @@ export class SesameHub3 {
   async getLoginUser() {
     const ws = this._ensureConnected();
     const email = this._tokenStore.load()?.username;
-    if (!email) throw new Error(t("domain.client.emailNotInStore"));
+    // P5-1 方針1: メール未保存 = 認証情報の欠落 → UNAUTHENTICATED。
+    if (!email) throw new SesameError(t("domain.client.emailNotInStore"), { code: ERR.UNAUTHENTICATED });
     return account.getLoginUser(ws, { email });
   }
 
@@ -510,6 +514,8 @@ export class SesameHub3 {
    * @returns {ConfigStore}
    */
   _requireConfigStore(op) {
+    // P5-1 方針3: serve registry の requireConfigStore() が先に BAD_PARAMS を投げる。
+    // client.js 直利用や registry 外呼び出しのフォールバック (プログラマエラー)。
     if (!this._configStore) throw new Error(t("domain.client.requiresConfigStore", { op }));
     return this._configStore;
   }
@@ -928,9 +934,10 @@ export class SesameHub3 {
     const hub3s = cfg.hub3s || {};
     const names = Object.keys(hub3s);
     const chosen = name || (names.length === 1 ? names[0] : null);
-    if (!chosen) throw new Error(t("domain.client.noHub3Specified"));
+    // P5-1 方針1: hub3 の指定ミス/未設定 = 呼び出し側不正 → BAD_REQUEST。
+    if (!chosen) throw badRequest("domain.client.noHub3Specified");
     const h = hub3s[chosen];
-    if (!h) throw new Error(t("domain.client.unknownHub3", { name: chosen }));
+    if (!h) throw badRequest("domain.client.unknownHub3", { name: chosen });
     return h;
   }
 
@@ -1078,7 +1085,8 @@ export class SesameHub3 {
    */
   async renameDevice(deviceUUID, deviceName) {
     const ws = this._ensureConnected();
-    if (!this._subUUID) throw new Error(t("domain.client.subUUIDNotAvailable"));
+    // P5-1 方針1: subUUID は connect() 後に idToken から取得。未接続/未取得は NOT_CONNECTED 相当。
+    if (!this._subUUID) throw new SesameError(t("domain.client.subUUIDNotAvailable"), { code: ERR.NOT_CONNECTED, retryable: true });
     return devices.updateDeviceName(ws, { subUUID: this._subUUID, deviceUUID, deviceName });
   }
 
@@ -1227,7 +1235,8 @@ export class SesameHub3 {
   async invokeWebAPI({ func, query, body, apiKeyId }) {
     const ws = this._ensureConnected();
     const key = apiKeyId || this._config.apiKeyId;
-    if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
+    // P5-1 方針1: apiKeyId 未設定 = 呼び出し側不正 → BAD_REQUEST。
+    if (!key) throw badRequest("domain.client.apiKeyIdRequired");
     return devices.invokeWebAPI(ws, { func, apiKeyId: key, query, body });
   }
 
@@ -1235,7 +1244,7 @@ export class SesameHub3 {
   async webapiDeviceState({ deviceId, apiKeyId } = {}) {
     const ws = this._ensureConnected();
     const key = apiKeyId || this._config.apiKeyId;
-    if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
+    if (!key) throw badRequest("domain.client.apiKeyIdRequired");
     return devices.webapiDeviceState(ws, { apiKeyId: key, deviceId: /** @type {string} */ (deviceId) });
   }
 
@@ -1243,7 +1252,7 @@ export class SesameHub3 {
   async webapiDeviceHistory({ deviceId, page, lg, isBiz, apiKeyId } = {}) {
     const ws = this._ensureConnected();
     const key = apiKeyId || this._config.apiKeyId;
-    if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
+    if (!key) throw badRequest("domain.client.apiKeyIdRequired");
     return devices.webapiDeviceHistory(ws, { apiKeyId: key, deviceId: /** @type {string} */ (deviceId), page, lg, isBiz });
   }
 
@@ -1251,7 +1260,7 @@ export class SesameHub3 {
   async webapiSendCmd({ deviceId, cmd, sign, history, apiKeyId } = {}) {
     const ws = this._ensureConnected();
     const key = apiKeyId || this._config.apiKeyId;
-    if (!key) throw new Error(t("domain.client.apiKeyIdRequired"));
+    if (!key) throw badRequest("domain.client.apiKeyIdRequired");
     return devices.webapiSendCmd(ws, { apiKeyId: key, deviceId: /** @type {string} */ (deviceId), cmd, sign, history });
   }
 

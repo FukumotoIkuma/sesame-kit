@@ -16,13 +16,9 @@ import { SesameClient, SesameError as SesameRpcClientError } from "sesame-kit/cl
 import { SesameHub3 } from "../client.js";
 import { configPaths } from "../paths.js";
 import { writeSecretFile } from "../secure-fs.js";
-import { Daemon } from "../serve/daemon.js";
-import { startStdioFraming } from "../serve/framing/stdio.js";
-import { startSocketFraming } from "../serve/framing/socket.js";
-import { startHttpFraming } from "../serve/framing/http.js";
-import { startWsFraming } from "../serve/framing/ws.js";
-import { startGrpcFraming } from "../serve/framing/grpc.js";
-import { generateToken } from "../serve/framing/token.js";
+// P5-3: framing 群と Daemon を action 内の動的 import へ移して、
+// `sesame lock` 等の非 serve コマンドが serve 層をロードしないようにする。
+// (Daemon / framing は serve action が呼ばれたときだけ評価される)
 import { t } from "../i18n.js";
 
 const DEF = { http: 8080, ws: 8081, grpc: 50051 };
@@ -366,6 +362,27 @@ async function cmdRpc(method, opts, program) {
  * @param {import("commander").Command} program
  */
 async function cmdServe(opts, program) {
+  // P5-3: Daemon と全 framing を動的 import (action が呼ばれたときのみロード)。
+  // session-ui の遅延 import (optional-deps.js) と同じパターン。
+  // これにより `sesame lock` 等の非 serve コマンドが serve 層を評価しなくなる。
+  const [
+    { Daemon },
+    { startStdioFraming },
+    { startSocketFraming },
+    { startHttpFraming },
+    { startWsFraming },
+    { startGrpcFraming },
+    { generateToken },
+  ] = await Promise.all([
+    import("../serve/daemon.js"),
+    import("../serve/framing/stdio.js"),
+    import("../serve/framing/socket.js"),
+    import("../serve/framing/http.js"),
+    import("../serve/framing/ws.js"),
+    import("../serve/framing/grpc.js"),
+    import("../serve/framing/token.js"),
+  ]);
+
   // どのフレーミングを上げるか決定。明示が無ければ UDS のみ。
   const wantStdio = !!opts.stdio;
   const httpPort = portOf(opts.http, DEF.http);

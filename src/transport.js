@@ -27,6 +27,7 @@
 import WebSocket from "ws";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { t } from "./i18n.js";
+import { rejected } from "./util.js";
 
 /**
  * WS 接続状態。
@@ -137,6 +138,7 @@ export class Hub3WsClient {
    * @param {Hub3WsClientConfig} cfg
    */
   constructor(cfg) {
+    // P5-1 方針3: コンストラクタ必須引数の欠落 (プログラマエラー)。serve 非到達 (構築前)。
     if (!cfg.wsUrl) throw new Error(t("domain.transport.wsUrlRequired"));
     if (!cfg.idToken) throw new Error(t("domain.transport.idTokenRequired"));
     this.cfg = { lang: "ja", debug: false, autoReconnect: true, ...cfg };
@@ -340,6 +342,7 @@ export class Hub3WsClient {
     // これにより不正な wsUrl を接続前に弾き、token/lang のエンコードも URL API に委ねる。
     const wsBase = new URL(this.cfg.wsUrl);
     if (wsBase.protocol !== "wss:" && wsBase.protocol !== "ws:") {
+      // P5-1 方針3: wsUrl のプロトコルが不正 (プログラマエラー / 内部不変条件)。
       throw new Error(t("domain.transport.wsUrlRequired"));
     }
     wsBase.searchParams.set("token", this.idToken);
@@ -733,7 +736,8 @@ export async function sendIR(client, params) {
   };
   const resp = await client.request(frame, 10_000);
   if (!resp.success) {
-    throw new Error(t("domain.transport.sendIRFailed", { detail: resp.message || JSON.stringify(resp) }));
+    // P5-1 方針1: サーバが success:false を返した = 上流の明示的拒否 → REJECTED。
+    throw rejected(t("domain.transport.sendIRFailed", { detail: resp.message || JSON.stringify(resp) }));
   }
   return resp;
 }
@@ -758,7 +762,8 @@ export async function getIRCodes(client, params) {
   };
   const resp = await client.request(frame, 10_000);
   if (!resp.success) {
-    throw new Error(t("domain.transport.getIRCodesFailed", { detail: resp.message || JSON.stringify(resp) }));
+    // P5-1 方針1: サーバが success:false を返した = 上流の明示的拒否 → REJECTED。
+    throw rejected(t("domain.transport.getIRCodesFailed", { detail: resp.message || JSON.stringify(resp) }));
   }
   return /** @type {Array<{name:string, keyUUID:string}>} */ (resp.data || []);
 }

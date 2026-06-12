@@ -57,6 +57,39 @@ export function bufToHex(buf: Buffer | Uint8Array): string;
  */
 export function uuidToHistoryBase64(uuid: string, prefix?: string): string;
 /**
+ * UUID を照合用に正規化する (ハイフン除去 + 小文字化、空安全)。
+ *
+ * 用途: deviceUUID の比較/フィルタリングで大文字小文字・ハイフン有無を吸収する。
+ *   例: "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" → "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+ *
+ * ★ toLowerCase が必要な理由: SESAME クラウド/WM2/Hub3 は UUID を大文字で返す場合があり、
+ *   BLE 側 (noble) は小文字を返す。正規化せずに比較するとフィルタが取りこぼす。
+ *   一方、鍵導出用の raw hex (insertSesamesData の noHashUUID 等) は大小を変えても
+ *   バイト列は変わらないが、SDK 原文は大小変換なし (1:1 ポート規範)。
+ *   鍵導出には src/ble/wm2.js, hub3.js の stripDashes を使うこと (P5-4)。
+ *
+ * ★ client.js/lock.js/iot.js/config.js/cli/*.js/ble/index.js/ble/transport.js の
+ *   14 箇所に重複していた同義実装をここに統合 (REFACTORING_PLAN P5-4 / ARCH-05)。
+ *
+ * @param {unknown} s UUID 文字列 (非文字列は "" を返す)
+ * @returns {string} 32 文字小文字 hex (ハイフンなし)、または "" (非文字列入力)
+ */
+export function normalizeUuid(s: unknown): string;
+/**
+ * 32桁 hex 文字列をハイフン付き UUID 文字列に整形する。
+ *
+ * 参照: `DataExtention.kt:41-46` (noHashtoUUID) — hex を 8-4-4-4-12 に区切る純粋整形。
+ *   入力検証 (32 hex = 16B) は hexToBuf に委譲。通常呼び出し元は Buffer.toString("hex") +
+ *   固定 prefix の連結なので落ちないが、不正長を黙って通さないよう防壁として検証する。
+ *
+ * ★ transport.js の旧 hexToUuid / wm2.js の noHashToUUID / hub3.js の noHashToUUID の
+ *   3 重実装をここに統合 (REFACTORING_PLAN P5-4 / ARCH-05)。
+ *
+ * @param {string} hex 32 桁の小文字 hex
+ * @returns {string} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字)
+ */
+export function hexToUuid(hex: string): string;
+/**
  * irType を文字列エイリアス (ac/tv/...) または数値文字列から数値に解決する。
  * @param {string|number} v "ac" | "49152" | 0xc000 等
  * @returns {number}
@@ -239,18 +272,12 @@ export const IR_TYPE: Readonly<{
  * (フォールバックが実際に使われるのは server が type を報告しない異常時のみ)
  */
 export const DEFAULT_IR_TYPE: 65024;
-export const PRODUCT_TYPE: Readonly<{
-    [k: string]: number;
-}>;
 /**
  * CHServerAuth.serverKey — サーバが保持する固定 P-256 公開鍵 (uncompressed, 65B, 04 prefix 込み)。
  * CHServerAuth.kt:28-29 の定数をそのまま移植 (推測なし)。
  * @type {string} 130hex (= 65B)
  */
 export const SERVER_AUTH_PUBKEY: string;
-export const MIN_AK_BYTES: 1;
-export const MIN_N_BYTES: 1;
-export const MIN_E_BYTES: 1;
 export const P256_ORDER: bigint;
 import { Buffer } from "node:buffer";
 //# sourceMappingURL=crypto.d.ts.map

@@ -12,6 +12,7 @@ import { pickDeviceUUID } from "./pickers.js";
 import { fmtCloudStatus, sanitizeStatus } from "./lock-ops.js";
 import { promptText, confirm as confirmPrompt } from "../prompts.js";
 import { writeSecretJson } from "../secure-fs.js";
+import { normalizeUuid } from "../crypto.js";
 
 /** @typedef {import("./ctx.js").Program} Program */
 /** @typedef {import("./ctx.js").CmdOpts} CmdOpts */
@@ -153,11 +154,10 @@ async function cmdDeviceReorder(uuids, _opts, program) {
   if (!uuids || uuids.length === 0) die(t("cli.deviceReorderUuidsRequired"), 2);
   await withHub(program, async (hub, { opts }) => {
     const list = /** @type {DeviceInfo[]} */ (await hub.listDevices());
-    const norm = (/** @type {string|undefined} */ s) => (s || "").replace(/-/g, "").toLowerCase();
     /** @type {DeviceInfo[]} */
     const ordered = [];
     for (const u of uuids) {
-      const d = list.find((x) => norm(x.deviceUUID) === norm(u));
+      const d = list.find((x) => normalizeUuid(x.deviceUUID) === normalizeUuid(u));
       if (!d) { die(t("cli.deviceReorderUnknownUuid", { uuid: u }), 2); return; }
       ordered.push(d);
     }
@@ -194,9 +194,9 @@ async function cmdDeviceNotify(uuid, options, program) {
     }
     // 一覧 (notifyList): uuid 指定ならその 1 台、無指定なら全デバイス。
     const list = /** @type {DeviceInfo[]} */ (await hub.listDevices());
-    const target = uuid ? uuid.replace(/-/g, "").toLowerCase() : null;
+    const target = uuid ? normalizeUuid(uuid) : null;
     const items = (target
-      ? list.filter((d) => (d.deviceUUID || "").replace(/-/g, "").toLowerCase() === target)
+      ? list.filter((d) => normalizeUuid(d.deviceUUID) === target)
       : list
     ).map((d) => ({ deviceUUID: d.deviceUUID, deviceModel: d.deviceModel }));
     const data = await hub.getDevicesNotifyStatus({ pushToken, items });

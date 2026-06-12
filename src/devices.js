@@ -605,7 +605,7 @@ function assertHttpOk(res, op) {
  * 既定の REST ホスト (app.properties:3 candyhouse.sesame.api.prod = BuildConfig.ch_server)。
  * config.registerBaseUrl や明示引数で上書き可能。
  */
-export const DEFAULT_REGISTER_BASE_URL = DEFAULT_CH_API_BASE_URL;
+const DEFAULT_REGISTER_BASE_URL = DEFAULT_CH_API_BASE_URL;
 
 /**
  * デフォルト REST transport を作る。

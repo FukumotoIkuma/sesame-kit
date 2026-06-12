@@ -30,6 +30,7 @@ import { Buffer } from "node:buffer";
 import { t } from "../i18n.js";
 import { ITEM_CODES, UNVERIFIED_ITEM_CODES } from "../itemcodes.js";
 import { parseNetworkStatus } from "./protocol.js";
+import { hexToUuid } from "../crypto.js";
 
 const ITEM = ITEM_CODES;
 // 209 (networkType) は SDK 由来でないため隔離された UNVERIFIED_ITEM_CODES から引く (P3-14)。
@@ -40,7 +41,15 @@ function utf8(s) {
   return Buffer.from(String(s), "utf8");
 }
 
-/** ハイフン除去 (大小は保持)。 @param {unknown} u @returns {string} */
+/**
+ * ハイフン除去のみ (大文字・小文字は保持)。鍵導出用。
+ *
+ * ★ normalizeUuid (toLowerCase) を使わない理由 (P5-4):
+ *   鍵導出 (insertSesamesData) での noHashUUID はハイフン除去のみ。SDK 原文
+ *   (CHHub3Device.kt における同等処理) も大小変換なし。比較用途では normalizeUuid を使うこと。
+ * @param {unknown} u
+ * @returns {string}
+ */
 function stripDashes(u) {
   return String(u).replace(/-/g, "");
 }
@@ -230,12 +239,12 @@ const KEY_ENTRY_LEN = 23;
 
 /**
  * 16B → ハイフン付き UUID 文字列 (SDK の toHexString().noHashtoUUID() 相当)。
+ * crypto.js:hexToUuid に統合 (P5-4)。
  * @param {Buffer} raw 16B
  * @returns {string} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字)
  */
 function noHashToUUID(raw) {
-  const hex = raw.toString("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  return hexToUuid(raw.toString("hex"));
 }
 
 /**

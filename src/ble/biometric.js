@@ -24,8 +24,8 @@
 import { Buffer } from "node:buffer";
 import { ITEM_CODES, STP_ITEM_CODES } from "../itemcodes.js";
 import { capabilitiesForModel } from "./devicemodel.js";
-// hex 変換の検証は crypto.js の hexToBuf/bufToHex に一本化 (REFACTORING_PLAN P5-4 / ARCH-08)。
-import { hexToBuf, bufToHex } from "../crypto.js";
+// hex 変換/UUID 正規化は crypto.js に一本化 (REFACTORING_PLAN P5-4)。
+import { hexToBuf, bufToHex, normalizeUuid } from "../crypto.js";
 
 const ITEM = ITEM_CODES;
 const STP_ITEM = STP_ITEM_CODES;
@@ -56,13 +56,16 @@ function hexToBytes(hex) {
   }
 }
 
-/** UUID 文字列/hex 文字列からハイフンを除去した 16B UUID を得る。
+/**
+ * UUID 文字列/hex 文字列からハイフンを除去した 16B UUID を得る。
+ * normalizeUuid (lowercase 込み) を使う。バイト変換で大小は無関係だが、
+ * 正規化関数を統一することでコードパスを減らす (P5-4)。
  * @param {string} id
  * @returns {Buffer}
  */
 function uuidToBytes(id) {
-  const clean = String(id || "").replace(/-/g, "");
-  if (!/^[0-9a-fA-F]{32}$/.test(clean)) {
+  const clean = normalizeUuid(id);
+  if (!/^[0-9a-f]{32}$/.test(clean)) {
     throw new Error(`biometric: deviceUUID must be 16B hex/UUID: ${id}`);
   }
   return hexToBytes(clean);

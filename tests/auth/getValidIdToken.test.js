@@ -158,13 +158,15 @@ describe("getValidIdToken", () => {
       const idToken = makeJwt(now - 10); // すでに過去
       const store = makeStore({ idToken, refreshToken: null, clientId: CONSUMER_CLIENT_ID });
 
-      await expect(getValidIdToken(store)).rejects.toThrow(/idToken expired and no refreshToken/);
+      // P5-1: メッセージは i18n 化済み。コード (UNAUTHENTICATED) で安定確認する。
+      await expect(getValidIdToken(store)).rejects.toMatchObject({ code: "unauthenticated" });
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("idToken が壊れていて exp=0 (= 大過去扱い) + refreshToken 無しでも throw", async () => {
       const store = makeStore({ idToken: "not-a-jwt", refreshToken: null });
-      await expect(getValidIdToken(store)).rejects.toThrow(/idToken expired and no refreshToken/);
+      // P5-1: メッセージは i18n 化済み。コード (UNAUTHENTICATED) で安定確認する。
+      await expect(getValidIdToken(store)).rejects.toMatchObject({ code: "unauthenticated" });
     });
   });
 

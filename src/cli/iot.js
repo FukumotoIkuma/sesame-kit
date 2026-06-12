@@ -23,6 +23,7 @@
 //   - firmware-update は長時間にわたり複数回 progress push が来る。versionTag があれば完了。
 
 import { t } from "../i18n.js";
+import { normalizeUuid } from "../crypto.js";
 
 /**
  * iot サブコマンドの commander options (--device/--secret/--hub3 ほか)。
@@ -366,7 +367,7 @@ async function resolveTarget(ctx, hub, options, { needSecret }) {
 
   // deviceId 指定済みで secretKey だけ足りない → 一覧から該当 UUID の secretKey を補完。
   if (deviceId && needSecret && !secretKey) {
-    const hit = devices.find((d) => normUuid(d.deviceUUID) === normUuid(deviceId));
+    const hit = devices.find((d) => normalizeUuid(d.deviceUUID) === normalizeUuid(deviceId));
     if (hit?.secretKey) secretKey = hit.secretKey;
     if (!secretKey) {
       ctx.die(t("iot.resolve.secretUnresolvedDevice", { device: deviceId }), 2);
@@ -526,7 +527,3 @@ function waitForCompletion(events, maxMs) {
   });
 }
 
-/** @param {unknown} s */
-function normUuid(s) {
-  return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
-}

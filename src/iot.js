@@ -36,7 +36,7 @@
 
 import { t } from "./i18n.js";
 import { badRequest, timeoutError } from "./util.js";
-import { cmacTime, hexToBuf } from "./crypto.js";
+import { cmacTime, hexToBuf, normalizeUuid } from "./crypto.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { cmdCode } from "../vendor/biz3/constants/cmdCode.js";
 import { modelNameByProductType } from "../vendor/biz3/constants/sesameDeviceModel.js";
@@ -310,7 +310,7 @@ export function hub3RelaySwitch(client, p) {
  */
 function buildSesameItemExtra(iotPayload) {
   // sesameId はハイフン除去 → hex デコード (16B)
-  const cleanSesameId = iotPayload.sesameId?.replace(/-/g, "") ?? "";
+  const cleanSesameId = normalizeUuid(iotPayload.sesameId);
   const sesameIdArray = hexStringToUint8Array(cleanSesameId);
 
   // ssmSecKa は hex デコード (16B)
@@ -492,14 +492,6 @@ export async function openMatterPairingWindow(client, p) {
   const payload = buildIotPayload({ cmd, deviceId, secretKey });
   const msg = await sendIotCmdAwait(client, { topic, payload, cmd, deviceId, timeoutMs });
   return { statusCode: msg?.data?.statusCode, message: msg };
-}
-
-/**
- * @param {string|null|undefined} s
- * @returns {string}
- */
-function normalizeUuid(s) {
-  return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
 }
 
 // テスト用に内部ヘルパーも公開 (frame/byte 検証のため)。

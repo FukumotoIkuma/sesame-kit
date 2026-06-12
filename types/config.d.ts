@@ -18,14 +18,6 @@ export function migrateConfig(raw?: Partial<ConfigData> & Record<string, unknown
  */
 export function normalizeConfig(raw?: Partial<ConfigData>): LoadedConfig;
 /**
- * irType から sendIR の operation を導出する (P3-8)。
- * 自己学習リモコン (実 type 0xFE00) のみ learnEmit、プリセット (0xC000/0x2000/0xE000/0x8000)
- * は remoteEmit + HXD code (remote-air/index.js:369 / remote-non-air/index.js:155-156)。
- * @param {number} irType
- * @returns {"learnEmit"|"remoteEmit"}
- */
-export function deriveIrOperation(irType: number): "learnEmit" | "remoteEmit";
-/**
  * ロック系 model か (biz3 lockModelDevices と完全一致, gUtils.js:279-294)。
  * @param {string|null|undefined} model
  * @returns {boolean}

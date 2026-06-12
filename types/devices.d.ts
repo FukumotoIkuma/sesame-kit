@@ -429,11 +429,6 @@ export function registerSesame5(transport: RegisterTransport, { deviceUUID, prod
     serverSecret: string;
 }): Promise<any>;
 /**
- * 既定の REST ホスト (app.properties:3 candyhouse.sesame.api.prod = BuildConfig.ch_server)。
- * config.registerBaseUrl や明示引数で上書き可能。
- */
-export const DEFAULT_REGISTER_BASE_URL: "https://app.candyhouse.co/prod";
-/**
  * 下位 WS トランスポート。完全な型は transport.js の Hub3WsClient。
  */
 export type WsClient = import("./transport.js").Hub3WsClient;

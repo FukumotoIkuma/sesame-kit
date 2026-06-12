@@ -10,6 +10,7 @@ import { die, isJsonMode } from "./errors.js";
 import { loadCtx, withHub, out, canPrompt } from "./ctx.js";
 import { pickRemoteName, pickRemoteKeyName, printSyncResult } from "./pickers.js";
 import { selectFromList, promptText } from "../prompts.js";
+import { normalizeUuid } from "../crypto.js";
 
 /** @typedef {import("./ctx.js").Program} Program */
 /** @typedef {import("./ctx.js").CmdOpts} CmdOpts */
@@ -135,7 +136,7 @@ async function cmdRemoteAdd(_opts, program) {
     // chosen.hub3DeviceUUID に対応する config 上の hub3 名を解決
     const cfg = hub.config;
     const hub3Entry = Object.entries(cfg.hub3s).find(
-      ([, h]) => /** @type {string} */ (h.deviceId).replace(/-/g, "").toLowerCase() === chosen.hub3DeviceUUID.replace(/-/g, "").toLowerCase(),
+      ([, h]) => normalizeUuid(/** @type {string} */ (h.deviceId)) === normalizeUuid(chosen.hub3DeviceUUID),
     );
     const hub3Name = hub3Entry ? hub3Entry[0] : null;
     if (!hub3Name) die(t("cli.remoteParentHub3NotFound"), 2);

@@ -22,8 +22,8 @@ import { spawnSync } from "node:child_process";
 import { t } from "../i18n.js";
 import { GATT, COMPANY_ID } from "./protocol.js";
 import { PRODUCT_TYPES, KIND } from "./devicemodel.js";
-// hex 検証は crypto.js の hexToBuf に一本化 (REFACTORING_PLAN P5-4 / ARCH-08)。
-import { hexToBuf } from "../crypto.js";
+// UUID 正規化・hex→UUID 変換は crypto.js に統合 (REFACTORING_PLAN P5-4)。
+import { normalizeUuid, hexToUuid } from "../crypto.js";
 
 // 既定 GATT は SESAME ロック (protocol.js fd81 系)。WM2 のように別サービス UUID で discover/
 // subscribe する必要があるデバイスは、createBleTransport/NobleTransport/scanSesames に
@@ -83,11 +83,6 @@ const require = createRequire(import.meta.url);
  * @typedef {Error & {code?:string}} CodedError code 付きエラー (CLI が分岐に使う BLE_* コード)。
  */
 
-/** noble 形式 (小文字・ハイフン無し) に正規化。 @param {string} u @returns {string} */
-function nobleUuid(u) {
-  return String(u).replace(/-/g, "").toLowerCase();
-}
-
 // ---------- advertise パース (Sesame2BleAdvertisement.kt CHadv の移植) ----------
 //
 // ★オフセット注意: Android の CHadv は advBytes = manufacturerSpecificData.valueAt(0) で
@@ -107,19 +102,6 @@ const ADV_OFF = 2; // company ID 2B 分のオフセット (md[i+2] = advBytes[i]
 // 全リトライ失敗 = リンク断扱いとし、onDisconnect を発火させて pending を fail-fast させる。
 const WRITE_MAX_RETRIES = 5;        // 初回 + この回数までリトライ
 const WRITE_RETRY_BASE_MS = 20;     // バックオフ初期遅延 (20,40,80,160,320ms)
-
-/**
- * hex 文字列 (32桁) を UUID 文字列に整形する (noHashtoUUID, DataExtention.kt:41-46)。
- * 入力検証 (32 hex = 16B) は crypto.js:hexToBuf に委譲 (P5-4)。呼び出し元は
- * Buffer.toString("hex") + 固定 prefix の連結なので通常ここでは絶対に落ちないが、
- * slice ベースの整形は不正長を黙って通すため防壁として明示検証する。
- * @param {string} hex 32 桁の hex
- * @returns {string} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字)
- */
-function hexToUuid(hex) {
-  hexToBuf(hex, { bytes: 16 }); // 検証のみ (32hex / 16B 以外は明示エラー)
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-}
 
 // CHadv.deviceID の機種別 prefix (Sesame2BleAdvertisement.kt:49-66)。
 // WM2 : "00000000055afd810001" + advBytes[3..9](6B hex)
@@ -261,7 +243,7 @@ export function advToDeviceUUID(md, localName) {
  */
 function idEquals(a, b) {
   if (!a || !b) return false;
-  return nobleUuid(a) === nobleUuid(b);
+  return normalizeUuid(a) === normalizeUuid(b);
 }
 
 // noble (CoreBluetooth バインディング) は一度ロードするとネイティブハンドルがイベントループに
@@ -452,7 +434,7 @@ export async function scanSesames({ deviceUUIDs = [], timeoutMs = 8_000, debug =
   const noble = loadNoble();
   const log = debug ? (/** @type {any[]} */ ...a) => console.error("[ble:scan]", ...a) : () => {};
   await waitPoweredOn(noble, log);
-  const want = new Set(deviceUUIDs.map(nobleUuid));
+  const want = new Set(deviceUUIDs.map(normalizeUuid));
   /** @type {Map<string, NoblePeripheral>} */
   const found = new Map(); // deviceUUID(dashed lower) -> peripheral
 
@@ -471,15 +453,15 @@ export async function scanSesames({ deviceUUIDs = [], timeoutMs = 8_000, debug =
       // OS2 機種の UUID 導出に localName が必要。Sesame2BleAdvertisement.kt:68-74 参照。
       const uuid = advToDeviceUUID(p.advertisement?.manufacturerData, p.advertisement?.localName);
       if (!uuid) return; // SESAME でない
-      if (want.size && !want.has(nobleUuid(uuid))) return; // 対象外
+      if (want.size && !want.has(normalizeUuid(uuid))) return; // 対象外
       if (!found.has(uuid)) { found.set(uuid, p); log("found", uuid); }
       // 目的の全 UUID が揃ったら早期終了
-      if (want.size && want.size <= found.size && [...want].every((w) => [...found.keys()].some((k) => nobleUuid(k) === w))) {
+      if (want.size && want.size <= found.size && [...want].every((w) => [...found.keys()].some((k) => normalizeUuid(k) === w))) {
         finish();
       }
     };
     noble.on("discover", onDiscover);
-    noble.startScanningAsync([nobleUuid(gatt.SERVICE)], false).catch((/** @type {any} */ e) => {
+    noble.startScanningAsync([normalizeUuid(gatt.SERVICE)], false).catch((/** @type {any} */ e) => {
       log("scan start failed", e?.message);
       finish();
     });
@@ -589,7 +571,7 @@ export async function listNearbyDevices({ timeoutMs = 8_000, debug = false, incl
       else { Object.assign(existing, { rssi: entry.rssi, localName: entry.localName, peripheral: entry.peripheral }); }
     };
     noble.on("discover", onDiscover);
-    noble.startScanningAsync([nobleUuid(gatt.SERVICE)], false).catch((/** @type {any} */ e) => {
+    noble.startScanningAsync([normalizeUuid(gatt.SERVICE)], false).catch((/** @type {any} */ e) => {
       log("scan start failed", e?.message);
       finish();
     });
@@ -682,8 +664,8 @@ export class NobleTransport {
 
     // 3) service / characteristic を取得
     const { characteristics } = await peripheral.discoverSomeServicesAndCharacteristicsAsync(
-      [nobleUuid(this._gatt.SERVICE)],
-      [nobleUuid(this._gatt.WRITE_CHAR), nobleUuid(this._gatt.NOTIFY_CHAR)],
+      [normalizeUuid(this._gatt.SERVICE)],
+      [normalizeUuid(this._gatt.WRITE_CHAR), normalizeUuid(this._gatt.NOTIFY_CHAR)],
     );
     this._writeChar = characteristics.find((c) => idEquals(c.uuid, this._gatt.WRITE_CHAR)) || null;
     this._notifyChar = characteristics.find((c) => idEquals(c.uuid, this._gatt.NOTIFY_CHAR)) || null;
@@ -820,7 +802,7 @@ export class NobleTransport {
       };
 
       noble.on("discover", onDiscover);
-      noble.startScanningAsync([nobleUuid(this._gatt.SERVICE)], false).catch((/** @type {any} */ e) => {
+      noble.startScanningAsync([normalizeUuid(this._gatt.SERVICE)], false).catch((/** @type {any} */ e) => {
         clearTimeout(to);
         noble.removeListener("discover", onDiscover);
         reject(new Error(t("ble.scanStartFailed", { cause: e?.message || e })));

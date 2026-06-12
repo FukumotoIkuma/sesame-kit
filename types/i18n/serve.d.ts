@@ -65,6 +65,8 @@ declare namespace _default {
         "serve.connNotRegistered": string;
         "serve.refreshAccountFailed": string;
         "serve.missingParam": string;
+        "serve.unsupportedJsonKey": string;
+        "serve.unsupportedBleOp": string;
         "serve.notAuthenticated": string;
         "serve.cloudNotConnected": string;
         "serve.desc.lockNameParam": string;
@@ -147,7 +149,6 @@ declare namespace _default {
         "serve.sum.irListKeys": string;
         "serve.desc.irListKeysHub3DeviceId": string;
         "serve.desc.irListKeysIrDeviceUUID": string;
-        "serve.desc.hub3DeviceIdAlias": string;
         "serve.sum.irLearn": string;
         "serve.sum.irListRemotes": string;
         "serve.sum.irSearchRemotes": string;
@@ -274,6 +275,8 @@ declare namespace _default {
         "serve.connNotRegistered": string;
         "serve.refreshAccountFailed": string;
         "serve.missingParam": string;
+        "serve.unsupportedJsonKey": string;
+        "serve.unsupportedBleOp": string;
         "serve.notAuthenticated": string;
         "serve.cloudNotConnected": string;
         "serve.desc.lockNameParam": string;
@@ -356,7 +359,6 @@ declare namespace _default {
         "serve.sum.irListKeys": string;
         "serve.desc.irListKeysHub3DeviceId": string;
         "serve.desc.irListKeysIrDeviceUUID": string;
-        "serve.desc.hub3DeviceIdAlias": string;
         "serve.sum.irLearn": string;
         "serve.sum.irListRemotes": string;
         "serve.sum.irSearchRemotes": string;

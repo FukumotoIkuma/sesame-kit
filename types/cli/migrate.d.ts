@@ -14,12 +14,6 @@
  * @param {Program} program
  */
 export function cmdMigrate(srcDir: string | undefined, _opts: CmdOpts, program: Program): Promise<void>;
-/**
- * .env の素朴なパーサ (KEY=value、コメント/クォート対応)。dotenv 依存を持たないための内製。
- * @param {string} content
- * @returns {Record<string, string>}
- */
-export function parseDotenv(content: string): Record<string, string>;
 export type Program = import("./ctx.js").Program;
 export type CmdOpts = import("./ctx.js").CmdOpts;
 /**

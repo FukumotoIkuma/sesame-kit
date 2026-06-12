@@ -133,8 +133,6 @@ export function makeApiGatewayTransport({ baseUrl, credentialsProvider, apiKey, 
     text: string;
     json: any;
 }>;
-/** AWS リージョン (ApiClientConfigBuilder.kt:18 DEFAULT_REGION)。 */
-export const AWS_REGION: "ap-northeast-1";
 /** Cognito Identity Pool ID (app.properties:8 aws.cognito.identityPoolId)。 */
 export const IDENTITY_POOL_ID: "ap-northeast-1:0a1820f1-dbb3-4bca-9227-2a92f6abf0ae";
 /** Cognito User Pool ID (app.properties:9 aws.cognito.userPoolId)。GetId の Logins キーに使う。 */

@@ -745,4 +745,5 @@ export { WifiModule2, WM2_GATT, WM2_ACTION, scanWifiSSIDData, setWifiSSIDData, s
 export { Hub3Commands, parseHub3Publish, parseNetworkType, parseMechSetting as parseHub3MechSetting, parseScanWifiSSID as parseHub3ScanWifiSSID, parseSesameKeys as parseHub3SesameKeys, networkTypeData } from "./hub3.js";
 export { updateFirmware, updateFirmwareBleOnly, updateFirmwareWM2, onMoveToOtaProgress, onWM2OtaProgress } from "./dfu.js";
 export { SesameOS2Ble, SesameOS2BleSession, SesameOS2BleCipher } from "./os2/index.js";
+export { invokePath, reviveJsonArg, collectWifiScan, wifiViewOf, bleCommandAck, WM2_API_GATEWAY_CLIENT_ID } from "./rpc-helpers.js";
 //# sourceMappingURL=index.d.ts.map

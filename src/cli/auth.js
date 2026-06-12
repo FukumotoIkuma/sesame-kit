@@ -50,7 +50,7 @@ export async function cmdLogin(email, _opts, program) {
  * @param {{ quiet?: boolean }} [opts]
  * @returns {Promise<BootstrapSummary>} 取り込みサマリ
  */
-export async function bootstrapAfterLogin(program, { quiet = false } = {}) {
+async function bootstrapAfterLogin(program, { quiet = false } = {}) {
   /** @param {...unknown} a */
   const log = (...a) => { if (!quiet) console.error(...a); };
   /** @type {BootstrapSummary} */

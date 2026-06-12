@@ -290,7 +290,7 @@ describe("ble.scan: 近接デバイス発見の結線テスト (P1-7 / R2:SURF-2
 
     // peripheral ハンドルが含まれていないこと
     for (const d of r.devices) {
-      expect(Object.prototype.hasOwnProperty.call(d, "peripheral")).toBe(false);
+      expect(Object.hasOwn(d, "peripheral")).toBe(false);
     }
 
     // 各フィールドが保持されていること
@@ -336,10 +336,10 @@ describe("ble.scan: 近接デバイス発見の結線テスト (P1-7 / R2:SURF-2
 
 describe("collectWifiScan / wifiViewOf 単体", () => {
   it("scanWifiSSID の ack 失敗は reject に伝搬し購読を解除する", async () => {
-    let cb = null;
+    let _cb = null;
     let offCalled = false;
     const view = {
-      onPublish(fn) { cb = fn; return () => { offCalled = true; }; },
+      onPublish(fn) { _cb = fn; return () => { offCalled = true; }; },
       scanWifiSSID: async () => { throw new Error("busy"); },
     };
     await expect(collectWifiScan(view, { collectMs: 1000 })).rejects.toThrow("busy");

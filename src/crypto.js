@@ -132,6 +132,46 @@ export function uuidToHistoryBase64(uuid, prefix = "000c") {
   return Buffer.from(prefix + cleanHex, "hex").toString("base64");
 }
 
+/**
+ * UUID を照合用に正規化する (ハイフン除去 + 小文字化、空安全)。
+ *
+ * 用途: deviceUUID の比較/フィルタリングで大文字小文字・ハイフン有無を吸収する。
+ *   例: "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" → "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+ *
+ * ★ toLowerCase が必要な理由: SESAME クラウド/WM2/Hub3 は UUID を大文字で返す場合があり、
+ *   BLE 側 (noble) は小文字を返す。正規化せずに比較するとフィルタが取りこぼす。
+ *   一方、鍵導出用の raw hex (insertSesamesData の noHashUUID 等) は大小を変えても
+ *   バイト列は変わらないが、SDK 原文は大小変換なし (1:1 ポート規範)。
+ *   鍵導出には src/ble/wm2.js, hub3.js の stripDashes を使うこと (P5-4)。
+ *
+ * ★ client.js/lock.js/iot.js/config.js/cli/*.js/ble/index.js/ble/transport.js の
+ *   14 箇所に重複していた同義実装をここに統合 (REFACTORING_PLAN P5-4 / ARCH-05)。
+ *
+ * @param {unknown} s UUID 文字列 (非文字列は "" を返す)
+ * @returns {string} 32 文字小文字 hex (ハイフンなし)、または "" (非文字列入力)
+ */
+export function normalizeUuid(s) {
+  return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
+}
+
+/**
+ * 32桁 hex 文字列をハイフン付き UUID 文字列に整形する。
+ *
+ * 参照: `DataExtention.kt:41-46` (noHashtoUUID) — hex を 8-4-4-4-12 に区切る純粋整形。
+ *   入力検証 (32 hex = 16B) は hexToBuf に委譲。通常呼び出し元は Buffer.toString("hex") +
+ *   固定 prefix の連結なので落ちないが、不正長を黙って通さないよう防壁として検証する。
+ *
+ * ★ transport.js の旧 hexToUuid / wm2.js の noHashToUUID / hub3.js の noHashToUUID の
+ *   3 重実装をここに統合 (REFACTORING_PLAN P5-4 / ARCH-05)。
+ *
+ * @param {string} hex 32 桁の小文字 hex
+ * @returns {string} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字)
+ */
+export function hexToUuid(hex) {
+  hexToBuf(hex, { bytes: 16 }); // 32hex / 16B 以外は明示エラー
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
 // ---------- cmd codes ----------
 // クラウドと BLE は同一の SesameItemCode を送る (梱包だけが違う)。コード表は src/itemcodes.js に一本化し、
 // クラウド側ではそれを CMD という別名で参照する (歴史的な名前)。biz3 web が施錠/解錠 UI で送るのは
@@ -196,7 +236,7 @@ export function parseIrType(v) {
 // biz3 は modelNameByProductType = { <productType>: "<model名>" }。これを反転して
 // PRODUCT_TYPE = { "<model名>": <productType> } を作る。欠番 (12,34) も自動で反映され、
 // biz3 が機種を追加/変更しても vendor を更新すればそのまま追従する。
-export const PRODUCT_TYPE = Object.freeze(
+const PRODUCT_TYPE = Object.freeze(
   Object.fromEntries(
     Object.entries(modelNameByProductType).map(([pt, model]) => [model, Number(pt)]),
   ),
@@ -450,9 +490,9 @@ export const SERVER_AUTH_PUBKEY =
 // 固定長 assert はしない (SDK getRegisterKey/priKeyToPubKey は長さ検証を持たず、CMAC は長さ非依存)。
 // 取り違え (空入力等) だけを弾くため下限のみ課す。ak=64B/n=4B/e=可変 という実 wire 長も、
 // 16B 揃いの内部ゴールデンベクタも、どちらもこの下限を満たすので両立する。
-export const MIN_AK_BYTES = 1;
-export const MIN_N_BYTES = 1;
-export const MIN_E_BYTES = 1;
+const MIN_AK_BYTES = 1;
+const MIN_N_BYTES = 1;
+const MIN_E_BYTES = 1;
 
 // P-256 (secp256r1/prime256v1) の位数 n。priKey スカラの有効範囲 [1, n-1] 判定に使う。
 export const P256_ORDER = BigInt(

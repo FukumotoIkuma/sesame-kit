@@ -91,6 +91,7 @@ declare namespace _default {
         "domain.util.opFailed": string;
         "domain.util.chunkTimeout": string;
         "domain.crypto.unknownIrType": string;
+        "domain.securefs.lockTimeout": string;
     };
     let ja: {
         "domain.client.useUsage": string;
@@ -184,6 +185,7 @@ declare namespace _default {
         "domain.util.opFailed": string;
         "domain.util.chunkTimeout": string;
         "domain.crypto.unknownIrType": string;
+        "domain.securefs.lockTimeout": string;
     };
 }
 export default _default;

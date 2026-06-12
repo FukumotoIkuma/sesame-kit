@@ -12,7 +12,7 @@
 //   - subUUID はログインユーザ自身の UUID (history 経由でサーバ側操作ログに残る)
 
 import { Buffer } from "node:buffer";
-import { cmacTime, uuidToHistoryBase64, CMD } from "./crypto.js";
+import { cmacTime, uuidToHistoryBase64, CMD, normalizeUuid } from "./crypto.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { TRANSPORT_ERR } from "./transport.js";
 import { t } from "./i18n.js";
@@ -249,10 +249,3 @@ export async function setAutolock(client, { deviceId, secretKey, seconds, timeou
   return { ack, cmd: CMD.AUTOLOCK, seconds };
 }
 
-/**
- * @param {string|null|undefined} s
- * @returns {string}
- */
-function normalizeUuid(s) {
-  return typeof s === "string" ? s.replace(/-/g, "").toLowerCase() : "";
-}

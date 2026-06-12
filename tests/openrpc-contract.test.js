@@ -120,7 +120,7 @@ function methodSetFingerprint(doc) {
 describe("CONTRACT_VERSION ↔ メソッド集合フィンガープリント連動 (規範7)", () => {
   it("現 CONTRACT_VERSION がフィンガープリント表に登録されている", () => {
     // この assert が fail した場合: version を bump してフィンガープリントを KNOWN_FINGERPRINTS に追加する。
-    const registered = Object.prototype.hasOwnProperty.call(KNOWN_FINGERPRINTS, CONTRACT_VERSION);
+    const registered = Object.hasOwn(KNOWN_FINGERPRINTS, CONTRACT_VERSION);
     expect(registered).toBe(
       true,
       `CONTRACT_VERSION=${CONTRACT_VERSION} が KNOWN_FINGERPRINTS に未登録。` +

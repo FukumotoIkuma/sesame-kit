@@ -36,6 +36,7 @@ import { updateFirmware as dfuUpdateFirmware, updateFirmwareBleOnly, updateFirmw
 
 import { scanSesames, listNearbyDevices, NobleTransport } from "./transport.js";
 import { signGuestKey } from "../devices.js";
+import { normalizeUuid } from "../crypto.js";
 
 export { SesameBleSession, BleResultError } from "./session.js";
 // SesameResultCode (デバイス層の結果コード taxonomy)。BLE エラーの .resultName で分岐可能。
@@ -104,6 +105,16 @@ export * as dfu from "./dfu.js";
 // SesameBle (OS3) とは API は揃えてあるが login が ECDH 由来 (keyIndex/ssmPublicKey が必須) で別物。
 export { SesameOS2Ble, SesameOS2BleSession, SesameOS2BleCipher } from "./os2/index.js";
 export * as os2 from "./os2/index.js";
+
+// P5-3 (R2:ARCH-04 + R2:SURF-39 WiFi 収集部): BLE RPC 共有ヘルパをライブラリ消費者にも開放する。
+// invokePath / collectWifiScan / wifiViewOf は serve(registry.js) と CLI(cli/ble.js) 双方が
+// 共有する単一実装。ble/rpc-helpers.js が実体 (葉モジュール)。
+// ライブラリ利用者はここから import できる (SURF-39 の「WiFi 収集がライブラリから import 可能」受け入れ基準)。
+export {
+  invokePath, reviveJsonArg,
+  collectWifiScan, wifiViewOf, bleCommandAck,
+  WM2_API_GATEWAY_CLIENT_ID,
+} from "./rpc-helpers.js";
 
 // ---------- RPC 公開面 allowlist (P4-1 段階3 / P4-2) ----------
 //
@@ -275,13 +286,6 @@ export const BLE_RPC_OPS = Object.freeze({
  * @type {BleRpcOpSpec}
  */
 export const OS2_BLE_RPC_OPS = Object.freeze({ ...OS2_TOPLEVEL_RPC_OPS });
-
-/**
- * deviceUUID 正規化 (照合用)。
- * @param {string} u
- * @returns {string}
- */
-function normId(u) { return String(u).replace(/-/g, "").toLowerCase(); }
 
 const STATUS_WAIT_MS = 4_000;
 
@@ -1131,7 +1135,7 @@ export class SesameBle {
    */
   static async connectMany(entries, { debug = false, scanTimeoutMs = 8_000 } = {}) {
     const found = await scanSesames({ deviceUUIDs: entries.map((e) => e.deviceUUID), timeoutMs: scanTimeoutMs, debug });
-    const byNorm = new Map([...found.entries()].map(([uuid, p]) => [normId(uuid), p]));
+    const byNorm = new Map([...found.entries()].map(([uuid, p]) => [normalizeUuid(uuid), p]));
 
     /** @type {Map<string, SesameBle>} */
     const connected = new Map();
@@ -1140,12 +1144,12 @@ export class SesameBle {
     /** @type {Array<{name:string, error:Error}>} */
     const failed = [];
 
-    const inRange = entries.filter((e) => byNorm.has(normId(e.deviceUUID)));
-    for (const e of entries) if (!byNorm.has(normId(e.deviceUUID))) unreachable.push(e.name);
+    const inRange = entries.filter((e) => byNorm.has(normalizeUuid(e.deviceUUID)));
+    for (const e of entries) if (!byNorm.has(normalizeUuid(e.deviceUUID))) unreachable.push(e.name);
 
     // 見つかったものは並行で connect+login (別 peripheral なので同時接続可)。
     await Promise.all(inRange.map(async (e) => {
-      const peripheral = byNorm.get(normId(e.deviceUUID));
+      const peripheral = byNorm.get(normalizeUuid(e.deviceUUID));
       const ble = new SesameBle({ secretKey: e.secretKey, deviceUUID: e.deviceUUID, model: e.model, debug, transport: new NobleTransport({ peripheral, debug }) });
       // connect() は失敗時 Error を rethrow する (catch 変数の unknown を契約上の Error に絞る純キャスト)。
       try { await ble.connect(); connected.set(e.name, ble); }

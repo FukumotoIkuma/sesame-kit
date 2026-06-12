@@ -1,12 +1,4 @@
 /**
- * config からロック entry を解決する。
- * 優先: 位置引数/--name → default.lock → 単一なら自動 → 対話選択。
- * @param {Program} program
- * @param {string|null|undefined} name
- * @returns {Promise<LockEntry|null>} die 済みなら null
- */
-export function resolveLockEntry(program: Program, name: string | null | undefined): Promise<LockEntry | null>;
-/**
  * 単発コマンドの経路を決定する。
  *   - 既定 (オート): 能力フル。経路はツールが自動選択する。BLE はスキャン/接続のオーバーヘッドが
  *     あるため毎回は張らず、cloud で運べる op は cloud、cloud で運べない op (autolock など BLE 必須)
@@ -22,16 +14,6 @@ export function pickTransport(op: string, options: {
     cloudOnly?: boolean;
     bleOnly?: boolean;
 }, model: string | null | undefined): "cloud" | "ble";
-/**
- * BLE の mechStatus (ble.status() の戻り)。
- * @typedef {{ state?: string, position?: number|null, isBatteryCritical?: boolean, isStop?: boolean, isCritical?: boolean }} MechStatus
- */
-/**
- * mechStatus を 1 行に整形。
- * @param {MechStatus|null|undefined} s
- * @returns {string}
- */
-export function fmtMech(s: MechStatus | null | undefined): string;
 /**
  * cloud の device-status (stateInfo) を fmtMech と揃えた 1 行に整形。
  * @param {{ stateInfo?: { position?: number|null, batteryPercentage?: number|null, CHSesame2Status?: string } }|null|undefined} st
@@ -50,21 +32,6 @@ export function fmtCloudStatus(st: {
  * @returns {unknown}
  */
 export function sanitizeStatus(st: unknown): unknown;
-/**
- * 接続済み SesameBle / SesameOS2Ble に op を実行する**唯一のコア**。単発コマンド・セッションの両方がここを通る
- * (session は保持中の接続を、単発は都度張った接続を渡す。「保持接続があればそれで操作する」という
- * セッションモードの挙動が、両方の既定動作になる)。能力ゲートは SesameBle 側が担保。表示はしない。
- * OS2 ファサード (SesameOS2Ble) も lock/unlock/toggle/click/autolock/status の同名メソッドを持つため、
- * 型は SesameBle | SesameOS2Ble の共通サブタイプとして `any` で受ける (両者に共通 interface 無し)。
- * @param {string} op
- * @param {SesameBle|SesameOS2Ble} ble
- * @param {string|number|null|undefined} seconds
- * @returns {Promise<{result:any, status:MechStatus|null}>}
- */
-export function bleExec(op: string, ble: SesameBle | SesameOS2Ble, seconds: string | number | null | undefined): Promise<{
-    result: any;
-    status: MechStatus | null;
-}>;
 /**
  * BLE で 1 操作 (connect→op→close)。--ble-only 明示 or BLE 必須 op (autolock) 用。
  * OS2 デバイス (capabilitiesForModel(entry.model).os === 2) は SesameOS2Ble ファサードへ委譲。
@@ -123,6 +90,7 @@ export function cmdAct(op: string, name: string | undefined, seconds: string | n
     cloudOnly?: boolean;
     name?: string;
 }, program: Program, deps?: LockOpsDeps): Promise<void>;
+/** @typedef {import("./exec.js").MechStatus} MechStatus */
 /** @typedef {import("./ctx.js").Program} Program */
 /** @typedef {import("./ctx.js").GlobalOpts} GlobalOpts */
 /** @typedef {import("./ctx.js").CliError} CliError */
@@ -140,16 +108,6 @@ export function cmdAct(op: string, name: string | undefined, seconds: string | n
  *  状態取得の "status" だけ CLI 固有に足す。型ごとの可否は cmdAct の能力ゲートが別途判定する。 */
 export const DEVICE_ACTIONS: Set<string>;
 /**
- * BLE の mechStatus (ble.status() の戻り)。
- */
-export type MechStatus = {
-    state?: string;
-    position?: number | null;
-    isBatteryCritical?: boolean;
-    isStop?: boolean;
-    isCritical?: boolean;
-};
-/**
  * cmdDeviceOp / cmdAct が cli.js から注入される依存。
  * maybeHandleBleError は cli.js に実体がある (BLE 環境エラーの終了コード契約をソース固定する
  * テストの都合 + macOS 設定ペイン誘導という「プロセス終端の関心事」のため)。
@@ -157,6 +115,7 @@ export type MechStatus = {
 export type LockOpsDeps = {
     maybeHandleBleError?: (err: unknown) => boolean;
 };
+export type MechStatus = import("./exec.js").MechStatus;
 export type Program = import("./ctx.js").Program;
 export type GlobalOpts = import("./ctx.js").GlobalOpts;
 export type CliError = import("./ctx.js").CliError;
@@ -174,6 +133,7 @@ export type LockEntry = {
      */
     keyIndex?: string | undefined;
 };
-import { SesameBle } from "../ble/index.js";
-import { SesameOS2Ble } from "../ble/index.js";
+import { bleExec } from "./exec.js";
+import { fmtMech } from "./exec.js";
+export { bleExec, fmtMech };
 //# sourceMappingURL=lock-ops.d.ts.map

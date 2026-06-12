@@ -112,6 +112,9 @@ export default {
 
     // ---- crypto.js ----
     "domain.crypto.unknownIrType": "Unknown irType \"{value}\". Specify a number (e.g. 49152) or an alias ({aliases}).",
+
+    // ---- secure-fs.js (P5-1: file lock timeout — user-visible system error) ----
+    "domain.securefs.lockTimeout": "Failed to acquire file lock within {timeoutMs}ms: {lockPath} (held by another process?)",
   },
   ja: {
     // ---- client.js ----
@@ -224,5 +227,8 @@ export default {
 
     // ---- crypto.js ----
     "domain.crypto.unknownIrType": "Unknown irType \"{value}\". 数値 (例 49152) かエイリアス ({aliases}) を指定してください。",
+
+    // ---- secure-fs.js (P5-1) ----
+    "domain.securefs.lockTimeout": "{timeoutMs}ms 以内にファイルロックを取得できませんでした: {lockPath} (別プロセスが保持中?)",
   },
 };

@@ -1,6 +1,7 @@
 // ファイルシステム実装の TokenStore。auth.js から I/O を分離するための薄いラッパ。
 // ライブラリ消費者は独自の実装 (例: keychain, in-memory) に差し替え可能。
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { jwtClaim } from "./auth.js";
 import { configPaths } from "./paths.js";
 import { withFileLock, writeSecretJson } from "./secure-fs.js";
 
@@ -67,23 +68,6 @@ function unlinkIfExists(path) {
 }
 
 /**
- * JWT を decode して exp を返す (秒、UNIX時間)。失敗時は 0。
- * auth.js:75 の jwtExp と同じロジック (非公開関数のためここに最小限を複製)。
- * @param {string|undefined|null} token
- * @returns {number}
- */
-function jwtExpSec(token) {
-  if (!token) return 0;
-  try {
-    const payload = token.split(".")[1];
-    const json = Buffer.from(payload, "base64").toString("utf8");
-    return Number(JSON.parse(json).exp) || 0;
-  } catch {
-    return 0;
-  }
-}
-
-/**
  * トークン一式の「新しさ」を ms で返す。比較専用 (絶対時刻としては使わない)。
  *   1. lastRefresh (auth.js が save のたびに now を入れる ISO timestamp)
  *   2. idToken の exp claim (同一プールの idToken は有効期間が一定なので
@@ -99,7 +83,7 @@ function tokenFreshnessMs(t) {
     const parsed = Date.parse(t.lastRefresh);
     if (!Number.isNaN(parsed)) ms = parsed;
   }
-  return Math.max(ms, jwtExpSec(t.idToken) * 1000);
+  return Math.max(ms, (Number(jwtClaim(t.idToken, "exp")) || 0) * 1000);
 }
 
 // merge 規則 (P2-8 / ARCH-13 — プロセス間 lost-update 防止):

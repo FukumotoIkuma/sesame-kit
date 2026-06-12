@@ -148,38 +148,40 @@ function asErr(e) {
 }
 
 /**
- * JWT を decode して exp を返す (秒、UNIX時間)。失敗時は 0。
- * null/undefined を渡した場合も 0 を返す (catch で包まれる)。
+ * JWT payload (base64url) をデコードして指定 claim の値を返す。
+ * token が null/undefined/不正形式/JSON 不正 いずれでも null を返す (catch で包む)。
+ * null/undefined → token.split が TypeError → catch → null の経路が意図的動作。
+ * P5-5: jwtExp / jwtAud / jwtSub の共通基底として抽出。tokens.js も import して使用。
  * @param {string|null|undefined} token
- * @returns {number}
+ * @param {string} name  claim 名 (例: "exp", "aud", "sub")
+ * @returns {string|number|null}
  */
-function jwtExp(token) {
-  if (!token) return 0;
+export function jwtClaim(token, name) {
   try {
+    // @ts-expect-error — null/undefined は token.split() で TypeError → catch → null
     const payload = token.split(".")[1];
     const json = Buffer.from(payload, "base64").toString("utf8");
-    return JSON.parse(json).exp || 0;
-  } catch {
-    return 0;
-  }
-}
-
-/**
- * idToken の aud claim (= clientId) を返す。
- * null/undefined を渡した場合も null を返す (catch で包まれる)。
- * @param {string|null|undefined} token
- * @returns {string|null}
- */
-function jwtAud(token) {
-  if (!token) return null;
-  try {
-    const payload = token.split(".")[1];
-    const json = Buffer.from(payload, "base64").toString("utf8");
-    return JSON.parse(json).aud || null;
+    return JSON.parse(json)[name] || null;
   } catch {
     return null;
   }
 }
+
+/**
+ * JWT を decode して exp を返す (秒、UNIX時間)。失敗時は 0。
+ * null/undefined を渡した場合も 0 を返す。
+ * @param {string|null|undefined} token
+ * @returns {number}
+ */
+function jwtExp(token) { return /** @type {number} */ (jwtClaim(token, "exp")) || 0; }
+
+/**
+ * idToken の aud claim (= clientId) を返す。
+ * null/undefined を渡した場合も null を返す。
+ * @param {string|null|undefined} token
+ * @returns {string|null}
+ */
+function jwtAud(token) { return /** @type {string|null} */ (jwtClaim(token, "aud")); }
 
 /**
  * idToken の `sub` claim (= Cognito user UUID) を返す。
@@ -188,15 +190,7 @@ function jwtAud(token) {
  * @param {string} token
  * @returns {string|null}
  */
-export function jwtSub(token) {
-  try {
-    const payload = token.split(".")[1];
-    const json = Buffer.from(payload, "base64").toString("utf8");
-    return JSON.parse(json).sub || null;
-  } catch {
-    return null;
-  }
-}
+export function jwtSub(token) { return /** @type {string|null} */ (jwtClaim(token, "sub")); }
 
 /** @param {Partial<import("./tokens.js").StoredTokens>} tokens */
 function resolvedClientId(tokens) {
@@ -264,7 +258,8 @@ export async function getValidIdToken(store, { marginSec = 120 } = {}) {
   }
 
   if (!t.refreshToken) {
-    throw new SesameError("idToken expired and no refreshToken. Re-run login.", { code: ERR.UNAUTHENTICATED });
+    // P5-1: i18n 化 (元の英語ハードコードを auth.noRefreshToken へ。serve 到達面)。
+    throw new SesameError(tr("auth.noRefreshToken"), { code: ERR.UNAUTHENTICATED });
   }
   const clientId = CONSUMER_CLIENT_ID;
   /** @type {Record<string, string>} */
@@ -432,6 +427,8 @@ export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT
     // PASSWORD_VERIFIER 応答の次は CUSTOM_CHALLENGE が来るはず。
     // _aws_sdk_ref/CognitoUser.java:3071 → respondToChallenge → handleChallenge。
     if (verifierResp.ChallengeName !== "CUSTOM_CHALLENGE") {
+      // P5-1 方針3: loginInitiate は serve 非到達 (CLI ログインフロー専用)。
+      // Cognito から予期しないチャレンジ名が返った場合の内部不変条件違反。
       throw new Error(`Unexpected challenge after PASSWORD_VERIFIER: ${verifierResp.ChallengeName} (expected CUSTOM_CHALLENGE)`);
     }
     store.savePending({
@@ -447,6 +444,7 @@ export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT
   }
 
   if (resp.ChallengeName !== "CUSTOM_CHALLENGE") {
+    // P5-1 方針3: loginInitiate は serve 非到達 (CLI ログインフロー専用)。内部不変条件。
     throw new Error(`Unexpected challenge: ${resp.ChallengeName} (expected CUSTOM_CHALLENGE)`);
   }
   store.savePending({
@@ -485,6 +483,7 @@ async function respondToPasswordVerifier({ clientId, session, challengeParameter
   // B mod N == 0 ガード (_aws_sdk_ref/CognitoUser.java:3605-3608)。
   const serverB = BigInt("0x" + srpBHex);
   if (serverB % USER_SRP_N === 0n) {
+    // P5-1 方針3: SRP 内部不変条件 (プログラマエラー/Cognito 異常)。serve 非到達。
     throw new Error("SRP error, B cannot be zero");
   }
 
@@ -516,6 +515,7 @@ async function respondToPasswordVerifier({ clientId, session, challengeParameter
     .update(Buffer.from(userSrpPadHex(A), "hex"))
     .update(Buffer.from(userSrpPadHex(serverB), "hex"))
     .digest("hex"));
+  // P5-1 方針3: SRP 内部不変条件 (プログラマエラー/Cognito 異常)。serve 非到達。
   if (u === 0n) throw new Error("SRP error: u cannot be 0");
 
   // S = (B - k * g^x) ^ (a + u*x) mod N
@@ -573,6 +573,7 @@ async function respondToPasswordVerifier({ clientId, session, challengeParameter
 export async function loginVerify(store, code) {
   const s = store.loadPending();
   if (!s) {
+    // P5-1 方針3: loginVerify は serve 非到達 (CLI ログインフロー専用) なので plain Error を維持。
     throw new Error(tr("auth.noPending"));
   }
   // 参照 SDK は全チャレンジ回答に保存済み DEVICE_KEY を注入する
@@ -648,10 +649,13 @@ export async function loginVerify(store, code) {
     // login のまま verify をやり直せるようにする (clearPending しない)。これをしないと
     // 1 文字のミスタイプで login からやり直しになる。
     store.savePending({ ...s, session: resp.Session, initiatedAt: new Date().toISOString() });
+    // P5-1 方針3: loginVerify は serve 非到達 (CLI ログインフロー専用) なので plain Error を維持。
     throw new Error(tr("auth.wrongCodeRetry"));
   } else if (resp.ChallengeName) {
+    // P5-1 方針3: 同上。Cognito からの予期しないチャレンジ応答。
     throw new Error(tr("auth.anotherChallenge", { name: resp.ChallengeName }));
   } else {
+    // 内部不変条件: AuthenticationResult もチャレンジも来ない (Cognito 実装バグ)。
     throw new Error(`No AuthenticationResult: ${JSON.stringify(resp)}`);
   }
 
@@ -751,6 +755,7 @@ async function confirmDevice(authResult) {
     // NewDeviceMetadata は来たのに ConfirmDevice 用の AccessToken が無い異常系。ここで
     // 黙って deviceKey を保存させると未確認デバイスになり次回 refresh が落ちる。確定不能を
     // 明示的に失敗させ、呼び出し側が deviceKey を永続化しないようにする。
+    // P5-1 方針3: Cognito の応答異常 (内部不変条件)。serve 非到達 (loginVerify 専用)。
     throw new Error("device confirmation failed: auth result has NewDeviceMetadata but no AccessToken");
   }
 
@@ -796,7 +801,9 @@ async function confirmDevice(authResult) {
  */
 async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, devicePassword, session }) {
   if (!deviceKey || !deviceGroupKey || !devicePassword) {
-    throw new Error("DEVICE_SRP_AUTH requested but no stored device credentials. Re-run `sesame login`.");
+    // P5-1: 呼び出し側不正 (デバイス資格情報なし) = UNAUTHENTICATED + i18n 化。
+    // loginVerify 経由の CLI パスが主。ConfirmDevice 未完了やトークン欠損で到達する。
+    throw new SesameError(tr("auth.noDeviceCredentials"), { code: ERR.UNAUTHENTICATED });
   }
 
   const { a, A } = generateEphemeralA();
@@ -811,6 +818,7 @@ async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, de
     ChallengeResponses: { USERNAME: username, DEVICE_KEY: deviceKey, SRP_A: A.toString(16) },
   });
   if (srp.ChallengeName !== "DEVICE_PASSWORD_VERIFIER") {
+    // P5-1 方針3: Cognito からの予期しないチャレンジ応答 (内部不変条件)。serve 非到達。
     throw new Error(`DEVICE_SRP_AUTH: unexpected challenge ${srp.ChallengeName}`);
   }
   const cp = srp.ChallengeParameters || {};
@@ -847,6 +855,7 @@ async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, de
     },
   });
   if (!verify.AuthenticationResult?.IdToken) {
+    // P5-1 方針3: Cognito が IdToken を返さなかった (内部不変条件)。serve 非到達。
     throw new Error(`DEVICE_PASSWORD_VERIFIER failed: ${JSON.stringify(verify)}`);
   }
   return verify.AuthenticationResult;
@@ -907,6 +916,8 @@ export async function logout(store) {
  * @returns {import("./tokens.js").StoredTokens}
  */
 export function bootstrap(store, values) {
+  // P5-1 方針3: bootstrap は CLI の migrate パスのみ。serve 非到達。
+  // 必須引数の欠落は呼び出し側のプログラマエラーとして plain Error を維持。
   if (!values.idToken)      throw new Error("idToken required");
   if (!values.refreshToken) throw new Error("refreshToken required");
   assertAppLoginTokens(values, "bootstrap input", { requireAud: true, requireConfirmedDevice: true });

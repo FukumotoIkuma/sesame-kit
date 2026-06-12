@@ -178,7 +178,6 @@ describe("WifiModule2 ファサード (session 注入)", () => {
   it("networkStatus() メソッドは存在しない (P3-20: 送信経路は SDK 非存在)", () => {
     const s = fakeSession();
     const wm2 = new WifiModule2({ session: s });
-    // biome-ignore lint/suspicious/noExplicitAny: intentional check for absent method
     expect(typeof (/** @type {any} */ (wm2).networkStatus)).toBe("undefined");
   });
 
