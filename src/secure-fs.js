@@ -11,8 +11,8 @@
 //   - mkdirSync の mode は **新規作成時のみ** 反映される (既存ディレクトリの
 //     パーミッションは変えない) ため、作成後に明示 chmod して旧バージョンの 0755 も締める。
 import {
-  chmodSync, closeSync, mkdirSync, openSync, readFileSync, renameSync,
-  statSync, unlinkSync, writeFileSync, writeSync,
+  chmodSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync, renameSync,
+  unlinkSync, writeFileSync, writeSync,
 } from "node:fs";
 import { dirname } from "node:path";
 
@@ -126,18 +126,27 @@ function asFsErr(e) {
  * @returns {boolean}
  */
 function isLockStale(lockPath, staleMs) {
-  let st;
+  // mtime と pid を **同一 fd** から読む (open → fstat → read)。statSync→readFileSync の
+  // 2 syscall だと間でファイルが差し替わる TOCTOU (js/file-system-race) が生じるため、
+  // 1 つの fd に固定して同じ inode を見る。実排他は withFileLock の O_EXCL acquire が担保し、
+  // ここは best-effort の stale 判定に過ぎないが、判定自体も race-free にしておく。
+  let fd;
   try {
-    st = statSync(lockPath);
+    fd = openSync(lockPath, "r");
   } catch {
     return false; // 既に解放済み → 次の取得試行で普通に取れる
   }
-  // mtime が閾値超で古い = 保持プロセスが unlink せず消えたとみなす
-  if (Date.now() - st.mtimeMs > staleMs) return true;
-  // pid 死活: 記録された保持プロセスが既に存在しなければ mtime が若くても stale。
-  // (クラッシュ直後でも staleMs を待たずに回収できる)
   try {
-    const info = /** @type {{ pid?: number }} */ (JSON.parse(readFileSync(lockPath, "utf8")));
+    // mtime が閾値超で古い = 保持プロセスが unlink せず消えたとみなす
+    if (Date.now() - fstatSync(fd).mtimeMs > staleMs) return true;
+    // pid 死活: 記録された保持プロセスが既に存在しなければ mtime が若くても stale。
+    // (クラッシュ直後でも staleMs を待たずに回収できる)
+    let info;
+    try {
+      info = /** @type {{ pid?: number }} */ (JSON.parse(readFileSync(fd, "utf8")));
+    } catch {
+      return false; // 読めない/壊れた lock は mtime 判定だけに頼る (書き込み途中の可能性)
+    }
     if (typeof info.pid === "number" && info.pid > 0) {
       try {
         process.kill(info.pid, 0); // シグナル 0 = 存在確認のみ
@@ -146,10 +155,10 @@ function isLockStale(lockPath, staleMs) {
         // EPERM 等 = プロセスは生きている (他ユーザー) → stale ではない
       }
     }
-  } catch {
-    // 読めない/壊れた lock は mtime 判定だけに頼る (書き込み途中の可能性)
+    return false;
+  } finally {
+    try { closeSync(fd); } catch { /* ignore */ }
   }
-  return false;
 }
 
 /**
