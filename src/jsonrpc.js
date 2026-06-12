@@ -37,8 +37,8 @@
  *       x-event-topics の enum schema を付与 (SDK 型が union になる。後方互換)。
  *     - stable 13 メソッドのシグネチャは不変 (破壊的変更なし。major 据え置き正当)。
  */
-import { t } from "../i18n.js";
-import { SesameError, ERR } from "../errors.js";
+import { t } from "./i18n.js";
+import { SesameError, ERR } from "./errors.js";
 
 export const CONTRACT_VERSION = "1.3.0";
 

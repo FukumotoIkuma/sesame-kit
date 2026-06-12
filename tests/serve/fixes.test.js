@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { Daemon } from "../../src/serve/daemon.js";
 import { startSocketFraming } from "../../src/serve/framing/socket.js";
 import { startHttpFraming } from "../../src/serve/framing/http.js";
-import { KIND } from "../../src/serve/jsonrpc.js";
+import { KIND } from "../../src/jsonrpc.js";
 import { TRANSPORT_ERR } from "../../src/transport.js";
 
 function fakeHub(over = {}) {

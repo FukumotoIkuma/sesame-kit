@@ -11,7 +11,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setLocale } from "../src/i18n.js";
 import { buildRegistry, buildOpenRpcDoc } from "../src/serve/registry.js";
-import { CONTRACT_VERSION } from "../src/serve/jsonrpc.js";
+import { CONTRACT_VERSION } from "../src/jsonrpc.js";
 
 setLocale("en"); // 公開契約は英語 canonical
 

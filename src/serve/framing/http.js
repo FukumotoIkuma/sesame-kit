@@ -4,7 +4,7 @@
 // 全エンドポイントで loopback token (Authorization: Bearer / ?token=) 必須。
 
 import http from "node:http";
-import { makeError, RPC, KIND } from "../jsonrpc.js";
+import { makeError, RPC, KIND } from "../../jsonrpc.js";
 import { tokenMatches, extractToken } from "./token.js";
 import { t } from "../../i18n.js";
 

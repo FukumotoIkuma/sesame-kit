@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { tokenMatches, parseBearer } from "./token.js";
-import { errorFromThrow } from "../jsonrpc.js";
+import { errorFromThrow } from "../../jsonrpc.js";
 import { t } from "../../i18n.js";
 // @grpc/grpc-js / @grpc/proto-loader は optional peerDependencies (REFACTORING_PLAN P5-1):
 // ライブラリ利用者に gRPC スタックを強制しないため、トップレベル import せず

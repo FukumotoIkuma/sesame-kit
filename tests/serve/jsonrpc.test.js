@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   RPC, KIND, RpcError, classify, handleMessage, makeResult, makeEvent, errorFromThrow,
-} from "../../src/serve/jsonrpc.js";
+} from "../../src/jsonrpc.js";
 
 describe("classify", () => {
   it("正常な request (id あり)", () => {

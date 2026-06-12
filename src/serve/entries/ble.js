@@ -1,7 +1,7 @@
 // エントリ: ble — BLE スキャン・invoke・OTA・位置・WiFi・生体・登録。
 // `Record<string, MethodEntry>` を返す純関数として機械分割 (P5-2)。
 
-import { RpcError, RPC, KIND } from "../jsonrpc.js";
+import { RpcError, RPC, KIND } from "../../jsonrpc.js";
 import { need } from "../registry-helpers.js";
 import {
   SesameBle, SesameOS2Ble, createBleTransport,

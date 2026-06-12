@@ -23,9 +23,9 @@ export class Daemon {
      * 1 メッセージを処理して応答オブジェクト (通知なら null) を返す。push はしない (HTTP POST 用)。
      * @param {Connection} conn
      * @param {string} raw
-     * @returns {Promise<import("./jsonrpc.js").RpcResponse|null>}
+     * @returns {Promise<import("../jsonrpc.js").RpcResponse|null>}
      */
-    dispatchMessage(conn: Connection, raw: string): Promise<import("./jsonrpc.js").RpcResponse | null>;
+    dispatchMessage(conn: Connection, raw: string): Promise<import("../jsonrpc.js").RpcResponse | null>;
     /**
      * framing から: 1 行を処理し、応答があれば conn.send で push する。throw しない。
      * @param {Connection} conn

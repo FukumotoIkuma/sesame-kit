@@ -5,11 +5,13 @@
 //   readFileSync+JSON.parse・全 framing 静的 import) を巻き込まず、必要な helper だけを
 //   依存できるようにする。ble/index.js から再 export することでライブラリ消費者も import 可能。
 //
-// 依存方向: ble/ → serve/jsonrpc.js は serve 層の protocol 定数 (RpcError/RPC/KIND) のみ。
-//   build artifact や registry の大塊には依存しない。
+// 依存方向: ble/ → jsonrpc.js は JSON-RPC protocol コア (RpcError/RPC/KIND) のみ。
+//   jsonrpc.js は元 serve/ 配下にあったが、ble(core 公開面)から参照される唯一の逆依存を
+//   解消するため src 直下(protocol コア = transport 非依存)へ移設した(P5-14 Phase0)。
+//   build artifact や registry(serve)の大塊には依存しない。
 
 import { Buffer } from "node:buffer";
-import { RpcError, RPC, KIND } from "../serve/jsonrpc.js";
+import { RpcError, RPC, KIND } from "../jsonrpc.js";
 import { t } from "../i18n.js";
 import { ITEM_CODES } from "../itemcodes.js";
 import { resultName } from "./protocol.js";

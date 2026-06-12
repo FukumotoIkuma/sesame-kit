@@ -12,7 +12,7 @@
 // Connection 契約 (framing が実装): { id:string, send(obj):void, close():void }
 //   send はフレーミング固有の直列化 + 背圧を担う (溢れたらその接続を切る)。
 
-import { handleMessage, makeEvent, RpcError, RPC, KIND } from "./jsonrpc.js";
+import { handleMessage, makeEvent, RpcError, RPC, KIND } from "../jsonrpc.js";
 import { buildRegistry, buildOpenRpcDoc, STATE_TOPICS, SUBSCRIBABLE_TOPICS } from "./registry.js";
 import { TRANSPORT_ERR } from "../transport.js";
 import { t } from "../i18n.js";
@@ -194,7 +194,7 @@ export class Daemon {
    * 1 メッセージを処理して応答オブジェクト (通知なら null) を返す。push はしない (HTTP POST 用)。
    * @param {Connection} conn
    * @param {string} raw
-   * @returns {Promise<import("./jsonrpc.js").RpcResponse|null>}
+   * @returns {Promise<import("../jsonrpc.js").RpcResponse|null>}
    */
   dispatchMessage(conn, raw) {
     return handleMessage(raw, (method, params) => this.invoke(method, params, conn));

@@ -13,7 +13,7 @@
 //   - daemon: Daemon (購読/リース/authState 用)
 
 import { readFileSync } from "node:fs";
-import { RpcError, RPC, KIND, CONTRACT_VERSION } from "./jsonrpc.js";
+import { RpcError, RPC, KIND, CONTRACT_VERSION } from "../jsonrpc.js";
 import { stabilityOf, provenanceOf, eventStabilityOf, eventProvenanceOf } from "./stability.js";
 import { RESULT_SCHEMAS } from "./result-schemas.js";
 import { t } from "../i18n.js";

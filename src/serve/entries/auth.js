@@ -2,7 +2,7 @@
 // `Record<string, MethodEntry>` を返す純関数として機械分割 (P5-2)。
 // ハンドラ依存: requireAuth のみ (クラウド接続前提 op)。
 
-import { CONTRACT_VERSION } from "../jsonrpc.js";
+import { CONTRACT_VERSION } from "../../jsonrpc.js";
 import { requireAuth } from "../registry-helpers.js";
 import { t } from "../../i18n.js";
 

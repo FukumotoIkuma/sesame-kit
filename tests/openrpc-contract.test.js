@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { buildRegistry, buildOpenRpcDoc } from "../src/serve/registry.js";
-import { CONTRACT_VERSION } from "../src/serve/jsonrpc.js";
+import { CONTRACT_VERSION } from "../src/jsonrpc.js";
 
 /** OpenRPC doc → 機械契約だけの射影 (散文を落とす)。 */
 function machineContract(doc) {

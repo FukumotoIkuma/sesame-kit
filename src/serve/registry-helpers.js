@@ -2,7 +2,7 @@
 // registry.js 本体と entries/ が双方向依存しないように、共通ユーティリティのみをここに切り出す。
 // (P5-2: topLevelEntries 808 行モノリス分割の補助モジュール)
 
-import { RpcError, RPC, KIND } from "./jsonrpc.js";
+import { RpcError, RPC, KIND } from "../jsonrpc.js";
 import { t } from "../i18n.js";
 
 /**

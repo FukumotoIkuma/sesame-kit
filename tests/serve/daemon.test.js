@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { Daemon } from "../../src/serve/daemon.js";
 import { buildRegistry } from "../../src/serve/registry.js";
-import { KIND } from "../../src/serve/jsonrpc.js";
+import { KIND } from "../../src/jsonrpc.js";
 import { SesameHub3 } from "../../src/client.js";
 
 // ---- 狭いインターフェースの fake hub ----

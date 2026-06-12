@@ -7,7 +7,7 @@
 //   accessAuthEntries   — ir.* の直後 (access.postAuthenticationData 等)
 // buildRegistry() は configEntries/irEntries を挟んで 3 つを呼ぶ。
 
-import { RpcError, RPC, KIND } from "../jsonrpc.js";
+import { RpcError, RPC, KIND } from "../../jsonrpc.js";
 import { requireAuth, need } from "../registry-helpers.js";
 import { t } from "../../i18n.js";
 

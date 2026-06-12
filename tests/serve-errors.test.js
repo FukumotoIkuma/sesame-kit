@@ -3,7 +3,7 @@
 //
 // 純ロジックなので unit project (tests/serve/ 外) に置く。
 import { describe, it, expect } from "vitest";
-import { errorFromThrow, RpcError, RPC, KIND } from "../src/serve/jsonrpc.js";
+import { errorFromThrow, RpcError, RPC, KIND } from "../src/jsonrpc.js";
 import { SesameError, ERR } from "../src/errors.js";
 
 describe("errorFromThrow: SesameError → JSON-RPC", () => {

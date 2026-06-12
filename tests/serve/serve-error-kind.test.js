@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { SesameHub3 } from "../../src/client.js";
 import { Daemon } from "../../src/serve/daemon.js";
-import { KIND } from "../../src/serve/jsonrpc.js";
+import { KIND } from "../../src/jsonrpc.js";
 import { CONSUMER_CLIENT_ID } from "../../src/auth.js";
 
 // ---- helper ----------------------------------------------------------------

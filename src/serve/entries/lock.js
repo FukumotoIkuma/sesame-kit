@@ -1,7 +1,7 @@
 // エントリ: lock — 施錠・解錠・オートロック・ステータス。
 // `Record<string, MethodEntry>` を返す純関数として機械分割 (P5-2)。
 
-import { RpcError, RPC, KIND } from "../jsonrpc.js";
+import { RpcError, RPC, KIND } from "../../jsonrpc.js";
 import { requireAuth, need } from "../registry-helpers.js";
 import { SesameBle } from "../../ble/index.js";
 import { t } from "../../i18n.js";

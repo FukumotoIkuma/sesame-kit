@@ -1,7 +1,7 @@
 // エントリ: events — イベント購読・解除。
 // `Record<string, MethodEntry>` を返す純関数として機械分割 (P5-2)。
 
-import { RpcError, RPC, KIND } from "../jsonrpc.js";
+import { RpcError, RPC, KIND } from "../../jsonrpc.js";
 import { asTopicList } from "../registry-helpers.js";
 import { t } from "../../i18n.js";
 

@@ -8,7 +8,7 @@
 //   - OS3 / OS2 両方の BleResultError (別クラス・同形契約) が同様に扱われること
 // を固定する。resultName の語彙は SesameResultCode (src/ble/protocol.js RESULT)。
 import { describe, it, expect } from "vitest";
-import { errorFromThrow, RPC } from "../../src/serve/jsonrpc.js";
+import { errorFromThrow, RPC } from "../../src/jsonrpc.js";
 import { BleResultError } from "../../src/ble/session.js";
 import { BleResultError as Os2BleResultError } from "../../src/ble/os2/session.js";
 

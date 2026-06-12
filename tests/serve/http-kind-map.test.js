@@ -111,7 +111,7 @@ describe("SURF-10: HTTP→kind 写像 (生成テンプレート)", () => {
 describe("SURF-21: clients/js の SesameErrorKind が serve の 7 kind と一致", () => {
   it("d.ts の union に serve KIND の全値が載っている", async () => {
     const dts = readFileSync(resolve(ROOT, "clients", "js", "sesame-client.d.ts"), "utf8");
-    const { KIND } = await import("../../src/serve/jsonrpc.js");
+    const { KIND } = await import("../../src/jsonrpc.js");
     for (const kind of Object.values(KIND)) {
       expect(dts, `kind ${kind}`).toContain(`| "${kind}"`);
     }
