@@ -1,0 +1,11 @@
+{
+  "method": "status",
+  "note": "synthetic — degraded state: daemon failed to connect but stored tokens exist (daemon.js: authState = 'degraded' when !_hasStoredTokens() is false). subUUID is null when hub is not connected.",
+  "sample": {
+    "connected": false,
+    "authState": "degraded",
+    "subUUID": null,
+    "apiVersion": "1.0.0",
+    "contractVersion": "1.1.0"
+  }
+}

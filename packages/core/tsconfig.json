@@ -1,0 +1,13 @@
+{
+  "//": "@sesame-kit/core の型生成 + 厳格型検査 (JSDoc → types/)。共有設定は ../../tsconfig.base.json。`tsc -b` 用に composite を有効化。",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "types",
+    "tsBuildInfoFile": "types/.tsbuildinfo"
+  },
+  "//exclude": "vendor/biz3 は biz3 原文コピー (型は同梱 .d.ts)。分割前は src 外にあり型検査対象外だったため、移設後も挙動を保つよう除外する。",
+  "include": ["src/**/*.js"],
+  "exclude": ["node_modules", "tests", "types", "src/vendor"]
+}

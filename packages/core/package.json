@@ -1,0 +1,148 @@
+{
+  "name": "@sesame-kit/core",
+  "version": "0.6.2",
+  "description": "SESAME smart-lock library: BLE + cloud transport, auth, crypto, device management. The library core of sesame-kit (CLI/serve/SDK live in the sesame-kit package). Unofficial.",
+  "author": "Ikuma Fukumoto",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./client": {
+      "types": "./types/client.d.ts",
+      "default": "./src/client.js"
+    },
+    "./auth": {
+      "types": "./types/auth.d.ts",
+      "default": "./src/auth.js"
+    },
+    "./crypto": {
+      "types": "./types/crypto.d.ts",
+      "default": "./src/crypto.js"
+    },
+    "./transport": {
+      "types": "./types/transport.d.ts",
+      "default": "./src/transport.js"
+    },
+    "./config": {
+      "types": "./types/config.d.ts",
+      "default": "./src/config.js"
+    },
+    "./tokens": {
+      "types": "./types/tokens.d.ts",
+      "default": "./src/tokens.js"
+    },
+    "./paths": {
+      "types": "./types/paths.d.ts",
+      "default": "./src/paths.js"
+    },
+    "./errors": {
+      "types": "./types/errors.d.ts",
+      "default": "./src/errors.js"
+    },
+    "./lock": {
+      "types": "./types/lock.d.ts",
+      "default": "./src/lock.js"
+    },
+    "./ir": {
+      "types": "./types/ir.d.ts",
+      "default": "./src/ir.js"
+    },
+    "./devices": {
+      "types": "./types/devices.d.ts",
+      "default": "./src/devices.js"
+    },
+    "./account": {
+      "types": "./types/account.d.ts",
+      "default": "./src/account.js"
+    },
+    "./schedule": {
+      "types": "./types/schedule.d.ts",
+      "default": "./src/schedule.js"
+    },
+    "./org": {
+      "types": "./types/org.d.ts",
+      "default": "./src/org.js"
+    },
+    "./company": {
+      "types": "./types/company.d.ts",
+      "default": "./src/company.js"
+    },
+    "./payment": {
+      "types": "./types/payment.d.ts",
+      "default": "./src/payment.js"
+    },
+    "./access": {
+      "types": "./types/access.d.ts",
+      "default": "./src/access.js"
+    },
+    "./iot": {
+      "types": "./types/iot.d.ts",
+      "default": "./src/iot.js"
+    },
+    "./presetir": {
+      "types": "./types/presetir.d.ts",
+      "default": "./src/presetir.js"
+    },
+    "./sharekey": {
+      "types": "./types/sharekey.d.ts",
+      "default": "./src/sharekey.js"
+    },
+    "./itemcodes": {
+      "types": "./types/itemcodes.d.ts",
+      "default": "./src/itemcodes.js"
+    },
+    "./secure-fs": {
+      "types": "./types/secure-fs.d.ts",
+      "default": "./src/secure-fs.js"
+    },
+    "./jsonrpc": {
+      "types": "./types/jsonrpc.d.ts",
+      "default": "./src/jsonrpc.js"
+    },
+    "./i18n": {
+      "types": "./types/i18n.d.ts",
+      "default": "./src/i18n.js"
+    },
+    "./ble": {
+      "types": "./types/ble/index.d.ts",
+      "default": "./src/ble/index.js"
+    },
+    "./ble/os2": {
+      "types": "./types/ble/os2/index.d.ts",
+      "default": "./src/ble/os2/index.js"
+    }
+  },
+  "files": [
+    "src/",
+    "types/",
+    "!**/__pycache__",
+    "!**/*.pyc"
+  ],
+  "keywords": [
+    "sesame",
+    "candy-house",
+    "smart-lock",
+    "smart-home",
+    "ble"
+  ],
+  "homepage": "https://github.com/FukumotoIkuma/sesame-kit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FukumotoIkuma/sesame-kit.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/FukumotoIkuma/sesame-kit/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "optionalDependencies": {
+    "@abandonware/noble": "^1.9.2-25"
+  }
+}

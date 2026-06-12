@@ -1,16 +1,21 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   // P5-8 (ARCH-18): linter のみ導入。formatter は既存スタイル維持 (巨大 diff 回避) のため無効。
-  // 対象は出荷コード (src/ scripts/ bin/ clients/js) のみ — tests/ vendor/ types/ sdk/ schema/
-  // references_web/ _sesame_sdk_ref/ promo/ は files.includes に載せず対象外。
+  // 対象は出荷コード (packages/*/src・scripts・packages/kit/bin・packages/kit/clients/js) のみ。
+  // vendor (biz3 原文コピー)・types・sdk・schema・references_web・_sesame_sdk_ref・promo は対象外。
   "vcs": { "enabled": false, "clientKind": "git", "useIgnoreFile": false },
   "files": {
     "includes": [
-      "src/**",
+      "packages/core/src/**",
+      "packages/kit/src/**",
       "scripts/**",
-      "bin/**",
-      "clients/js/**",
-      "!src/serve/*.generated.json"
+      "packages/kit/bin/**",
+      "packages/kit/clients/js/**",
+      "!packages/core/src/vendor",
+      "!packages/kit/src/serve/*.generated.json",
+      // P5-11 (ARCH-13): tests/ を lint 対象に追加。
+      // ルールは下の overrides で出荷コードより緩める (詳細はそちらのコメント参照)。
+      "packages/*/tests/**"
     ]
   },
   "formatter": {
@@ -54,8 +59,42 @@
       // React hook 系ルールは React コンポーネントにのみ意味がある。CLI 側の
       // `SesameBle.use(...)` / `SesameHub3.use(...)` (リソース管理ヘルパ) を hook と
       // 誤認して useHookAtTopLevel が誤検出するため、React を使う session-ui.js 以外では off。
-      "includes": ["src/cli/**", "src/**", "scripts/**", "bin/**", "clients/js/**", "!src/session-ui.js"],
+      "includes": ["packages/core/src/**", "packages/kit/src/**", "scripts/**", "packages/kit/bin/**", "packages/kit/clients/js/**", "!packages/kit/src/session-ui.js"],
       "linter": { "rules": { "correctness": { "useHookAtTopLevel": "off" } } }
+    },
+    {
+      // P5-11 (ARCH-13): tests/ は出荷コードより緩めのルールで lint する。
+      // - noUnusedFunctionParameters: テストヘルパ/フィクスチャ関数はシグネチャが契約のため off。
+      // - noUnusedVariables/noUnusedImports: テスト内の destructuring や型専用 import は warn に緩める。
+      // - useNodejsImportProtocol: vitest 推奨の裸 import ('fs', 'path') をエラーにしない。
+      // - useIterableCallbackReturn: dispatchers.forEach((d) => d(msg)) は副作用目的であり、
+      //   戻り値を意図的に無視しているテストパターン。修正対象外のため off。
+      "includes": ["packages/*/tests/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "warn",
+            "noUnusedImports": "warn",
+            "noUnusedFunctionParameters": "off"
+          },
+          "complexity": {
+            // テストは config["devices"] のように文字列キーで内部状態を検証することがあり、
+            // ドット記法への強制は可読性を下げる。テストに限り off。
+            "useLiteralKeys": "off"
+          },
+          "performance": {
+            // namespace.test.js は `import * as registry` の全 op を動的に列挙して
+            // 経路対称性を検証する (意図的パターン)。テストに限り off。
+            "noDynamicNamespaceImportAccess": "off"
+          },
+          "style": {
+            "useNodejsImportProtocol": "warn"
+          },
+          "suspicious": {
+            "useIterableCallbackReturn": "off"
+          }
+        }
+      }
     }
   ]
 }

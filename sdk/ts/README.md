@@ -7,7 +7,7 @@ against the schema (`tests/sdk-ts-contract.test.js`).
 
 > This is the **generated, typed** SDK and is recommended for most users. A
 > separate **hand-written, low-level** client (multi-transport: Unix socket /
-> stdio / HTTP / WebSocket) ships at [`clients/js/`](../../clients/js/) — use it
+> HTTP / WebSocket) ships at [`clients/js/`](../../clients/js/) — use it
 > for thin / multi-transport / custom integrations. See the
 > [repository README](../../README.md#which-should-i-use--sdk-vs-clients) for the
 > full "which should I use?" guidance.

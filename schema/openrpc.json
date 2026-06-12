@@ -2,9 +2,9 @@
   "openrpc": "1.2.6",
   "info": {
     "title": "sesame serve",
-    "version": "1.2.0",
-    "x-apiVersion": "1.2.0",
-    "x-contractVersion": "1.2.0",
+    "version": "1.3.0",
+    "x-apiVersion": "1.3.0",
+    "x-contractVersion": "1.3.0",
     "description": "Language-agnostic JSON-RPC backend for SESAME control"
   },
   "methods": [
@@ -2205,8 +2205,16 @@
       "summary": "updateCardOwner of access (auto-exposed)",
       "params": [
         {
+          "name": "item",
+          "required": false,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
           "name": "cardID",
-          "required": true,
+          "required": false,
           "description": "string",
           "schema": {
             "type": "string"
@@ -2214,7 +2222,7 @@
         },
         {
           "name": "ownerSubUUID",
-          "required": true,
+          "required": false,
           "description": "string",
           "schema": {
             "type": "string"
@@ -2763,7 +2771,15 @@
       "params": [
         {
           "name": "deviceId",
-          "required": true,
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hub3DeviceId",
+          "required": false,
           "description": "string",
           "schema": {
             "type": "string"
@@ -3621,7 +3637,7 @@
     },
     {
       "name": "ble.biometric.cardGet",
-      "summary": "[experimental] BLE op biometric.cardGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "[experimental] retrieve the registered card list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
       "params": [
         {
           "name": "deviceUUID",
@@ -3686,13 +3702,46 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "collectMs",
+          "required": false,
+          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
         "name": "result",
         "schema": {
-          "description": "{ resultCode, resultName }",
-          "type": "object"
+          "description": "{ records: Array<{id, name, type} | object> }",
+          "type": "object",
+          "properties": {
+            "records": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          },
+          "required": [
+            "records"
+          ]
         }
       },
       "x-stability": "experimental",
@@ -4333,7 +4382,7 @@
     },
     {
       "name": "ble.biometric.passcodeGet",
-      "summary": "[experimental] BLE op biometric.passcodeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "[experimental] retrieve the registered passcode list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
       "params": [
         {
           "name": "deviceUUID",
@@ -4398,13 +4447,46 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "collectMs",
+          "required": false,
+          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
         "name": "result",
         "schema": {
-          "description": "{ resultCode, resultName }",
-          "type": "object"
+          "description": "{ records: Array<{id, name, type} | object> }",
+          "type": "object",
+          "properties": {
+            "records": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          },
+          "required": [
+            "records"
+          ]
         }
       },
       "x-stability": "experimental",
@@ -4950,7 +5032,7 @@
     },
     {
       "name": "ble.biometric.faceListGet",
-      "summary": "[experimental] BLE op biometric.faceListGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "[experimental] retrieve the registered face list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
       "params": [
         {
           "name": "deviceUUID",
@@ -5015,13 +5097,32 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "collectMs",
+          "required": false,
+          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
         "name": "result",
         "schema": {
-          "description": "{ resultCode, resultName }",
-          "type": "object"
+          "description": "{ records: Array<{id, name, type} | object> }",
+          "type": "object",
+          "properties": {
+            "records": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          },
+          "required": [
+            "records"
+          ]
         }
       },
       "x-stability": "experimental",
@@ -5377,7 +5478,7 @@
     },
     {
       "name": "ble.biometric.palmListGet",
-      "summary": "[experimental] BLE op biometric.palmListGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "[experimental] retrieve the registered palm list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
       "params": [
         {
           "name": "deviceUUID",
@@ -5442,13 +5543,32 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "collectMs",
+          "required": false,
+          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
         "name": "result",
         "schema": {
-          "description": "{ resultCode, resultName }",
-          "type": "object"
+          "description": "{ records: Array<{id, name, type} | object> }",
+          "type": "object",
+          "properties": {
+            "records": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          },
+          "required": [
+            "records"
+          ]
         }
       },
       "x-stability": "experimental",
@@ -5978,7 +6098,7 @@
     },
     {
       "name": "ble.fingerPrint.fingerPrints",
-      "summary": "[experimental] BLE op fingerPrint.fingerPrints (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "[experimental] retrieve the registered finger list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
       "params": [
         {
           "name": "deviceUUID",
@@ -6043,13 +6163,46 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "collectMs",
+          "required": false,
+          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
         "name": "result",
         "schema": {
-          "description": "{ resultCode, resultName }",
-          "type": "object"
+          "description": "{ records: Array<{id, name, type} | object> }",
+          "type": "object",
+          "properties": {
+            "records": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          },
+          "required": [
+            "records"
+          ]
         }
       },
       "x-stability": "experimental",
@@ -6768,85 +6921,6 @@
       "x-provenance": "unverified"
     },
     {
-      "name": "ble.wifi.networkStatus",
-      "summary": "request WM2 network status (experimental)",
-      "params": [
-        {
-          "name": "deviceUUID",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "address",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "secretKey",
-          "required": true,
-          "description": "",
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "model",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "scanTimeoutMs",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "number"
-          }
-        },
-        {
-          "name": "debug",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "needAuthFromServer",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "registerBaseUrl",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "result": {
-        "name": "result",
-        "schema": {
-          "description": "{ resultCode, resultName }",
-          "type": "object"
-        }
-      },
-      "x-stability": "experimental",
-      "x-provenance": "unverified"
-    },
-    {
       "name": "ble.wifi.reset",
       "summary": "factory-reset the WM2 (drops the session on success)",
       "params": [
@@ -6927,7 +7001,7 @@
     },
     {
       "name": "ble.hub3.scanWifiSSID",
-      "summary": "start a Wi-Fi SSID scan on the Hub3 (results arrive via publish)",
+      "summary": "start a Wi-Fi SSID scan on the Hub3 (results arrive via publish — use ble.wifi.scan instead to collect the SSID list)",
       "params": [
         {
           "name": "deviceUUID",
@@ -8452,6 +8526,180 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "ble.os2.reset",
+      "summary": "factory reset the OS2 device (CHSesame2Device.kt:570-578)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyIndex",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmPublicKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.os2.configureLockPosition",
+      "summary": "set lock/unlock positions in degrees (OS2, CHSesame2Device.kt:556-568)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyIndex",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmPublicKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "lockDeg",
+          "required": true,
+          "description": "lock angle in degrees",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "unlockDeg",
+          "required": true,
+          "description": "unlock angle in degrees",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "status",
       "summary": "daemon status (connection/auth/user/contract version)",
       "params": [],
@@ -8465,10 +8713,16 @@
               "type": "boolean"
             },
             "authState": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "ok",
+                "degraded",
+                "expired"
+              ]
             },
             "subUUID": {
-              "type": "string"
+              "type": "string",
+              "nullable": true
             },
             "apiVersion": {
               "type": "string"
@@ -9616,6 +9870,51 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "config.syncRemotesFromServer",
+      "summary": "[experimental] import IR remotes from the server's getRemoteList into the daemon config (writes config.json; alt to sync-from-devices)",
+      "params": [
+        {
+          "name": "hub3",
+          "required": true,
+          "description": "hub3 name in config (the Hub3 these remotes belong to)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irType",
+          "required": true,
+          "description": "irType to fetch (e.g. 49152=AC, 8192=TV)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ added, updated }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "config.listRemoteCandidates",
+      "summary": "[experimental] list remotes under all Hub3 from the device state (read-only, no config write; used by remote add SDK flow)",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "Array<{ hub3DeviceUUID, hub3Name, uuid, type, alias }>",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "webapi.invoke",
       "summary": "call a biz3 WebAPI proxy function (apiKeyId from config when omitted)",
       "params": [
@@ -10610,6 +10909,89 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "ble.scan",
+      "summary": "[experimental] scan for nearby SESAME devices over BLE (no key required; returns deviceUUID/model/kind/isRegistered/rssi per device)",
+      "params": [
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "scan duration in ms (default: transport default ~8000)",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "includeUnknown",
+          "required": false,
+          "description": "include devices whose productType is not recognized (default: false)",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ ok: true, count, devices: [{deviceUUID, model, kind, productType, isRegistered, rssi, …}] }",
+          "type": "object",
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "count": {
+              "type": "number"
+            },
+            "devices": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "deviceUUID": {
+                    "type": "string"
+                  },
+                  "productType": {
+                    "type": "number"
+                  },
+                  "model": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "isRegistered": {
+                    "type": "boolean"
+                  },
+                  "rssi": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "localName": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "address": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "deviceUUID"
+                ]
+              }
+            }
+          },
+          "required": [
+            "ok",
+            "count",
+            "devices"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "ble.invoke",
       "summary": "invoke a registered OS3 BLE operation through the daemon host Bluetooth adapter",
       "params": [
@@ -11084,7 +11466,7 @@
         {
           "name": "collectMs",
           "required": false,
-          "description": "how long to collect SSID publishes in ms (default 8000; Hub3 finishes early on the SSID_LAST marker)",
+          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
           "schema": {
             "type": "number"
           }
@@ -11697,7 +12079,17 @@
           "name": "topics",
           "required": true,
           "description": "topic array to subscribe (lockState/deviceUpdate/deviceListChanged)",
-          "schema": {}
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "lockState",
+                "deviceUpdate",
+                "deviceListChanged"
+              ]
+            }
+          }
         }
       ],
       "result": {
@@ -11729,7 +12121,17 @@
           "name": "topics",
           "required": true,
           "description": "",
-          "schema": {}
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "lockState",
+                "deviceUpdate",
+                "deviceListChanged"
+              ]
+            }
+          }
         }
       ],
       "result": {

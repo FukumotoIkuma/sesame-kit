@@ -1,0 +1,15 @@
+{
+  "//": "core/kit 両ワークスペース共有の TS 設定 (JSDoc から .d.ts 生成 + strict 型検査)。各 package の tsconfig.json が extends し rootDir/outDir/references を上書きする。",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "strict": true,
+    "skipLibCheck": true
+  }
+}

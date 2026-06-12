@@ -41,7 +41,7 @@ Like the official SesameSDK, cloud and BLE **share the underlying command (itemC
 - Capability is held by `src/ble/devicemodel.js` as **type × route** (each kind has a `cloud:[...]` and a `ble:[...]` op set). The control-op vocabulary (`CONTROL_OPS`) is **derived** from this table and consumed by the CLI (`DEVICE_ACTIONS` / the capability gate), so there is no second hardcoded op list to drift.
   The **operable ops = the union of the two**, and the session's targets, operation menu, and `pickTransport` route selection are all derived from this union.
   - Example: a lock has autolock under `ble` but not `cloud` → autolock is BLE-only.
-  - An OS2 lock has an empty `ble` set and lock/unlock/toggle under `cloud` → operable via cloud only.
+  - An OS2 lock (sesame_2/3/4, ssmbot_1, bike_1) has lock/unlock/toggle under both `cloud` and `ble`. The CLI routes BLE ops to the dedicated `SesameOS2Ble` facade (separate handshake/crypto from OS3). `ssmPublicKey` must be saved in config (via `sesame locks add --ssm-public-key`) to use the BLE path.
   - Hub3 has ir/relay/led under `cloud`.
 - The default is a **full mode** that is unaware of the route; pin it with `--ble-only` / `--cloud-only` only when desired.
 
@@ -88,8 +88,8 @@ sesame-kit/
 │   ├── ts/sesame-client.ts       #   typed TS client (drift-gated; do not hand-edit)
 │   └── python/sesame_client.py   #   typed Python client (drift-gated; do not hand-edit)
 ├── clients/                # HAND-WRITTEN thin official clients (low-level; advanced/custom integrations)
-│   ├── python/sesame_client.py   #   UDS/stdio/HTTP/WS + event subscription, generic call() (zero deps)
-│   └── js/sesame-client.mjs      #   equivalent (Node 20+); see README for sdk/ vs clients/
+│   ├── python/sesame_client.py   #   UDS/stdio/HTTP + event subscription, generic call() (zero deps)
+│   └── js/sesame-client.mjs      #   UDS/HTTP/WebSocket + event subscription (Node 20+); see README for sdk/ vs clients/
 ├── vendor/
 │   └── biz3/constants/     # verbatim copy of biz3's import-zero constants (single source of truth)
 └── src/

@@ -87,9 +87,15 @@ provably solid**; ship breadth as **experimental** rather than over-committing.
 ## Transport / dependency reality (applies to all methods)
 
 - The daemon backs cloud/Biz3 RPC methods with **one resident cloud-WS client**
-  (`SesameHub3`). Registered BLE operations are exposed separately through
-  `ble.invoke` / `ble.os2.invoke`, which use the daemon host Bluetooth adapter
-  and do not require cloud auth for the BLE session itself.
+  (`SesameHub3`). BLE operations are exposed as **76 typed `ble.*` / `ble.os2.*`
+  RPC methods** — `ble.script.*` / `ble.biometric.*` / `ble.fingerPrint.*` /
+  `ble.remoteNano.*` / `ble.wifi.*` / `ble.hub3.*` / `ble.os2.*` and standalone
+  ops (`ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` /
+  `ble.history` / `ble.scan` / `ble.magnet` …). The generic
+  `ble.invoke` / `ble.os2.invoke` string-dispatch facades remain as escape hatches.
+  All BLE methods use the daemon host Bluetooth adapter and do not require cloud
+  auth for the BLE session itself. All BLE methods are `experimental` pending
+  hardware verification.
 - Meta methods `status` and `rpc.discover` need neither auth nor the cloud.
 - Network framings (HTTP/WS/gRPC) require the loopback bearer token; stdio and the
   Unix socket trust the same-user process.
@@ -137,9 +143,37 @@ notification sent once on every persistent connection since contract 1.2.0).
 `event.deviceListChanged` is **experimental** (provenance unverified; biz3
 `pubUserDeviceChange`). (See delivery semantics below.)
 
+## Intentionally absent from CLI/RPC: lock raw escape hatch
+
+`SesameHub3` exposes two library-only methods for sending an arbitrary `cmd`
+value directly to a lock:
+
+- `triggerLockRaw(name, cmd)` — resolves a config name, then sends any `cmd`.
+- `triggerLockDevice({ deviceUUID, secretKey, cmd })` — bypasses config, same
+  raw send.
+
+**These methods are deliberately not wired as CLI subcommands or RPC methods.**
+Reason: accepting an arbitrary integer `cmd` in a networked endpoint is an
+unguarded misfire surface — a caller typo or a replay of a stale payload could
+send an undocumented item code to production hardware. The named wrappers
+(`lock.lock` / `lock.unlock` / `lock.toggle` / `lock.click` and their
+`*Device` counterparts) cover every cmd the official app sends (82/83/88/89)
+and are the correct entry points for automation.
+
+Contrast: `iot.sendIotCmd` / `iot.sendIotCmdAwait` *are* exposed (as
+`sesame iot raw` / RPC `iot.sendIotCmd`) because the Hub3 IoT command set has
+no equivalent lock-control risk and is needed for firmware / Matter flows that
+have no typed wrapper. The lock raw path offers no comparable benefit over the
+typed wrappers.
+
+If a future use-case genuinely requires an arbitrary lock cmd (e.g. a new
+item code the vendor adds before the SDK ships a typed wrapper), add a named
+experimental method `lock.sendRaw { name|deviceUUID+secretKey, cmd }` with
+explicit range validation, rather than reusing the current raw escape hatches.
+
 ## Experimental namespaces (excluded from 1.0 guarantee)
 
-The registry exposes **135 methods** in total (contract 1.2.0); everything outside
+The registry exposes **202 methods** in total (contract 1.2.0); everything outside
 the 13 stable methods stays **experimental** — broad cloud/business features, many
 with explicitly unverified response shapes (`未確認` notes in source):
 
@@ -156,10 +190,12 @@ with explicitly unverified response shapes (`未確認` notes in source):
 - `devices.*` beyond `devices.list` (userList / add / reorder / notifyStatus /
   notifyManage / switchRecharge) and `device.*` beyond history/battery
   (hideHistory / hideBattery / rename / delete)
-- `config.sync*` (4 ops), `webapi.*` (4 ops), `firmware.list`, `cloud.ping`,
+- `config.sync*` (4 ops), `config.list*` (2 ops), `webapi.*` (4 ops), `firmware.list`, `cloud.ping`,
   `lock.setAutolock` (cloud/BLE `transport` param; only BLE takes effect on-device)
-- `ble.*` (11 ops: `invoke` / `os2.invoke` generic facades plus typed wrappers —
-  register / os2.register / updateFirmware / reset / position / wifi.*)
+- `ble.*` (76 ops: `invoke` / `os2.invoke` generic facades plus typed wrappers —
+  `ble.script.*` / `ble.biometric.*` / `ble.fingerPrint.*` / `ble.remoteNano.*` /
+  `ble.wifi.*` / `ble.hub3.*` / `ble.os2.*` and standalone ops register /
+  os2.register / updateFirmware / reset / position / history / scan / magnet …)
 
 These remain callable and documented, but the generated SDKs tag them with a
 JSDoc/docstring `@experimental` marker (on the normal namespace, alongside stable
@@ -224,7 +260,7 @@ issues are now addressed:
    `rpc.discover` / `schema/openrpc.json`.)*
 4. **Stale `CONTRACT_VERSION` doc-comment** ("79 method" vs 81 exposed).
    *(addressed — `src/serve/jsonrpc.js` now keeps a per-version changelog
-   (1.0.0 / 1.1.0 / 1.2.0); the registry exposes 135 methods at 1.2.0.)*
+   (1.0.0 / 1.1.0 / 1.2.0); the registry exposes 202 methods at 1.2.0.)*
 5. **`apiVersion` separation.** *(addressed — 1.1.0)* The API surface is versioned
    independently from the package version and exposed as `apiVersion` in `status`
    and `rpc.discover` (`contractVersion` / `x-contractVersion` kept as deprecated

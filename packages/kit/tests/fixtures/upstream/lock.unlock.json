@@ -1,0 +1,10 @@
+{
+  "method": "lock.unlock",
+  "note": "synthetic — trigger ack (vendor-unverified; shape from src/lock.js 実機観測: {action:\"biz3TriggerLocker\", code:200, data:{}, success:true}). op フィールドは実機 ack に存在しない。Captured for shape-pinning only; the live canary does not call write ops.",
+  "sample": {
+    "action": "biz3TriggerLocker",
+    "code": 200,
+    "success": true,
+    "data": {}
+  }
+}

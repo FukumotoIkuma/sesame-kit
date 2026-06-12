@@ -1,12 +1,16 @@
-// tsc が生成する types/ 配下の .d.ts から `_` 始まりの private メンバ宣言を除去する。
-// (tsc は JS ソースの `_x` 慣習メンバも declaration に出力するため、配布物の公開型から
+// tsc が生成する各ワークスペースの types/ 配下の .d.ts から `_` 始まりの private メンバ宣言を
+// 除去する。(tsc は JS ソースの `_x` 慣習メンバも declaration に出力するため、配布物の公開型から
 //  内部 API を落とす後処理。中期的には tsc `stripInternal` + `/** @internal */` への移行を検討
 //  — REFACTORING_PLAN P1-16)
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { join, extname } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const ROOT = new URL("../types/", import.meta.url);
+// workspace 分割により types/ は packages/core と packages/kit の 2 箇所に出力される。
+const TYPE_DIRS = [
+  fileURLToPath(new URL("../packages/core/types/", import.meta.url)),
+  fileURLToPath(new URL("../packages/kit/types/", import.meta.url)),
+];
 
 function* dtsFiles(dir) {
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
@@ -82,12 +86,15 @@ export function stripPrivateMembers(text, label = "(input)") {
 
 function main() {
   let changed = 0;
-  for (const file of dtsFiles(ROOT.pathname)) {
-    const before = readFileSync(file, "utf8");
-    const after = stripPrivateMembers(before, file);
-    if (after !== before) {
-      writeFileSync(file, after);
-      changed += 1;
+  for (const dir of TYPE_DIRS) {
+    if (!existsSync(dir)) continue; // build:types 未実行などで存在しなければスキップ
+    for (const file of dtsFiles(dir)) {
+      const before = readFileSync(file, "utf8");
+      const after = stripPrivateMembers(before, file);
+      if (after !== before) {
+        writeFileSync(file, after);
+        changed += 1;
+      }
     }
   }
   console.log(`stripped private declaration members from ${changed} file(s)`);

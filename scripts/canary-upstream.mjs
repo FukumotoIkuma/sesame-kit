@@ -19,11 +19,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { RESULT_SCHEMAS } from "../src/serve/result-schemas.js";
+import { RESULT_SCHEMAS } from "../packages/kit/src/serve/result-schemas.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// fixtures は tests/fixtures/upstream/ に置く (記録済みの上流応答サンプル)。
-const FIXTURES_DIR = join(__dirname, "..", "tests", "fixtures", "upstream");
+// fixtures は packages/kit/tests/fixtures/upstream/ に置く (記録済みの上流応答サンプル)。
+const FIXTURES_DIR = join(__dirname, "..", "packages", "kit", "tests", "fixtures", "upstream");
 
 const results = [];
 const record = (name, ok, detail) => { results.push({ name, ok, detail }); };
@@ -126,7 +126,7 @@ function runReplay() {
 
 // --- live モード --------------------------------------------------------------
 async function runLive() {
-  const { SesameHub3, ConfigStore, FileTokenStore, resolveConfigDir } = await import("../src/index.js");
+  const { SesameHub3, ConfigStore, FileTokenStore, resolveConfigDir } = await import("@sesame-kit/core");
   const dir = resolveConfigDir();
   const configStore = ConfigStore.fromConfigDir(dir);
   if (!configStore.exists()) {

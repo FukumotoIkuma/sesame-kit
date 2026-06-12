@@ -24,24 +24,33 @@ sesame front autolock 0          # disable
 
 ### `sesame ble` — BLE 補助コマンド
 
-`ble` コマンドグループは、鍵なし発見、工場出荷デバイスの初期登録、読み取り中心の調査コマンドを公開します。
+`ble` コマンドグループは、鍵なし発見、工場出荷デバイスの初期登録、調査、スクリプト管理、Wi-Fi プロビジョニング、OTA、工場出荷リセット、汎用 invoke コマンドを公開します。
 
 ```bash
-sesame ble scan [--timeout <ms>]         # 鍵なしの近接スキャン（listNearbyDevices・secretKey 不要）
+sesame ble scan [--timeout <ms>]                      # 鍵なしの近接スキャン（listNearbyDevices・secretKey 不要）
 sesame ble register <uuid> --model sesame_5 --save front
 sesame ble os2-register <uuid> --model sesame_3
-sesame ble cards <device>                # 登録済み NFC カード一覧（Touch / Touch Pro）
-sesame ble passcodes <device>            # 登録済みキーパッド暗証番号一覧（Touch / Touch Pro）
-sesame ble fingers <device>              # 登録済み指紋一覧（Touch Pro / Bike3）
-sesame ble faces <device>                # 登録済み顔一覧（Face）
-sesame ble palms <device>                # 登録済み掌紋一覧（Palm）
-sesame ble mode <device> <type>          # 現在の登録モードを取得（card/passcode/finger/face/palm）
-sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧 + 現在スクリプト
+sesame ble cards <device>                             # 登録済み NFC カード一覧（Touch / Touch Pro）
+sesame ble passcodes <device>                         # 登録済みキーパッド暗証番号一覧（Touch / Touch Pro）
+sesame ble fingers <device>                           # 登録済み指紋一覧（Touch Pro / Bike3）
+sesame ble faces <device>                             # 登録済み顔一覧（Face）
+sesame ble palms <device>                             # 登録済み掌紋一覧（Palm）
+sesame ble mode <device> <type>                       # 現在の登録モードを取得（card/passcode/finger/face/palm）
+sesame ble script <device>                            # Bot2/Bot3 のスクリプト名一覧 + 現在スクリプト
+sesame ble script-run <device> <index>                # Bot2/Bot3 スクリプトを番号（0..9）で実行
+sesame ble script-select <device> <index>             # アクティブな Bot2/Bot3 スクリプトを番号（0..9）で設定
+sesame ble script-write <device> <index> --json '{}'  # Bot2/Bot3 スクリプトをスロット（0..9）へ書き込む
+sesame ble invoke <device> <op> [--args <json>]       # OS3 BLE ファサード op をドット区切りパスで呼び出す
+sesame ble os2-invoke <device> <op> [--args <json>]   # OS2 BLE ファサード op をドット区切りパスで呼び出す
+sesame ble ota <device>                               # BLE ファームウェア更新開始（WM2: OPEN_OTA_SERVER / Hub3: MOVE_TO）
+sesame ble reset <device> [--yes]                     # OS3 デバイスを工場出荷状態へリセット（破壊的操作）
+sesame ble wifi <device> <action> [value]             # WM2/Hub3 の Wi-Fi プロビジョニング（action: scan/ssid/password/connect）
+sesame ble position <device> <lock> <unlock>          # 施錠 / 解錠角度を設定（OS3 Sesame5/6 系ロック）
 ```
 
-`<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドは `--secret <hex>` / `--model <model>`（config のロックに無いデバイスを対象にする）と `--timeout <ms>`（publish 収集タイムアウト・既定 8000）を受け付けます。`scan` は鍵なしです。
+`<device>` は config のロック名か deviceUUID です。接続を伴うサブコマンドは `--secret <hex>` / `--model <model>`（config のロックに無いデバイスを対象にする）と `--timeout <ms>`（publish 収集タイムアウト・既定 8000）を受け付けます。`scan` は鍵なしです。`invoke` と `os2-invoke` は `--address <address>`（peripheral ID 上書き）も受け付けます。
 
-このページのそれ以外 — 生体・アクセス制御の**登録**（追加 / 削除 / 改名・モード設定）、Bike3 指紋の削除 / 改名 / モード設定、Bot2 スクリプトの切替 / 書き込み / index 実行、WM2 / Hub3 プロビジョニング、BLE OTA、工場出荷 `reset`、OS2 ファサード — は専用 CLI コマンドを持ちませんが、登録済み操作は Node と `sesame serve` の `ble.invoke` / `ble.os2.invoke` から同じメソッド名で呼べます。JSON-RPC のバイト列引数は `{"type":"Buffer","data":[...]}` または `{"$buffer":"...","encoding":"hex"}` で渡せます。ペアリング / 登録は `sesame ble register`、`sesame ble os2-register`、`ble.register`、`ble.os2.register` からも利用できます。`sesame ble` コマンド・BLE RPC・ライブラリ呼び出しは同じコード経路で、ユニットテスト済みですが**実機未確認**です。
+専用 CLI コマンドが**ない**のは、生体・アクセス制御の**登録書き込み**（カード / 暗証番号 / 指紋 / 顔 / 掌紋の追加 / 削除 / 改名・モード設定）と Bike3 指紋の書き込み操作（fingerPrintChange / fingerPrintDelete / fingerPrintModeSet）のみです。これらの書き込み操作は Node と `sesame serve` の `ble.invoke` / `ble.os2.invoke` から同じメソッド名で呼べます。JSON-RPC のバイト列引数は `{"type":"Buffer","data":[...]}` または `{"$buffer":"...","encoding":"hex"}` で渡せます。ペアリング / 登録は `sesame ble register`、`sesame ble os2-register`、`ble.register`、`ble.os2.register` からも利用できます。`sesame ble` コマンド・BLE RPC・ライブラリ呼び出しは同じコード経路で、ユニットテスト済みですが**実機未確認**です。
 
 ## デバイス型ごとの能力（公式 SesameSDK に準拠）
 
@@ -343,6 +352,8 @@ await SesameOS2Ble.use(
 `keyIndex` と `ssmPublicKey` はデバイスの鍵情報（OS2 の `sesame2KeyData`）から得ます。OS2 login には `secretKey` だけでは不十分です。ゲスト鍵 / サーバ署名鍵は `needAuthFromServer: true` + `signLogin` コールバックで login できます。
 
 OS2 の `mechSetting` 書き込みは SDK と 1:1 です。`configureLockPosition(lockDeg, unlockDeg)` は `CHSesame2Device.configureLockPosition` の移植で、度数を内部 tick（`deg*1024/360`）へ変換し ±150 の range を作って 12 バイトの設定を 22 バイトの履歴タグ付きで送ります。`updateSetting(setting, tag)` は Bot1 用に `CHSesameBotDevice.updateSetting`（7 フィールド + 予約 5 バイト 0 埋め）を移植したものです。`updateFirmware()` は OS2 の `enableDFU`（item=7）開始コマンドの移植で、**DFU 開始コマンドの送信のみ**を行います（送信後デバイスは DFU ブートローダへ遷移）。本体ファームのバイナリ転送は範囲外です。OS3 の `SesameBle#updateFirmware`（OTA サーバ起動 + 進捗フロー）とは異なり、OS2 経路は開始コマンドのみで**実機未検証**です。
+
+**意図的逸脱 — OS2 mechStatus publish では履歴を自動読み出ししません。** 公式 SDK（`CHSesame2Device.kt:543-553`）は mechStatus publish 受信時に `retCode != 0` または `target == Short.MIN_VALUE` のとき `readHistoryCommand` を自動発行してサーバへ POST します。kit ではこの**自動ドレインを実装しません**: 履歴の取得は明示的な `history()` 呼び出しのみで行われます。根拠は [README の既知の制限](../../README.ja.md#既知の制限) を参照してください。
 
 ### 新規ペアリング・登録（工場出荷デバイス）
 

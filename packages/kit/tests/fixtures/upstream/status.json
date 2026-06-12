@@ -1,0 +1,11 @@
+{
+  "method": "status",
+  "note": "synthetic — daemon-owned status shape (always available; no cloud/auth needed). authState is one of ok|degraded|expired (daemon.js constructor/connect). subUUID is hub.subUUID (string when connected).",
+  "sample": {
+    "connected": true,
+    "authState": "ok",
+    "subUUID": "00000000-0000-4000-8000-000000000001",
+    "apiVersion": "1.0.0",
+    "contractVersion": "1.1.0"
+  }
+}

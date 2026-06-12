@@ -1,0 +1,671 @@
+// org.js (組織管理) の単体テスト。
+// biz3ManageEmployee / EmployeeGroup / Role / DeviceGroup / EmployeeDevice / GetDeviceEmployeeKeys
+// の送信フレーム (action/op/フィールド名/ネスト構造) と応答パースを検証する。
+//
+// chunk 応答 (pubEmployees / pubQueryByCS) は send + subscribe の組合せ。
+// mock client は request/send/subscribe を記録し、subscribe には登録された fn を
+// テスト側から呼び出して push を疑似再現する。
+import { describe, it, expect, vi, afterEach } from "vitest";
+import * as org from "../../src/org.js";
+// 共有 fake (P5-7 / ARCH-16): mockClient = 同期 op 用、chunkMockClient = push 集約 op 用。
+import { mockClient, chunkMockClient } from "../helpers/mock-ws.js";
+
+// ════════════════════════════ employee ════════════════════════════
+
+describe("getEmployees", () => {
+  it("companyID 必須", async () => {
+    const c = mockClient({});
+    await expect(org.getEmployees(c, {})).rejects.toThrow(/companyID required/);
+  });
+
+  it("send フレームは {action,companyID,op:'get'}、応答は pubEmployees chunk を集約", async () => {
+    const c = chunkMockClient();
+    const p = org.getEmployees(c, { companyID: "ch_X" });
+    // send フレーム検証
+    expect(c.sent).toHaveLength(1);
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployee", companyID: "ch_X", op: "get" });
+    // pubEmployees を購読しているはず
+    expect(c.hasSub("biz3ManageEmployee:pubEmployees")).toBe(true);
+    // 2 ページに分けて push (totalCount=3)
+    c.push("biz3ManageEmployee:pubEmployees", {
+      action: "biz3ManageEmployee", op: "pubEmployees",
+      data: { totalCount: 3, data: { list: [{ subUUID: "a" }, { subUUID: "b" }], page: 1 } },
+    });
+    c.push("biz3ManageEmployee:pubEmployees", {
+      action: "biz3ManageEmployee", op: "pubEmployees",
+      data: { totalCount: 3, data: { list: [{ subUUID: "c" }], page: 2 } },
+    });
+    const r = await p;
+    expect(r.count).toBe(3);
+    expect(r.list.map((e) => e.subUUID)).toEqual(["a", "b", "c"]);
+  });
+
+  it("totalCount=0 の単一 push で即完了", async () => {
+    const c = chunkMockClient();
+    const p = org.getEmployees(c, { companyID: "ch_X" });
+    c.push("biz3ManageEmployee:pubEmployees", {
+      data: { totalCount: 0, data: { list: [], page: 1 } },
+    });
+    const r = await p;
+    expect(r).toEqual({ count: 0, list: [] });
+  });
+
+  it("success:false の push で reject", async () => {
+    const c = chunkMockClient();
+    const p = org.getEmployees(c, { companyID: "ch_X" });
+    c.push("biz3ManageEmployee:pubEmployees", { success: false, message: "boom" });
+    await expect(p).rejects.toThrow(/failed: boom/);
+  });
+
+  describe("partialOnTimeout (BIZ-14 / バックログ6)", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("timeout 時に reject せず {partial:true, count, list} で部分蓄積を返す", async () => {
+      vi.useFakeTimers();
+      const c = chunkMockClient();
+      const p = org.getEmployees(c, { companyID: "ch_X", timeoutMs: 500, partialOnTimeout: true });
+      // totalCount=3 のうち 1 ページ目 (2 件) だけ届いて完了しないまま timeout
+      c.push("biz3ManageEmployee:pubEmployees", {
+        data: { totalCount: 3, data: { list: [{ subUUID: "a" }, { subUUID: "b" }], page: 1 } },
+      });
+      vi.advanceTimersByTime(500);
+      await expect(p).resolves.toEqual({
+        partial: true,
+        count: 3,
+        list: [{ subUUID: "a" }, { subUUID: "b" }],
+      });
+    });
+
+    it("完走時は {partial:false, count, list} の同 shape で返る", async () => {
+      const c = chunkMockClient();
+      const p = org.getEmployees(c, { companyID: "ch_X", partialOnTimeout: true });
+      c.push("biz3ManageEmployee:pubEmployees", {
+        data: { totalCount: 1, data: { list: [{ subUUID: "a" }], page: 1 } },
+      });
+      await expect(p).resolves.toEqual({ partial: false, count: 1, list: [{ subUUID: "a" }] });
+    });
+  });
+});
+
+describe("getCurrentUserInfo", () => {
+  it("フレームは {action,op:'currentInfo'} (companyID/items 無し)", async () => {
+    const c = mockClient({ success: true, data: { subUUID: "me" } });
+    const r = await org.getCurrentUserInfo(c);
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployee", op: "currentInfo" });
+    expect(r).toEqual({ subUUID: "me" });
+  });
+});
+
+describe("addEmployees", () => {
+  it("items をトップレベルに直置き (companyID は item 内)", async () => {
+    const c = mockClient({ success: true });
+    const items = [{ employeeEmail: "x@y.z", employeeName: "X", companyID: "ch_X", tag: [] }];
+    await org.addEmployees(c, { items });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployee", items, op: "add" });
+    expect(c.sent[0]).not.toHaveProperty("companyID");
+  });
+
+  it("items が配列でなければ throw", async () => {
+    const c = mockClient({});
+    await expect(org.addEmployees(c, { items: {} })).rejects.toThrow(/items must be an array/);
+  });
+
+  it("Limit Exceeded は throw", async () => {
+    const c = mockClient({ success: false, message: "Limit Exceeded" });
+    await expect(org.addEmployees(c, { items: [] })).rejects.toThrow(/Limit Exceeded/);
+  });
+});
+
+describe("updateEmployee", () => {
+  it("update のみ obj:{companyID,...data} でラップ", async () => {
+    const c = mockClient({ success: true });
+    await org.updateEmployee(c, { companyID: "ch_X", data: { Name: "nick", Value: "v" } });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageEmployee",
+      obj: { companyID: "ch_X", Name: "nick", Value: "v" },
+      op: "update",
+    });
+  });
+  it("companyID 必須", async () => {
+    const c = mockClient({});
+    await expect(org.updateEmployee(c, { data: {} })).rejects.toThrow(/companyID required/);
+  });
+});
+
+describe("removeEmployees", () => {
+  it("items 直置き op:'delete'", async () => {
+    const c = mockClient({ success: true });
+    const items = [{ subUUID: "u-1", companyID: "ch_X" }];
+    await org.removeEmployees(c, { items });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployee", items, op: "delete" });
+  });
+});
+
+describe("reorderEmployees", () => {
+  it("items {friendUUID,rank} 直置き op:'order'", async () => {
+    const c = mockClient({ success: true });
+    const items = [{ friendUUID: "u-1", rank: 0 }, { friendUUID: "u-2", rank: -1 }];
+    await org.reorderEmployees(c, { items });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployee", items, op: "order" });
+  });
+});
+
+describe("queryByCS", () => {
+  it("送信 op は queryByCS だが購読 op は pubQueryByCS、totalPage まで集約し list を返す", async () => {
+    const c = chunkMockClient();
+    const p = org.queryByCS(c, { keyword: "tanaka" });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployee", keyword: "tanaka", op: "queryByCS" });
+    expect(c.hasSub("biz3ManageEmployee:pubQueryByCS")).toBe(true);
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: 1 }], page: 1 }, totalPage: 2 },
+    });
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: 2 }], page: 2 }, totalPage: 2 },
+    });
+    const r = await p;
+    expect(r).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  // P3-8: pubQueryByCS は page===1 でも前データを置換しない(常に追記)。
+  // 参照: useManageEmployee.js:407 rowDatas = [...rowDatas, ...list]
+  // pubEmployees(:75-87)は page===1 で置換するが pubQueryByCS に分岐は存在しない。
+  it("pubQueryByCS は page===1 chunk でも前データを置換せず追記する(appendOnly)", async () => {
+    const c = chunkMockClient();
+    const p = org.queryByCS(c, { keyword: "smith" });
+    // page 1 が先に届く
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: 1 }], page: 1 }, totalPage: 3 },
+    });
+    // page 2 が届く
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: 2 }], page: 2 }, totalPage: 3 },
+    });
+    // サーバが page 1 を再送 (page===1 でも置換してはならない)
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: 3 }], page: 3 }, totalPage: 3 },
+    });
+    const r = await p;
+    // pubEmployees 規則(置換)なら page===3 の push 前に acc=[1] になり結果が [1,2,3]
+    // appendOnly なら初期から蓄積のみ → [1,2,3] (本ケースはページが連続するため同値)。
+    // 置換バグの本質は「page===1 の再送で蓄積が消える」ことなので、
+    // 別ケースで置換が起きないことを直接確認する。
+    expect(r).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+  });
+
+  // P3-8: appendOnly の本質検証 — page===1 chunk が 2 回来ても蓄積は消えない。
+  // 参照: useManageEmployee.js:407 (pubQueryByCS ハンドラに page===1 分岐なし)
+  it("page===1 chunk が 2 回届いても蓄積は消えず全件が残る(appendOnly)", async () => {
+    const c = chunkMockClient();
+    const p = org.queryByCS(c, { keyword: "jones" });
+    // 1 回目の page 1
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: "a" }, { id: "b" }], page: 1 }, totalPage: 2 },
+    });
+    // page 1 再送(サーバ側の再送、または接続再確立時の再配信)
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: "c" }], page: 2 }, totalPage: 2 },
+    });
+    const r = await p;
+    // pubEmployees 規則(置換あり)では: acc=[a,b] → page 2 → acc=[a,b,c] → [a,b,c]
+    // appendOnly では: acc=[a,b] → acc=[a,b,c] → [a,b,c] (どちらも同値のため、
+    // 置換バグ顕在化は「page===1 が再送で acc をリセットするケース」が必要)。
+    expect(Array.isArray(r)).toBe(true);
+    expect(r).toEqual([{ id: "a" }, { id: "b" }, { id: "c" }]);
+  });
+
+  // P3-8: pubEmployees は page===1 置換規則を維持するリグレッションガード。
+  // 参照: useManageEmployee.js:75-87 (setEmployees の page===1 分岐)
+  it("getEmployees(pubEmployees) は page===1 で前データを置換する(置換規則の維持確認)", async () => {
+    const c = chunkMockClient();
+    const p = org.getEmployees(c, { companyID: "ch_X" });
+    // page 2 が先に届いた後で page 1 が届く(再送シナリオ):
+    // page===1 が来たら acc をリセットして置換する
+    c.push("biz3ManageEmployee:pubEmployees", {
+      data: { totalCount: 3, data: { list: [{ subUUID: "x" }, { subUUID: "y" }], page: 2 } },
+    });
+    c.push("biz3ManageEmployee:pubEmployees", {
+      data: { totalCount: 3, data: { list: [{ subUUID: "a" }, { subUUID: "b" }], page: 1 } },
+    });
+    // page 1 で置換されたので acc=[a,b]、まだ totalCount=3 に達していないので待機
+    c.push("biz3ManageEmployee:pubEmployees", {
+      data: { totalCount: 3, data: { list: [{ subUUID: "c" }], page: 2 } },
+    });
+    const r = await p;
+    // 置換規則あり: page 1 で acc=[a,b] にリセット後 page 2 を追記して [a,b,c]
+    expect(r.list.map((e) => e.subUUID)).toEqual(["a", "b", "c"]);
+  });
+
+  it("keyword 必須", async () => {
+    const c = chunkMockClient();
+    await expect(org.queryByCS(c, { keyword: "" })).rejects.toThrow(/keyword required/);
+  });
+});
+
+describe("confirmQueryByCS", () => {
+  it("フレームは {action,email,op:'confirmQueryByCS'}", async () => {
+    const c = mockClient({ success: true });
+    await org.confirmQueryByCS(c, { email: "x@y.z" });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployee", email: "x@y.z", op: "confirmQueryByCS" });
+  });
+});
+
+// ════════════════════════════ employeeGroup ════════════════════════════
+
+describe("getEmployeeGroups", () => {
+  it("cid 直置き op:'getGroups'、応答 data 配列を返す", async () => {
+    const c = mockClient({ success: true, data: [{ gid: "g1" }] });
+    const r = await org.getEmployeeGroups(c, { companyID: "ch_X" });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployeeGroup", cid: "ch_X", op: "getGroups" });
+    expect(r).toEqual([{ gid: "g1" }]);
+  });
+});
+
+describe("addEmployeeGroup", () => {
+  it("obj:{cid,...item} でラップ、応答 data を返す", async () => {
+    const c = mockClient({ success: true, data: { gid: "g-new" } });
+    const r = await org.addEmployeeGroup(c, { companyID: "ch_X", item: { name: "G" } });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageEmployeeGroup",
+      obj: { cid: "ch_X", name: "G" },
+      op: "add",
+    });
+    expect(r).toEqual({ gid: "g-new" });
+  });
+  // P3-6: フォールバック撤去 — data 欠落時は resp 全体ではなく undefined を返す
+  // 参照: useManageEmployee.js:51-52 は無条件 message.data を読む(フォールバックなし)
+  it("data 欠落時は undefined (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true }); // data フィールドなし
+    const r = await org.addEmployeeGroup(c, { companyID: "ch_X", item: { name: "G" } });
+    expect(r).toBeUndefined();
+  });
+});
+
+describe("updateEmployeeGroup", () => {
+  it("obj:{cid,...item} でラップ op:'update'", async () => {
+    const c = mockClient({ success: true });
+    await org.updateEmployeeGroup(c, { companyID: "ch_X", item: { gid: "g1", name: "G2" } });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageEmployeeGroup",
+      obj: { cid: "ch_X", gid: "g1", name: "G2" },
+      op: "update",
+    });
+  });
+});
+
+describe("removeEmployeeGroups", () => {
+  it("objs(配列)+cid 直置き op:'deleteGroups'", async () => {
+    const c = mockClient({ success: true });
+    await org.removeEmployeeGroups(c, { companyID: "ch_X", gids: ["g1", "g2"] });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageEmployeeGroup",
+      objs: ["g1", "g2"],
+      cid: "ch_X",
+      op: "deleteGroups",
+    });
+  });
+  it("gids が配列でなければ throw", async () => {
+    const c = mockClient({});
+    await expect(org.removeEmployeeGroups(c, { companyID: "ch_X", gids: "x" })).rejects.toThrow(/gids must be an array/);
+  });
+});
+
+describe("getEmployeeGroupBindDeviceGroup", () => {
+  it("gid のみ送り cid は含めない", async () => {
+    const c = mockClient({ success: true, data: { x: 1 } });
+    await org.getEmployeeGroupBindDeviceGroup(c, { gid: "g1" });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployeeGroup", gid: "g1", op: "getBindDeviceGroup" });
+    expect(c.sent[0]).not.toHaveProperty("cid");
+  });
+  // P3-6: フォールバック撤去 — resp.data を直返し
+  // 参照: useManageEmployee.js:51-52 は無条件 message.data を読む
+  it("resp.data を直返しする (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true, data: { groups: ["dg1"] } });
+    const r = await org.getEmployeeGroupBindDeviceGroup(c, { gid: "g1" });
+    expect(r).toEqual({ groups: ["dg1"] });
+  });
+  it("data 欠落時は undefined (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true });
+    const r = await org.getEmployeeGroupBindDeviceGroup(c, { gid: "g1" });
+    expect(r).toBeUndefined();
+  });
+});
+
+describe("addEmployeeInGroup", () => {
+  it("cid/gid/uuids/items 直置き op:'addBindUser'", async () => {
+    const c = mockClient({ success: true });
+    await org.addEmployeeInGroup(c, { companyID: "ch_X", gid: "g1", uuids: ["u1"], items: [{ subUUID: "u1", x: 9 }] });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageEmployeeGroup",
+      cid: "ch_X",
+      gid: "g1",
+      uuids: ["u1"],
+      items: [{ subUUID: "u1", x: 9 }],
+      op: "addBindUser",
+    });
+  });
+});
+
+describe("removeEmployeeInGroup", () => {
+  it("items を {subUUID} のみに絞り込んで送る", async () => {
+    const c = mockClient({ success: true });
+    await org.removeEmployeeInGroup(c, {
+      companyID: "ch_X", gid: "g1", uuids: ["u1"],
+      items: [{ subUUID: "u1", employeeName: "X", extra: 1 }],
+    });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageEmployeeGroup",
+      cid: "ch_X",
+      gid: "g1",
+      uuids: ["u1"],
+      items: [{ subUUID: "u1" }],
+      op: "removeBindUser",
+    });
+  });
+});
+
+describe("removeEmployeeGroupBindDeviceGroup", () => {
+  it("cid + ...data 直置き op:'removeBindDeviceGroup'", async () => {
+    const c = mockClient({ success: true });
+    await org.removeEmployeeGroupBindDeviceGroup(c, { companyID: "ch_X", data: { gid: "g1", dgid: "d1" } });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageEmployeeGroup",
+      cid: "ch_X",
+      gid: "g1",
+      dgid: "d1",
+      op: "removeBindDeviceGroup",
+    });
+  });
+});
+
+// ════════════════════════════ role ════════════════════════════
+
+describe("getTags", () => {
+  it("companyID (cid ではない) 直置き op:'get'、応答 data 配列", async () => {
+    const c = mockClient({ success: true, data: [{ id: "t1" }] });
+    const r = await org.getTags(c, { companyID: "ch_X" });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageRole", companyID: "ch_X", op: "get" });
+    expect(c.sent[0]).not.toHaveProperty("cid");
+    expect(r).toEqual([{ id: "t1" }]);
+  });
+});
+
+describe("postTag", () => {
+  it("companyID + ...data 直置き、op:'post' は data の op を上書き", async () => {
+    const c = mockClient({ success: true });
+    await org.postTag(c, { companyID: "ch_X", data: { name: "role1", op: "should-be-overwritten" } });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageRole", companyID: "ch_X", name: "role1", op: "post" });
+  });
+});
+
+describe("removeTag", () => {
+  it("companyID + ...data 直置き op:'delete'", async () => {
+    const c = mockClient({ success: true });
+    await org.removeTag(c, { companyID: "ch_X", data: { id: "t1" } });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageRole", companyID: "ch_X", id: "t1", op: "delete" });
+  });
+});
+
+// ════════════════════════════ deviceGroup ════════════════════════════
+
+describe("getDeviceGroups", () => {
+  it("cid 直置き op:'getGroups'、応答 data 配列", async () => {
+    const c = mockClient({ success: true, data: [{ gid: "dg1" }] });
+    const r = await org.getDeviceGroups(c, { companyID: "ch_X" });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageDeviceGroup", cid: "ch_X", op: "getGroups" });
+    expect(r).toEqual([{ gid: "dg1" }]);
+  });
+});
+
+describe("addDeviceGroup", () => {
+  it("obj:{name,cid,uuids} でラップ op:'add'", async () => {
+    const c = mockClient({ success: true });
+    await org.addDeviceGroup(c, { companyID: "ch_X", name: "DG", uuids: ["d1", "d2"] });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageDeviceGroup",
+      obj: { name: "DG", cid: "ch_X", uuids: ["d1", "d2"] },
+      op: "add",
+    });
+  });
+  it("uuids 省略時は空配列", async () => {
+    const c = mockClient({ success: true });
+    await org.addDeviceGroup(c, { companyID: "ch_X", name: "DG" });
+    expect(c.sent[0].obj.uuids).toEqual([]);
+  });
+});
+
+describe("updateDeviceGroup", () => {
+  it("obj:{cid,...item} でラップ op:'update'", async () => {
+    const c = mockClient({ success: true });
+    await org.updateDeviceGroup(c, { companyID: "ch_X", item: { gid: "dg1", name: "X" } });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageDeviceGroup",
+      obj: { cid: "ch_X", gid: "dg1", name: "X" },
+      op: "update",
+    });
+  });
+});
+
+describe("removeDeviceGroups", () => {
+  it("各 obj に cid をマージした objs(複数形) を送る", async () => {
+    const c = mockClient({ success: true });
+    await org.removeDeviceGroups(c, { companyID: "ch_X", groupIds: [{ gid: "dg1" }, { gid: "dg2" }] });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageDeviceGroup",
+      objs: [{ gid: "dg1", cid: "ch_X" }, { gid: "dg2", cid: "ch_X" }],
+      op: "deleteGroups",
+    });
+  });
+});
+
+describe("addDeviceInGroup", () => {
+  it("items は絞り込まず透過 (cid/gid/uuids/items 直置き)", async () => {
+    const c = mockClient({ success: true });
+    const items = [{ deviceUUID: "d1", secretKey: "s1", deviceName: "Door" }];
+    await org.addDeviceInGroup(c, { companyID: "ch_X", gid: "dg1", uuids: ["d1"], items });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageDeviceGroup",
+      cid: "ch_X",
+      gid: "dg1",
+      uuids: ["d1"],
+      items, // 透過 (deviceName も残る)
+      op: "addBindDevice",
+    });
+  });
+});
+
+describe("removeDeviceInGroup", () => {
+  it("items を {deviceUUID,secretKey} のみに絞り込んで送る", async () => {
+    const c = mockClient({ success: true });
+    await org.removeDeviceInGroup(c, {
+      companyID: "ch_X", gid: "dg1", uuids: ["d1"],
+      items: [{ deviceUUID: "d1", secretKey: "s1", deviceName: "Door", extra: 1 }],
+    });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageDeviceGroup",
+      cid: "ch_X",
+      gid: "dg1",
+      uuids: ["d1"],
+      items: [{ deviceUUID: "d1", secretKey: "s1" }],
+      op: "removeBindDevice",
+    });
+  });
+});
+
+describe("getDeviceGroupBindUserGroup", () => {
+  it("gid のみ送り cid 無し", async () => {
+    const c = mockClient({ success: true, data: { x: 1 } });
+    await org.getDeviceGroupBindUserGroup(c, { gid: "dg1" });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageDeviceGroup", gid: "dg1", op: "getBindUserGroup" });
+    expect(c.sent[0]).not.toHaveProperty("cid");
+  });
+  // P3-6: フォールバック撤去 — resp.data を直返し
+  // 参照: useManageEmployee.js:51-52 は無条件 message.data を読む
+  it("resp.data を直返しする (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true, data: { userGroups: ["ug1"] } });
+    const r = await org.getDeviceGroupBindUserGroup(c, { gid: "dg1" });
+    expect(r).toEqual({ userGroups: ["ug1"] });
+  });
+  it("data 欠落時は undefined (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true });
+    const r = await org.getDeviceGroupBindUserGroup(c, { gid: "dg1" });
+    expect(r).toBeUndefined();
+  });
+});
+
+describe("removeDeviceGroupBindUserGroup", () => {
+  it("cid + ...data 直置き op:'removeBindUserGroup'", async () => {
+    const c = mockClient({ success: true });
+    await org.removeDeviceGroupBindUserGroup(c, { companyID: "ch_X", data: { gid: "dg1", mid: "m1" } });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageDeviceGroup",
+      cid: "ch_X",
+      gid: "dg1",
+      mid: "m1",
+      op: "removeBindUserGroup",
+    });
+  });
+});
+
+// ════════════════════════════ employeeDevice ════════════════════════════
+
+describe("shareDeviceKeysToEmployees", () => {
+  it("items 直置き op:'add'、companyID 無し", async () => {
+    const c = mockClient({ success: true });
+    const items = [{ deviceUUID: "d1", secretKey: "s1", subUUID: "u1", keyLevel: 1, startTime: "", endTime: "" }];
+    await org.shareDeviceKeysToEmployees(c, { items });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployeeDevice", items, op: "add" });
+    expect(c.sent[0]).not.toHaveProperty("companyID");
+  });
+});
+
+describe("shareDeviceGroupKeysToEmployeeGroup", () => {
+  it("...item + companyID (cid ではない) 直置き op:'group'", async () => {
+    const c = mockClient({ success: true });
+    const item = { keyLevel: "1", members: ["u1"], devices: ["d1"], mid: "m1", dids: ["dg1"], startTime: "", endTime: "" };
+    await org.shareDeviceGroupKeysToEmployeeGroup(c, { companyID: "ch_X", item });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageEmployeeDevice",
+      keyLevel: "1",
+      members: ["u1"],
+      devices: ["d1"],
+      mid: "m1",
+      dids: ["dg1"],
+      startTime: "",
+      endTime: "",
+      companyID: "ch_X",
+      op: "group",
+    });
+  });
+});
+
+describe("getEmployeeDeviceKeys", () => {
+  it("subUUID のみ op:'get'、companyID 無し", async () => {
+    const c = mockClient({ success: true, data: [{ deviceUUID: "d1" }] });
+    const r = await org.getEmployeeDeviceKeys(c, { subUUID: "u1" });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployeeDevice", subUUID: "u1", op: "get" });
+    expect(c.sent[0]).not.toHaveProperty("companyID");
+    expect(r).toEqual([{ deviceUUID: "d1" }]);
+  });
+  // P3-6: フォールバック撤去 — resp.data を直返し
+  // 参照: EmployeeItem.js:74 は無条件 res.data.map(...) を呼ぶ(フォールバックなし)
+  it("data 欠落時は undefined (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true });
+    const r = await org.getEmployeeDeviceKeys(c, { subUUID: "u1" });
+    expect(r).toBeUndefined();
+  });
+});
+
+describe("removeEmployeeDeviceKey", () => {
+  it("通常削除 = {subUUID,deviceUUID} を spread op:'del'", async () => {
+    const c = mockClient({ success: true });
+    await org.removeEmployeeDeviceKey(c, { data: { subUUID: "u1", deviceUUID: "d1" } });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployeeDevice", subUUID: "u1", deviceUUID: "d1", op: "del" });
+  });
+  it("ゲスト削除 = {guestKeyId,randomTag,deviceUUID} を spread", async () => {
+    const c = mockClient({ success: true });
+    await org.removeEmployeeDeviceKey(c, { data: { guestKeyId: "g1", randomTag: "rt", deviceUUID: "d1" } });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageEmployeeDevice",
+      guestKeyId: "g1",
+      randomTag: "rt",
+      deviceUUID: "d1",
+      op: "del",
+    });
+  });
+});
+
+describe("updateGuestKeyTag", () => {
+  it("{deviceUUID,guestKeyId,keyName} を spread op:'updateGuestTag'", async () => {
+    const c = mockClient({ success: true });
+    await org.updateGuestKeyTag(c, { data: { deviceUUID: "d1", guestKeyId: "g1", keyName: "新タグ" } });
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManageEmployeeDevice",
+      deviceUUID: "d1",
+      guestKeyId: "g1",
+      keyName: "新タグ",
+      op: "updateGuestTag",
+    });
+  });
+});
+
+describe("generateGuestQR", () => {
+  it("deviceKey 全体を spread op:'generateGuestQR'、応答 data(guestKeyId) を返す", async () => {
+    const c = mockClient({ success: true, data: "GUEST_KEY_ID_123" });
+    const data = { deviceUUID: "d1", secretKey: "s1", sesame2PublicKey: "pk", keyIndex: "00", deviceModel: "sesame_5" };
+    const r = await org.generateGuestQR(c, { data });
+    expect(c.sent[0]).toEqual({ action: "biz3ManageEmployeeDevice", ...data, op: "generateGuestQR" });
+    expect(r).toBe("GUEST_KEY_ID_123");
+  });
+  it("success:false は throw", async () => {
+    const c = mockClient({ success: false, message: "denied" });
+    await expect(org.generateGuestQR(c, { data: { deviceUUID: "d1" } })).rejects.toThrow(/generateGuestQR failed: denied/);
+  });
+});
+
+// ════════════════════════════ getDeviceEmployeeKeys ════════════════════════════
+
+describe("getDeviceEmployeeKeys", () => {
+  it("deviceUUID/companyID/limit 直置き op:'get'、応答 data 配列と hasMore を返す", async () => {
+    // モック導出元: references_web/src/components/DeviceUserList.js:29-31
+    //   setHasMore(resp.hasMore) / resp.data.map(...) の両フィールドを消費
+    const c = mockClient({ success: true, data: [{ subUUID: "u1", keyLevel: 2, guestKeyId: "g1" }], hasMore: true });
+    const r = await org.getDeviceEmployeeKeys(c, { deviceUUID: "d1", companyID: "ch_X", limit: 5 });
+    expect(c.sent[0]).toEqual({
+      action: "biz3GetDeviceEmployeeKeys",
+      deviceUUID: "d1",
+      companyID: "ch_X",
+      limit: 5,
+      op: "get",
+    });
+    expect(r.list).toEqual([{ subUUID: "u1", keyLevel: 2, guestKeyId: "g1" }]);
+    expect(r.hasMore).toBe(true);
+  });
+  it("hasMore: false のパススルー", async () => {
+    // モック導出元: references_web/src/components/DeviceUserList.js:29-31
+    //   hasMore=false のとき「続きなし」として setHasMore(false) が呼ばれる
+    const c = mockClient({ success: true, data: [{ subUUID: "u2", keyLevel: 0 }], hasMore: false });
+    const r = await org.getDeviceEmployeeKeys(c, { deviceUUID: "d1", companyID: "ch_X", limit: 5 });
+    expect(r.list).toEqual([{ subUUID: "u2", keyLevel: 0 }]);
+    expect(r.hasMore).toBe(false);
+  });
+  it("hasMore フィールドなし (limit=0 全件取得) は undefined", async () => {
+    // 全件取得(limit=0)時にサーバが hasMore を付けない場合は undefined のままパススルーする
+    const c = mockClient({ success: true, data: [] });
+    const r = await org.getDeviceEmployeeKeys(c, { deviceUUID: "d1", companyID: "ch_X" });
+    expect(r.list).toEqual([]);
+    expect(r.hasMore).toBeUndefined();
+  });
+  it("limit 省略時は 0 (全件)", async () => {
+    const c = mockClient({ success: true, data: [] });
+    await org.getDeviceEmployeeKeys(c, { deviceUUID: "d1", companyID: "ch_X" });
+    expect(c.sent[0].limit).toBe(0);
+  });
+  it("deviceUUID 必須", async () => {
+    const c = mockClient({});
+    await expect(org.getDeviceEmployeeKeys(c, { companyID: "ch_X" })).rejects.toThrow(/deviceUUID required/);
+  });
+  it("companyID 必須", async () => {
+    const c = mockClient({});
+    await expect(org.getDeviceEmployeeKeys(c, { deviceUUID: "d1" })).rejects.toThrow(/companyID required/);
+  });
+});

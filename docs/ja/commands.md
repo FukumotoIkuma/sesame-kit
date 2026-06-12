@@ -21,7 +21,9 @@ sesame whoami                  # ログインユーザー情報 (biz3GetLoginUse
 sesame init                    # 設定ディレクトリと config.json スケルトンを作成
 sesame setup                   # 認証後の自動取り込みを再実行 (companyID / locks / Hub3 IR)
 sesame migrate [srcDir]        # 旧 .env / keys.json を取り込み (トークンは取り込まない — `sesame login` を実行)
-sesame config                  # 設定を表示 (秘匿値はマスク)
+sesame config                  # 設定を表示 (秘匿値はマスク。`config show` の alias)
+sesame config path             # 設定ディレクトリのパスを表示
+sesame config show             # config.json / tokens.json を表示 (マスク)
 sesame bootstrap               # stdin の JSON からアプリログイン token バックアップを復元
 sesame meta                    # Cognito 設定 (region / userPoolId / clientId) を表示
 sesame ping                    # クラウド WS 接続を確認
@@ -211,13 +213,37 @@ sesame access cards enroll --device <uuid>                      # [experimental]
 sesame access cards clear --device <uuid>                       # 指定デバイスのカード全削除
 sesame access cards rm --json '[{"deviceID":"...","cardID":"..."}]'   # 個別削除 (応答なし)
 sesame access cards owner <cardID> [ownerSubUUID]               # 所有者割当 ('' で解除)
+sesame access cards name --json '{"cardID":"...","name":"...","cardNameUUID":"<v4>","stpDeviceUUID":"..."}'   # カード名を更新 (updateCardName; cardNameUUID は UUIDv4 必須)
+sesame access cards post --device <uuid> --json '[{"cardID":"...","nameUUID":"...","name":"...","cardType":0}]'   # DB にカードを登録 (postCards; DB 同期のみ、実機書き込み非対象)
+
 sesame access passcodes ls --device <uuid>                      # 暗証番号一覧
 sesame access passcodes enroll --device <uuid>                  # [experimental] 暗証番号を BLE 読み取り(キーパッド入力)→ 一括登録
+sesame access passcodes rm --json '[{"deviceID":"...","passwordID":"..."}]'   # 個別削除 (応答なし)
+sesame access passcodes clear --device <uuid>                   # 指定デバイスの暗証番号全削除
+sesame access passcodes name --json '{"stpDeviceUUID":"...","keyBoardPassCode":"...","keyBoardPassCodeNameUUID":"<v4>","name":"..."}'   # 暗証番号名を更新 (keyBoardPassCodeNameUUID は UUIDv4 必須)
+sesame access passcodes post --device <uuid> --json '[...]'     # DB に暗証番号を登録 (postPasscodes; DB 同期のみ)
 ```
 
-> `rm` (delCards/delPasscodes) は biz3 と同じ **fire-and-forget** です: 参照はコールバックを登録せず応答を無視します (`useManageAuthData.js:265-267`)。完了は報告されません。
+> `rm` (delCards/delPasscodes) は biz3 と同じ **fire-and-forget** です: 参照はコールバックを登録せず応答を無視します。完了は報告されません。
+
+> `name` (カード・暗証番号): `*NameUUID` フィールドは **UUIDv4 必須**です。v4 以外を渡すと biz3 は DB 更新前に BLE 前処理を挟みますが、CLI はその前処理を行いません。新規 v4 を生成して渡してください。
+
+> `post` (カード・暗証番号): **DB 同期のみ** — クラウド DB のレコードを書きます。実機へのファームウェア登録は別系統の BLE 経路（`access cards enroll` / `ble invoke`）で行います。
 
 > `enroll` (**experimental・実機未検証**) はデバイスに BLE 接続して register モードに入り、タップしたカード / 入力した暗証番号を**すべて**集約 (notify ストリームは複数レコードを含む) → クラウド DB へ 1 回で一括登録します (カードは `registerCards` → `postCards`、暗証番号は `registerPasscodes` → `postPasscodes`)。対話時は入力後 Enter、非対話は `--timeout <sec>` (既定 20)。スマホが 1 セッションで複数件読めるのと同じことを、1 件ずつでなく CLI でも行えます。
+
+### 生体認証データ (auth-data) — [experimental]
+
+生体認証エンドポイント（`/device/v1/biometrics`）への SigV4 認証を使った REST 直接アクセスです。指紋 / 顔 / 掌紋 / カード / 暗証番号の生データを扱う低レベル API であり、`access cards` / `access passcodes` の DB 同期 op とは別系統です。
+
+```bash
+sesame access auth-data post   --operation <op> --device-id <id> --items '<json 配列>'   # POST /device/v1/biometrics (postAuthenticationData)
+sesame access auth-data put    --operation <op> --device-id <id> --items '<json 配列>'   # PUT  /device/v1/biometrics (putAuthenticationData)
+sesame access auth-data delete --operation <op> --device-id <id> --items '<json 配列>'   # DELETE /device/v1/biometrics (deleteAuthenticationData)
+sesame access auth-data name   --kind <card|face|fingerPrint|palm|passcode> --json '{"stpDeviceUUID":"...","name":"...","nameUUID":"...","op":"...","cardID":"..."}'   # 生体認証名を更新 (updateAuthenticationName)
+```
+
+> `--operation` は biz3 REST API が要求する biometrics operation 文字列（例: `"insertCard"`, `"deleteCard"`）。`--device-id` は biometrics の `deviceID` フィールド（SESAME デバイス UUID と異なる場合あり）。`--items` は生体情報オブジェクトの JSON 配列です。
 
 ---
 
@@ -277,11 +303,21 @@ sesame iot led 80 --device <uuid> --secret <hex>   # LED 調光 (duty 0-255)
 sesame iot led --get --device <uuid> --secret <hex># 現在の調光取得
 sesame iot relay on  --device <uuid> --secret <hex># LTE リレー開閉
 sesame iot firmware-update --device <uuid> --secret <hex> --wait 60
-sesame iot matter-code --device <uuid> --secret <hex>   # Matter ペアリングコード
+sesame iot matter-code --device <uuid> --secret <hex>   # Matter ペアリングコード取得
+sesame iot matter-open --device <uuid> --secret <hex>   # Matter ペアリングウィンドウを開く (cmdCode=153)
+sesame iot wifi-clear --device <uuid> --secret <hex>    # Hub3 の保存済み WiFi 設定を削除 (cmdCode=210; fire-and-forget)
+sesame iot add-sesame --hub3 <uuid> --secret <hex> --sesame <uuid> --ssm-sec <hex> --model sesame_5   # Hub3 配下に Sesame を追加 (cmdCode=101)
+sesame iot rm-sesame  --hub3 <uuid> --secret <hex> --sesame <uuid> --ssm-sec <hex> --model sesame_5   # Hub3 から Sesame を削除 (cmdCode=103)
 sesame iot raw --topic <topic> --payload <hex> --cmd <n>   # [experimental] 生 iot cmd の逃げ道 (RPC: iot.sendIotCmd / iot.sendIotCmdAwait)
 ```
 
 > `relay` は fire-and-forget で、Hub3 から応答が返りません（送信成功＝切替成功ではありません）。biz3 ソースで確認できる操作は `toggle` です（`on` は同じ toggle op への互換 alias として残しています）。独立した `off` command はありません。
+
+> `matter-open` は Matter ペアリングウィンドウを開きます（statusCode=0 が成功）。先に `matter-code` でペアリングコードを取得してから開くのが通常の手順です。
+
+> `wifi-clear` は Hub3 の保存済み WiFi 認証情報を削除します（fire-and-forget; statusCode の確認なし）。
+
+> `add-sesame` / `rm-sesame`: 両コマンドのペイロード構造は同一です（cmdCode だけ異なる: 101 追加、103 削除）。`--hub3` は親 Hub3 の UUID（MQTT トピックのルートにもなる）、`--sesame` / `--ssm-sec` は子デバイスを指定します。`--nick <name>` はオプション。
 
 ---
 
@@ -324,8 +360,8 @@ sesame front autolock 0          # 無効化
 
 ```bash
 sesame ble scan [--timeout <ms>]         # 鍵なしの近接スキャン（secretKey 不要）
-sesame ble register <uuid> [--model <model>] [--save <name>] [--register-base-url <url>]
-sesame ble os2-register <uuid> [--model <model>]
+sesame ble register <uuid> [--model <model>] [--address <addr>] [--product-type <type>] [--save <name>] [--register-base-url <url>]
+sesame ble os2-register <uuid> [--model <model>] [--address <addr>] [--product-type <type>] [--ak <hex>] [--no-local-server-auth]
 sesame ble cards <device>                # 登録済み NFC カード一覧（Touch / Touch Pro）
 sesame ble passcodes <device>            # 登録済みキーパッド暗証番号一覧（Touch / Touch Pro）
 sesame ble fingers <device>              # 登録済み指紋一覧（Touch Pro / Bike3）
@@ -348,11 +384,16 @@ sesame ble position <device> <lock> <unlock>   # 施錠 / 解錠角度の設定 
 
 `<device>` は config のロック名か deviceUUID です。`scan` 以外の接続を伴うサブコマンドでは、`--secret <hex>` と `--model <model>` で config のロックに無いデバイスを対象にでき、`--timeout <ms>` で publish 収集のタイムアウト（既定 8000）を指定します。`scan` は鍵なしでどちらも不要です。ゲスト鍵 / 期限付き鍵などサーバ署名 login が必要な登録済み OS3 デバイスでは `--server-auth` を付けます。このとき register REST API の host は `--register-base-url <url>` または `config.registerBaseUrl` から解決され（既定は公式の `https://app.candyhouse.co/prod`）、リクエストは `sesame login` が保存した TokenStore から導出した Identity Pool credentials で SigV4 署名されます。
 
+**`register` / `os2-register` のフラグ:**
+- `--address <addr>`: BLE アドレス / peripheral ID を上書きします（UUID スキャンが誤った peripheral を見つけた場合などに有用）。
+- `--product-type <type>`: 登録結果にプロダクトタイプ / モデル値を含めます（下流ツールが必要な場合用）。
+- `os2-register` のみ — `--ak <hex>`: オプションのアプリ登録公開鍵（AK）を hex で渡します。biz3 の register エンドポイントに渡されます。`--no-local-server-auth`: ローカルの `getRegisterKey` ベースの register サーバアダプタを無効化します（直接 biz3 登録にフォールバック）。
+
 > これらのコマンドはライブラリ / RPC と同じ BLE コード経路で、ユニットテスト済みですが**実機未確認**です。list / mode / script は読み取り専用であり、生体登録 / モード設定は `ble invoke`・Node・BLE RPC から呼べます。
 
 **SESAME Bot の台本.** Bot2/Bot3 は最大 10 個の台本（動作パターン）を保持し、台本 *N* の実行は item code `170+N`（`RUN_SCRIPT_0`..`RUN_SCRIPT_9`）を送ります。この `170+index` は BLE でもクラウドでも同一です（公式アプリは BLE 不可時に同じコードでクラウドへフォールバックする）。番号指定実行は 3 経路:
 > - **BLE**: `sesame ble script-run <device> <N>`（上記）、Node では `ble.script.click(N)`。
-> - **クラウド**: `sesame rpc lock.click --scriptIndex N`（RPC）、Node では `hub.botClickScript(name, N)` / `hub.botClickScriptDevice({deviceUUID, secretKey, scriptIndex})`。`scriptIndex` を省略すると**選択中**の台本をクリック（cmd 89）。
+> - **クラウド**: `sesame rpc lock.click --params '{"name":"front","scriptIndex":N}'`（RPC）、Node では `hub.botClickScript(name, N)` / `hub.botClickScriptDevice({deviceUUID, secretKey, scriptIndex})`。`scriptIndex` を省略すると**選択中**の台本をクリック（cmd 89）。
 >
 > 注: `cmd=83`（unlock）で「台本1」が動くのはファームウェアの legacy エイリアスで 1 本しか指せません — 汎用経路は `170+index` です。
 
@@ -374,7 +415,7 @@ sesame ble position <device> <lock> <unlock>   # 施錠 / 解錠角度の設定 
 | Bot `bot_2`/`bot_3` | `click` `status` | 施錠/解錠 (位置なし) |
 | Bike `bike_2`/`bike_3` | `unlock` `status` | 施錠/解錠 (位置なし) |
 | Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (BLE 施錠操作なし) — 生体 / 登録モードの**読み出し**は `sesame ble cards/passcodes/fingers/faces/palms/mode` で CLI から可。登録（書き込み）と Wi-Fi/Hub3 プロビジョニングは Node または `ble.invoke` から可（`SesameBle#biometric` / `#wifi` / `#hub3`、[ble.md](./ble.md) 参照） | — |
-| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | **Node と `ble.os2.invoke`** で BLE 対応（`SesameOS2Ble`・別プロトコル）。専用 CLI 経路は OS2 ではクラウドのみ | 施錠/解錠/moved + 位置 |
+| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | `lock` `unlock` `toggle` `autolock` `click`（機種依存）`status` — BLE 操作は `SesameOS2Ble` ファサード（OS3 と別プロトコル）経由。ssmPublicKey を config に保存済みの場合に使用可（`sesame locks add --ssm-public-key`）。クラウド操作は保存不要。Node / `ble.os2.invoke` からも利用可 | 施錠/解錠/moved + 位置 |
 
 > 「施錠/解錠」は OS3 では `isInLockRange` の有無による **2 値**のみ。OS3 に中間状態 (moved) はありません
 > (Sesame2/3/4 等 OS2 系のみ moved を持ちます)。BLE 実装の設計は [architecture.md](./architecture.md) を参照してください。

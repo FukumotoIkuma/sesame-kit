@@ -9,9 +9,9 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { setLocale } from "../src/i18n.js";
-import { buildRegistry, buildOpenRpcDoc } from "../src/serve/registry.js";
-import { CONTRACT_VERSION } from "../src/serve/jsonrpc.js";
+import { setLocale } from "@sesame-kit/core/i18n";
+import { buildRegistry, buildOpenRpcDoc } from "../packages/kit/src/serve/registry.js";
+import { CONTRACT_VERSION } from "@sesame-kit/core/jsonrpc";
 
 setLocale("en"); // 公開契約は英語 canonical
 

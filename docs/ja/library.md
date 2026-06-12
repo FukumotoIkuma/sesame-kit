@@ -53,6 +53,10 @@ await SesameHub3.use(async (hub) => {
   await hub.toggleDevice({ deviceUUID, secretKey });
   await hub.botClickDevice({ deviceUUID, secretKey });
   await hub.triggerLockDevice({ deviceUUID, secretKey, cmd: 83 });   // 生 itemCode: 83=解錠, 82=施錠, 88=トグル, 89=クリック
+  // ⚠️ triggerLockRaw / triggerLockDevice(任意 cmd) は CLI/RPC 経路に意図的に非公開。
+  //    誤爆リスク(任意整数 cmd をネットワーク越しに受け付ける)のため。
+  //    公式アプリが使う cmd (82/83/88/89) はすべて名前付きラッパで足りる。
+  //    詳細: docs/api-stability.md "Intentionally absent from CLI/RPC"
 
   // IR
   await hub.sendIRDirect({

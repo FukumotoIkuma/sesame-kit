@@ -67,7 +67,7 @@ ir.send                      [remote] key
 org.getEmployees             companyID
 access.registerCards         deviceUUID cards   # [experimental] 読み取った IC カードを一括登録 (クラウド DB)
 …
-135 methods.
+202 methods.
 ```
 
 この一覧から、使いたいメソッドの行を読みます。各行は `メソッド名  <必須> [任意]` の形です。例えば `device.history  deviceUUID [pageSize]` は、**`deviceUUID` が必須・`pageSize` が任意**という意味です。

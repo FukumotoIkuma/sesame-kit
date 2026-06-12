@@ -18,13 +18,19 @@ promo/
 # README 用の生成 GIF は assets/demo.{en,ja}.gif を追跡する (gen-gifs.sh が出力)。
 
 # 参照実装 (一次ソース・コミットしない)。配置場所と中身は REFERENCES.md を参照。
-#   _sesame_sdk_ref/ : Android SesameSDK (Kotlin。CHHub3Device.kt 等の引用元)
+#   _sesame_sdk_ref/  : Android SesameSDK (Kotlin。CHHub3Device.kt 等の引用元)
 #   references_web/   : biz3 web (CANDY-HOUSE/biz3。src/api/useManageDevice.js 等の引用元)
+#   _aws_sdk_ref/     : AWSMobileClient 2.77.0 Java (auth 数式・Cognito ワイヤ形の最一次資料)
 /_sesame_sdk_ref/
 /references_web/
+/_aws_sdk_ref/
 
 # Python client build artifacts
-clients/python/build/
-clients/python/*.egg-info/
+packages/kit/clients/python/build/
+packages/kit/clients/python/*.egg-info/
 __pycache__/
 *.pyc
+
+# TypeScript project-references build state (composite tsc -b). Non-deterministic;
+# the committed .d.ts under packages/*/types/ are the real artifacts (drift-guarded).
+*.tsbuildinfo

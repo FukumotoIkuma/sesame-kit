@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   # P5-8 (ARCH-18): linter (biome) と supply-chain audit のゲート。
-  # lint は biome.jsonc の方針どおり src/ scripts/ bin/ clients/js のみ対象 (formatter は無効)。
+  # lint は biome.jsonc の方針どおり packages/*/src・scripts・packages/kit/{bin,clients/js} のみ対象 (formatter は無効)。
   # audit は README の「production 依存の脆弱性 0 件」主張を継続検証する (dev 依存は対象外)。
   lint:
     name: Lint & audit
@@ -77,12 +77,26 @@ jobs:
             exit 1
           fi
 
+      # P5-11 (ARCH-13): 生成 SDK のコンパイル検査。
+      # ドリフト確認後のクリーンな生成物に対して tsc と py_compile を通す。
+      # これにより生成器が不正構文/型を出すリグレッションを CI で検出できる。
+      - name: Typecheck generated TypeScript SDK
+        run: npm run typecheck:sdk
+
+      - name: Setup Python for SDK compile check
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Compile-check generated Python SDK
+        run: npm run check:sdk:py
+
       - name: Run tests
         run: npm test
 
   # 上流コンフォーマンス・カナリア (オフライン replay)。
-  # 記録済みの vendor 応答サンプル (tests/fixtures/upstream/*.json) を、live カナリアと同一の
-  # stable スキーマ (src/serve/result-schemas.js) で検証し、「スキーマを緩めて契約を壊す」種類の
+  # 記録済みの vendor 応答サンプル (packages/kit/tests/fixtures/upstream/*.json) を、live カナリアと同一の
+  # stable スキーマ (packages/kit/src/serve/result-schemas.js) で検証し、「スキーマを緩めて契約を壊す」種類の
   # drift を creds 無しで検出する。live カナリア (実クラウド) は creds が要るため CI では回さず
   # opt-in のまま (手動 / スケジュール: `node scripts/canary-upstream.mjs`)。詳細は
   # docs/api-stability.md の canary 節。

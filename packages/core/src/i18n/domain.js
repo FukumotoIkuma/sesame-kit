@@ -1,0 +1,234 @@
+// ドメインコア (client/config/lock/ir/devices/account/transport/util/crypto) の
+// ユーザー向けメッセージ。en = 自然な英語、ja = 元の日本語そのまま (テストは ja で検証)。
+export default {
+  en: {
+    // ---- client.js ----
+    "domain.client.useUsage": "usage: SesameHub3.use([opts], async (hub) => {...})",
+    "domain.client.configRequired": "config required",
+    "domain.client.tokenStoreRequired": "tokenStore required",
+    "domain.client.remoteMissingHub3": "Remote \"{name}\" references missing hub3 \"{hub3}\"",
+    "domain.client.notConnected": "not connected (call connect() first)",
+    "domain.client.keyRequired": "key (name or UUID) required",
+    "domain.client.unknownKey": "Unknown key \"{key}\". Available: {avail}",
+    "domain.client.emailNotInStore": "email (username) not found in token store. You may need to log in again.",
+    "domain.client.getCompanyDeviceTimeout": "getCompanyDevice timeout",
+    "domain.client.requiresConfigStore": "{op} requires a ConfigStore (build via fromConfig)",
+    "domain.client.subUUIDNotAvailableConnect": "subUUID not available (call connect() first)",
+    "domain.client.lockMissingDeviceUUID": "lock \"{name}\" missing deviceUUID",
+    "domain.client.lockMissingSecretKey": "lock \"{name}\" missing secretKey",
+    "domain.client.noHub3Specified": "No hub3 specified and not exactly one configured",
+    "domain.client.unknownHub3": "Unknown hub3 \"{name}\"",
+    "domain.client.subUUIDNotAvailable": "subUUID not available (connect first)",
+    "domain.client.apiKeyIdRequired": "apiKeyId required (set config.apiKeyId or pass as argument)",
+
+    // ---- config.js ----
+    "domain.config.configPathRequired": "configPath required",
+    "domain.config.nothingToSave": "nothing to save (call load() first)",
+    "domain.config.noRemoteNoDefault": "No remote specified and no default. Configured: [{names}]",
+    "domain.config.unknownRemote": "Unknown remote \"{name}\". Configured: [{names}]",
+    "domain.config.remoteRefMissingHub3": "Remote \"{name}\" references hub3 \"{hub3}\" but it is not registered.",
+    "domain.config.hub3NameRequired": "hub3 name required",
+    "domain.config.hub3DeviceIdRequired": "hub3.deviceId required",
+    "domain.config.remoteNameRequired": "remote name required",
+    "domain.config.remoteHub3Required": "remote.hub3 required",
+    "domain.config.hub3NotRegisteredAddFirst": "hub3 \"{hub3}\" is not registered. Run hub3 add first.",
+    "domain.config.unknownRemoteName": "Unknown remote \"{name}\"",
+    "domain.config.noLockNoDefault": "No lock specified and no default. Configured: [{names}]",
+    "domain.config.unknownLock": "Unknown lock \"{name}\". Configured: [{names}]",
+    "domain.config.lockNameRequired": "lock name required",
+    "domain.config.lockDeviceUUIDRequired": "lock.deviceUUID required",
+    "domain.config.lockSecretKeyRequired": "lock.secretKey required",
+    "domain.config.invalidSsmPublicKey": "lock.ssmPublicKey must be 128 hex chars (64-byte OS2 device public key)",
+    "domain.config.invalidKeyIndex": "lock.keyIndex must be 4 hex chars (e.g. \"0000\")",
+    "domain.config.unknownLockName": "Unknown lock \"{name}\"",
+    "domain.config.hub3NotRegisteredSyncFirst": "hub3 \"{hub3}\" is not registered. Run hub3 sync-from-devices or hub3 add first.",
+
+    // ---- lock.js ----
+    "domain.lock.notConnected": "triggerLock: not connected — call connect() first (queueing not allowed for sign-based ops)",
+    "domain.lock.timeout": "triggerLock timeout (cmd={cmd}, device={device})",
+    "domain.lock.failed": "triggerLock failed (cmd={cmd}): code={code} {message}",
+    "domain.lock.deviceIdRequired": "deviceId required",
+    "domain.lock.secretKeyRequired": "secretKey required",
+    "domain.lock.subUUIDRequired": "subUUID required",
+    "domain.lock.cmdRequired": "cmd required (number)",
+    "domain.lock.scriptIndexRange": "scriptIndex must be an integer 0..9 (got {index})",
+    "domain.lock.payloadOrSubUUID": "either payload or subUUID is required",
+    "domain.lock.secondsRange": "seconds must be an integer 0..65535 (0 = disable autolock)",
+
+    // ---- ir.js ----
+    "domain.ir.subscribeIRDataFailed": "subscribeIRData failed: {detail}",
+    "domain.ir.subscribeIRModeFailed": "subscribeIRMode failed: {detail}",
+    "domain.ir.learnTimeout": "learn timeout (no IR captured)",
+    "domain.ir.learnFailed": "IR learn failed: {detail}",
+    "domain.ir.learnEmptyWaveform": "IR learn returned an empty waveform (nothing captured)",
+    "domain.ir.addIRRemoteDeviceUUIDRequired": "remote.deviceUUID (hub3DeviceId) is required",
+    "domain.ir.presetRemoteLimit": "Preset remote limit reached (max 3 per Hub3). Self-learning remotes (0xFE00) are not counted.",
+
+    // ---- devices.js ----
+    "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",
+    "domain.devices.itemsArray": "items must be an array",
+    "domain.devices.listFirmwareTimeout": "listFirmware timeout",
+    "domain.devices.registerAuthRequired": "tokenStore or credentialsProvider required (SigV4 signing needs Cognito Identity Pool credentials)",
+    "domain.devices.registerFetchRequired": "fetchImpl must be a function (no global fetch available)",
+    "domain.devices.registerTransportRequired": "transport required (a function from makeRegisterTransport)",
+    "domain.devices.registerHttpError": "{op} failed: HTTP {status} {detail}",
+
+    // ---- aws-credentials.js / sigv4.js (Identity Pool SigV4 基盤) ----
+    "domain.aws.getIdTokenRequired": "getIdToken callback required (must return a Cognito User Pool idToken)",
+    "domain.aws.fetchRequired": "fetchImpl must be a function (no global fetch available)",
+    "domain.aws.credentialsProviderRequired": "credentialsProvider required (object with getCredentials(), e.g. makeCognitoCredentialsProvider result)",
+    "domain.aws.baseUrlRequired": "baseUrl required (API Gateway REST host)",
+    "domain.aws.pathRequired": "path required (a non-empty REST path string)",
+    "domain.aws.cognitoIdentityError": "Cognito Identity {op} failed: {type}: {message}",
+    "domain.aws.cognitoIdentityMalformed": "Cognito Identity {op} returned a malformed response",
+    "domain.aws.sigv4MethodRequired": "method required (HTTP method string) for SigV4 signing",
+    "domain.aws.sigv4UrlRequired": "url required (absolute URL) for SigV4 signing",
+    "domain.aws.sigv4CredentialsRequired": "credentials required (accessKeyId/secretAccessKey) for SigV4 signing",
+    "domain.devices.deviceUUIDRequired": "deviceUUID required",
+    "domain.devices.tokenHexRequired": "tokenHex required (mSesameToken hex)",
+    "domain.devices.secretKeyRequired": "secretKey required",
+    "domain.devices.signGuestKeyNoToken": "signGuestKey returned no session token",
+    "domain.devices.productTypeRequired": "productType required (model name or numeric productType)",
+    "domain.devices.serverSecretRequired": "serverSecret required",
+    "domain.devices.unknownProductModel": "Unknown product model \"{model}\" (not found in sesameDeviceModel)",
+
+    // ---- account.js ----
+    "domain.account.emailRequired": "email required (the email used to log in)",
+
+    // ---- transport.js ----
+    "domain.transport.wsUrlRequired": "wsUrl required",
+    "domain.transport.idTokenRequired": "idToken required (Cognito idToken JWT)",
+    "domain.transport.closedByUser": "websocket closed by user",
+    "domain.transport.closedBeforeInitial": "closed before initial connect resolved",
+    "domain.transport.closed": "websocket closed",
+    "domain.transport.closedBeforeOpen": "websocket closed before open (code={code})",
+    "domain.transport.requestTimeout": "request timeout: {key}",
+    "domain.transport.sendIRFailed": "sendIR failed: {detail}",
+    "domain.transport.getIRCodesFailed": "getIRCodes failed: {detail}",
+
+    // ---- util.js ----
+    "domain.util.opFailed": "{op} failed: {detail}",
+    "domain.util.chunkTimeout": "timed out waiting for paged push response",
+
+    // ---- crypto.js ----
+    "domain.crypto.unknownIrType": "Unknown irType \"{value}\". Specify a number (e.g. 49152) or an alias ({aliases}).",
+
+    // ---- secure-fs.js (P5-1: file lock timeout — user-visible system error) ----
+    "domain.securefs.lockTimeout": "Failed to acquire file lock within {timeoutMs}ms: {lockPath} (held by another process?)",
+  },
+  ja: {
+    // ---- client.js ----
+    "domain.client.useUsage": "usage: SesameHub3.use([opts], async (hub) => {...})",
+    "domain.client.configRequired": "config required",
+    "domain.client.tokenStoreRequired": "tokenStore required",
+    "domain.client.remoteMissingHub3": "Remote \"{name}\" references missing hub3 \"{hub3}\"",
+    "domain.client.notConnected": "not connected (call connect() first)",
+    "domain.client.keyRequired": "key (name or UUID) required",
+    "domain.client.unknownKey": "Unknown key \"{key}\". 利用可能: {avail}",
+    "domain.client.emailNotInStore": "email (username) が token store にありません。再 login が必要かもしれません。",
+    "domain.client.getCompanyDeviceTimeout": "getCompanyDevice timeout",
+    "domain.client.requiresConfigStore": "{op} requires a ConfigStore (fromConfig で構築してください)",
+    "domain.client.subUUIDNotAvailableConnect": "subUUID not available (connect() を先に呼んでください)",
+    "domain.client.lockMissingDeviceUUID": "lock \"{name}\" missing deviceUUID",
+    "domain.client.lockMissingSecretKey": "lock \"{name}\" missing secretKey",
+    "domain.client.noHub3Specified": "No hub3 specified and not exactly one configured",
+    "domain.client.unknownHub3": "Unknown hub3 \"{name}\"",
+    "domain.client.subUUIDNotAvailable": "subUUID not available (connect first)",
+    "domain.client.apiKeyIdRequired": "apiKeyId required (config.apiKeyId か引数で指定)",
+
+    // ---- config.js ----
+    "domain.config.configPathRequired": "configPath required",
+    "domain.config.nothingToSave": "nothing to save (call load() first)",
+    "domain.config.noRemoteNoDefault": "No remote specified and no default. 設定済み: [{names}]",
+    "domain.config.unknownRemote": "Unknown remote \"{name}\". 設定済み: [{names}]",
+    "domain.config.remoteRefMissingHub3": "Remote \"{name}\" は hub3 \"{hub3}\" を参照しますが未登録です。",
+    "domain.config.hub3NameRequired": "hub3 name required",
+    "domain.config.hub3DeviceIdRequired": "hub3.deviceId required",
+    "domain.config.remoteNameRequired": "remote name required",
+    "domain.config.remoteHub3Required": "remote.hub3 required",
+    "domain.config.hub3NotRegisteredAddFirst": "hub3 \"{hub3}\" 未登録。先に hub3 add を実行してください。",
+    "domain.config.unknownRemoteName": "Unknown remote \"{name}\"",
+    "domain.config.noLockNoDefault": "No lock specified and no default. 設定済み: [{names}]",
+    "domain.config.unknownLock": "Unknown lock \"{name}\". 設定済み: [{names}]",
+    "domain.config.lockNameRequired": "lock name required",
+    "domain.config.lockDeviceUUIDRequired": "lock.deviceUUID required",
+    "domain.config.lockSecretKeyRequired": "lock.secretKey required",
+    "domain.config.invalidSsmPublicKey": "lock.ssmPublicKey は 128 桁 hex (64B の OS2 デバイス公開鍵) で指定してください",
+    "domain.config.invalidKeyIndex": "lock.keyIndex は 4 桁 hex (例 \"0000\") で指定してください",
+    "domain.config.unknownLockName": "Unknown lock \"{name}\"",
+    "domain.config.hub3NotRegisteredSyncFirst": "hub3 \"{hub3}\" 未登録。先に hub3 sync-from-devices か hub3 add を実行してください。",
+
+    // ---- lock.js ----
+    "domain.lock.notConnected": "triggerLock: not connected — call connect() first (queueing not allowed for sign-based ops)",
+    "domain.lock.timeout": "triggerLock timeout (cmd={cmd}, device={device})",
+    "domain.lock.failed": "triggerLock failed (cmd={cmd}): code={code} {message}",
+    "domain.lock.deviceIdRequired": "deviceId required",
+    "domain.lock.secretKeyRequired": "secretKey required",
+    "domain.lock.subUUIDRequired": "subUUID required",
+    "domain.lock.cmdRequired": "cmd required (number)",
+    "domain.lock.scriptIndexRange": "scriptIndex は 0..9 の整数で指定してください (受信: {index})",
+    "domain.lock.payloadOrSubUUID": "payload または subUUID のいずれかが必要です",
+    "domain.lock.secondsRange": "seconds must be an integer 0..65535 (0 = disable autolock)",
+
+    // ---- ir.js ----
+    "domain.ir.subscribeIRDataFailed": "subscribeIRData failed: {detail}",
+    "domain.ir.subscribeIRModeFailed": "subscribeIRMode failed: {detail}",
+    "domain.ir.learnTimeout": "learn timeout (no IR captured)",
+    "domain.ir.learnFailed": "IR 学習に失敗しました: {detail}",
+    "domain.ir.learnEmptyWaveform": "IR 学習で空の波形が返されました (何もキャプチャされていません)",
+    "domain.ir.addIRRemoteDeviceUUIDRequired": "remote.deviceUUID (hub3DeviceId) が必要です",
+    "domain.ir.presetRemoteLimit": "プリセットリモコンの上限に達しました (Hub3 1 台あたり最大 3 個)。自己学習リモコン (0xFE00) はカウントしません。",
+
+    // ---- devices.js ----
+    "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",
+    "domain.devices.itemsArray": "items は配列で指定してください",
+    "domain.devices.listFirmwareTimeout": "listFirmware timeout",
+    "domain.devices.registerAuthRequired": "tokenStore か credentialsProvider が必要です (SigV4 署名には Cognito Identity Pool の一時 credentials が要る)",
+    "domain.devices.registerFetchRequired": "fetchImpl must be a function (global fetch が無い環境)",
+    "domain.devices.registerTransportRequired": "transport required (makeRegisterTransport の戻り値の関数)",
+    "domain.devices.registerHttpError": "{op} failed: HTTP {status} {detail}",
+
+    // ---- aws-credentials.js / sigv4.js (Identity Pool SigV4 基盤) ----
+    "domain.aws.getIdTokenRequired": "getIdToken callback required (Cognito User Pool の idToken を返す関数)",
+    "domain.aws.fetchRequired": "fetchImpl must be a function (global fetch が無い環境)",
+    "domain.aws.credentialsProviderRequired": "credentialsProvider required (getCredentials() を持つオブジェクト。makeCognitoCredentialsProvider の戻り等)",
+    "domain.aws.baseUrlRequired": "baseUrl required (API Gateway REST ホスト)",
+    "domain.aws.pathRequired": "path required (空でない REST パス文字列)",
+    "domain.aws.cognitoIdentityError": "Cognito Identity {op} failed: {type}: {message}",
+    "domain.aws.cognitoIdentityMalformed": "Cognito Identity {op} の応答が不正です (必須フィールド欠落)",
+    "domain.aws.sigv4MethodRequired": "method required (SigV4 署名には HTTP メソッド文字列が必要)",
+    "domain.aws.sigv4UrlRequired": "url required (SigV4 署名には絶対 URL が必要)",
+    "domain.aws.sigv4CredentialsRequired": "credentials required (SigV4 署名には accessKeyId/secretAccessKey が必要)",
+    "domain.devices.deviceUUIDRequired": "deviceUUID required",
+    "domain.devices.tokenHexRequired": "tokenHex required (mSesameToken の hex)",
+    "domain.devices.secretKeyRequired": "secretKey required",
+    "domain.devices.signGuestKeyNoToken": "signGuestKey returned no session token",
+    "domain.devices.productTypeRequired": "productType required (model 名 または数値 productType)",
+    "domain.devices.serverSecretRequired": "serverSecret required",
+    "domain.devices.unknownProductModel": "Unknown product model \"{model}\" (sesameDeviceModel に存在しません)",
+
+    // ---- account.js ----
+    "domain.account.emailRequired": "email required (login に使った email)",
+
+    // ---- transport.js ----
+    "domain.transport.wsUrlRequired": "wsUrl required",
+    "domain.transport.idTokenRequired": "idToken required (Cognito idToken JWT)",
+    "domain.transport.closedByUser": "websocket closed by user",
+    "domain.transport.closedBeforeInitial": "closed before initial connect resolved",
+    "domain.transport.closed": "websocket closed",
+    "domain.transport.closedBeforeOpen": "websocket closed before open (code={code})",
+    "domain.transport.requestTimeout": "request timeout: {key}",
+    "domain.transport.sendIRFailed": "sendIR failed: {detail}",
+    "domain.transport.getIRCodesFailed": "getIRCodes failed: {detail}",
+
+    // ---- util.js ----
+    "domain.util.opFailed": "{op} failed: {detail}",
+    "domain.util.chunkTimeout": "ページング push 応答の待機がタイムアウトしました",
+
+    // ---- crypto.js ----
+    "domain.crypto.unknownIrType": "Unknown irType \"{value}\". 数値 (例 49152) かエイリアス ({aliases}) を指定してください。",
+
+    // ---- secure-fs.js (P5-1) ----
+    "domain.securefs.lockTimeout": "{timeoutMs}ms 以内にファイルロックを取得できませんでした: {lockPath} (別プロセスが保持中?)",
+  },
+};
