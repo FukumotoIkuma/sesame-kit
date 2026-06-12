@@ -4,9 +4,9 @@
 //   - v1 (locks/hub3s トップレベル永続化) → v2 (devices 単一真実) の移行
 //   - ダウングレード安全 (新しい版が書いたキー/版数を古い版が消さない)
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 
 import { ConfigStore, migrateConfig, normalizeConfig, SCHEMA_VERSION } from "../../src/config.js";
 

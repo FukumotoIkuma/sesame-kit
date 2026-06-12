@@ -35,8 +35,7 @@ import {
 
 // CMAC の戻りを Buffer に正規化 (device 側の独立再計算用)。
 function cmacBuf(key, msg) {
-  const m = aesCmac(key, msg, { returnAsBuffer: true });
-  return Buffer.isBuffer(m) ? m : Buffer.from(m, "hex");
+  return aesCmac(key, msg); // 内製 aesCmac は常に Buffer を返す
 }
 
 // firmware 視点 cipher (os2.test.js と同じ鏡像 nonce: device→app は flag を落とす)。

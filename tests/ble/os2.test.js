@@ -150,7 +150,7 @@ describe("OS2 protocol — key derivation (matches SDK CMAC chains)", () => {
   it("deriveSessionKey = CMAC(pre16, sessionToken8)", () => {
     const st = sessionToken(mApp, mSsm);
     const got = deriveSessionKey(pre16, st);
-    const ref = aesCmac(pre16, st, { returnAsBuffer: true });
+    const ref = aesCmac(pre16, st);
     expect(got).toEqual(Buffer.isBuffer(ref) ? ref : Buffer.from(ref, "hex"));
   });
 
@@ -160,7 +160,7 @@ describe("OS2 protocol — key derivation (matches SDK CMAC chains)", () => {
     const appPub = Buffer.alloc(64, 0x42);
     const st = sessionToken(mApp, mSsm);
     const auth = sessionAuth(secret, userIdx, appPub, st);
-    const ref = aesCmac(secret, Buffer.concat([userIdx, appPub, st]), { returnAsBuffer: true });
+    const ref = aesCmac(secret, Buffer.concat([userIdx, appPub, st]));
     expect(auth).toEqual(Buffer.isBuffer(ref) ? ref : Buffer.from(ref, "hex"));
 
     const lp = loginPayload(userIdx, appPub, mApp, auth);
@@ -171,10 +171,10 @@ describe("OS2 protocol — key derivation (matches SDK CMAC chains)", () => {
     const serverToken = Buffer.from("cafebabe", "hex");
     const { registerKey, ownerKey, sessionKey, sessionToken: st } = deriveRegisterKeys(pre16, serverToken, mSsm);
     expect(st).toEqual(Buffer.concat([serverToken, mSsm]));
-    const rk = Buffer.from(aesCmac(pre16, st, { returnAsBuffer: true }));
+    const rk = Buffer.from(aesCmac(pre16, st));
     expect(registerKey).toEqual(rk);
-    expect(ownerKey).toEqual(Buffer.from(aesCmac(rk, Buffer.from("owner_key"), { returnAsBuffer: true })));
-    expect(sessionKey).toEqual(Buffer.from(aesCmac(rk, st, { returnAsBuffer: true })));
+    expect(ownerKey).toEqual(Buffer.from(aesCmac(rk, Buffer.from("owner_key"))));
+    expect(sessionKey).toEqual(Buffer.from(aesCmac(rk, st)));
   });
 
   it("registrationData = sig1[0:4] ++ appPub64 ++ serverToken", () => {

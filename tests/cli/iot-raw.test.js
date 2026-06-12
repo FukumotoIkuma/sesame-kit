@@ -63,11 +63,11 @@ describe("iot raw (SURF-23)", () => {
     expect(hub.iot.sendIotCmd).toHaveBeenCalledWith({ topic: "t", payload: "3q2+7w==" });
   });
 
-  it("--await --cmd <n> は sendIotCmdAwait へ委譲 (deviceId/timeoutMs 透過)", async () => {
+  it("--wait --cmd <n> は sendIotCmdAwait へ委譲 (deviceId/timeoutMs 透過)", async () => {
     const hub = makeHub();
     const { ctx, outputs } = makeCtx({ hub });
     await buildProgram(ctx).parseAsync(
-      ["iot", "raw", "--topic", "t", "--payload", "00ff", "--await", "--cmd", "92", "--device", "u1", "--timeout", "5000"],
+      ["iot", "raw", "--topic", "t", "--payload", "00ff", "--wait", "--cmd", "92", "--device", "u1", "--timeout", "5000"],
       { from: "user" },
     );
     expect(hub.iot.sendIotCmdAwait).toHaveBeenCalledWith({
@@ -80,7 +80,7 @@ describe("iot raw (SURF-23)", () => {
     expect(outputs[0]).toMatchObject({ ok: true, awaited: true, cmd: 92 });
   });
 
-  it("--topic / --payload 欠落、--await で --cmd 欠落は die(2)", async () => {
+  it("--topic / --payload 欠落、--wait で --cmd 欠落は die(2)", async () => {
     const hub = makeHub();
     const { ctx } = makeCtx({ hub });
     await expect(
@@ -90,7 +90,7 @@ describe("iot raw (SURF-23)", () => {
       buildProgram(ctx).parseAsync(["iot", "raw", "--topic", "t"], { from: "user" }),
     ).rejects.toMatchObject({ code: 2 });
     await expect(
-      buildProgram(ctx).parseAsync(["iot", "raw", "--topic", "t", "--payload", "00", "--await"], { from: "user" }),
+      buildProgram(ctx).parseAsync(["iot", "raw", "--topic", "t", "--payload", "00", "--wait"], { from: "user" }),
     ).rejects.toMatchObject({ code: 2 });
     expect(hub.iot.sendIotCmd).not.toHaveBeenCalled();
     expect(hub.iot.sendIotCmdAwait).not.toHaveBeenCalled();

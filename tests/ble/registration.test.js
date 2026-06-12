@@ -180,7 +180,7 @@ describe("session 鍵導出 (deriveSessionKey vs deriveSessionKeyFromEcdh)", () 
   });
 
   it("CMAC の入力メッセージは token4(4B)・鍵は ecdhSecretPre16(16B) であることを直接 CMAC と照合", () => {
-    const expected = aesCmac(ecdhSecretPre16, token4, { returnAsBuffer: true });
+    const expected = aesCmac(ecdhSecretPre16, token4);
     const out = deriveSessionKeyFromEcdh(ecdhSecretPre16, token4);
     expect(out.equals(Buffer.isBuffer(expected) ? expected : Buffer.from(expected, "hex"))).toBe(true);
   });
@@ -200,7 +200,7 @@ describe("session 鍵導出 (deriveSessionKey vs deriveSessionKeyFromEcdh)", () 
     const out = deriveSessionKeyFromEcdh(rfcKey, msg4);
     expect(out.length).toBe(16);
     // 内製 aesCmac (src/aes-cmac.js, RFC 4493 — Test Vector 全件固定済み) を真値として照合 (鍵=RFC鍵, msg=4B)。
-    const ref = aesCmac(rfcKey, msg4, { returnAsBuffer: true });
+    const ref = aesCmac(rfcKey, msg4);
     expect(out.equals(Buffer.isBuffer(ref) ? ref : Buffer.from(ref, "hex"))).toBe(true);
     expect(out.toString("hex")).toBe("71c5a229ba6db8c471075ac5b9c64ffe");
   });

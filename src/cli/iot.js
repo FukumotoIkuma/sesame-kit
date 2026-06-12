@@ -270,13 +270,13 @@ export function registerIotCommands(program, ctx) {
   // SURF-23: 任意 topic / payload の生 iot cmd 送信 (iot.sendIotCmd / sendIotCmdAwait 委譲)。
   // 高レベルラッパに無い cmdCode の検証・実験用の脱出口。payload は hex (バイト列を base64 化
   // して送る) か、それ以外の文字列 (base64 等) をそのまま frame に乗せる。
-  // --await 時は --cmd <n> (応答 push の op = cmdCode echo) が必須。
+  // --wait 時は --cmd <n> (応答 push の op = cmdCode echo) が必須。
   iot
     .command("raw")
     .description(t("iot.raw.desc"))
     .option("--topic <topic>", t("iot.raw.opt.topic"))
     .option("--payload <data>", t("iot.raw.opt.payload"))
-    .option("--await", t("iot.raw.opt.await"))
+    .option("--wait", t("iot.raw.opt.wait"))
     .option("--cmd <n>", t("iot.raw.opt.cmd"))
     .option("--device <uuid>", t("iot.raw.opt.device"))
     .option("--timeout <ms>", t("iot.raw.opt.timeout"))
@@ -287,12 +287,12 @@ export function registerIotCommands(program, ctx) {
       if (!options.payload) { ctx.die(t("iot.raw.payloadRequired"), 2); return undefined; }
       const payload = normalizeRawPayload(String(options.payload));
       const cmd = Number(options.cmd);
-      if (options.await && (!options.cmd || !Number.isInteger(cmd))) {
+      if (options.wait && (!options.cmd || !Number.isInteger(cmd))) {
         ctx.die(t("iot.raw.cmdRequired"), 2);
         return undefined;
       }
       return ctx.withHub(async (hub, { opts }) => {
-        if (options.await) {
+        if (options.wait) {
           const timeoutMs = options.timeout ? Number(options.timeout) : undefined;
           const msg = await hub.iot.sendIotCmdAwait({
             topic: options.topic,
@@ -309,7 +309,7 @@ export function registerIotCommands(program, ctx) {
         hub.iot.sendIotCmd({ topic: options.topic, payload });
         ctx.out(opts.json, () => {
           console.log(t("iot.raw.sent", { topic: options.topic }));
-        }, { ok: true, sent: true, awaited: false, topic: options.topic, note: "fire-and-forget (応答待ちは --await --cmd <n>)" });
+        }, { ok: true, sent: true, awaited: false, topic: options.topic, note: "fire-and-forget (応答待ちは --wait --cmd <n>)" });
       });
     });
 }

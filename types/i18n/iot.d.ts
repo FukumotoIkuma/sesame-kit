@@ -30,7 +30,7 @@ declare namespace _default {
         "iot.raw.desc": string;
         "iot.raw.opt.topic": string;
         "iot.raw.opt.payload": string;
-        "iot.raw.opt.await": string;
+        "iot.raw.opt.wait": string;
         "iot.raw.opt.cmd": string;
         "iot.raw.opt.device": string;
         "iot.raw.opt.timeout": string;
@@ -122,7 +122,7 @@ declare namespace _default {
         "iot.raw.desc": string;
         "iot.raw.opt.topic": string;
         "iot.raw.opt.payload": string;
-        "iot.raw.opt.await": string;
+        "iot.raw.opt.wait": string;
         "iot.raw.opt.cmd": string;
         "iot.raw.opt.device": string;
         "iot.raw.opt.timeout": string;

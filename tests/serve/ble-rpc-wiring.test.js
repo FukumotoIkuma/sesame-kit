@@ -6,7 +6,6 @@
 //   拒否すること (旧 fail-open の回帰防止)。
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { buildRegistry, invokePath, collectWifiScan, wifiViewOf } from "../../src/serve/registry.js";
-import { RpcError } from "../../src/serve/jsonrpc.js";
 import { SesameBle, SesameOS2Ble, BLE_RPC_ALLOWLIST, OS2_BLE_RPC_ALLOWLIST, capabilitiesForModel } from "../../src/ble/index.js";
 import { ITEM_CODES } from "../../src/itemcodes.js";
 
