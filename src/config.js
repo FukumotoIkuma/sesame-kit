@@ -35,6 +35,9 @@ import { resolveByName, LOCK_RESOLVE_ERRORS, REMOTE_RESOLVE_ERRORS } from "./res
  * @property {string|null} [deviceModel]
  * @property {string|null} [deviceName]
  * @property {string} [category] ローカル注釈 ("lock"/"hub3" など)。view 分類の真実。
+ * @property {string} [ssmPublicKey] OS2 デバイス公開鍵 (64B = 128 hex)。os2-register の
+ *   sesamePublicKey をローカル保存する注釈 (サーバ応答には無い)。OS2 BLE login (ECDH) に必須。
+ * @property {string} [keyIndex] OS2 keyIndex / userIdx (2B = 4 hex、既定 "0000")。ローカル注釈。
  * @property {*} [stateInfo] sanitize で除外されるが incoming では存在しうる。
  */
 
@@ -45,6 +48,8 @@ import { resolveByName, LOCK_RESOLVE_ERRORS, REMOTE_RESOLVE_ERRORS } from "./res
  * @property {string|null|undefined} secretKey
  * @property {string|null} model
  * @property {string|null} alias
+ * @property {string} [ssmPublicKey] OS2 デバイス公開鍵 (128 hex)。保存済みのときだけ載る。
+ * @property {string} [keyIndex] OS2 keyIndex (4 hex)。保存済みのときだけ載る。
  */
 
 /**
@@ -165,8 +170,10 @@ const DERIVED_KEYS = ["locks", "hub3s"];
 
 // device レコードのうち config ローカルにだけ存在する注釈キー (サーバ応答には無い)。
 // sync 更新時にサーバ由来フィールドで丸ごと置き換えても、これらは引き継ぐ。
+// ssmPublicKey/keyIndex は OS2 BLE login 用のローカル保存鍵素材 (os2-register の戻り値) で、
+// クラウド応答に存在しないため sync で消さない (バックログ4)。
 /** @type {Array<keyof DeviceRecord>} */
-const LOCAL_ONLY_KEYS = ["category"];
+const LOCAL_ONLY_KEYS = ["category", "ssmPublicKey", "keyIndex"];
 
 /**
  * device レコードから lock view 用エントリ (旧 shape: deviceUUID/secretKey/model/alias)。
@@ -174,7 +181,15 @@ const LOCAL_ONLY_KEYS = ["category"];
  * @returns {LockView}
  */
 function lockView(rec) {
-  return { deviceUUID: rec.deviceUUID, secretKey: rec.secretKey, model: rec.deviceModel || null, alias: rec.deviceName || null };
+  return {
+    deviceUUID: rec.deviceUUID,
+    secretKey: rec.secretKey,
+    model: rec.deviceModel || null,
+    alias: rec.deviceName || null,
+    // OS2 鍵素材は保存済みのときだけ view に載せる (旧 shape の読み手に undefined キーを増やさない)。
+    ...(rec.ssmPublicKey ? { ssmPublicKey: rec.ssmPublicKey } : {}),
+    ...(rec.keyIndex ? { keyIndex: rec.keyIndex } : {}),
+  };
 }
 /**
  * device レコードから hub3 view 用エントリ (旧 shape: deviceId/name + model/secretKey も保持)。
@@ -499,19 +514,34 @@ export class ConfigStore {
 
   /**
    * @param {string} name
-   * @param {{deviceUUID?: string, secretKey?: string, model?: string|null, alias?: string|null}} lock
+   * @param {{deviceUUID?: string, secretKey?: string, model?: string|null, alias?: string|null,
+   *          ssmPublicKey?: string|null, keyIndex?: string|null}} lock
+   *   ssmPublicKey/keyIndex は OS2 デバイス用の任意フィールド (バックログ4):
+   *   os2-register の戻り値 (sesamePublicKey / keyIndex) を保存し、os2-invoke 等が
+   *   --ssm-public-key 無しでも config から解決できるようにする。
    */
   addLock(name, lock) {
     const cfg = this.load();
     if (!name) throw badRequest("domain.config.lockNameRequired");
     if (!lock?.deviceUUID) throw badRequest("domain.config.lockDeviceUUIDRequired");
     if (!lock?.secretKey) throw badRequest("domain.config.lockSecretKeyRequired");
+    // OS2 鍵素材の形式検証 (任意フィールドだが、入れるなら正しい hex 桁数のみ受理する。
+    // 不正値を保存すると BLE login (ECDH) が実機で初めて落ちるため、保存時点で弾く)。
+    if (lock.ssmPublicKey != null && !/^[0-9a-f]{128}$/i.test(lock.ssmPublicKey)) {
+      throw badRequest("domain.config.invalidSsmPublicKey");
+    }
+    if (lock.keyIndex != null && !/^[0-9a-f]{4}$/i.test(lock.keyIndex)) {
+      throw badRequest("domain.config.invalidKeyIndex");
+    }
     cfg.devices[name] = {
       deviceUUID: lock.deviceUUID,
       secretKey: lock.secretKey,
       deviceModel: lock.model || null, // 省略時 null (kindForModel(null)→lock5 なので操作は可)
       deviceName: lock.alias || null,
       category: "lock", // 明示追加 = ロック確定 (model が未知/未指定でも view に出す)
+      // OS2 鍵素材 (ローカル注釈)。未指定なら省略 (キー自体を作らない)。
+      ...(lock.ssmPublicKey ? { ssmPublicKey: lock.ssmPublicKey.toLowerCase() } : {}),
+      ...(lock.keyIndex ? { keyIndex: lock.keyIndex.toLowerCase() } : {}),
     };
     if (!cfg.default.lock) cfg.default.lock = name;
     this.save();

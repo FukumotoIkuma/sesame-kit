@@ -175,6 +175,61 @@ describe("subscribeChunks: timeout", () => {
   });
 });
 
+describe("subscribeChunks: partialOnTimeout (BIZ-14 / バックログ6)", () => {
+  it("timeout 時に reject せず {partial:true, ...集約済み結果} で resolve し、購読も解除される", async () => {
+    vi.useFakeTimers();
+    const c = chunkMockClient();
+    /** @type {string[]} */
+    const acc = [];
+    const p = subscribeChunks(c, {
+      sendFrame: { action: "a", op: "get" },
+      subscriptions: [{
+        key: "a:pub",
+        // 完了条件 (finish) を満たさないまま chunk だけ蓄積する
+        onMessage: (msg) => { acc.push(msg.v); },
+      }],
+      timeoutMs: 500,
+      partialOnTimeout: true,
+      result: () => ({ partial: false, list: acc }),
+    });
+    c.push("a:pub", { v: "x" });
+    c.push("a:pub", { v: "y" });
+    vi.advanceTimersByTime(500);
+    // 部分蓄積が partial:true 付きで返る (spread が result() の partial:false を上書きする)
+    await expect(p).resolves.toEqual({ partial: true, list: ["x", "y"] });
+    expect(c.hasSub("a:pub")).toBe(false); // cleanup 済み
+  });
+
+  it("完了 (finish) が先なら従来どおり result() のまま resolve する (partial:true は付かない)", async () => {
+    vi.useFakeTimers();
+    const c = chunkMockClient();
+    const p = subscribeChunks(c, {
+      sendFrame: { action: "a", op: "get" },
+      subscriptions: [{ key: "a:pub", onMessage: (_m, finish) => finish() }],
+      timeoutMs: 500,
+      partialOnTimeout: true,
+      result: () => ({ partial: false, list: ["done"] }),
+    });
+    c.push("a:pub", {});
+    await expect(p).resolves.toEqual({ partial: false, list: ["done"] });
+    vi.advanceTimersByTime(1000); // clearTimeout 済みなので二重 resolve しない
+  });
+
+  it("既定 (partialOnTimeout 未指定) は従来どおり timeout で reject する (後方互換)", async () => {
+    vi.useFakeTimers();
+    const c = chunkMockClient();
+    const p = subscribeChunks(c, {
+      sendFrame: { action: "a", op: "get" },
+      subscriptions: [{ key: "a:pub", onMessage: () => {} }],
+      timeoutMs: 500,
+      result: () => "unreachable",
+    });
+    c.push("a:pub", {});
+    vi.advanceTimersByTime(500);
+    await expect(p).rejects.toSatisfy((e) => e instanceof SesameError && e.code === ERR.TIMEOUT);
+  });
+});
+
 describe("subscribeChunks: errorAction (P3-9)", () => {
   it("同 action の success:false フレームで code=rejected の SesameError で即時 reject", async () => {
     const c = withOnMessage(chunkMockClient());

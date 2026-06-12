@@ -1,13 +1,19 @@
 /**
  * Kotlin SDK の CHAPIClient#biometricsOperation と同じ POST /device/v1/biometrics transport。
  *
- * 認可は公式アプリと同じ「SigV4 (Cognito Identity Pool の一時 credentials) + x-api-key +
- * appidentifyid」(REFACTORING_PLAN P2-1 / BIZ-07。基盤 = src/aws-credentials.js + src/sigv4.js):
+ * 認可は公式アプリと同じ「SigV4 (Cognito Identity Pool の一時 credentials) + x-api-key」
+ * (REFACTORING_PLAN P2-1 / BIZ-07。基盤 = src/aws-credentials.js + src/sigv4.js):
  *   - ApiClientConfigBuilder.kt:34-46 — credentialsProvider + apiKey + region
  *   - BaseApp.kt:95-102 — credentialsProvider = AWSMobileClient.getInstance(),
  *     apiKey = BuildConfig.API_GATEWAY_API_KEY
  *   - ホストは app.properties:3 (https://app.candyhouse.co/prod) を既定とする。
  * credentialsProvider か getIdToken (idToken 供給コールバック) のどちらかで SigV4 経路になる。
+ *
+ * appidentifyid は付けない (バックログ8: per-op 化)。POST /device/v1/biometrics
+ * (CHAPIClient.kt:105-106 biometricsOperation) には @Parameter(name="appidentifyid") が無い
+ * (付くのは /device 直下の鍵 CRUD・/device/list・/friend 系・/web_route のみ —
+ * 全列挙表: aws-credentials.js makeApiGatewayTransport 冒頭)。旧実装は常時付与していたが
+ * 参照より広かったため撤去。appIdentifyId / config / configStore は互換のため受理するが無視。
  *
  * 互換 (非推奨): authorization / bearerToken / authorizationProvider は Authorization ヘッダを
  * そのまま付ける旧経路。参照 SDK に idToken Bearer の REST 認可は存在せず実 API Gateway
@@ -19,43 +25,51 @@
  * @param {BiometricsAuthOptions} opts
  * @returns {BiometricsTransport}
  */
-export function makeBiometricsTransport({ baseUrl, credentialsProvider, getIdToken, appIdentifyId, config, configStore, apiKey, authorization, bearerToken, authorizationProvider, fetchImpl, }?: BiometricsAuthOptions): BiometricsTransport;
+export function makeBiometricsTransport({ baseUrl, credentialsProvider, getIdToken, apiKey, authorization, bearerToken, authorizationProvider, fetchImpl, }?: BiometricsAuthOptions): BiometricsTransport;
 /**
  * 対象デバイスの NFC カード一覧を取得する。
  * 応答は op='pubCardLinkedIDs' の async push で deviceUUID/page ごとに届くため、
  * 内部で集約してから完了通知 or timeout で確定する (useManageAuthData.js:50-191)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number}} params
+ * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number, partialOnTimeout?:boolean}} params
  *   graceMs: 完了通知が pub より先行した場合の残 push 吸収猶予 (既定 300ms。テスト注入用)。
- * @returns {Promise<{byDevice: Record<string, object[]>, items: object[]}>}
+ *   partialOnTimeout: true なら timeout 時に reject せず {partial:true, byDevice, items} で
+ *     resolve する (BIZ-14。完走時は {partial:false, ...} の同 shape)。既定 false (reject)。
+ * @returns {Promise<{byDevice: Record<string, object[]>, items: object[], partial?:boolean}>}
  *   items の各要素: { cardID, nameUUID, name, cardType, subUUID, ..., uuids:string[] }
  */
-export function getCards(client: import("./transport.js").Hub3WsClient, { deviceUUIDs, timeoutMs, graceMs }: {
+export function getCards(client: import("./transport.js").Hub3WsClient, { deviceUUIDs, timeoutMs, graceMs, partialOnTimeout }: {
     deviceUUIDs: string[];
     timeoutMs?: number;
     graceMs?: number;
+    partialOnTimeout?: boolean;
 }): Promise<{
     byDevice: Record<string, object[]>;
     items: object[];
+    partial?: boolean;
 }>;
 /**
  * 対象デバイスの暗証番号 (passcode) 一覧を取得する。getCards と同型。
  * 応答データ本体は op='pubPasscodeLinkedIDs' で届く (useManageAuthData.js:189-191)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number}} params
+ * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number, partialOnTimeout?:boolean}} params
  *   graceMs: 完了通知が pub より先行した場合の残 push 吸収猶予 (既定 300ms。テスト注入用)。
- * @returns {Promise<{byDevice: Record<string, object[]>, items: object[]}>}
+ *   partialOnTimeout: true なら timeout 時に reject せず {partial:true, byDevice, items} で
+ *     resolve する (BIZ-14。完走時は {partial:false, ...} の同 shape)。既定 false (reject)。
+ * @returns {Promise<{byDevice: Record<string, object[]>, items: object[], partial?:boolean}>}
  *   items の各要素: { passwordID, keyBoardPassCode, keyBoardPassCodeNameUUID, name, nameUUID, subUUID, ..., uuids:string[] }
  */
-export function getPasscodes(client: import("./transport.js").Hub3WsClient, { deviceUUIDs, timeoutMs, graceMs }: {
+export function getPasscodes(client: import("./transport.js").Hub3WsClient, { deviceUUIDs, timeoutMs, graceMs, partialOnTimeout }: {
     deviceUUIDs: string[];
     timeoutMs?: number;
     graceMs?: number;
+    partialOnTimeout?: boolean;
 }): Promise<{
     byDevice: Record<string, object[]>;
     items: object[];
+    partial?: boolean;
 }>;
 /**
  * カードをサーバ DB に登録する (postCards)。
@@ -395,15 +409,15 @@ export type BiometricsAuthOptions = {
      */
     getIdToken?: (() => Promise<string>) | undefined;
     /**
-     * appidentifyid ヘッダ値 (省略時 config から解決/生成)。
+     * [互換・無視] /device/v1/biometrics に appidentifyid ヘッダは無い (CHAPIClient.kt:105-106。バックログ8)。
      */
     appIdentifyId?: string | null | undefined;
     /**
-     * appIdentifyId の保存先 config。
+     * [互換・無視] 同上 (appidentifyid を付けないため未使用)。
      */
     config?: import("./aws-credentials.js").AppIdConfigLike | null | undefined;
     /**
-     * appIdentifyId を即永続化する store。
+     * [互換・無視] 同上。
      */
     configStore?: import("./aws-credentials.js").AppIdConfigStoreLike | null | undefined;
     /**

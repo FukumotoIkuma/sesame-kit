@@ -185,11 +185,15 @@ describe("registerSesame5 (CHHub3Device.kt:183-186)", () => {
   });
 });
 
-describe("makeRegisterTransport (SigV4 + x-api-key + appidentifyid)", () => {
+describe("makeRegisterTransport (SigV4 + x-api-key、appidentifyid 無し — バックログ8)", () => {
   // 認可方式の出典 (REFACTORING_PLAN P2-1):
   //   ApiClientConfigBuilder.kt:34-46 (credentialsProvider + apiKey + region),
-  //   BaseApp.kt:95-102 (apiKey = API_GATEWAY_API_KEY), AppIdentifyIdUtil.kt:42,
+  //   BaseApp.kt:95-102 (apiKey = API_GATEWAY_API_KEY),
   //   app.properties:2-5,8-9 (ホスト / API key / IdentityPool / UserPool の実値)。
+  // appidentifyid: 本 transport が叩く /device/v1/sesame2/sign (CHAPIClient.kt:95-96) /
+  //   /device/v1/sesame2/{id} (:77-81) / /device/v1/sesame5/{id} (:84-88) には
+  //   @Parameter(name="appidentifyid") が無いため付けない (バックログ8 per-op 化。
+  //   全列挙表は src/aws-credentials.js makeApiGatewayTransport 冒頭)。
 
   // idToken 検証 (exp claim) を通すため getValidIdToken が refresh せず返せる token を用意する。
   // exp が十分未来の JWT を組む (署名検証はしないので header/payload のみで足りる)。
@@ -213,7 +217,7 @@ describe("makeRegisterTransport (SigV4 + x-api-key + appidentifyid)", () => {
     }),
   };
 
-  it("既定ホスト app.candyhouse.co/prod (app.properties:3) へ SigV4 + x-api-key + appidentifyid を付けて送る", async () => {
+  it("既定ホスト app.candyhouse.co/prod (app.properties:3) へ SigV4 + x-api-key を付けて送る (appidentifyid は付かない)", async () => {
     let captured;
     const fetchImpl = async (url, init) => {
       captured = { url, init };
@@ -221,6 +225,7 @@ describe("makeRegisterTransport (SigV4 + x-api-key + appidentifyid)", () => {
     };
     const transport = makeRegisterTransport({
       credentialsProvider: fakeCredentialsProvider,
+      // 互換オプション: 受理されるが無視される (sign/register 系にヘッダが無いため — CHAPIClient.kt:77-96)
       appIdentifyId: "ap-northeast-1:fixed-id",
       fetchImpl,
     });
@@ -232,12 +237,13 @@ describe("makeRegisterTransport (SigV4 + x-api-key + appidentifyid)", () => {
     const h = captured.init.headers;
     // idToken Bearer は撤去済み (参照 SDK に存在しない認可方式)
     expect(h.authorization).not.toMatch(/^Bearer /);
-    // SigV4: credential scope = <date>/ap-northeast-1/execute-api/aws4_request
+    // SigV4: credential scope = <date>/ap-northeast-1/execute-api/aws4_request。
+    // SignedHeaders に appidentifyid が含まれない (参照表どおり: /device/v1/sesame2/sign は「なし」)
     expect(h.authorization).toMatch(
-      /^AWS4-HMAC-SHA256 Credential=ASIAEXAMPLE\/\d{8}\/ap-northeast-1\/execute-api\/aws4_request, SignedHeaders=appidentifyid;content-type;host;x-amz-date;x-amz-security-token;x-api-key, Signature=[0-9a-f]{64}$/,
+      /^AWS4-HMAC-SHA256 Credential=ASIAEXAMPLE\/\d{8}\/ap-northeast-1\/execute-api\/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-security-token;x-api-key, Signature=[0-9a-f]{64}$/,
     );
     expect(h["x-api-key"]).toBe("iGgXj9GorS4PeH90mAysg1l7kdvoIPxM25mPFl3k"); // app.properties:5
-    expect(h.appidentifyid).toBe("ap-northeast-1:fixed-id");
+    expect(h.appidentifyid).toBeUndefined(); // バックログ8: 参照に存在しないヘッダは付けない
     expect(h["x-amz-security-token"]).toBe("SESSION-TOKEN");
     expect(h["content-type"]).toBe("application/json");
     expect(captured.init.body).toBe(JSON.stringify({ a: 1 }));
@@ -282,15 +288,15 @@ describe("makeRegisterTransport (SigV4 + x-api-key + appidentifyid)", () => {
     expect(apiCall.init.headers["x-amz-security-token"]).toBe("ST");
   });
 
-  it("appIdentifyId 未注入なら config から解決し、無ければ生成して config に書き戻す", async () => {
+  it("config を渡しても appidentifyid は生成・付与されない (バックログ8: 参照の sign/register にヘッダ無し)", async () => {
     let captured;
     const fetchImpl = async (url, init) => { captured = { url, init }; return { status: 200, text: async () => "{}" }; };
     const config = { appIdentifyId: null };
     const transport = makeRegisterTransport({ credentialsProvider: fakeCredentialsProvider, config, fetchImpl });
     await transport({ method: "POST", path: "/x" });
-    // ANDROID_ID 相当: "ap-northeast-1:<uuid>" を初回生成して config に保持 (AppIdentifyIdUtil.kt:42)
-    expect(config.appIdentifyId).toMatch(/^ap-northeast-1:/);
-    expect(captured.init.headers.appidentifyid).toBe(config.appIdentifyId);
+    // 旧挙動 (config から解決/生成して常時付与) は参照より広かったため撤去 (CHAPIClient.kt:77-96)。
+    expect(config.appIdentifyId).toBeNull(); // 生成も書き戻しもしない
+    expect(captured.init.headers.appidentifyid).toBeUndefined();
   });
 
   it("不正 JSON 応答は json:null として text を保持する", async () => {

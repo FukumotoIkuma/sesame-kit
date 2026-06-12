@@ -8,6 +8,8 @@ export type CmdOpts = import("./ctx.js").CmdOpts;
 export type CliError = import("./ctx.js").CliError;
 /**
  * `locks add` のオプション袋。フラグ指定で非対話登録できる。
+ * ssmPublicKey/keyIndex は OS2 デバイス用 (バックログ4: os2-register の戻り値を保存し、
+ * os2-invoke が --ssm-public-key 無しで config から解決できるようにする)。
  */
 export type LockAddOpts = {
     name?: string | undefined;
@@ -16,5 +18,7 @@ export type LockAddOpts = {
     model?: string | undefined;
     alias?: string | undefined;
     fromUrl?: string | undefined;
+    ssmPublicKey?: string | undefined;
+    keyIndex?: string | undefined;
 };
 //# sourceMappingURL=locks.d.ts.map

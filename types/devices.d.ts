@@ -1,12 +1,34 @@
 /**
  * 個人ユーザのデバイス一覧。companyID 不要。
+ *
+ * partialOnTimeout (BIZ-14 / バックログ6, オプトイン): true なら timeout 時に reject せず、
+ * その時点までの蓄積を `{partial:true, list}` で resolve する (参照 UI は page push のたびに
+ * 表示へ反映するため、完了前でも部分蓄積が残る — useManageDevice.js:38-55 の setDevices /
+ * useManageEmployee.js:70-88 と同パターン)。指定時は完走しても `{partial:false, list}` の
+ * 同 shape で返る (既定の配列戻りと shape が変わる点に注意)。既定 (false) は従来どおり reject。
+ *
+ * @overload
  * @param {WsClient} client
- * @param {{timeoutMs?: number}} [opts]
+ * @param {{timeoutMs?: number, partialOnTimeout: true}} opts
+ * @returns {Promise<{partial:boolean, list:any[]}>}
+ */
+export function getUserDevices(client: WsClient, opts: {
+    timeoutMs?: number;
+    partialOnTimeout: true;
+}): Promise<{
+    partial: boolean;
+    list: any[];
+}>;
+/**
+ * @overload
+ * @param {WsClient} client
+ * @param {{timeoutMs?: number, partialOnTimeout?: false}} [opts]
  * @returns {Promise<any[]>}
  */
-export function getUserDevices(client: WsClient, { timeoutMs }?: {
+export function getUserDevices(client: WsClient, opts?: {
     timeoutMs?: number;
-}): Promise<any[]>;
+    partialOnTimeout?: false;
+} | undefined): Promise<any[]>;
 /**
  * 単機の現在状態 (ロック開閉、電池等)。biz3 では isFromApp=true 限定だが CLI でも投げてみる価値あり。
  *
@@ -269,17 +291,22 @@ export function webapiSendCmd(client: WsClient, { apiKeyId, deviceId, cmd, sign,
 }): Promise<unknown>;
 /**
  * デフォルト REST transport を作る。
- * 公式アプリと同じ「SigV4 (Cognito Identity Pool 一時 credentials) + x-api-key +
- * appidentifyid」を付ける (ApiClientConfigBuilder.kt:34-46, BaseApp.kt:95-102,
- * AppIdentifyIdUtil.kt:42。冒頭ブロック注記参照)。
+ * 公式アプリと同じ「SigV4 (Cognito Identity Pool 一時 credentials) + x-api-key」を付ける
+ * (ApiClientConfigBuilder.kt:34-46, BaseApp.kt:95-102。冒頭ブロック注記参照)。
+ *
+ * appidentifyid は付けない (バックログ8: per-op 化)。本 transport が叩くエンドポイント
+ *   POST /device/v1/sesame2/sign        (CHAPIClient.kt:95-96 guestKeysSignPost)
+ *   POST /device/v1/sesame2/{device_id} (CHAPIClient.kt:77-81 register os2)
+ *   POST /device/v1/sesame5/{device_id} (CHAPIClient.kt:84-88 register os3)
+ * には参照に @Parameter(name="appidentifyid", location="header") が無い。
+ * 全列挙表は aws-credentials.js makeApiGatewayTransport の冒頭コメント参照。
+ * 旧実装は appIdentifyId を常時解決・付与していたが参照より広かったため撤去した。
+ * appIdentifyId / config / configStore オプションは後方互換のため受理するが **無視する**。
  *
  * 認可の入力は次のどちらか:
  *   - tokenStore — 既存ログイン (`sesame login`) の idToken を Identity Pool に連携して
  *     一時 credentials を取得する (BaseApp.kt:99 の AWSMobileClient.getInstance() 相当)。
  *   - credentialsProvider — 取得済み provider を直接注入 (テスト / 上級用)。
- *
- * appidentifyid は明示注入 > config 保存値 > 新規生成 (config へ書き戻し) の順に解決する
- * (AppIdentifyIdUtil.kt:26-48 の SharedPreferences 永続化相当)。
  *
  * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
  *
@@ -291,9 +318,11 @@ export function webapiSendCmd(client: WsClient, { apiKeyId, deviceId, cmd, sign,
  *          configStore?:import("./aws-credentials.js").AppIdConfigStoreLike|null,
  *          apiKey?:string,
  *          fetchImpl?:typeof globalThis.fetch}} [opts]
+ *   appIdentifyId / config / configStore は旧 API 互換のため受理するが無視する
+ *   (参照のこれらのエンドポイントに appidentifyid ヘッダは無い)。
  * @returns {RegisterTransport}
  */
-export function makeRegisterTransport({ baseUrl, tokenStore, credentialsProvider, appIdentifyId, config, configStore, apiKey, fetchImpl, }?: {
+export function makeRegisterTransport({ baseUrl, tokenStore, credentialsProvider, apiKey, fetchImpl, }?: {
     baseUrl?: string;
     tokenStore?: import("./tokens.js").TokenStore;
     credentialsProvider?: import("./aws-credentials.js").CredentialsProviderLike;
@@ -314,6 +343,8 @@ export function makeRegisterTransport({ baseUrl, tokenStore, credentialsProvider
  * baseUrl は明示値 > config.registerBaseUrl > DEFAULT_REGISTER_BASE_URL の順。既定ホストが
  * app.properties:2-3 で確定したため、baseUrl 未設定でも常に transport を返す
  * (旧「baseUrl 必須 throw / undefined 返し」は撤廃。`required` は後方互換のため受理するが無視)。
+ * appIdentifyId / configStore も後方互換のため受理するが無視する (バックログ8:
+ * sign/register 系エンドポイントに appidentifyid ヘッダは無い — makeRegisterTransport 注記)。
  *
  * @param {{baseUrl?:string|null,
  *          config?:({registerBaseUrl?:string|null} & import("./aws-credentials.js").AppIdConfigLike)|null,

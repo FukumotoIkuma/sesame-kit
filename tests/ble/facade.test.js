@@ -39,7 +39,11 @@ class MockSesame {
       return;
     }
     this.lastCommand = { item, data: Buffer.from(frame.subarray(1)) };
-    this._emitCipher(Buffer.from([OP.RESPONSE, item, 0x00]));
+    // versionTag(5) 応答の payload = バージョン文字列の UTF-8 bytes (送信側導出:
+    // CHSesameOS3.kt:398-418 — String(res.payload) で解釈される値をそのまま載せる)。
+    const extra = (this.versionTagAscii && item === ITEM.VERSION_TAG)
+      ? Buffer.from(this.versionTagAscii, "utf8") : Buffer.alloc(0);
+    this._emitCipher(Buffer.concat([Buffer.from([OP.RESPONSE, item, 0x00]), extra]));
   }
   disconnect() { this.disconnected = true; return Promise.resolve(); }
   _emitPlain(f) { for (const s of splitSegments(f, SEG.PLAINTEXT)) this.onPacket(s); }
@@ -84,7 +88,11 @@ class MockWM2 {
       return;
     }
     this.lastCommand = { item, data: Buffer.from(frame.subarray(1)) };
-    this._emitCipher(Buffer.from([OP.RESPONSE, item, 0x00]));
+    // WM2 VERSION_TAG(127) 応答の payload = バージョン文字列の UTF-8 bytes (送信側導出:
+    // CHWifiModule2Device.kt:423-435 — val versionTag = String(res.payload))。
+    const extra = (this.versionTagAscii && item === 127)
+      ? Buffer.from(this.versionTagAscii, "utf8") : Buffer.alloc(0);
+    this._emitCipher(Buffer.concat([Buffer.from([OP.RESPONSE, item, 0x00]), extra]));
   }
   disconnect() { this.disconnected = true; return Promise.resolve(); }
   _emitPlain(f) { for (const s of splitSegments(f, SEG.PLAINTEXT)) this.onPacket(s); }
@@ -208,12 +216,9 @@ describe("SesameBle facade", () => {
     }
   });
 
-  it("reset は RESET(104) を空ペイロードで送り全 OS3 機種で使える", async () => {
-    // wm_2 は profile "wm2" の handshake (P1-6) なので専用 mock。なお Kotlin の WM2 は reset() も
-    // RESET_WM2(18) にオーバーライドしており (CHWifiModule2Device.kt:437-448、WifiModule2.reset が担当)、
-    // ファサード reset() が WM2 にも RESET(104) を送る現挙動は SDK と乖離している (P1 範囲外、§9 候補)。
-    for (const model of ["sesame_5", "bot_2", "bike_2", "bike_3", "ssm_touch", "hub_3", "wm_2"]) {
-      const dev = model === "wm_2" ? new MockWM2() : new MockSesame();
+  it("reset は RESET(104) を空ペイロードで送り WM2 以外の全 OS3 機種で使える", async () => {
+    for (const model of ["sesame_5", "bot_2", "bike_2", "bike_3", "ssm_touch", "hub_3"]) {
+      const dev = new MockSesame();
       const ble = new SesameBle({ secretKey: SECRET, model, transport: dev });
       await ble.connect();
       const r = await ble.reset();
@@ -223,6 +228,45 @@ describe("SesameBle facade", () => {
       // 成功時に session 破棄 = transport.disconnect 呼び出し
       expect(dev.disconnected, model).toBe(true);
     }
+  });
+
+  it("reset は wm_2 では RESET_WM2(18) へ自動ルーティングする (CHWifiModule2Device.kt:437-448)", async () => {
+    // Kotlin の WM2 は reset() を RESET_WM2(18) にオーバーライドし、成功時に dropKey (= 切断) する。
+    // ファサード reset() は wifiProvisioning のとき WifiModule2.reset() (wm2.js) へ委譲する
+    // (追加バックログ 1)。wm_2 は profile "wm2" の handshake (P1-6) なので専用 mock を使う。
+    const dev = new MockWM2();
+    const ble = new SesameBle({ secretKey: SECRET, model: "wm_2", transport: dev });
+    await ble.connect();
+    const r = await ble.reset();
+    expect(r.resultCode).toBe(0);
+    expect(dev.lastCommand.item).toBe(18); // WM2ActionCode.RESET_WM2 (kt:540)
+    expect(dev.lastCommand.data.length).toBe(0); // byteArrayOf() (kt:443)
+    // 成功時 dropKey 相当 = session 破棄 (transport.disconnect 呼び出し)
+    expect(dev.disconnected).toBe(true);
+  });
+
+  it("getVersionTag は lock 系で versionTag(5) を、wm_2 で WM2 VERSION_TAG(127) を送る", async () => {
+    // lock profile: CHSesameOS3.kt:398-418 — item=5, payload=UTF-8 文字列。
+    const lockDev = new MockSesame();
+    lockDev.versionTagAscii = "3.0-4-abcdef"; // 応答 payload に載せる固定ベクタ
+    const lock = new SesameBle({ secretKey: SECRET, model: "sesame_5", transport: lockDev });
+    await lock.connect();
+    expect(await lock.getVersionTag()).toBe("3.0-4-abcdef");
+    expect(lockDev.lastCommand.item).toBe(ITEM.VERSION_TAG); // 5
+    expect(lockDev.lastCommand.data.length).toBe(0);
+    await lock.close();
+
+    // wm2 profile: CHWifiModule2Device.kt:423-435 — item=WM2ActionCode.VERSION_TAG(127)、
+    // data=byteArrayOf()、応答 payload は String(res.payload)。WM2 の action code 空間では
+    // 5=CONNECT_WIFI なので 5 を送る旧挙動は Wi-Fi 接続開始の誤発火だった (追加バックログ 2)。
+    const wm2Dev = new MockWM2();
+    wm2Dev.versionTagAscii = "wm2-1.0-cafe";
+    const wm2 = new SesameBle({ secretKey: SECRET, model: "wm_2", transport: wm2Dev });
+    await wm2.connect();
+    expect(await wm2.getVersionTag()).toBe("wm2-1.0-cafe");
+    expect(wm2Dev.lastCommand.item).toBe(127); // WM2ActionCode.VERSION_TAG (kt:540)
+    expect(wm2Dev.lastCommand.data.length).toBe(0);
+    await wm2.close();
   });
 
   it("reset は OS2 機種では型エラー (別系統の reset)", async () => {

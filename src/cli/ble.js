@@ -57,7 +57,10 @@ import { hexToBuf } from "../crypto.js";
 
 /**
  * resolveBleEntry の解決結果。
- * @typedef {{ name: string, deviceUUID: string, secretKey: string, model: (string|null) }} BleEntry
+ * ssmPublicKey/keyIndex は OS2 デバイス用の鍵素材 (バックログ4): 優先順位は
+ * 明示フラグ (--ssm-public-key / --key-index) > config locks エントリの保存値 > null。
+ * @typedef {{ name: string, deviceUUID: string, secretKey: string, model: (string|null),
+ *             ssmPublicKey: (string|null), keyIndex: (string|null) }} BleEntry
  */
 
 /**
@@ -318,6 +321,12 @@ async function cmdOS2Register(ctx, deviceUUID, options) {
     console.log(`secretKey=${result.secretKey}`);
     console.log(`ownerKey=${result.ownerKey}`);
     console.log(`sesamePublicKey=${result.sesamePublicKey}`);
+    // バックログ4: 鍵素材を config に保存すれば以後の os2-invoke で --ssm-public-key が不要になる。
+    console.log(t("ble.cli.os2Register.saveHint", {
+      deviceUUID: result.deviceUUID ?? "",
+      secretKey: result.secretKey ?? "",
+      sesamePublicKey: result.sesamePublicKey ?? "",
+    }));
   }, { ok: true, result });
 }
 
@@ -436,9 +445,10 @@ async function cmdOS2Invoke(ctx, device, op, options) {
   const { opts } = ctx.loadCtx();
   const entry = resolveBleEntry(ctx, device, options);
   if (!entry) return;
-  // OS2 login は ECDH 必須 (sesame2KeyData.sesame2PublicKey)。config locks は OS3 前提の
-  // {deviceUUID, secretKey} しか持たないため、--ssm-public-key を明示要求する。
-  if (!options.ssmPublicKey) {
+  // OS2 login は ECDH 必須 (sesame2KeyData.sesame2PublicKey)。鍵素材はバックログ4で
+  // config locks にも保存できる (locks add --ssm-public-key)。resolveBleEntry が
+  // 「明示フラグ > config 保存値」の優先順位で解決済み。どちらにも無ければ明示要求する。
+  if (!entry.ssmPublicKey) {
     ctx.die(t("ble.cli.os2Invoke.needSsmPublicKey"), 2);
     return;
   }
@@ -453,8 +463,9 @@ async function cmdOS2Invoke(ctx, device, op, options) {
     transport,
     deviceUUID: entry.deviceUUID,
     secretKey: entry.secretKey,
-    keyIndex: options.keyIndex, // 省略時は session 既定の "0000" (CHSesame2Device.kt:465)
-    ssmPublicKey: options.ssmPublicKey,
+    // 省略時 (フラグも config も無し) は undefined → session 既定の "0000" (CHSesame2Device.kt:465)
+    keyIndex: entry.keyIndex ?? undefined,
+    ssmPublicKey: entry.ssmPublicKey,
     model: entry.model,
     debug: !!opts.debug,
   }, (dev) => invokePath(/** @type {Record<string, any>} */ (/** @type {unknown} */ (dev)), op, args, OS2_BLE_RPC_ALLOWLIST));
@@ -686,11 +697,14 @@ function resolveBleEntry(ctx, device, options) {
   const deviceUUID = rec?.deviceUUID || device;
   const secretKey = options.secret || rec?.secretKey;
   const model = options.model || rec?.model || null;
+  // OS2 鍵素材 (バックログ4): 明示フラグ > config 保存値 (locks add --ssm-public-key/--key-index)。
+  const ssmPublicKey = options.ssmPublicKey || rec?.ssmPublicKey || null;
+  const keyIndex = options.keyIndex || rec?.keyIndex || null;
   if (!secretKey) {
     ctx.die(t("ble.cli.resolve.noSecret", { device }), 2);
     return null;
   }
-  return { name: rec ? name : deviceUUID, deviceUUID, secretKey, model };
+  return { name: rec ? name : deviceUUID, deviceUUID, secretKey, model, ssmPublicKey, keyIndex };
 }
 
 /**

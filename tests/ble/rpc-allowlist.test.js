@@ -39,7 +39,7 @@ describe("BLE_RPC_ALLOWLIST (OS3 SesameBle)", () => {
       "lock", "unlock", "click", "toggle", "autolock", "status",
       "history", "deleteHistory", "getVersionTag", "reset", "updateFirmware",
       "setBleTxPower", "configureLockPosition", "magnet", "opSensorControl", "sendAdvProductType",
-      "biometric", "fingerPrint", "script", "wifi", "hub3",
+      "biometric", "fingerPrint", "remoteNano", "script", "wifi", "hub3",
     ]) {
       expect(BLE_RPC_ALLOWLIST).toContain(name);
     }

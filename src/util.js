@@ -100,6 +100,14 @@ export function rejected(message, data = null) {
  * 観測した時点で `finish(err)` する。未指定なら従来挙動 (後方互換)。
  * client が onMessage を持たない (狭い fake 等) 場合は黙ってスキップする。
  *
+ * partialOnTimeout (BIZ-14 / バックログ6, オプトイン): timeout 時に reject する代わりに、
+ * その時点までの集約済み結果へ `partial: true` を付けて resolve する。参照 UI は chunk を
+ * 受信のたびに state へ反映するため、完了通知が来なくても部分蓄積が表示され続ける
+ * (useManageEmployee.js:70-88 の pubEmployees 蓄積は完了通知に依存しない)。CLI/ライブラリで
+ * 同じ「取れた分は返す」を選べるようにする opt-in。既定 (false) は従来どおり reject
+ * (後方互換)。このモードでは `result()` は **plain object** を返す契約 (spread で
+ * `partial: true` を合成するため。各利用側がオプション指定時に object 形へ切り替える)。
+ *
  * @template T
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {object} cfg
@@ -109,10 +117,11 @@ export function rejected(message, data = null) {
  * @param {number} cfg.timeoutMs
  * @param {()=>Error} [cfg.onTimeout]                  timeout 時に投げる Error を生成 (既定: 汎用 timeout)
  * @param {string} [cfg.errorAction]                   この action の success:false フレームで finish(err) (オプトイン)
+ * @param {boolean} [cfg.partialOnTimeout]             timeout 時に reject せず {partial:true, ...result()} で resolve (オプトイン)
  * @param {()=>T} cfg.result                           成功確定時に resolve する値を組み立てる
  * @returns {Promise<T>}
  */
-export function subscribeChunks(client, { sendFrame, subscriptions, timeoutMs, onTimeout, errorAction, result }) {
+export function subscribeChunks(client, { sendFrame, subscriptions, timeoutMs, onTimeout, errorAction, partialOnTimeout = false, result }) {
   return new Promise((resolve, reject) => {
     let done = false;
     /** @type {Array<() => void>} */
@@ -131,10 +140,19 @@ export function subscribeChunks(client, { sendFrame, subscriptions, timeoutMs, o
       if (err) reject(err);
       else resolve(result());
     };
-    const to = setTimeout(
-      () => finish(onTimeout ? onTimeout() : timeoutError(t("domain.util.chunkTimeout"))),
-      timeoutMs,
-    );
+    const to = setTimeout(() => {
+      // BIZ-14 (バックログ6): partialOnTimeout 指定時は timeout を失敗にせず、集約済みの
+      // 部分結果に partial:true を付けて resolve する (参照 UI は部分蓄積を表示し続ける —
+      // useManageEmployee.js:70-88)。done ガード/cleanup は finish と同じ規律を踏む。
+      if (partialOnTimeout) {
+        if (done) return;
+        done = true;
+        cleanup();
+        resolve(/** @type {T} */ (/** @type {unknown} */ ({ ...result(), partial: true })));
+        return;
+      }
+      finish(onTimeout ? onTimeout() : timeoutError(t("domain.util.chunkTimeout")));
+    }, timeoutMs);
     for (const sub of subscriptions) {
       unsubs.push(client.subscribe(sub.key, (msg) => {
         if (done) return;

@@ -6,10 +6,11 @@
 //   - 終了コード: 0=成功 / 1=ランタイムエラー / 2=usage エラー (README と一致)。
 //     BLE 環境エラー (BLE_UNAUTHORIZED/BLE_UNSUPPORTED/BLE_POWERED_OFF/BLE_INIT_TIMEOUT/
 //     BLE_NO_ADAPTER) は実行環境のランタイム障害なので 1 (usage の 2 ではない。SURF-19。
-//     cli.js maybeHandleBleError 参照 — --json 封筒には bleCode が付く)。
+//     下の maybeHandleBleError 参照 — --json 封筒には bleCode が付く)。
 //   - --json 時: 成功は stdout に純 JSON、エラーは stderr に {error, code} JSON。
 //
 // 依存方向: cli.js / cli/*.js → このモジュール (逆は無し)。
+import { spawn } from "node:child_process";
 import { t } from "../i18n.js";
 import { SesameError } from "../errors.js";
 
@@ -96,6 +97,61 @@ export function runtimeExitCode(err) {
       ? /** @type {{exitCode?: unknown}} */ (err).exitCode
       : undefined;
   return typeof exitCode === "number" && exitCode !== 0 ? exitCode : EXIT.RUNTIME;
+}
+
+/**
+ * maybeHandleBleError のテスト用 seam (バックログ9)。実 BLE 環境 (権限拒否等) が無いと
+ * 経路を起動できないため、副作用 (platform 判定・設定ペイン spawn・exitCode 設定) を
+ * 注入可能にする。本番 (cli.js / cli/lock-ops.js) は引数無しで呼び、既定の実体を使う。
+ * @typedef {object} BleErrorDeps
+ * @property {NodeJS.Platform} [platform] 既定 process.platform
+ * @property {typeof spawn} [spawnFn] 既定 node:child_process.spawn
+ * @property {(code: number) => void} [setExitCode] 既定 process.exitCode への代入
+ */
+
+/**
+ * BLE 権限/電源系エラーを検知し、macOS なら設定ペインを開いて案内する。
+ * 旧実装は cli.js の内部関数で、tests/cli/errors.test.js がソース文字列で挙動を固定していた
+ * (バックログ9)。挙動契約は不変: exit 1 (SURF-19: ランタイム障害。2 は usage 専用) /
+ * --json 封筒は {error, code:1, bleCode} で bleCode (機械可読な BLE 分類) を維持する。
+ * @param {unknown} err
+ * @param {BleErrorDeps} [deps]
+ * @returns {boolean} ハンドルした (= 呼び出し側は return) なら true
+ */
+export function maybeHandleBleError(err, deps = {}) {
+  const {
+    platform = process.platform,
+    spawnFn = spawn,
+    setExitCode = (/** @type {number} */ c) => { process.exitCode = c; },
+  } = deps;
+  const e = /** @type {Error & {code?: string|number, message?: string}} */ (err);
+  const code = e?.code;
+  if (
+    code !== "BLE_UNAUTHORIZED" &&
+    code !== "BLE_UNSUPPORTED" && // Linux/RPi/headless: アダプタ無し・権限不足 (native abort 探触のマップ先)
+    code !== "BLE_POWERED_OFF" &&
+    code !== "BLE_INIT_TIMEOUT" &&
+    code !== "BLE_NO_ADAPTER"
+  )
+    return false;
+  // SURF-19: BLE 環境エラー (権限/アダプタ/電源/初期化) は実行環境のランタイム障害であり
+  // usage(2) ではない → 終了コード契約 (EXIT) どおり 1。封筒の code は exit code と一致させ、
+  // bleCode (機械可読な BLE 分類) は維持する。
+  if (isJsonMode()) console.error(JSON.stringify({ error: e.message, code: 1, bleCode: code }));
+  else console.error(`Error: ${e.message}`);
+  if (!isJsonMode() && platform === "darwin" && code === "BLE_UNAUTHORIZED") {
+    // システム設定 → プライバシーとセキュリティ → Bluetooth を直接開く (人間向け誘導。--json では出さない)。
+    try {
+      spawnFn("open", ["x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"], {
+        stdio: "ignore", detached: true,
+      }).unref();
+      console.error(t("cli.bleOpenedPrivacy"));
+    } catch {
+      console.error(t("cli.bleEnablePrivacy"));
+    }
+  }
+  setExitCode(EXIT.RUNTIME); // SURF-19: ランタイム障害 = 1 (2 は usage 専用)
+  return true;
 }
 
 /**

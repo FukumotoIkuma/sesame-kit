@@ -254,7 +254,9 @@ describe("makeApiGatewayTransport (ApiClientFactory 相当)", () => {
     }),
   };
 
-  it("SigV4 + x-api-key + appidentifyid のヘッダ一式を組む", async () => {
+  it("appIdentifyId を渡した transport は SigV4 + x-api-key + appidentifyid のヘッダ一式を組む", async () => {
+    // appidentifyid が「あり」のエンドポイント用 (per-op 表: /device/list GET —
+    // CHAPIClient.kt:36-39。表は src/aws-credentials.js makeApiGatewayTransport 冒頭)。
     let captured;
     const fetchImpl = async (url, init) => {
       captured = { url, init };
@@ -266,9 +268,9 @@ describe("makeApiGatewayTransport (ApiClientFactory 相当)", () => {
       appIdentifyId: "ap-northeast-1:fixed-id",
       fetchImpl,
     });
-    await transport({ method: "POST", path: "/device/v1/sesame2/sign", body: { a: 1 } });
+    await transport({ method: "GET", path: "/device/list" });
 
-    expect(captured.url).toBe("https://app.candyhouse.co/prod/device/v1/sesame2/sign");
+    expect(captured.url).toBe("https://app.candyhouse.co/prod/device/list");
     const h = captured.init.headers;
     // x-api-key は app.properties:5 の実値が既定 (BaseApp.kt:100 API_GATEWAY_API_KEY)
     expect(h["x-api-key"]).toBe(API_GATEWAY_API_KEY);
@@ -279,6 +281,28 @@ describe("makeApiGatewayTransport (ApiClientFactory 相当)", () => {
     // Authorization: SigV4 scope = <date>/ap-northeast-1/execute-api/aws4_request
     expect(h.authorization).toMatch(
       /^AWS4-HMAC-SHA256 Credential=ASIAEXAMPLE\/\d{8}\/ap-northeast-1\/execute-api\/aws4_request, SignedHeaders=appidentifyid;content-type;host;x-amz-date;x-amz-security-token;x-api-key, Signature=[0-9a-f]{64}$/,
+    );
+  });
+
+  it("appIdentifyId 省略 (既定 null) なら appidentifyid ヘッダを付けず署名にも含めない (バックログ8)", async () => {
+    // appidentifyid が「なし」のエンドポイント用 (per-op 表: /device/v1/** には付かない —
+    // 例 /device/v1/sesame2/sign CHAPIClient.kt:95-96)。
+    let captured;
+    const fetchImpl = async (url, init) => {
+      captured = { url, init };
+      return { status: 200, text: async () => "{}" };
+    };
+    const transport = makeApiGatewayTransport({
+      baseUrl: DEFAULT_CH_API_BASE_URL,
+      credentialsProvider: fakeProvider,
+      fetchImpl,
+    });
+    await transport({ method: "POST", path: "/device/v1/sesame2/sign", body: { a: 1 } });
+
+    const h = captured.init.headers;
+    expect(h.appidentifyid).toBeUndefined();
+    expect(h.authorization).toMatch(
+      /^AWS4-HMAC-SHA256 Credential=ASIAEXAMPLE\/\d{8}\/ap-northeast-1\/execute-api\/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-security-token;x-api-key, Signature=[0-9a-f]{64}$/,
     );
     expect(captured.init.body).toBe('{"a":1}');
   });

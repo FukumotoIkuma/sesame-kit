@@ -2,7 +2,7 @@
 // biz3ManageAccessCtlAuthData の各 op の送信フレーム正確性 (action/op/フィールド名/ネスト構造) と
 // pub*LinkedIDs の async push 集約・応答パースを検証する。
 // vendor reference: references_web/src/api/useManageAuthData.js
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   getCards,
   getPasscodes,
@@ -44,10 +44,13 @@ function pushClient() {
 
 const ACTION = "biz3ManageAccessCtlAuthData";
 
-describe("makeBiometricsTransport (SigV4 + x-api-key + appidentifyid — BIZ-07)", () => {
+describe("makeBiometricsTransport (SigV4 + x-api-key、appidentifyid 無し — BIZ-07/バックログ8)", () => {
   // 認可方式の出典: ApiClientConfigBuilder.kt:34-46 / BaseApp.kt:95-102 /
   // app.properties:3,5 (ホスト・API key の実値)。基盤は src/aws-credentials.js + src/sigv4.js
   // (devices.js makeRegisterTransport と共通)。実機 API Gateway での受理は未検証 (§9 V5)。
+  // appidentifyid: POST /device/v1/biometrics (CHAPIClient.kt:105-106) には
+  // @Parameter(name="appidentifyid") が無いため付けない (バックログ8 per-op 化。
+  // 全列挙表は src/aws-credentials.js makeApiGatewayTransport 冒頭)。
 
   /** Identity Pool を経由しない注入 provider (ヘッダ検証用の固定 credentials)。 */
   const fakeCredentialsProvider = {
@@ -60,7 +63,7 @@ describe("makeBiometricsTransport (SigV4 + x-api-key + appidentifyid — BIZ-07)
     }),
   };
 
-  it("既定ホスト app.candyhouse.co/prod へ SigV4 + x-api-key + appidentifyid を付けて送る", async () => {
+  it("既定ホスト app.candyhouse.co/prod へ SigV4 + x-api-key を付けて送る (appidentifyid は付かない)", async () => {
     const calls = [];
     const fetchImpl = async (url, init) => {
       calls.push({ url, init });
@@ -68,6 +71,7 @@ describe("makeBiometricsTransport (SigV4 + x-api-key + appidentifyid — BIZ-07)
     };
     const transport = makeBiometricsTransport({
       credentialsProvider: fakeCredentialsProvider,
+      // 互換オプション: 受理されるが無視される (CHAPIClient.kt:105-106 にヘッダが無いため)
       appIdentifyId: "ap-northeast-1:fixed-id",
       fetchImpl,
     });
@@ -78,11 +82,12 @@ describe("makeBiometricsTransport (SigV4 + x-api-key + appidentifyid — BIZ-07)
     // baseUrl 未指定でも既定ホスト (app.properties:3) が使われる
     expect(calls[0].url).toBe("https://app.candyhouse.co/prod/device/v1/biometrics");
     const h = calls[0].init.headers;
+    // SignedHeaders に appidentifyid が含まれない (参照表どおり: /device/v1/biometrics は「なし」)
     expect(h.authorization).toMatch(
-      /^AWS4-HMAC-SHA256 Credential=ASIAEXAMPLE\/\d{8}\/ap-northeast-1\/execute-api\/aws4_request, SignedHeaders=appidentifyid;content-type;host;x-amz-date;x-amz-security-token;x-api-key, Signature=[0-9a-f]{64}$/,
+      /^AWS4-HMAC-SHA256 Credential=ASIAEXAMPLE\/\d{8}\/ap-northeast-1\/execute-api\/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-security-token;x-api-key, Signature=[0-9a-f]{64}$/,
     );
     expect(h["x-api-key"]).toBe("iGgXj9GorS4PeH90mAysg1l7kdvoIPxM25mPFl3k"); // app.properties:5
-    expect(h.appidentifyid).toBe("ap-northeast-1:fixed-id");
+    expect(h.appidentifyid).toBeUndefined(); // バックログ8: 参照に存在しないヘッダは付けない
     expect(h["x-amz-security-token"]).toBe("SESSION-TOKEN");
     expect(calls[0].init.body).toBe('{"op":"x"}');
   });
@@ -257,6 +262,37 @@ describe("getCards", () => {
   it("完了通知が来なければ timeout で reject", async () => {
     const c = pushClient();
     await expect(getCards(c, { deviceUUIDs: ["dev1"], timeoutMs: 20 })).rejects.toThrow(/getCards timeout/);
+  });
+
+  describe("partialOnTimeout (BIZ-14 / バックログ6)", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("timeout 時に reject せず {partial:true, byDevice, items} で部分蓄積を返す", async () => {
+      vi.useFakeTimers();
+      const c = pushClient();
+      const p = getCards(c, { deviceUUIDs: ["dev1", "dev2"], timeoutMs: 500, partialOnTimeout: true });
+      // dev1 の push だけ届き、dev2 と完了通知が来ないまま timeout
+      c.push(`${ACTION}:pubCardLinkedIDs`, {
+        data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
+      });
+      vi.advanceTimersByTime(500);
+      const r = await p;
+      expect(r.partial).toBe(true);
+      expect(r.byDevice).toEqual({ dev1: [{ cardID: "C1" }] });
+      expect(r.items.map((x) => x.cardID)).toEqual(["C1"]);
+    });
+
+    it("完走時は {partial:false, byDevice, items} の同 shape で返る", async () => {
+      const c = pushClient();
+      const p = getCards(c, { deviceUUIDs: ["dev1"], partialOnTimeout: true });
+      c.push(`${ACTION}:pubCardLinkedIDs`, {
+        data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
+      });
+      c.push(`${ACTION}:getCards`, {}); // 完了通知
+      const r = await p;
+      expect(r.partial).toBe(false);
+      expect(r.byDevice.dev1.map((x) => x.cardID)).toEqual(["C1"]);
+    });
   });
 
   // ---- P3-12: 完了通知と pub の到着順序は未確認 (§9 V8) — 逆順サーバ許容 ----

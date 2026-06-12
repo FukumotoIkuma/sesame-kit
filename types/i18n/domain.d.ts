@@ -33,6 +33,8 @@ declare namespace _default {
         "domain.config.lockNameRequired": string;
         "domain.config.lockDeviceUUIDRequired": string;
         "domain.config.lockSecretKeyRequired": string;
+        "domain.config.invalidSsmPublicKey": string;
+        "domain.config.invalidKeyIndex": string;
         "domain.config.unknownLockName": string;
         "domain.config.hub3NotRegisteredSyncFirst": string;
         "domain.lock.notConnected": string;
@@ -121,6 +123,8 @@ declare namespace _default {
         "domain.config.lockNameRequired": string;
         "domain.config.lockDeviceUUIDRequired": string;
         "domain.config.lockSecretKeyRequired": string;
+        "domain.config.invalidSsmPublicKey": string;
+        "domain.config.invalidKeyIndex": string;
         "domain.config.unknownLockName": string;
         "domain.config.hub3NotRegisteredSyncFirst": string;
         "domain.lock.notConnected": string;

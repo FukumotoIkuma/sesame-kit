@@ -111,6 +111,14 @@
           "schema": {
             "type": "number"
           }
+        },
+        {
+          "name": "partialOnTimeout",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
+          }
         }
       ],
       "result": {
@@ -305,6 +313,14 @@
           "description": "number",
           "schema": {
             "type": "number"
+          }
+        },
+        {
+          "name": "partialOnTimeout",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
           }
         }
       ],
@@ -1854,6 +1870,14 @@
           "schema": {
             "type": "number"
           }
+        },
+        {
+          "name": "partialOnTimeout",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
+          }
         }
       ],
       "result": {
@@ -1895,6 +1919,14 @@
           "description": "number",
           "schema": {
             "type": "number"
+          }
+        },
+        {
+          "name": "partialOnTimeout",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
           }
         }
       ],

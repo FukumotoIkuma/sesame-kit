@@ -78,6 +78,7 @@ declare namespace _default {
         "ble.dfuNotSupported": string;
         "ble.bot2NotSupported": string;
         "ble.fingerPrintNotSupported": string;
+        "ble.remoteNanoNotSupported": string;
         "ble.bot2ScriptIndexRange": string;
         "ble.bot2BadIndex": string;
         "ble.bot2BadAction": string;
@@ -106,6 +107,7 @@ declare namespace _default {
         "ble.cli.os2Register.opt.ak": string;
         "ble.cli.os2Register.opt.noLocalServerAuth": string;
         "ble.cli.os2Register.done": string;
+        "ble.cli.os2Register.saveHint": string;
         "ble.cli.badHex": string;
         "ble.cli.cards.desc": string;
         "ble.cli.passcodes.desc": string;
@@ -231,6 +233,7 @@ declare namespace _default {
         "ble.dfuNotSupported": string;
         "ble.bot2NotSupported": string;
         "ble.fingerPrintNotSupported": string;
+        "ble.remoteNanoNotSupported": string;
         "ble.bot2ScriptIndexRange": string;
         "ble.bot2BadIndex": string;
         "ble.bot2BadAction": string;
@@ -259,6 +262,7 @@ declare namespace _default {
         "ble.cli.os2Register.opt.ak": string;
         "ble.cli.os2Register.opt.noLocalServerAuth": string;
         "ble.cli.os2Register.done": string;
+        "ble.cli.os2Register.saveHint": string;
         "ble.cli.badHex": string;
         "ble.cli.cards.desc": string;
         "ble.cli.passcodes.desc": string;

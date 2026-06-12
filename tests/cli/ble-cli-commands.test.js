@@ -14,6 +14,11 @@ const LOCKS = {
   mylock: { deviceUUID: "u-lock", secretKey: "00".repeat(16), model: "sesame_5" },
   myhub: { deviceUUID: "u-hub", secretKey: "11".repeat(16), model: "hub_3" },
   mywm2: { deviceUUID: "u-wm2", secretKey: "22".repeat(16), model: "wm_2" },
+  // バックログ4: OS2 鍵素材 (locks add --ssm-public-key/--key-index で保存される形) 付き lock
+  myos2: {
+    deviceUUID: "u-os2", secretKey: "33".repeat(16), model: "sesame_4",
+    ssmPublicKey: "cd".repeat(64), keyIndex: "0001",
+  },
 };
 
 /** fake ctx。die は throw 化して捕捉可能に。makeBle で fake facade を注入する。 */
@@ -113,13 +118,53 @@ describe("ble os2-invoke", () => {
     expect(outputs[0]).toMatchObject({ ok: true, op: "lock" });
   });
 
-  it("--ssm-public-key 無しは die(2) (OS2 login は ECDH 必須)", async () => {
+  it("--ssm-public-key 無し・config にも保存無しは die(2) (OS2 login は ECDH 必須)", async () => {
     const useSpy = vi.spyOn(SesameOS2Ble, "use").mockResolvedValue({});
     const { ctx } = makeCtx({});
     await expect(
       buildProgram(ctx).parseAsync(["ble", "os2-invoke", "mylock", "lock"], { from: "user" }),
     ).rejects.toMatchObject({ exitCode: 2 });
     expect(useSpy).not.toHaveBeenCalled();
+  });
+
+  it("バックログ4: フラグ省略時は config 保存の ssmPublicKey/keyIndex で login する", async () => {
+    const fake = { lock: vi.fn(async () => ({ resultCode: 0 })) };
+    const useSpy = vi.spyOn(SesameOS2Ble, "use").mockImplementation(async (_opts, fn) => fn(fake));
+    const { ctx, outputs } = makeCtx({});
+    await buildProgram(ctx).parseAsync(["ble", "os2-invoke", "myos2", "lock"], { from: "user" });
+    expect(useSpy.mock.calls[0][0]).toMatchObject({
+      deviceUUID: "u-os2",
+      secretKey: LOCKS.myos2.secretKey,
+      ssmPublicKey: LOCKS.myos2.ssmPublicKey, // config 保存値で解決
+      keyIndex: LOCKS.myos2.keyIndex,
+      model: "sesame_4",
+    });
+    expect(outputs[0]).toMatchObject({ ok: true, op: "lock", name: "myos2" });
+  });
+
+  it("バックログ4: 明示フラグは config 保存値より優先される", async () => {
+    const fake = { lock: vi.fn(async () => ({ resultCode: 0 })) };
+    const useSpy = vi.spyOn(SesameOS2Ble, "use").mockImplementation(async (_opts, fn) => fn(fake));
+    const { ctx } = makeCtx({});
+    await buildProgram(ctx).parseAsync(
+      ["ble", "os2-invoke", "myos2", "lock", "--ssm-public-key", "ef".repeat(64), "--key-index", "00ff"],
+      { from: "user" },
+    );
+    expect(useSpy.mock.calls[0][0]).toMatchObject({
+      ssmPublicKey: "ef".repeat(64), // フラグ > config
+      keyIndex: "00ff",
+    });
+  });
+
+  it("バックログ4: keyIndex 未指定 (フラグも config も無し) は undefined → session 既定 \"0000\"", async () => {
+    const fake = { lock: vi.fn(async () => ({ resultCode: 0 })) };
+    const useSpy = vi.spyOn(SesameOS2Ble, "use").mockImplementation(async (_opts, fn) => fn(fake));
+    const { ctx } = makeCtx({});
+    await buildProgram(ctx).parseAsync(
+      ["ble", "os2-invoke", "mylock", "lock", "--ssm-public-key", "ab".repeat(64)],
+      { from: "user" },
+    );
+    expect(useSpy.mock.calls[0][0].keyIndex).toBeUndefined();
   });
 
   it("OS2 非公開 op (connect) は拒否される", async () => {

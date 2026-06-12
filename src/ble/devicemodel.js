@@ -278,7 +278,10 @@ export function kindForModel(model) {
  *   - bioCaps     : 機種別の生体 capability 集合 (DeviceProfiles 1:1。P3-15)。BIOMETRIC kind でも
  *                   open sensor / remote 系は空配列 (CHDeivceProtocols.kt:81,112,118,172)
  *   - isOpenSensor: OpenSensor 系か (parsePubKeySesame の空き判定が >1 になる。BLEP-11)
- *   - isRemote    : Remote/Remote Nano 系か (TRIGGER_DELAYTIME(191) publish の dispatch 対象。BLEP-09)
+ *   - isRemote    : Remote/Remote Nano 系か (TRIGGER_DELAYTIME(191) publish の dispatch 対象。BLEP-09)。
+ *                   SesameBle#remoteNano ゲッタの露出ゲートにも使う (追加バックログ 7) — SDK の
+ *                   isRemote() (CHSesameBiometricDevice.kt:67-69) が remote/remote_nano の両機種で
+ *                   真になるのと 1:1 のため、専用フラグは追加しない
  *   - wifiProvisioning: WM2 の BLE プロビジョニング API を持つか (WIFI kind のみ true)
  *   - script      : Bot2/Bot3 のスクリプト API を持つか (BOT2 kind のみ true)
  *   - fingerprint : Bike3 の指紋登録 API を持つか (BIKE3 kind のみ true)

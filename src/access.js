@@ -41,7 +41,6 @@ import { generateUUID } from "./crypto.js";
 import {
   makeCognitoCredentialsProvider,
   makeApiGatewayTransport,
-  resolveAppIdentifyId,
   DEFAULT_CH_API_BASE_URL,
 } from "./aws-credentials.js";
 
@@ -72,9 +71,9 @@ const BIOMETRICS_PATH = "/device/v1/biometrics";
  * @property {string} [baseUrl] REST ルート URL (https のみ。既定 https://app.candyhouse.co/prod)。
  * @property {import("./aws-credentials.js").CredentialsProviderLike} [credentialsProvider] Identity Pool 一時 credentials の供給元。
  * @property {() => Promise<string>} [getIdToken] idToken 供給コールバック (credentialsProvider を内部構築)。
- * @property {string|null} [appIdentifyId] appidentifyid ヘッダ値 (省略時 config から解決/生成)。
- * @property {import("./aws-credentials.js").AppIdConfigLike|null} [config] appIdentifyId の保存先 config。
- * @property {import("./aws-credentials.js").AppIdConfigStoreLike|null} [configStore] appIdentifyId を即永続化する store。
+ * @property {string|null} [appIdentifyId] [互換・無視] /device/v1/biometrics に appidentifyid ヘッダは無い (CHAPIClient.kt:105-106。バックログ8)。
+ * @property {import("./aws-credentials.js").AppIdConfigLike|null} [config] [互換・無視] 同上 (appidentifyid を付けないため未使用)。
+ * @property {import("./aws-credentials.js").AppIdConfigStoreLike|null} [configStore] [互換・無視] 同上。
  * @property {string} [apiKey] x-api-key (省略時 app.properties:5 の実値)。
  * @property {string} [authorization] [非推奨] 完成済み Authorization ヘッダ値。
  * @property {string} [bearerToken] [非推奨] Bearer トークン (ヘッダ未指定時)。
@@ -151,13 +150,19 @@ function assertHttpOk(res, op) {
 /**
  * Kotlin SDK の CHAPIClient#biometricsOperation と同じ POST /device/v1/biometrics transport。
  *
- * 認可は公式アプリと同じ「SigV4 (Cognito Identity Pool の一時 credentials) + x-api-key +
- * appidentifyid」(REFACTORING_PLAN P2-1 / BIZ-07。基盤 = src/aws-credentials.js + src/sigv4.js):
+ * 認可は公式アプリと同じ「SigV4 (Cognito Identity Pool の一時 credentials) + x-api-key」
+ * (REFACTORING_PLAN P2-1 / BIZ-07。基盤 = src/aws-credentials.js + src/sigv4.js):
  *   - ApiClientConfigBuilder.kt:34-46 — credentialsProvider + apiKey + region
  *   - BaseApp.kt:95-102 — credentialsProvider = AWSMobileClient.getInstance(),
  *     apiKey = BuildConfig.API_GATEWAY_API_KEY
  *   - ホストは app.properties:3 (https://app.candyhouse.co/prod) を既定とする。
  * credentialsProvider か getIdToken (idToken 供給コールバック) のどちらかで SigV4 経路になる。
+ *
+ * appidentifyid は付けない (バックログ8: per-op 化)。POST /device/v1/biometrics
+ * (CHAPIClient.kt:105-106 biometricsOperation) には @Parameter(name="appidentifyid") が無い
+ * (付くのは /device 直下の鍵 CRUD・/device/list・/friend 系・/web_route のみ —
+ * 全列挙表: aws-credentials.js makeApiGatewayTransport 冒頭)。旧実装は常時付与していたが
+ * 参照より広かったため撤去。appIdentifyId / config / configStore は互換のため受理するが無視。
  *
  * 互換 (非推奨): authorization / bearerToken / authorizationProvider は Authorization ヘッダを
  * そのまま付ける旧経路。参照 SDK に idToken Bearer の REST 認可は存在せず実 API Gateway
@@ -173,9 +178,6 @@ export function makeBiometricsTransport({
   baseUrl = DEFAULT_CH_API_BASE_URL,
   credentialsProvider,
   getIdToken,
-  appIdentifyId,
-  config,
-  configStore,
   apiKey,
   authorization,
   bearerToken,
@@ -185,7 +187,7 @@ export function makeBiometricsTransport({
   if (typeof fetchImpl !== "function") throw badRequest("access.err.fetchRequired");
   const root = normalizeBiometricsBaseUrl(baseUrl || DEFAULT_CH_API_BASE_URL);
 
-  // ---- 正準経路: SigV4 + x-api-key + appidentifyid (devices.js register と同じ基盤) ----
+  // ---- 正準経路: SigV4 + x-api-key (devices.js register と同じ基盤) ----
   if (credentialsProvider || typeof getIdToken === "function") {
     const provider = credentialsProvider
       || makeCognitoCredentialsProvider({
@@ -195,7 +197,8 @@ export function makeBiometricsTransport({
     return makeApiGatewayTransport({
       baseUrl: root,
       credentialsProvider: provider,
-      appIdentifyId: resolveAppIdentifyId({ appIdentifyId, config, configStore }),
+      // appIdentifyId は渡さない (既定 null = ヘッダ無し)。/device/v1/biometrics に
+      // appidentifyid は参照に存在しない (CHAPIClient.kt:105-106)。
       apiKey,
       fetchImpl,
     });
@@ -277,17 +280,24 @@ async function postBiometrics(transport, body, opLabel) {
  * @param {object} cfg
  * @param {string} cfg.op            送信 op ('getCards' | 'getPasscodes')
  * @param {string} cfg.pubOp         データ push の op ('pubCardLinkedIDs' | 'pubPasscodeLinkedIDs')
+ * partialOnTimeout (BIZ-14 / バックログ6, オプトイン): true なら timeout 時に reject せず、
+ * その時点までの蓄積を `{partial:true, byDevice, items}` で resolve する (util.subscribeChunks
+ * の同名オプションに透過。参照 UI は pub push のたびに表示へ反映するため、完了通知が来なくても
+ * 部分蓄積が残る — useManageAuthData.js:116-131 / useManageEmployee.js:70-88 と同パターン)。
+ * 指定時は完走しても `{partial:false, ...}` の同 shape で返る。既定 (false) は従来どおり reject。
+ *
  * @param {string} cfg.idKey         集約キー ('cardID' | 'passwordID')
  * @param {string[]} cfg.deviceUUIDs 対象 deviceUUID 配列
  * @param {number} cfg.timeoutMs
  * @param {number} [cfg.graceMs]     完了通知時に欠落デバイスがある場合の残 push 吸収猶予 (テスト注入用)
- * @returns {Promise<{byDevice: Record<string, object[]>, items: object[]}>}
+ * @param {boolean} [cfg.partialOnTimeout] timeout 時に部分結果で resolve (オプトイン)
+ * @returns {Promise<{byDevice: Record<string, object[]>, items: object[], partial?:boolean}>}
  *   byDevice: deviceUUID → そのデバイスに紐づく要素配列
  *   items:    idKey 単位に集約し uuids(=該当 deviceUUID 群) を付与した横断リスト
  */
-async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs, graceMs = DEFAULT_COMPLETION_GRACE_MS }) {
+async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs, graceMs = DEFAULT_COMPLETION_GRACE_MS, partialOnTimeout = false }) {
   if (!Array.isArray(deviceUUIDs) || deviceUUIDs.length === 0) {
-    return { byDevice: {}, items: [] };
+    return partialOnTimeout ? { partial: false, byDevice: {}, items: [] } : { byDevice: {}, items: [] };
   }
   const deviceIds = deviceUUIDs.join(","); // biz3: devices.map(d=>d.deviceUUID).join(',') (54)
 
@@ -303,7 +313,12 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs,
     sendFrame: { action: ACTION, obj: { devices: deviceIds }, op },
     timeoutMs,
     onTimeout: () => timeoutError(t("access.err.opTimeout", { op })),
-    result: () => ({ byDevice, items: aggregate(byDevice, idKey) }),
+    partialOnTimeout,
+    // partialOnTimeout 時は partial:false を含めて shape を固定 (timeout 確定時は
+    // subscribeChunks 側の spread が partial:true へ上書きする)。
+    result: () => (partialOnTimeout
+      ? { partial: false, byDevice, items: aggregate(byDevice, idKey) }
+      : { byDevice, items: aggregate(byDevice, idKey) }),
     subscriptions: [
       // (2) データ本体 push の集約 (useManageAuthData.js:116-131)。完了はさせない
       //     (完了通知後の残 push も grace window 内ならここで吸収される)。
@@ -367,12 +382,14 @@ function aggregate(byDevice, idKey) {
  * 内部で集約してから完了通知 or timeout で確定する (useManageAuthData.js:50-191)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number}} params
+ * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number, partialOnTimeout?:boolean}} params
  *   graceMs: 完了通知が pub より先行した場合の残 push 吸収猶予 (既定 300ms。テスト注入用)。
- * @returns {Promise<{byDevice: Record<string, object[]>, items: object[]}>}
+ *   partialOnTimeout: true なら timeout 時に reject せず {partial:true, byDevice, items} で
+ *     resolve する (BIZ-14。完走時は {partial:false, ...} の同 shape)。既定 false (reject)。
+ * @returns {Promise<{byDevice: Record<string, object[]>, items: object[], partial?:boolean}>}
  *   items の各要素: { cardID, nameUUID, name, cardType, subUUID, ..., uuids:string[] }
  */
-export async function getCards(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOUT_MS, graceMs }) {
+export async function getCards(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOUT_MS, graceMs, partialOnTimeout }) {
   return fetchAuthData(client, {
     op: "getCards",
     pubOp: PUB_CARD_LINKED_IDS,
@@ -380,6 +397,7 @@ export async function getCards(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOU
     deviceUUIDs,
     timeoutMs,
     graceMs,
+    partialOnTimeout,
   });
 }
 
@@ -390,12 +408,14 @@ export async function getCards(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOU
  * 応答データ本体は op='pubPasscodeLinkedIDs' で届く (useManageAuthData.js:189-191)。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number}} params
+ * @param {{deviceUUIDs:string[], timeoutMs?:number, graceMs?:number, partialOnTimeout?:boolean}} params
  *   graceMs: 完了通知が pub より先行した場合の残 push 吸収猶予 (既定 300ms。テスト注入用)。
- * @returns {Promise<{byDevice: Record<string, object[]>, items: object[]}>}
+ *   partialOnTimeout: true なら timeout 時に reject せず {partial:true, byDevice, items} で
+ *     resolve する (BIZ-14。完走時は {partial:false, ...} の同 shape)。既定 false (reject)。
+ * @returns {Promise<{byDevice: Record<string, object[]>, items: object[], partial?:boolean}>}
  *   items の各要素: { passwordID, keyBoardPassCode, keyBoardPassCodeNameUUID, name, nameUUID, subUUID, ..., uuids:string[] }
  */
-export async function getPasscodes(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOUT_MS, graceMs }) {
+export async function getPasscodes(client, { deviceUUIDs, timeoutMs = DEFAULT_TIMEOUT_MS, graceMs, partialOnTimeout }) {
   return fetchAuthData(client, {
     op: "getPasscodes",
     pubOp: PUB_PASSCODE_LINKED_IDS,
@@ -403,6 +423,7 @@ export async function getPasscodes(client, { deviceUUIDs, timeoutMs = DEFAULT_TI
     deviceUUIDs,
     timeoutMs,
     graceMs,
+    partialOnTimeout,
   });
 }
 

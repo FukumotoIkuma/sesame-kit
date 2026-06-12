@@ -292,13 +292,13 @@ class _Access:
         """@experimental (unverified) — may change without notice."""
         return self._c._call("access.delPasscodes", _omit_none({"items": items}))
 
-    def getCards(self, *, deviceUUIDs: list[str], timeoutMs: float | None = None, graceMs: float | None = None) -> Any:
+    def getCards(self, *, deviceUUIDs: list[str], timeoutMs: float | None = None, graceMs: float | None = None, partialOnTimeout: bool | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("access.getCards", _omit_none({"deviceUUIDs": deviceUUIDs, "timeoutMs": timeoutMs, "graceMs": graceMs}))
+        return self._c._call("access.getCards", _omit_none({"deviceUUIDs": deviceUUIDs, "timeoutMs": timeoutMs, "graceMs": graceMs, "partialOnTimeout": partialOnTimeout}))
 
-    def getPasscodes(self, *, deviceUUIDs: list[str], timeoutMs: float | None = None, graceMs: float | None = None) -> Any:
+    def getPasscodes(self, *, deviceUUIDs: list[str], timeoutMs: float | None = None, graceMs: float | None = None, partialOnTimeout: bool | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("access.getPasscodes", _omit_none({"deviceUUIDs": deviceUUIDs, "timeoutMs": timeoutMs, "graceMs": graceMs}))
+        return self._c._call("access.getPasscodes", _omit_none({"deviceUUIDs": deviceUUIDs, "timeoutMs": timeoutMs, "graceMs": graceMs, "partialOnTimeout": partialOnTimeout}))
 
     def postAuthenticationData(self, *, operation: str, deviceID: str, items: list[Any], baseUrl: str | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
@@ -718,9 +718,9 @@ class _Org:
         """@experimental (unverified) — may change without notice."""
         return self._c._call("org.getEmployeeGroups", _omit_none({"companyID": companyID, "timeoutMs": timeoutMs}))
 
-    def getEmployees(self, *, companyID: str | None = None, timeoutMs: float | None = None) -> Any:
+    def getEmployees(self, *, companyID: str | None = None, timeoutMs: float | None = None, partialOnTimeout: bool | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("org.getEmployees", _omit_none({"companyID": companyID, "timeoutMs": timeoutMs}))
+        return self._c._call("org.getEmployees", _omit_none({"companyID": companyID, "timeoutMs": timeoutMs, "partialOnTimeout": partialOnTimeout}))
 
     def getTags(self, *, companyID: str | None = None, timeoutMs: float | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
@@ -730,9 +730,9 @@ class _Org:
         """@experimental (unverified) — may change without notice."""
         return self._c._call("org.postTag", _omit_none({"companyID": companyID, "data": data, "timeoutMs": timeoutMs}))
 
-    def queryByCS(self, *, keyword: str, timeoutMs: float | None = None) -> Any:
+    def queryByCS(self, *, keyword: str, timeoutMs: float | None = None, partialOnTimeout: bool | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""
-        return self._c._call("org.queryByCS", _omit_none({"keyword": keyword, "timeoutMs": timeoutMs}))
+        return self._c._call("org.queryByCS", _omit_none({"keyword": keyword, "timeoutMs": timeoutMs, "partialOnTimeout": partialOnTimeout}))
 
     def removeDeviceGroupBindUserGroup(self, *, companyID: str | None = None, data: dict[str, Any], timeoutMs: float | None = None) -> Any:
         """@experimental (unverified) — may change without notice."""

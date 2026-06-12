@@ -181,9 +181,9 @@ export class SesameClient {
     /** @experimental unverified — may change without notice. */
     delPasscodes: (params: { items: Array<Record<string, unknown>> }): Promise<unknown> => this._call("access.delPasscodes", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getCards: (params: { deviceUUIDs: Array<string>; timeoutMs?: number; graceMs?: number }): Promise<unknown> => this._call("access.getCards", params) as Promise<unknown>,
+    getCards: (params: { deviceUUIDs: Array<string>; timeoutMs?: number; graceMs?: number; partialOnTimeout?: boolean }): Promise<unknown> => this._call("access.getCards", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getPasscodes: (params: { deviceUUIDs: Array<string>; timeoutMs?: number; graceMs?: number }): Promise<unknown> => this._call("access.getPasscodes", params) as Promise<unknown>,
+    getPasscodes: (params: { deviceUUIDs: Array<string>; timeoutMs?: number; graceMs?: number; partialOnTimeout?: boolean }): Promise<unknown> => this._call("access.getPasscodes", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
     postAuthenticationData: (params: { operation: string; deviceID: string; items: Array<unknown>; baseUrl?: string }): Promise<unknown> => this._call("access.postAuthenticationData", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
@@ -395,13 +395,13 @@ export class SesameClient {
     /** @experimental unverified — may change without notice. */
     getEmployeeGroups: (params: { companyID?: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getEmployeeGroups", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    getEmployees: (params: { companyID?: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getEmployees", params) as Promise<unknown>,
+    getEmployees: (params: { companyID?: string; timeoutMs?: number; partialOnTimeout?: boolean }): Promise<unknown> => this._call("org.getEmployees", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
     getTags: (params: { companyID?: string; timeoutMs?: number }): Promise<unknown> => this._call("org.getTags", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
     postTag: (params: { companyID?: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.postTag", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
-    queryByCS: (params: { keyword: string; timeoutMs?: number }): Promise<unknown> => this._call("org.queryByCS", params) as Promise<unknown>,
+    queryByCS: (params: { keyword: string; timeoutMs?: number; partialOnTimeout?: boolean }): Promise<unknown> => this._call("org.queryByCS", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */
     removeDeviceGroupBindUserGroup: (params: { companyID?: string; data: Record<string, unknown>; timeoutMs?: number }): Promise<unknown> => this._call("org.removeDeviceGroupBindUserGroup", params) as Promise<unknown>,
     /** @experimental unverified — may change without notice. */

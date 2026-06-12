@@ -75,6 +75,7 @@ sesame locks set-default front
 sesame locks add               # add interactively (deviceUUID + secretKey)
 sesame locks add --name front --uuid <UUID> --secret <32hex> --model sesame_5_pro  # non-interactive / flag-based add
 sesame locks add --from-url 'ssm://UI?t=sk&sk=...'  # fill deviceUUID/secretKey/model/name from a share-key URL
+sesame locks add --name s3 --uuid <UUID> --secret <32hex> --model sesame_3 --ssm-public-key <128hex> --key-index 0000  # OS2: store the device public key from `ble os2-register` so `ble os2-invoke` resolves it from config
 sesame locks sync-from-devices # auto-import from the result of devices
 sesame locks rm front
 ```

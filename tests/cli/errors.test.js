@@ -1,10 +1,11 @@
 // cli/errors.js: エラー/終了コード契約の純ロジックを検証する。
-import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   EXIT, withStaleHint, commanderErrorInfo, isCommanderError, runtimeExitCode,
-  setJsonMode, isJsonMode,
+  setJsonMode, isJsonMode, maybeHandleBleError,
 } from "../../src/cli/errors.js";
+// バックログ9: cli.js の既存 import 互換 (re-export) も契約として固定する。
+import { maybeHandleBleError as reExported } from "../../src/cli.js";
 import { SesameError, ERR } from "../../src/errors.js";
 
 describe("cli/errors: 終了コード契約", () => {
@@ -81,17 +82,79 @@ describe("cli/errors: json mode", () => {
   });
 });
 
-describe("SURF-19: BLE 環境エラーの終了コード契約", () => {
+describe("SURF-19: BLE 環境エラーの終了コード契約 (maybeHandleBleError 直接テスト)", () => {
   // BLE_UNAUTHORIZED 等は実行環境のランタイム障害であり usage(2) ではない → exit 1。
-  // maybeHandleBleError は cli.js の内部関数で、経路を起動するには実 BLE 環境 (権限拒否等)
-  // が必要なため、ここではソースを直接固定する (回帰: かつて exit 2 を返していた)。
-  it("maybeHandleBleError は exit 1 を設定し、--json 封筒も code:1 + bleCode を保つ", () => {
-    const src = readFileSync(new URL("../../src/cli.js", import.meta.url), "utf8");
-    const start = src.indexOf("function maybeHandleBleError");
-    expect(start).toBeGreaterThan(-1);
-    const body = src.slice(start, src.indexOf("\n}", start) + 2);
-    expect(body).toContain("process.exitCode = 1");
-    expect(body).not.toContain("process.exitCode = 2");
-    expect(body).toContain("code: 1, bleCode: code"); // --json 封筒: code は exit code と一致、bleCode 維持
+  // バックログ9: 旧テストは cli.js のソース文字列を固定して関数抽出を阻んでいた。
+  // 関数は cli/errors.js へ移動し、副作用 (platform / spawn / exitCode) を deps 注入して
+  // BLE エラーオブジェクトを直接流し、exit code / --json 封筒 / bleCode を検証する。
+  const BLE_CODES = [
+    "BLE_UNAUTHORIZED", "BLE_UNSUPPORTED", "BLE_POWERED_OFF", "BLE_INIT_TIMEOUT", "BLE_NO_ADAPTER",
+  ];
+
+  /** deps を spy 化して呼び、{handled, exitCodes, spawned, stderr} を返す。 */
+  function callWith(err, { json = false, platform = "linux" } = {}) {
+    setJsonMode(json);
+    const exitCodes = [];
+    const spawnFn = vi.fn(() => ({ unref: () => {} }));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handled = maybeHandleBleError(err, {
+      platform,
+      spawnFn,
+      setExitCode: (c) => exitCodes.push(c),
+    });
+    const stderr = errSpy.mock.calls.map((c) => c.join(" "));
+    errSpy.mockRestore();
+    setJsonMode(false);
+    return { handled, exitCodes, spawned: spawnFn.mock.calls, stderr };
+  }
+
+  afterEach(() => { setJsonMode(false); vi.restoreAllMocks(); });
+
+  it("BLE 環境エラー 5 種すべてで exit 1 を設定する (2 は usage 専用)", () => {
+    for (const code of BLE_CODES) {
+      const { handled, exitCodes } = callWith(Object.assign(new Error("boom"), { code }));
+      expect(handled).toBe(true);
+      expect(exitCodes).toEqual([EXIT.RUNTIME]); // 1。回帰: かつて exit 2 を返していた
+    }
+  });
+
+  it("--json 封筒は {error, code:1, bleCode} (code は exit code と一致、bleCode 維持)", () => {
+    const { stderr, exitCodes } = callWith(
+      Object.assign(new Error("no bt"), { code: "BLE_POWERED_OFF" }), { json: true },
+    );
+    expect(exitCodes).toEqual([1]);
+    const env = JSON.parse(stderr[0]);
+    expect(env).toEqual({ error: "no bt", code: 1, bleCode: "BLE_POWERED_OFF" });
+  });
+
+  it("BLE 系でない code は false を返し副作用ゼロ (呼び出し側の通常エラー経路へ)", () => {
+    const { handled, exitCodes, stderr } = callWith(Object.assign(new Error("x"), { code: "ENOENT" }));
+    expect(handled).toBe(false);
+    expect(exitCodes).toEqual([]);
+    expect(stderr).toEqual([]);
+    expect(maybeHandleBleError(new Error("no code"), { setExitCode: () => {} })).toBe(false);
+  });
+
+  it("macOS + BLE_UNAUTHORIZED (非 JSON) は設定ペインを open し誘導文を出す", () => {
+    const { handled, spawned, stderr } = callWith(
+      Object.assign(new Error("denied"), { code: "BLE_UNAUTHORIZED" }), { platform: "darwin" },
+    );
+    expect(handled).toBe(true);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0][0]).toBe("open");
+    expect(spawned[0][1][0]).toContain("Privacy_Bluetooth");
+    expect(stderr[0]).toBe("Error: denied");
+  });
+
+  it("--json では設定ペインを開かない (機械可読出力を汚さない)", () => {
+    const { spawned } = callWith(
+      Object.assign(new Error("denied"), { code: "BLE_UNAUTHORIZED" }),
+      { platform: "darwin", json: true },
+    );
+    expect(spawned).toHaveLength(0);
+  });
+
+  it("cli.js からの re-export は同一実体 (既存 import 互換)", () => {
+    expect(reExported).toBe(maybeHandleBleError);
   });
 });

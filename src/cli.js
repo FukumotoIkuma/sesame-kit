@@ -9,7 +9,6 @@
 // P5-3 で本体ロジックは src/cli/ 配下へ分割済み。ここに残るのは
 // run() (ロケール確定 → コマンド登録 → ルーティング → エラー契約) と終了処理のみ。
 
-import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +17,7 @@ import { setLocale, resolveLocale, isKnownLang, t } from "./i18n.js";
 import {
   die, setJsonMode, isJsonMode, withStaleHint,
   isCommanderError, commanderErrorInfo, runtimeExitCode,
+  maybeHandleBleError,
 } from "./cli/errors.js";
 import { routeDeviceArgv } from "./cli/dispatch.js";
 import { CONFIG_META } from "./auth.js";
@@ -55,7 +55,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** @typedef {import("./cli/ctx.js").GlobalOpts} GlobalOpts */
 /** @typedef {import("./cli/ctx.js").CmdOpts} CmdOpts */
-/** @typedef {import("./cli/ctx.js").CliError} CliError */
 /**
  * cli/ サブモジュールへ渡す共有コンテキスト (実体は src/cli/ctx.js)。
  * 既存 register モジュールが import("../cli.js").CliCtx で参照するため再公開する。
@@ -104,7 +103,9 @@ function isKnownDevice(program, name) {
 
 // テスト用 re-export: status 出力の純関数 (秘匿値除去 / 整形) と config マスク。
 // 実体は P5-3 で src/cli/lock-ops.js / src/cli/ctx.js へ移動 (import パス互換のため再公開)。
-export { fmtCloudStatus, sanitizeStatus, redactConfig };
+// maybeHandleBleError はバックログ9 (テスト seam) で src/cli/errors.js へ移動。既存の
+// import 互換のためここからも再公開する。
+export { fmtCloudStatus, sanitizeStatus, redactConfig, maybeHandleBleError };
 
 // 明示された --lang の解決済みロケール (init で uiLang/lang を永続化するために保持)。
 // 認識できないフラグや未指定なら null。
@@ -198,7 +199,7 @@ export async function run(argv = process.argv) {
   program.command("op [device] [action] [args...]", { hidden: true })
     .option("--ble-only", t("cli.optBleOnly"))
     .option("--cloud-only", t("cli.optCloudOnly"))
-    // maybeHandleBleError は本ファイル所有 (終了コード契約 + macOS 設定ペイン誘導) のため注入する。
+    // maybeHandleBleError (終了コード契約 + macOS 設定ペイン誘導。実体は cli/errors.js) を注入する。
     .action((device, action, args, opts) => cmdDeviceOp(device, action, args, opts, program, { maybeHandleBleError }));
 
   program.command("session [names...]").alias("watch")
@@ -286,40 +287,4 @@ function finishCli() {
   const code = process.exitCode || 0;
   if (process.stdout.write("")) process.exit(code);
   else process.stdout.once("drain", () => process.exit(code));
-}
-
-/**
- * BLE 権限/電源系エラーを検知し、macOS なら設定ペインを開いて案内する。
- * @param {unknown} err
- * @returns {boolean} ハンドルした (= 呼び出し側は return) なら true
- */
-function maybeHandleBleError(err) {
-  const e = /** @type {CliError} */ (err);
-  const code = e?.code;
-  if (
-    code !== "BLE_UNAUTHORIZED" &&
-    code !== "BLE_UNSUPPORTED" && // Linux/RPi/headless: アダプタ無し・権限不足 (native abort 探触のマップ先)
-    code !== "BLE_POWERED_OFF" &&
-    code !== "BLE_INIT_TIMEOUT" &&
-    code !== "BLE_NO_ADAPTER"
-  )
-    return false;
-  // SURF-19: BLE 環境エラー (権限/アダプタ/電源/初期化) は実行環境のランタイム障害であり
-  // usage(2) ではない → 終了コード契約 (src/cli/errors.js EXIT) どおり 1。封筒の code は
-  // exit code と一致させ、bleCode (機械可読な BLE 分類) は維持する。
-  if (isJsonMode()) console.error(JSON.stringify({ error: e.message, code: 1, bleCode: code }));
-  else console.error(`Error: ${e.message}`);
-  if (!isJsonMode() && process.platform === "darwin" && code === "BLE_UNAUTHORIZED") {
-    // システム設定 → プライバシーとセキュリティ → Bluetooth を直接開く (人間向け誘導。--json では出さない)。
-    try {
-      spawn("open", ["x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"], {
-        stdio: "ignore", detached: true,
-      }).unref();
-      console.error(t("cli.bleOpenedPrivacy"));
-    } catch {
-      console.error(t("cli.bleEnablePrivacy"));
-    }
-  }
-  process.exitCode = 1; // SURF-19: ランタイム障害 = 1 (2 は usage 専用)
-  return true;
 }

@@ -109,6 +109,8 @@ declare namespace _default {
         "cli.secretKeyRequired": string;
         "cli.invalidDeviceUuid": string;
         "cli.invalidSecretKey": string;
+        "cli.invalidSsmPublicKey": string;
+        "cli.invalidKeyIndex": string;
         "cli.invalidLockModel": string;
         "cli.modelPrompt": string;
         "cli.aliasPrompt": string;
@@ -269,6 +271,8 @@ declare namespace _default {
         "cli.optLockModel": string;
         "cli.optLockAlias": string;
         "cli.optLockFromUrl": string;
+        "cli.optLockSsmPublicKey": string;
+        "cli.optLockKeyIndex": string;
         "cli.shareUrlParseFailed": string;
         "cli.helpLockAdd": string;
         "cli.descLockRm": string;
@@ -480,6 +484,8 @@ declare namespace _default {
         "cli.secretKeyRequired": string;
         "cli.invalidDeviceUuid": string;
         "cli.invalidSecretKey": string;
+        "cli.invalidSsmPublicKey": string;
+        "cli.invalidKeyIndex": string;
         "cli.invalidLockModel": string;
         "cli.modelPrompt": string;
         "cli.aliasPrompt": string;
@@ -640,6 +646,8 @@ declare namespace _default {
         "cli.optLockModel": string;
         "cli.optLockAlias": string;
         "cli.optLockFromUrl": string;
+        "cli.optLockSsmPublicKey": string;
+        "cli.optLockKeyIndex": string;
         "cli.shareUrlParseFailed": string;
         "cli.helpLockAdd": string;
         "cli.descLockRm": string;

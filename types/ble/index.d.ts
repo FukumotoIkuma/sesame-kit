@@ -30,6 +30,15 @@ export const OS2_BLE_RPC_ALLOWLIST: readonly string[];
  *   |"insertSesame"|"removeSesame"|"setRadarSensitivity"|"registerDelegate"|"onEnroll">} BiometricView
  */
 /**
+ * remoteNano ゲッタが返す限定ビューの型 (Remote / Remote Nano 専用面、追加バックログ 7)。
+ * SDK が Remote 系 (CHSesameBiometricDeviceImpl) に与える公開面と 1:1:
+ *   - setTriggerDelayTime: CHRemoteNanoCapable.kt:8 (送信 190)
+ *   - insertSesame/removeSesame/setRadarSensitivity: CHSesameConnector (CHDeivceProtocols.kt:317-322)
+ *   - registerDelegate: CHRemoteNanoCapable.registerEventDelegate 相当 (publish 191/201 等の受信結線)
+ * @typedef {Pick<BiometricCommands, "insertSesame"|"removeSesame"|"setRadarSensitivity"|"registerDelegate">
+ *   & {setTriggerDelayTime: (time:number)=>Promise<void>}} RemoteNanoView
+ */
+/**
  * サーバ署名トランスポート (makeRegisterTransport の戻り)。signGuestKey / register に渡す。
  * 正準型は devices.js が所有する。
  * @typedef {import("../devices.js").RegisterTransport} RegisterTransport
@@ -216,14 +225,48 @@ export class SesameBle {
      * capabilitiesForModel(model).biometric が true の機種でのみ露出する。それ以外 (ロック/Bot/
      * Bike/Hub3/WiFi/未知) で参照すると enroll 非対応として明示エラーを投げる (op を捏造しない)。
      * **bioCaps が空集合の機種 (open_sensor_1/2, remote, remote_nano — CHDeivceProtocols.kt:81,112,
-     * 118,172 で setOf()) でも明示エラーを投げる** (P3-15)。これらの connector 操作
-     * (insertSesame 等) が必要な場合は BiometricCommands(session, {model}) を直接構築すること。
+     * 118,172 で setOf()) でも明示エラーを投げる** (P3-15)。remote/remote_nano の専用面
+     * (setTriggerDelayTime / connector 操作) は remoteNano ゲッタが露出する (追加バックログ 7)。
+     * open sensor 系で connector 操作 (insertSesame 等) が必要な場合は
+     * BiometricCommands(session, {model}) を直接構築すること。
      * connect() 前でも参照できる (session.request は connect 後に login 済みを要求する)。
      *
      * @returns {BiometricView} bioCaps で絞った BiometricCommands の限定ビュー
      *   (型は全 capability の上限。実行時に存在するのは集合内メソッドのみ — BiometricView 参照)
      */
     get biometric(): BiometricView;
+    /**
+     * Remote / Remote Nano の専用 API (追加バックログ 7)。
+     *
+     * SDK では remote(pType 14) と remote_nano(pType 15) はどちらも BiometricDeviceType.REMOTE の
+     * CHSesameBiometricDeviceImpl として生成され (CHDeivceProtocols.kt:112,118)、capability 集合は
+     * 空 (setOf())。そのため biometric ゲッタは明示エラーを投げ (P3-15)、Remote 系が SDK 上で持つ
+     * 次の公開面が facade から不達になっていた。ここで 1:1 に露出する (実在するもののみ):
+     *   - setTriggerDelayTime(time): トリガ遅延の設定 — REMOTE_NANO_ITEM_CODE_SET_TRIGGER_DELAYTIME
+     *     (190) + [time(UByte 1B)] (CHRemoteNanoCapable.kt:8 / CHRemoteNanoCapableImpl.kt:19-28)。
+     *     **読み出しコマンドは SDK に存在しない**: 現在値は PUB_TRIGGER_DELAYTIME(191) publish が
+     *     運び、registerDelegate の onTriggerDelaySecondReceived で受ける
+     *     (CHRemoteNanoEventHandler.kt:15-21 — isRemote() の機種でのみ dispatch)。
+     *   - insertSesame / removeSesame / setRadarSensitivity: CHSesameConnector 共通面
+     *     (CHDeivceProtocols.kt:317-322。実装は CHDeviceConnectCapableImpl.kt:23-95 を
+     *     CHSesameBiometricDeviceImpl.kt:411-412 が委譲し、Remote 系もこの実装クラスで生成される)。
+     *     **radar 感度の読み出しコマンドも SDK に存在しない**: RADAR_PARAM_PUBLISH(201) publish を
+     *     registerDelegate の onRadarReceive で受けるのみ (CHSesameBiometricDeviceImpl.kt:176,210-212)。
+     *   - registerDelegate(delegate, device): publish 受信の delegate 結線
+     *     (CHRemoteNanoCapable.registerEventDelegate 相当)。
+     *
+     * capabilitiesForModel(model).isRemote が true の機種 (= remote / remote_nano) でのみ露出する。
+     * それ以外 (ロック/Bot/Bike/Touch/Face/open sensor/Hub3/WM2/未知) で参照すると明示エラーを投げる
+     * (op を捏造しない)。open sensor 系は Remote ではない (BiometricDeviceType.OPEN_SENSOR/_2) ため
+     * ここでは露出しない — SDK にも open sensor 固有の Capable interface は無く、connector 操作が
+     * 必要な場合は new BiometricCommands(session, {model}) を直接構築する (biometric ゲッタの注記)。
+     * connect() 前でも参照できる (session.request は connect 後に login 済みを要求する)。
+     *
+     * @experimental Remote 系 BLE 経路は SDK Kotlin の静的読みからの移植で **実機未検証**
+     *   (参照: CHRemoteNanoCapableImpl.kt:19-28 / CHDeviceConnectCapableImpl.kt:23-95)。
+     * @returns {RemoteNanoView}
+     */
+    get remoteNano(): RemoteNanoView;
     /**
      * SESAME Bike3 の指紋登録 API (CHSesameBike3Device.kt:20-24 が mixin する CHFingerPrintCapable と 1:1)。
      *
@@ -519,9 +562,16 @@ export class SesameBle {
     /**
      * reset() — OS3 デバイスを工場出荷状態へ戻す (BLE item=104、CHSesameOS3.kt:420-439 と 1:1)。
      * SDK の reset() は CHSesameOS3 の open fun で、全 OS3 デバイス (LOCK5/Bot2/Bike2/Bike3/
-     * biometric/Hub3/WM2) が継承する。OS2 系 (CHSesame2/Bot/Bike) は別の reset 系統なので弾く。
-     * 成功時はセッションが破棄される (session.reset 内で disconnect 相当、dropKey に対応)。
-     * 鍵レコードの削除そのものは呼び出し側の責務。
+     * biometric/Hub3) が継承する。OS2 系 (CHSesame2/Bot/Bike) は別の reset 系統なので弾く。
+     *
+     * **WM2 (wifiProvisioning) は RESET_WM2(18) 経路へ自動ルーティングする**: CHWifiModule2Device は
+     * reset() を override して WM2ActionCode.RESET_WM2(18) を空ペイロードで送り、成功時に dropKey
+     * (CHWifiModule2Device.kt:437-448)。WM2 の action code 空間で 104 は未定義のため、汎用
+     * Reset(104) を送る旧挙動は SDK と乖離していた (追加バックログ 1)。実装は WifiModule2.reset()
+     * (wm2.js — 成功時 session.disconnect = dropKey 相当) に委譲する。
+     *
+     * 成功時はセッションが破棄される (session.reset / WifiModule2.reset 内で disconnect 相当、
+     * dropKey に対応)。鍵レコードの削除そのものは呼び出し側の責務。
      * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
     reset(): Promise<{
@@ -558,6 +608,16 @@ export class SesameBle {
  * 呼び出しは TypeError になる (op を捏造して実機に送ることはない)。
  */
 export type BiometricView = Pick<BiometricCommands, "cardModeSet" | "cardModeGet" | "cardGet" | "cardAdd" | "cardDelete" | "cardMove" | "cardChange" | "cardChangeValue" | "cardBatchAdd" | "fingerPrintModeSet" | "fingerPrintModeGet" | "fingerPrints" | "fingerPrintDelete" | "fingerPrintChange" | "passcodeModeSet" | "passcodeModeGet" | "passcodeGet" | "passcodeAdd" | "passcodeDelete" | "passcodeMove" | "passcodeChange" | "passcodeBatchAdd" | "faceModeSet" | "faceModeGet" | "faceListGet" | "faceChange" | "faceDelete" | "palmModeSet" | "palmModeGet" | "palmListGet" | "palmDelete" | "insertSesame" | "removeSesame" | "setRadarSensitivity" | "registerDelegate" | "onEnroll">;
+/**
+ * remoteNano ゲッタが返す限定ビューの型 (Remote / Remote Nano 専用面、追加バックログ 7)。
+ * SDK が Remote 系 (CHSesameBiometricDeviceImpl) に与える公開面と 1:1:
+ *   - setTriggerDelayTime: CHRemoteNanoCapable.kt:8 (送信 190)
+ *   - insertSesame/removeSesame/setRadarSensitivity: CHSesameConnector (CHDeivceProtocols.kt:317-322)
+ *   - registerDelegate: CHRemoteNanoCapable.registerEventDelegate 相当 (publish 191/201 等の受信結線)
+ */
+export type RemoteNanoView = Pick<BiometricCommands, "insertSesame" | "removeSesame" | "setRadarSensitivity" | "registerDelegate"> & {
+    setTriggerDelayTime: (time: number) => Promise<void>;
+};
 /**
  * サーバ署名トランスポート (makeRegisterTransport の戻り)。signGuestKey / register に渡す。
  * 正準型は devices.js が所有する。

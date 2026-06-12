@@ -38,6 +38,8 @@ export default {
     "domain.config.lockNameRequired": "lock name required",
     "domain.config.lockDeviceUUIDRequired": "lock.deviceUUID required",
     "domain.config.lockSecretKeyRequired": "lock.secretKey required",
+    "domain.config.invalidSsmPublicKey": "lock.ssmPublicKey must be 128 hex chars (64-byte OS2 device public key)",
+    "domain.config.invalidKeyIndex": "lock.keyIndex must be 4 hex chars (e.g. \"0000\")",
     "domain.config.unknownLockName": "Unknown lock \"{name}\"",
     "domain.config.hub3NotRegisteredSyncFirst": "hub3 \"{hub3}\" is not registered. Run hub3 sync-from-devices or hub3 add first.",
 
@@ -145,6 +147,8 @@ export default {
     "domain.config.lockNameRequired": "lock name required",
     "domain.config.lockDeviceUUIDRequired": "lock.deviceUUID required",
     "domain.config.lockSecretKeyRequired": "lock.secretKey required",
+    "domain.config.invalidSsmPublicKey": "lock.ssmPublicKey は 128 桁 hex (64B の OS2 デバイス公開鍵) で指定してください",
+    "domain.config.invalidKeyIndex": "lock.keyIndex は 4 桁 hex (例 \"0000\") で指定してください",
     "domain.config.unknownLockName": "Unknown lock \"{name}\"",
     "domain.config.hub3NotRegisteredSyncFirst": "hub3 \"{hub3}\" 未登録。先に hub3 sync-from-devices か hub3 add を実行してください。",
 

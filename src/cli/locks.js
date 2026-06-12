@@ -57,6 +57,8 @@ async function cmdLockLs(_opts, program) {
 
 /**
  * `locks add` のオプション袋。フラグ指定で非対話登録できる。
+ * ssmPublicKey/keyIndex は OS2 デバイス用 (バックログ4: os2-register の戻り値を保存し、
+ * os2-invoke が --ssm-public-key 無しで config から解決できるようにする)。
  * @typedef {object} LockAddOpts
  * @property {string} [name]
  * @property {string} [uuid]
@@ -64,6 +66,8 @@ async function cmdLockLs(_opts, program) {
  * @property {string} [model]
  * @property {string} [alias]
  * @property {string} [fromUrl]
+ * @property {string} [ssmPublicKey]
+ * @property {string} [keyIndex]
  */
 
 /**
@@ -116,14 +120,23 @@ async function cmdLockAdd(opts, program) {
   const model = await ask("model", t("cli.modelPrompt"), false, parsed?.deviceModel);
   if (model && !isLockModel(model)) die(t("cli.invalidLockModel", { model }), 2);
   const alias = await ask("alias", t("cli.aliasPrompt"), false);
+  // OS2 鍵素材 (任意フラグ。対話 prompt はしない — OS3 が大半で、OS2 利用者は
+  // os2-register の出力を貼るだけなのでフラグ経路で十分)。形式不正は usage エラー (exit 2)。
+  const ssmPublicKey = opts.ssmPublicKey || null;
+  if (ssmPublicKey && !/^[0-9a-f]{128}$/i.test(ssmPublicKey)) die(t("cli.invalidSsmPublicKey"), 2);
+  const keyIndex = opts.keyIndex || null;
+  if (keyIndex && !/^[0-9a-f]{4}$/i.test(keyIndex)) die(t("cli.invalidKeyIndex"), 2);
   configStore.addLock(name, {
     deviceUUID,
     secretKey,
     model: model || null,
     alias: alias || null,
+    ssmPublicKey,
+    keyIndex,
   });
   out(isJsonMode(), () => console.log(t("cli.okLockAdded", { name })),
-    { ok: true, lock: name, deviceUUID, model: model || null, alias: alias || null });
+    { ok: true, lock: name, deviceUUID, model: model || null, alias: alias || null,
+      ...(ssmPublicKey ? { ssmPublicKey } : {}), ...(keyIndex ? { keyIndex } : {}) });
 }
 
 /**
@@ -186,6 +199,9 @@ export function registerLocksCommands(program) {
     .option("--model <model>", t("cli.optLockModel"))
     .option("--alias <alias>", t("cli.optLockAlias"))
     .option("--from-url <url>", t("cli.optLockFromUrl"))
+    // OS2 デバイス用の任意鍵素材 (バックログ4。os2-register の戻り値を config に保存する)。
+    .option("--ssm-public-key <hex>", t("cli.optLockSsmPublicKey"))
+    .option("--key-index <hex>", t("cli.optLockKeyIndex"))
     .addHelpText("after", t("cli.helpLockAdd"))
     .action((opts) => cmdLockAdd(opts, program));
   locks.command("rm <name>").description(t("cli.descLockRm"))

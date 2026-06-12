@@ -147,6 +147,44 @@ describe("sesame rpc --params 不正 JSON のエラー契約", () => {
   }, E2E_TIMEOUT);
 });
 
+describe("バックログ5: sesame rpc のサーバ側エラー → 終了コード写像 (e2e)", () => {
+  /** UDS だけ上げた serve を起動し、ready (stderr 案内) まで待って proc を返す。 */
+  function startServe() {
+    return new Promise((resolveP, reject) => {
+      const p = spawn("node", [BIN, "serve", "--config-dir", workDir], {
+        env: { ...process.env, SESAME_SERVE_TEST_HUB: "1" },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let err = "";
+      p.stderr.on("data", (d) => {
+        err += d.toString();
+        if (/sesame\.sock/.test(err)) resolveP(p); // UDS の案内が出たら listen 済み
+      });
+      p.on("error", reject);
+      setTimeout(() => reject(new Error("serve start timeout")), E2E_TIMEOUT);
+    });
+  }
+
+  it("bad_params (必須 params 欠落) は exit 2、未知 method (not_implemented) は exit 1", async () => {
+    const serveProc = await startServe();
+    try {
+      // lock.unlock は name 必須 → 欠落はサーバが kind=bad_params で拒否 → usage コード 2
+      const bad = await runCli(["rpc", "lock.unlock"]);
+      expect(bad.code).toBe(2);
+      expect(bad.stderr).toMatch(/name/);
+      // 未知 method は kind=not_implemented → 従来どおりランタイム 1
+      const unknown = await runCli(["rpc", "no.such.method"]);
+      expect(unknown.code).toBe(1);
+      // 正常系は exit 0 (写像がご機嫌な op を巻き込まない)
+      const ok = await runCli(["rpc", "status"]);
+      expect(ok.code).toBe(0);
+    } finally {
+      serveProc.kill("SIGTERM");
+      await new Promise((r) => serveProc.once("close", r));
+    }
+  }, E2E_TIMEOUT * 2);
+});
+
 describe("sesame rpc --paths (機械可読な接続情報)", () => {
   it("socket / tokenFile / token を JSON で出力する", async () => {
     const out = await new Promise((resolveP, reject) => {

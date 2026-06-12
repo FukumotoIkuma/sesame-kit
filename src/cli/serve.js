@@ -162,11 +162,15 @@ export function registerServeCommand(program) {
  *   - 接続不能/未起動・timeout・HTTP 401 は従来の i18n メッセージへ写像 (人間向け案内を維持)。
  *   - サーバが返した JSON-RPC error は data.kind / rpcError マーカー付き ServeError へ変換し、
  *     外側の CLI ハンドラが stale config 誤案内 (withStaleHint) を避けられるようにする。
+ *   - kind=bad_params (引数不正/未知 op) は呼び出し側の usage エラーなので exitCode=2 を
+ *     立てる (バックログ5 / SURF-19 見送り分。README の終了コード契約 0=成功/1=ランタイム/
+ *     2=usage と一致させる)。それ以外の kind は従来どおりランタイム 1。
+ * (テストのため export。run() の catch → runtimeExitCode が exitCode を尊重する。)
  * @param {unknown} e
  * @param {{ socketPath?: string, url?: string }} [where]
  * @returns {Error}
  */
-function toServeError(e, { socketPath, url } = {}) {
+export function toServeError(e, { socketPath, url } = {}) {
   if (!(e instanceof SesameRpcClientError)) return /** @type {Error} */ (e);
   if (e.kind === "timeout") return new Error(t("serve.rpcTimeout"));
   if (e.kind === "connection_lost") {
@@ -184,6 +188,9 @@ function toServeError(e, { socketPath, url } = {}) {
   err.code = e.code;
   err.data = e.kind ? { kind: e.kind } : undefined;
   err.rpcError = true;
+  // バックログ5: bad_params は「ユーザの呼び出し方が誤っている」usage エラーなので exit 2 へ。
+  // internal / not_authenticated / rejected 等は実行時障害のまま 1 (exitCode を立てない)。
+  if (e.kind === "bad_params") err.exitCode = 2;
   return err;
 }
 

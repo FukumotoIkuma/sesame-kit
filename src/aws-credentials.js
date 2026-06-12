@@ -307,8 +307,47 @@ function stripTrailingSlashes(s) {
  * (ApiClientConfigBuilder.kt:34-46 の ApiClientFactory 相当)。
  * devices.js makeRegisterTransport / access.js makeBiometricsTransport が共用する基盤。
  *
+ * ── appidentifyid の per-op 化 (REFACTORING_PLAN バックログ8) ──
+ * 参照では appidentifyid は transport 全体のヘッダではなく、CHAPIClient.kt の
+ * `@Parameter(name="appidentifyid", location="header")` が付いたエンドポイントのみに乗る。
+ * 全列挙 (出典: _sesame_sdk_ref/sesame-sdk/.../server/CHAPIClient.kt — 全 @Operation を確認):
+ *
+ *   | エンドポイント                                   | method | appidentifyid | 出典 (CHAPIClient.kt) |
+ *   |--------------------------------------------------|--------|---------------|------------------------|
+ *   | /device (updateKeys)                             | POST   | あり          | :22-26                 |
+ *   | /device (putKey)                                 | PUT    | あり          | :29-33                 |
+ *   | /device/list (getDevicesList)                    | GET    | あり          | :36-39                 |
+ *   | /device (removeKey)                              | DELETE | あり          | :42-46                 |
+ *   | /friend (addFriend)                              | POST   | あり          | :49-53                 |
+ *   | /friend/token (uploadDeviceToken)                | POST   | あり          | :56-60                 |
+ *   | /web_route (getWebUrlByScene)                    | POST   | あり          | :63-67                 |
+ *   | /device/v1/iot/sesame2/{device_id}               | POST   | なし          | :70-74                 |
+ *   | /device/v1/sesame2/{device_id} (register os2)    | POST   | なし          | :77-81                 |
+ *   | /device/v1/sesame5/{device_id} (register os3)    | POST   | なし          | :84-88                 |
+ *   | /device/v1/sesame2/historys (feedHistory)        | POST   | なし          | :91-92                 |
+ *   | /device/v1/sesame2/sign (guestKeysSignPost)      | POST   | なし          | :95-96                 |
+ *   | /device/v1/wifi_module/{device_id}/status        | GET    | なし          | :99-102                |
+ *   | /device/v1/biometrics (biometricsOperation)      | POST   | なし          | :105-106               |
+ *   | /device/v1/subscribe (subscribeToTopic)          | POST   | なし          | :109-110               |
+ *   | /device/v1/sesame5/{device_id}/battery           | POST   | なし          | :113-117               |
+ *   | /device/infor (postCHDeviceInfo)                 | POST   | なし          | :120-121               |
+ *   | /device/v1/token (fcmTokenSignDelete)            | DELETE | なし          | :124-125               |
+ *   | /device/v1/sesame5/{device_id}/fwVer             | POST   | なし          | :128-132               |
+ *   | /device/v1/bot/script (updateBotScript)          | POST   | なし          | :135-136               |
+ *   | /device/v1/wifi_module/{device_id}/switch        | POST   | なし          | :139-143               |
+ *
+ *   つまり「あり」は旧 API (/device 直下の鍵 CRUD・/device/list・/friend 系・/web_route) のみで、
+ *   /device/v1/** と /device/infor には一切付かない。値は呼び出し側で
+ *   AppIdentifyIdUtil.get() が都度供給される (CHAPIClientBiz.kt:85-88,99-115,117-134)。
+ *
+ *   本 kit の制御は **transport 構築時** の `appIdentifyId` フラグで行う (per-request の
+ *   path 判定はしない): 「あり」エンドポイント用の transport を作るときだけ値を渡し、
+ *   null/省略 (既定) ならヘッダ自体を付けない。register/sign 用 (devices.js
+ *   makeRegisterTransport) と biometrics 用 (access.js makeBiometricsTransport) は
+ *   上表どおり「なし」なので値を渡さない。
+ *
  * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
- *   ヘッダ構成 (SigV4 + x-api-key + appidentifyid) は参照実装
+ *   ヘッダ構成 (SigV4 + x-api-key) は参照実装
  *   (ApiClientConfigBuilder.kt:34-46, BaseApp.kt:95-102, AppIdentifyIdUtil.kt:42) から導出。
  *
  * @param {{
@@ -350,7 +389,9 @@ export function makeApiGatewayTransport({
       // x-api-key: ApiClientFactory.apiKey() 相当 (BaseApp.kt:100 API_GATEWAY_API_KEY)。
       "x-api-key": apiKey,
     };
-    // appidentifyid: CHAPIClient.kt:24 ほかの @Parameter(name="appidentifyid", location="header")。
+    // appidentifyid: per-op (バックログ8)。CHAPIClient.kt で @Parameter(name="appidentifyid")
+    // が付くエンドポイント (上表「あり」) 用の transport にだけ構築時に値が渡る。
+    // null (既定) ならヘッダ自体を付けない (/device/v1/** は参照にヘッダが無い)。
     if (appIdentifyId) headers.appidentifyid = appIdentifyId;
     const signed = signRequest({
       method,

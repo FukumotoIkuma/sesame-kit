@@ -8,16 +8,16 @@
 
 - **§9 実機検証バックログ(V1〜V10)** — 全項目未実施。該当 API は `@experimental` + 実機未検証マーカーを維持中。検証完了ごとにマーカーを撤去する。
 - **P5-1 段階2(workspace 分割)** — 計画どおり次 major リリースに合わせて実施(段階1 = optional peer 化は実施済み。prod 依存は ws / commander / @inquirer/prompts まで縮小)。
-- **実装中に発見された追加バックログ**:
-  1. WM2 の `reset()`: SDK は RESET_WM2(18) にオーバーライドする(`CHWifiModule2Device.kt:437-448`)が、汎用 `reset()` は Reset(104) を送る。`resetWifiModule2()` は正しい。wm_2 model での汎用 reset のルーティング修正候補。
-  2. WM2 の `getVersionTag()`: WM2ActionCode には VERSION_TAG=127 が別定義(`CHWifiModule2Device.kt:541`)。wm2 profile で 5 を送る現挙動の正否は実機検証(V2)で確定。
-  3. biometric `palmChange`(PALM_CHANGE 162)の送信コマンドが未移植(BIO_VIEW_METHODS から意図的に除外済み)。
-  4. OS2 の `ssmPublicKey`/`keyIndex` を config locks スキーマに保存できない(CLI `ble os2-invoke` は都度 `--ssm-public-key` が必要)。config スキーマ拡張候補。
-  5. `sesame rpc` の bad_params → exit 2 写像(SURF-19 の見送り分)。
-  6. chunk 収集 timeout 時の部分結果オプション `{partial:true}`(BIZ-14、見送り)。
-  7. Remote Nano の `setTriggerDelay` 専用面(bioCaps 空集合化に伴い facade から不達。escape hatch は `new BiometricCommands(session, {model})`)。
-  8. `appidentifyid` の付与範囲が参照より広い(参照は /device・/friend・/web_route 系のみ。厳密 1:1 なら per-op 化)。
-  9. tests/cli/errors.test.js が cli.js 内の `maybeHandleBleError` 本体をソース固定しており関数抽出を阻む(テスト seam の導入候補)。
+- **実装中に発見された追加バックログ** — **全 9 件実施済み**(バックログコミット参照):
+  1. ✅ WM2 の汎用 `reset()` を RESET_WM2(18) 経路へ自動ルーティング(`CHWifiModule2Device.kt:437-448` の 1:1)。
+  2. ✅ WM2 の `getVersionTag()` は SDK に送信実装が実在(`CHWifiModule2Device.kt:423-435`)— wm2 profile で VERSION_TAG(127) を送るよう修正(旧挙動の 5 は WM2 空間では CONNECT_WIFI の誤発火だった)。
+  3. ✅ `palmChange` は **SDK に送信実装が存在しない**(PALM_CHANGE 162 は受信専用、`CHPalmEventHandlers.kt:16-18`)— 捏造禁止規範に従い非実装を確定し、注記を「SDK 非実在」へ更新。
+  4. ✅ config locks に `ssmPublicKey`/`keyIndex` を正式フィールド化(`locks add --ssm-public-key/--key-index`、`ble os2-invoke` は config から解決、sync で消えない LOCAL_ONLY_KEYS)。
+  5. ✅ `sesame rpc` のサーバ側 `bad_params` → exit 2 写像。
+  6. ✅ `subscribeChunks` に opt-in `partialOnTimeout`(org/access/devices の公開 API に透過、timeout 時 `{partial:true, …}`)。
+  7. ✅ `SesameBle#remoteNano` 専用面(setTriggerDelayTime/insertSesame/removeSesame/setRadarSensitivity/registerDelegate — SDK の Capable 1:1、read 系は SDK に無いため置かない)。
+  8. ✅ `appidentifyid` per-op 化 — CHAPIClient.kt 全 21 op を列挙し、付与は旧 API 7 op のみ(`/device/v1/**` は全て無し)と確定。sign/register/biometrics からヘッダ撤去、対照表をコードに恒久記録。
+  9. ✅ `maybeHandleBleError` を cli/errors.js へ抽出し、ソース文字列固定テストを関数直接テストに置換。
 - **ARCH-22 の逸脱**: リポジトリ直下の `keys.json`(個人 artifact)は勝手に移動せず、README の migrate 節に srcDir 指定を明記する対応にした(ユーザのローカル運用を壊さないため)。
 
 **この文書の読み方**: 各項目は「初見の実装者が単独で着手できる」粒度で、対象 file:line・参照 file:line・修正手順・テスト・受け入れ基準を持つ。所見 ID(`BLE2-01` 等)は監査時の原典 ID で、複数監査が同一問題を検出した場合は統合済み(§0.2)。**README・docs・コード内コメントの記述は本計画の根拠にしていない**(虚偽・stale が多数見つかったため)。すべて参照実装の実コードで裏取りしてある。

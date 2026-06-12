@@ -19,6 +19,7 @@
 import { Buffer } from "node:buffer";
 import { createECDH } from "node:crypto";
 import { t } from "../i18n.js";
+import { WM2_ACTION_CODES } from "../itemcodes.js";
 import { ecdhSecretPre16 } from "../crypto.js";
 import { registerSesame5 } from "../devices.js";
 import {
@@ -538,13 +539,23 @@ export class SesameBleSession {
   }
 
   /**
-   * versionTag (ファームウェアバージョン文字列) を取得する。
-   *   item = versionTag(5)、data = 空、payload = UTF-8 文字列 (CHSesameOS3.kt:398-418)。
+   * versionTag (ファームウェアバージョン文字列) を取得する。itemCode は profile で分かれる:
+   *   - lock profile: item = versionTag(5)、data = 空、payload = UTF-8 文字列
+   *     (CHSesameOS3.kt:398-418)。
+   *   - wm2 profile : item = **WM2ActionCode.VERSION_TAG(127)**、data = 空、payload = UTF-8 文字列
+   *     (CHWifiModule2Device.kt:423-435 — getVersionTag() は SesameOS3Payload(VERSION_TAG.value,
+   *     byteArrayOf()) を送り、成功時 String(res.payload) を返す)。WM2 の action code 空間では
+   *     5 = CONNECT_WIFI なので、旧挙動 (常に 5 を送る) は WM2 では versionTag ではなく
+   *     Wi-Fi 接続開始を誤発火していた。応答パースは両 profile とも payload の UTF-8 文字列で同一。
+   *     SDK の unlogined ガード (kt:424-426) は request() の notLoggedIn reject で等価に担保される。
+   * @experimental wm2 profile の versionTag(127) 経路は SDK Kotlin の静的読みからの移植で
+   *   実機未検証 (参照: CHWifiModule2Device.kt:423-435,540)。
    * @param {{timeoutMs?:number}} [opts]
    * @returns {Promise<string>} versionTag 文字列
    */
   async getVersionTag(opts = {}) {
-    const res = await this.request(ITEM.VERSION_TAG, Buffer.alloc(0), opts);
+    const itemCode = this._profile === "wm2" ? WM2_ACTION_CODES.VERSION_TAG : ITEM.VERSION_TAG;
+    const res = await this.request(itemCode, Buffer.alloc(0), opts);
     return res.payload.toString("utf8");
   }
 

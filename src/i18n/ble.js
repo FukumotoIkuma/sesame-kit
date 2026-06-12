@@ -83,6 +83,7 @@ export default {
     // SESAME Bot2/Bot3 スクリプト — bot2.js のコマンド/parse バリデーション。
     "ble.bot2NotSupported": "{label}{modelSuffix} is not a SESAME Bot2/Bot3; script APIs (click(index)/sendClickScript/selectScript/getCurrentScript/getScriptNameList) are unavailable",
     "ble.fingerPrintNotSupported": "{label}{modelSuffix} does not support fingerprint enrollment; fingerPrint APIs (fingerPrints/fingerPrintDelete/fingerPrintChange/fingerPrintModeGet/fingerPrintModeSet) are unavailable",
+    "ble.remoteNanoNotSupported": "{label}{modelSuffix} is not a SESAME Remote / Remote Nano; remoteNano APIs (setTriggerDelayTime/insertSesame/removeSesame/setRadarSensitivity/registerDelegate) are unavailable",
     "ble.bot2ScriptIndexRange": "script index must be an integer 0..{max}",
     "ble.bot2BadIndex": "index must be an integer 0..255",
     "ble.bot2BadAction": "action must be one of FORWARD(0)/REVERSE(1)/STOP(2)/SLEEP(3)",
@@ -113,6 +114,7 @@ export default {
     "ble.cli.os2Register.opt.ak": "optional app register public key / AK as hex",
     "ble.cli.os2Register.opt.noLocalServerAuth": "disable the local getRegisterKey-based register server adapter",
     "ble.cli.os2Register.done": "registered OS2 BLE device {deviceUUID}",
+    "ble.cli.os2Register.saveHint": "Save the key material to config so os2-invoke works without --ssm-public-key:\n  sesame locks add --name <name> --uuid {deviceUUID} --secret {secretKey} --ssm-public-key {sesamePublicKey}",
     "ble.cli.badHex": "{name} must be an even-length hex string",
     "ble.cli.cards.desc": "list enrolled NFC cards over BLE (Touch / Touch Pro)",
     "ble.cli.passcodes.desc": "list enrolled keypad passcodes over BLE (Touch / Touch Pro)",
@@ -137,7 +139,7 @@ export default {
     "ble.cli.os2Invoke.desc": "invoke any allowlisted OS2 BLE facade op by dotted path (daemonless twin of the ble.os2.invoke RPC)",
     "ble.cli.os2Invoke.opt.keyIndex": "OS2 keyIndex / userIdx hex (default \"0000\", from os2-register)",
     "ble.cli.os2Invoke.opt.ssmPublicKey": "OS2 device public key (64B hex, sesamePublicKey from os2-register)",
-    "ble.cli.os2Invoke.needSsmPublicKey": "OS2 login requires --ssm-public-key (sesamePublicKey returned by `sesame ble os2-register`)",
+    "ble.cli.os2Invoke.needSsmPublicKey": "OS2 login requires the device public key: pass --ssm-public-key (sesamePublicKey returned by `sesame ble os2-register`) or save it once with `sesame locks add --ssm-public-key`",
     // ---- ble ota / reset / wifi / position (P4-1 段階2: 高価値 op の専用化) ----
     "ble.cli.ota.desc": "start BLE firmware update (WM2: OPEN_OTA_SERVER / Hub3: MOVE_TO / OS3 locks: no command, SDK no-op path)",
     "ble.cli.ota.sent": "firmware-update command accepted by {name} ({resultName})",
@@ -244,6 +246,7 @@ export default {
     // SESAME Bot2/Bot3 スクリプト — bot2.js のコマンド/parse バリデーション。
     "ble.bot2NotSupported": "{label}{modelSuffix} は SESAME Bot2/Bot3 ではないため、スクリプト API (click(index)/sendClickScript/selectScript/getCurrentScript/getScriptNameList) は利用できません",
     "ble.fingerPrintNotSupported": "{label}{modelSuffix} は指紋登録に対応していないため、fingerPrint API (fingerPrints/fingerPrintDelete/fingerPrintChange/fingerPrintModeGet/fingerPrintModeSet) は利用できません",
+    "ble.remoteNanoNotSupported": "{label}{modelSuffix} は SESAME Remote / Remote Nano ではないため、remoteNano API (setTriggerDelayTime/insertSesame/removeSesame/setRadarSensitivity/registerDelegate) は利用できません",
     "ble.bot2ScriptIndexRange": "script index は 0..{max} の整数を想定",
     "ble.bot2BadIndex": "index は 0..255 の整数を想定",
     "ble.bot2BadAction": "action は FORWARD(0)/REVERSE(1)/STOP(2)/SLEEP(3) のいずれかを想定",
@@ -274,6 +277,7 @@ export default {
     "ble.cli.os2Register.opt.ak": "任意の app register 公開鍵 / AK (hex)",
     "ble.cli.os2Register.opt.noLocalServerAuth": "ローカル getRegisterKey ベースの register server アダプタを無効化",
     "ble.cli.os2Register.done": "OS2 BLE デバイス {deviceUUID} を登録しました",
+    "ble.cli.os2Register.saveHint": "鍵素材を config に保存すると os2-invoke で --ssm-public-key が不要になります:\n  sesame locks add --name <name> --uuid {deviceUUID} --secret {secretKey} --ssm-public-key {sesamePublicKey}",
     "ble.cli.badHex": "{name} は偶数長 hex 文字列を想定",
     "ble.cli.cards.desc": "登録済み NFC カードを BLE で一覧 (Touch / Touch Pro)",
     "ble.cli.passcodes.desc": "登録済みキーパッド暗証番号を BLE で一覧 (Touch / Touch Pro)",
@@ -298,7 +302,7 @@ export default {
     "ble.cli.os2Invoke.desc": "allowlist 掲載の OS2 BLE ファサード op をドットパスで実行 (ble.os2.invoke RPC のデーモン不要版)",
     "ble.cli.os2Invoke.opt.keyIndex": "OS2 keyIndex / userIdx の hex (既定 \"0000\"、os2-register の戻り値)",
     "ble.cli.os2Invoke.opt.ssmPublicKey": "OS2 デバイス公開鍵 (64B hex、os2-register の sesamePublicKey)",
-    "ble.cli.os2Invoke.needSsmPublicKey": "OS2 login には --ssm-public-key (`sesame ble os2-register` が返す sesamePublicKey) が必要です",
+    "ble.cli.os2Invoke.needSsmPublicKey": "OS2 login にはデバイス公開鍵が必要です: --ssm-public-key (`sesame ble os2-register` が返す sesamePublicKey) を指定するか、`sesame locks add --ssm-public-key` で一度 config に保存してください",
     // ---- ble ota / reset / wifi / position (P4-1 段階2: 高価値 op の専用化) ----
     "ble.cli.ota.desc": "BLE ファームウェア更新を開始 (WM2: OPEN_OTA_SERVER / Hub3: MOVE_TO / OS3 ロック系: SDK 同様コマンド無送信)",
     "ble.cli.ota.sent": "{name} がファームウェア更新コマンドを受理しました ({resultName})",

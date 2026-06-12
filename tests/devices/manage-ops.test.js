@@ -12,7 +12,7 @@
 //   - pubUserDeviceChange: useIotCtrl.js:12,23-25 (biz3TriggerLocker action の push)
 //   - battery/webapi の success 無視: MobileBatteryChart.js:39-50 / useDeveloper.js:18-31
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   addDevices, reorderDevices, getNotifyStatus, switchNotify, switchRechargeableBattery,
   getAllDeviceHistory, getBatteryRecord, invokeWebAPI, getUserDevices, subscribeUserDeviceChange,
@@ -218,6 +218,33 @@ describe("P3-9: getUserDevices の同 action エラーフレーム検知 (errorA
       data: { totalPage: 1, data: { list: [{ deviceUUID: "d-1" }], page: 1 } },
     });
     await expect(p).resolves.toEqual([{ deviceUUID: "d-1" }]);
+  });
+
+  describe("partialOnTimeout (BIZ-14 / バックログ6)", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("timeout 時に reject せず {partial:true, list} で部分蓄積を返す", async () => {
+      vi.useFakeTimers();
+      const client = makePushClient();
+      const p = getUserDevices(client, { timeoutMs: 500, partialOnTimeout: true });
+      // totalPage=2 のうち page=1 だけ届いて完了しないまま timeout
+      client.emit(`${ACT}:PubedUserDevice`, {
+        action: ACT, op: "PubedUserDevice", success: true,
+        data: { totalPage: 2, data: { list: [{ deviceUUID: "d-1" }], page: 1 } },
+      });
+      vi.advanceTimersByTime(500);
+      await expect(p).resolves.toEqual({ partial: true, list: [{ deviceUUID: "d-1" }] });
+    });
+
+    it("完走時は {partial:false, list} の同 shape で返る (既定の配列戻りとは別形)", async () => {
+      const client = makePushClient();
+      const p = getUserDevices(client, { timeoutMs: 5000, partialOnTimeout: true });
+      client.emit(`${ACT}:PubedUserDevice`, {
+        action: ACT, op: "PubedUserDevice", success: true,
+        data: { totalPage: 1, data: { list: [{ deviceUUID: "d-1" }], page: 1 } },
+      });
+      await expect(p).resolves.toEqual({ partial: false, list: [{ deviceUUID: "d-1" }] });
+    });
   });
 });
 

@@ -76,6 +76,7 @@ sesame locks set-default front
 sesame locks add               # 対話で追加 (deviceUUID + secretKey)
 sesame locks add --name front --uuid <UUID> --secret <32hex> --model sesame_5_pro  # 非対話/フラグ追加
 sesame locks add --from-url 'ssm://UI?t=sk&sk=...'  # 鍵共有 URL から deviceUUID/secretKey/model/name を補完
+sesame locks add --name s3 --uuid <UUID> --secret <32hex> --model sesame_3 --ssm-public-key <128hex> --key-index 0000  # OS2: `ble os2-register` の出力を保存しておくと `ble os2-invoke` が config から解決する
 sesame locks sync-from-devices # devices の結果から自動取り込み
 sesame locks rm front
 ```

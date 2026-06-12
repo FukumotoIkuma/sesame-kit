@@ -133,13 +133,19 @@ export class ConfigStore {
     };
     /**
      * @param {string} name
-     * @param {{deviceUUID?: string, secretKey?: string, model?: string|null, alias?: string|null}} lock
+     * @param {{deviceUUID?: string, secretKey?: string, model?: string|null, alias?: string|null,
+     *          ssmPublicKey?: string|null, keyIndex?: string|null}} lock
+     *   ssmPublicKey/keyIndex は OS2 デバイス用の任意フィールド (バックログ4):
+     *   os2-register の戻り値 (sesamePublicKey / keyIndex) を保存し、os2-invoke 等が
+     *   --ssm-public-key 無しでも config から解決できるようにする。
      */
     addLock(name: string, lock: {
         deviceUUID?: string;
         secretKey?: string;
         model?: string | null;
         alias?: string | null;
+        ssmPublicKey?: string | null;
+        keyIndex?: string | null;
     }): void;
     /** @param {string} name */
     setDefaultLock(name: string): void;
@@ -234,6 +240,15 @@ export type DeviceRecord = {
      */
     category?: string | undefined;
     /**
+     * OS2 デバイス公開鍵 (64B = 128 hex)。os2-register の
+     * sesamePublicKey をローカル保存する注釈 (サーバ応答には無い)。OS2 BLE login (ECDH) に必須。
+     */
+    ssmPublicKey?: string | undefined;
+    /**
+     * OS2 keyIndex / userIdx (2B = 4 hex、既定 "0000")。ローカル注釈。
+     */
+    keyIndex?: string | undefined;
+    /**
      * sanitize で除外されるが incoming では存在しうる。
      */
     stateInfo?: any;
@@ -246,6 +261,14 @@ export type LockView = {
     secretKey: string | null | undefined;
     model: string | null;
     alias: string | null;
+    /**
+     * OS2 デバイス公開鍵 (128 hex)。保存済みのときだけ載る。
+     */
+    ssmPublicKey?: string | undefined;
+    /**
+     * OS2 keyIndex (4 hex)。保存済みのときだけ載る。
+     */
+    keyIndex?: string | undefined;
 };
 /**
  * hub3s{} の派生 view エントリ (旧 shape)。
