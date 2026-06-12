@@ -370,7 +370,7 @@ The operation set differs by device type. The SDK defines capabilities asymmetri
 | Bot `bot_2`/`bot_3` | `click` `status` | locked/unlocked (no position) |
 | Bike `bike_2`/`bike_3` | `unlock` `status` | locked/unlocked (no position) |
 | Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (no BLE lock op) — biometric/enroll-mode **reads** are on the CLI via `sesame ble cards/passcodes/fingers/faces/palms/mode`; enrollment writes and Wi-Fi/Hub3 provisioning are available via Node or `ble.invoke` (`SesameBle#biometric` / `#wifi` / `#hub3`, see [ble.md](./ble.md)) | — |
-| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | BLE supported via **Node and `ble.os2.invoke`** (`SesameOS2Ble`, separate protocol); the dedicated CLI route is cloud-only for OS2 | locked/unlocked/moved + position |
+| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | `lock` `unlock` `toggle` `autolock` `click` (model-dependent) `status` — BLE ops use the `SesameOS2Ble` facade (separate protocol from OS3); requires `ssmPublicKey` in config (`sesame locks add --ssm-public-key`). Cloud ops work without it. Also available via Node / `ble.os2.invoke` | locked/unlocked/moved + position |
 
 > "locked/unlocked" is only the **two values** based on the presence of `isInLockRange` in OS3. OS3 has no intermediate (moved) state
 > (only OS2 devices such as Sesame2/3/4 have moved). For the BLE implementation design, see [architecture.md](./architecture.md).

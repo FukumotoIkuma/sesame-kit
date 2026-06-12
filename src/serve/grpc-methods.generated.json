@@ -857,6 +857,10 @@
       "request"
     ]
   },
+  "BleScan": {
+    "method": "ble.scan",
+    "jsonFields": []
+  },
   "BleInvoke": {
     "method": "ble.invoke",
     "jsonFields": [

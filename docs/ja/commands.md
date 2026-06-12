@@ -374,7 +374,7 @@ sesame ble position <device> <lock> <unlock>   # 施錠 / 解錠角度の設定 
 | Bot `bot_2`/`bot_3` | `click` `status` | 施錠/解錠 (位置なし) |
 | Bike `bike_2`/`bike_3` | `unlock` `status` | 施錠/解錠 (位置なし) |
 | Touch/Face/Sensor/Remote, Hub3, WiFiModule2 | (BLE 施錠操作なし) — 生体 / 登録モードの**読み出し**は `sesame ble cards/passcodes/fingers/faces/palms/mode` で CLI から可。登録（書き込み）と Wi-Fi/Hub3 プロビジョニングは Node または `ble.invoke` から可（`SesameBle#biometric` / `#wifi` / `#hub3`、[ble.md](./ble.md) 参照） | — |
-| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | **Node と `ble.os2.invoke`** で BLE 対応（`SesameOS2Ble`・別プロトコル）。専用 CLI 経路は OS2 ではクラウドのみ | 施錠/解錠/moved + 位置 |
+| OS2 `sesame_2`/`_3`/`_4`, `ssmbot_1`, `bike_1` | `lock` `unlock` `toggle` `autolock` `click`（機種依存）`status` — BLE 操作は `SesameOS2Ble` ファサード（OS3 と別プロトコル）経由。ssmPublicKey を config に保存済みの場合に使用可（`sesame locks add --ssm-public-key`）。クラウド操作は保存不要。Node / `ble.os2.invoke` からも利用可 | 施錠/解錠/moved + 位置 |
 
 > 「施錠/解錠」は OS3 では `isInLockRange` の有無による **2 値**のみ。OS3 に中間状態 (moved) はありません
 > (Sesame2/3/4 等 OS2 系のみ moved を持ちます)。BLE 実装の設計は [architecture.md](./architecture.md) を参照してください。

@@ -26,6 +26,24 @@ describe("parseTouchCard", () => {
     expect(c.cardName).toBe("010203");
     expect(c.recordSize).toBe(1 + 1 + 2 + 1 + 3);
   });
+
+  // P1-2 範囲検証: Kotlin CHSesameTouchCard は短小入力で ArrayIndexOutOfBoundsException を
+  // throw してループを脱出する (CHSesameBiometricParseData.kt:10-17 / CHCardEventHandlers.kt:22-34)。
+  // JS ポートは同等の throw に写像する。
+  it("P1-2: 1B payload (idLength が読めない) で throw", () => {
+    // buf.length < 2 → data[1] が読めない
+    expect(() => parseTouchCard(Buffer.from([0x04]))).toThrow(/parseTouchCard/);
+  });
+
+  it("P1-2: idLength 過大 (buf 末尾を超える) で throw", () => {
+    // type=04, idLength=0xff (255) → nameIndex = 0xff+2 = 257 が範囲外
+    expect(() => parseTouchCard(Buffer.from([0x04, 0xff, 0xaa, 0xbb]))).toThrow(/parseTouchCard/);
+  });
+
+  it("P1-2: name 切れ (nameLength 分の bytes が足りない) で throw", () => {
+    // type=04, idLen=01, id=aa, nameLen=10 (16B) → name が 1B しかない
+    expect(() => parseTouchCard(Buffer.from([0x04, 0x01, 0xaa, 0x10, 0x01]))).toThrow(/parseTouchCard/);
+  });
 });
 
 describe("parseTouchFace", () => {
@@ -37,6 +55,20 @@ describe("parseTouchFace", () => {
     expect(f.id).toBe("7f");
     expect(f.nameLength).toBe(2);
     expect(f.nameUUID).toBe("dead");
+  });
+
+  // P1-2 範囲検証: parseTouchCard と同型 (CHSesameBiometricParseData.kt:28-36)。
+  it("P1-2: 1B payload で throw", () => {
+    expect(() => parseTouchFace(Buffer.from([0x01]))).toThrow(/parseTouchFace/);
+  });
+
+  it("P1-2: idLength 過大で throw", () => {
+    expect(() => parseTouchFace(Buffer.from([0x01, 0xff, 0x7f]))).toThrow(/parseTouchFace/);
+  });
+
+  it("P1-2: name 切れで throw", () => {
+    // idLen=01, id=7f, nameLen=10 (16B) → name が 0B
+    expect(() => parseTouchFace(Buffer.from([0x01, 0x01, 0x7f, 0x10]))).toThrow(/parseTouchFace/);
   });
 });
 
@@ -96,6 +128,62 @@ describe("batchAddPacket", () => {
     const p2 = batchAddPacket(data, 418);
     expect(p2.packet.length).toBe(4 + (500 - 418)); // 残り 82B
     expect(p2.nextIndex).toBe(500);
+  });
+});
+
+// P1-2: CARD_NOTIFY / PASSCODE_NOTIFY の不正 payload 無限ループ防止テスト。
+// タイムアウト付きで回すことで、修正前の NaN-recordSize 無限ループが赤になる。
+// モック導出元: CHCardEventHandlers.kt:22-34 / CHPassCodeEventHandlers.kt:22-34 の
+// do-while が CHSesameTouchCard コンストラクタ AIOOBE で脱出する挙動を再現。
+describe("P1-2: NOTIFY ループ不正 payload でハングしない", { timeout: 2000 }, () => {
+  it("CARD_NOTIFY: 1B truncated payload — ハングせず処理を返す", () => {
+    const calls = [];
+    handleBiometricPublish(
+      { itemCode: ITEM.CARD_NOTIFY, body: Buffer.from([0x04]) }, // 1B のみ
+      { onCardReceive: (_d, id) => calls.push(id) },
+    );
+    expect(calls).toHaveLength(0); // 不正レコードは破棄
+  });
+
+  it("CARD_NOTIFY: idLength 過大 payload — ハングせず処理を返す", () => {
+    const calls = [];
+    handleBiometricPublish(
+      // type=04, idLength=0xff → NaN recordSize 問題の再現ケース
+      { itemCode: ITEM.CARD_NOTIFY, body: Buffer.from([0x04, 0xff, 0xaa, 0xbb]) },
+      { onCardReceive: (_d, id) => calls.push(id) },
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it("CARD_NOTIFY: 正常レコード後に不正レコード → 正常分のみ通知されループ終了", () => {
+    // 正常レコード: type=04, idLen=01, id=aa, nameLen=00 → recordSize=3
+    const good = Buffer.from([0x04, 0x01, 0xaa, 0x00]);
+    // 不正レコード: name 切れ (nameLen=05 だが 0B しかない)
+    const bad = Buffer.from([0x04, 0x01, 0xbb, 0x05]);
+    const calls = [];
+    handleBiometricPublish(
+      { itemCode: ITEM.CARD_NOTIFY, body: Buffer.concat([good, bad]) },
+      { onCardReceive: (_d, id) => calls.push(id) },
+    );
+    expect(calls).toEqual(["aa"]); // 正常分のみ
+  });
+
+  it("PASSCODE_NOTIFY: 1B truncated payload — ハングせず処理を返す", () => {
+    const calls = [];
+    handleBiometricPublish(
+      { itemCode: ITEM.PASSCODE_NOTIFY, body: Buffer.from([0x01]) },
+      { onKeyBoardReceive: (_d, id) => calls.push(id) },
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it("PASSCODE_NOTIFY: idLength 過大 payload — ハングせず処理を返す", () => {
+    const calls = [];
+    handleBiometricPublish(
+      { itemCode: ITEM.PASSCODE_NOTIFY, body: Buffer.from([0x01, 0xff, 0x11, 0x22]) },
+      { onKeyBoardReceive: (_d, id) => calls.push(id) },
+    );
+    expect(calls).toHaveLength(0);
   });
 });
 

@@ -12,7 +12,7 @@ import { t } from "../i18n.js";
 import { die } from "./errors.js";
 import { loadCtx, out, withHub, canPrompt, hasCloudSession } from "./ctx.js";
 import { isInteractive, selectFromList } from "../prompts.js";
-import { SesameBle, capabilitiesForModel, transportsForOp, CONTROL_OPS } from "../ble/index.js";
+import { SesameBle, SesameOS2Ble, capabilitiesForModel, transportsForOp, CONTROL_OPS, createBleTransport } from "../ble/index.js";
 
 /** @typedef {import("./ctx.js").Program} Program */
 /** @typedef {import("./ctx.js").GlobalOpts} GlobalOpts */
@@ -25,6 +25,8 @@ import { SesameBle, capabilitiesForModel, transportsForOp, CONTROL_OPS } from ".
  * @property {string} deviceUUID
  * @property {string} secretKey
  * @property {string|null} [model]
+ * @property {string} [ssmPublicKey] OS2 BLE login 用デバイス公開鍵 (128 hex)。config に保存済みのときのみ存在。
+ * @property {string} [keyIndex]     OS2 BLE login 用 userIdx (4 hex)。config に保存済みのときのみ存在。
  */
 
 /** デバイスに対して可能な操作 (動詞)。制御 op は能力モデル (CONTROL_OPS) を単一真実源として引き、
@@ -61,7 +63,17 @@ export async function resolveLockEntry(program, name) {
   }
   const lock = locks[chosen];
   if (!lock?.deviceUUID || !lock?.secretKey) { die(t("cli.lockMissingKeys", { name: chosen }), 2); return null; }
-  return { name: chosen, deviceUUID: lock.deviceUUID, secretKey: lock.secretKey, model: lock.model || null };
+  return {
+    name: chosen,
+    deviceUUID: lock.deviceUUID,
+    secretKey: lock.secretKey,
+    model: lock.model || null,
+    // OS2 BLE login 用の鍵素材 (config に保存済みのときのみ)。
+    // `locks add --ssm-public-key / --key-index` で保存した値を resolveLockEntry で透過させ、
+    // runBleOp の OS2 経路が ECDH に使う (cmdOS2Invoke と同じ解決規則)。
+    ...(lock.ssmPublicKey ? { ssmPublicKey: lock.ssmPublicKey } : {}),
+    ...(lock.keyIndex ? { keyIndex: lock.keyIndex } : {}),
+  };
 }
 
 /**
@@ -143,11 +155,13 @@ export function sanitizeStatus(st) {
 }
 
 /**
- * 接続済み SesameBle に op を実行する**唯一のコア**。単発コマンド・セッションの両方がここを通る
+ * 接続済み SesameBle / SesameOS2Ble に op を実行する**唯一のコア**。単発コマンド・セッションの両方がここを通る
  * (session は保持中の接続を、単発は都度張った接続を渡す。「保持接続があればそれで操作する」という
  * セッションモードの挙動が、両方の既定動作になる)。能力ゲートは SesameBle 側が担保。表示はしない。
+ * OS2 ファサード (SesameOS2Ble) も lock/unlock/toggle/click/autolock/status の同名メソッドを持つため、
+ * 型は SesameBle | SesameOS2Ble の共通サブタイプとして `any` で受ける (両者に共通 interface 無し)。
  * @param {string} op
- * @param {SesameBle} ble
+ * @param {SesameBle|SesameOS2Ble} ble
  * @param {string|number|null|undefined} seconds
  * @returns {Promise<{result:any, status:MechStatus|null}>}
  */
@@ -162,9 +176,11 @@ export async function bleExec(op, ble, seconds) {
 }
 
 /**
- * 接続済みの SesameBle に対して 1 操作を実行し、単発コマンド向けに表示する (接続/切断は呼び出し側責務)。
+ * 接続済みの SesameBle / SesameOS2Ble に対して 1 操作を実行し、単発コマンド向けに表示する (接続/切断は呼び出し側責務)。
+ * OS2 ファサードも同名の制御メソッドを持つため共通に使える。OS2 の mechStatus は "moved" 状態を含むが、
+ * fmtMech は state/position/isBatteryCritical/isStop をそのまま整形するため追加の分岐は不要。
  * @param {string} op
- * @param {SesameBle} lock
+ * @param {SesameBle|SesameOS2Ble} lock
  * @param {LockEntry} entry
  * @param {string|number|null|undefined} seconds
  * @param {GlobalOpts} gopts
@@ -180,6 +196,10 @@ async function runBleOnLock(op, lock, entry, seconds, gopts) {
 
 /**
  * BLE で 1 操作 (connect→op→close)。--ble-only 明示 or BLE 必須 op (autolock) 用。
+ * OS2 デバイス (capabilitiesForModel(entry.model).os === 2) は SesameOS2Ble ファサードへ委譲。
+ * OS3 は従来どおり SesameBle (OS3 ファサード)。
+ * OS2/OS3 でハンドシェイク・暗号が完全に別物のため、ファサードを間違えると接続不可になる
+ * (CHSesame2Device.kt 系 vs CHSesameOS3.kt 系 — 互換性なし)。
  * @param {string} op
  * @param {LockEntry} entry
  * @param {string|number|null|undefined} seconds
@@ -187,6 +207,34 @@ async function runBleOnLock(op, lock, entry, seconds, gopts) {
  * @param {{ scanTimeoutMs?: number }} [bleOpts]
  */
 export async function runBleOp(op, entry, seconds, gopts, { scanTimeoutMs } = {}) {
+  const caps = capabilitiesForModel(entry.model);
+  if (caps.os === 2) {
+    // OS2 BLE ルーティング: SesameOS2Ble ファサードへ委譲。
+    // login には ssmPublicKey (デバイス公開鍵) が必須 — ECDH の相手鍵。
+    // 未保存なら `sesame locks add --ssm-public-key <hex>` で config に登録するよう案内する
+    // (cmdOS2Invoke と同じ解決規則: resolveLockEntry で透過済み)。
+    if (!entry.ssmPublicKey) {
+      die(t("cli.os2BleNeedSsmPublicKey"), 2);
+      return;
+    }
+    const transport = createBleTransport({
+      deviceUUID: entry.deviceUUID,
+      debug: !!gopts.debug,
+      scanTimeoutMs,
+    });
+    await SesameOS2Ble.use({
+      transport,
+      deviceUUID: entry.deviceUUID,
+      secretKey: entry.secretKey,
+      // 省略時は "0000" (CHSesame2Device.kt:465 の登録時永続値)
+      keyIndex: entry.keyIndex ?? undefined,
+      ssmPublicKey: entry.ssmPublicKey,
+      model: entry.model ?? undefined,
+      debug: !!gopts.debug,
+    }, (lock) => runBleOnLock(op, lock, entry, seconds, gopts));
+    return;
+  }
+  // OS3 (従来どおり)
   await SesameBle.use(
     { secretKey: entry.secretKey, deviceUUID: entry.deviceUUID, model: entry.model ?? undefined, debug: !!gopts.debug, scanTimeoutMs },
     (lock) => runBleOnLock(op, lock, entry, seconds, gopts),

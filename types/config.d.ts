@@ -63,6 +63,12 @@ export class ConfigStore {
      * @returns {LoadedConfig}
      */
     load(): LoadedConfig;
+    /**
+     * load() / save() 完了後に現在の devices/remotes キー集合を baseline として記録する。
+     * merge の意図的削除判定 (_baselineKeys) を最新状態に保つ。
+     * @private
+     */
+    private _recordBaseline;
     save(): void;
     /**
      * 空スケルトンを書き出す。既存があれば触らない。

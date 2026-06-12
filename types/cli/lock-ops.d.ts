@@ -51,20 +51,26 @@ export function fmtCloudStatus(st: {
  */
 export function sanitizeStatus(st: unknown): unknown;
 /**
- * 接続済み SesameBle に op を実行する**唯一のコア**。単発コマンド・セッションの両方がここを通る
+ * 接続済み SesameBle / SesameOS2Ble に op を実行する**唯一のコア**。単発コマンド・セッションの両方がここを通る
  * (session は保持中の接続を、単発は都度張った接続を渡す。「保持接続があればそれで操作する」という
  * セッションモードの挙動が、両方の既定動作になる)。能力ゲートは SesameBle 側が担保。表示はしない。
+ * OS2 ファサード (SesameOS2Ble) も lock/unlock/toggle/click/autolock/status の同名メソッドを持つため、
+ * 型は SesameBle | SesameOS2Ble の共通サブタイプとして `any` で受ける (両者に共通 interface 無し)。
  * @param {string} op
- * @param {SesameBle} ble
+ * @param {SesameBle|SesameOS2Ble} ble
  * @param {string|number|null|undefined} seconds
  * @returns {Promise<{result:any, status:MechStatus|null}>}
  */
-export function bleExec(op: string, ble: SesameBle, seconds: string | number | null | undefined): Promise<{
+export function bleExec(op: string, ble: SesameBle | SesameOS2Ble, seconds: string | number | null | undefined): Promise<{
     result: any;
     status: MechStatus | null;
 }>;
 /**
  * BLE で 1 操作 (connect→op→close)。--ble-only 明示 or BLE 必須 op (autolock) 用。
+ * OS2 デバイス (capabilitiesForModel(entry.model).os === 2) は SesameOS2Ble ファサードへ委譲。
+ * OS3 は従来どおり SesameBle (OS3 ファサード)。
+ * OS2/OS3 でハンドシェイク・暗号が完全に別物のため、ファサードを間違えると接続不可になる
+ * (CHSesame2Device.kt 系 vs CHSesameOS3.kt 系 — 互換性なし)。
  * @param {string} op
  * @param {LockEntry} entry
  * @param {string|number|null|undefined} seconds
@@ -127,6 +133,8 @@ export function cmdAct(op: string, name: string | undefined, seconds: string | n
  * @property {string} deviceUUID
  * @property {string} secretKey
  * @property {string|null} [model]
+ * @property {string} [ssmPublicKey] OS2 BLE login 用デバイス公開鍵 (128 hex)。config に保存済みのときのみ存在。
+ * @property {string} [keyIndex]     OS2 BLE login 用 userIdx (4 hex)。config に保存済みのときのみ存在。
  */
 /** デバイスに対して可能な操作 (動詞)。制御 op は能力モデル (CONTROL_OPS) を単一真実源として引き、
  *  状態取得の "status" だけ CLI 固有に足す。型ごとの可否は cmdAct の能力ゲートが別途判定する。 */
@@ -157,6 +165,15 @@ export type LockEntry = {
     deviceUUID: string;
     secretKey: string;
     model?: string | null | undefined;
+    /**
+     * OS2 BLE login 用デバイス公開鍵 (128 hex)。config に保存済みのときのみ存在。
+     */
+    ssmPublicKey?: string | undefined;
+    /**
+     * OS2 BLE login 用 userIdx (4 hex)。config に保存済みのときのみ存在。
+     */
+    keyIndex?: string | undefined;
 };
 import { SesameBle } from "../ble/index.js";
+import { SesameOS2Ble } from "../ble/index.js";
 //# sourceMappingURL=lock-ops.d.ts.map

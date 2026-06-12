@@ -1,7 +1,22 @@
 /**
+ * OS2 機種の BLE deviceName (base64 22 文字) を 16B UUID に変換する。
+ *
+ * OS2 の deviceID は manufacturerData ではなく BLE advertise の deviceName(base64 22 文字 + "==")
+ * から導出する (OS3 系と根本的に異なる)。
+ *   (deviceName + "==").base64decodeHex().noHashtoUUID()
+ * 出典: Sesame2BleAdvertisement.kt:68-74
+ *       DataExtention.kt:36-46 (base64decodeHex / noHashtoUUID)
+ *
+ * base64 decode 後に 16B でなければ null を返す (Kotlin の catch→null の写像)。
+ *
+ * @param {string|null|undefined} localName BLE advertise の deviceName
+ * @returns {string|null} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字) or null
+ */
+export function os2NameToUuid(localName: string | null | undefined): string | null;
+/**
  * SESAME の advertise manufacturerData を機種別レイアウトで解析する
- * (Sesame2BleAdvertisement.kt CHadv の移植)。WM2 / Hub3 / SS5(Touch/Face 等) の
- * 3 レイアウトと productType・registered フラグ・isConnectable を網羅する。
+ * (Sesame2BleAdvertisement.kt CHadv の移植)。WM2 / Hub3 / OS2 / SS5(Touch/Face 等) の
+ * 4 レイアウトと productType・registered フラグ・isConnectable を網羅する。
  *
  * レイアウト (advBytes 座標、md では +ADV_OFF):
  *   advBytes[0]            : productType (CHProductModel.getByValue, copyOfRange(0,1))
@@ -9,15 +24,18 @@
  *   advBytes[2]            : それ以外の registered bit0 / adv_tag_b1=bit1 (行33,43)
  *   WM2  deviceID          : advBytes[3..9) の 6B → WM2_UUID_PREFIX に連結 (行49-56)
  *   Hub3 deviceID          : advBytes[2..8) の 6B → HUB3_UUID_PREFIX に連結 (行58-66)
+ *   OS2  deviceID          : (localName + "==").base64decodeHex().noHashtoUUID() (行68-74)
  *   SS5  deviceID          : advBytes[3..19) の 16B をそのまま UUID 化 (行76-89)
  *   WM2  isConnectable     : advBytes.last()==0 (行51)
  *
  * @param {Buffer|Uint8Array|null|undefined} md noble の manufacturerData (company ID 2B 含む)
+ * @param {string|null|undefined} [localName] BLE advertise の deviceName。OS2 機種の deviceID 導出に必須。
+ *   省略可 (後方互換): OS2 機種で localName が無い場合は deviceUUID=null になる。
  * @returns {{productType:number, model:(string|null), kind:string, isRegistered:boolean,
  *            advTagB1:boolean, isConnectable:boolean, deviceUUID:(string|null)}|null}
  *   SESAME でない (company 不一致 / 長さ不足) は null。
  */
-export function parseAdvertisement(md: Buffer | Uint8Array | null | undefined): {
+export function parseAdvertisement(md: Buffer | Uint8Array | null | undefined, localName?: string | null | undefined): {
     productType: number;
     model: (string | null);
     kind: string;
@@ -29,12 +47,13 @@ export function parseAdvertisement(md: Buffer | Uint8Array | null | undefined): 
 /**
  * SESAME の advertise manufacturerData から deviceUUID を抽出する (後方互換の薄いラッパ)。
  * 機種別レイアウトの全分岐は parseAdvertisement に集約し、ここはその deviceUUID だけを返す。
- * これにより SS5 だけでなく WM2/Hub3 でも正しい UUID が得られる (旧実装は SS5 レイアウト固定だった)。
+ * これにより SS5 だけでなく WM2/Hub3/OS2 でも正しい UUID が得られる (旧実装は SS5 レイアウト固定だった)。
  *
  * @param {Buffer|Uint8Array|null|undefined} md
+ * @param {string|null|undefined} [localName] BLE advertise の deviceName (OS2 機種の UUID 導出に必要)
  * @returns {string|null} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字) or null
  */
-export function advToDeviceUUID(md: Buffer | Uint8Array | null | undefined): string | null;
+export function advToDeviceUUID(md: Buffer | Uint8Array | null | undefined, localName?: string | null | undefined): string | null;
 /** このプロセスで noble をロード済みか (= 通常 exit ではプロセスが終わらない)。 */
 export function bleWasUsed(): boolean;
 /**

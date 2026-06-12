@@ -167,6 +167,9 @@ declare namespace _default {
         "serve.sum.eventsUnsubscribe": string;
         "serve.sum.nsOp": string;
         "serve.desc.nsParams": string;
+        "serve.sum.bleScan": string;
+        "serve.desc.bleScanTimeoutMs": string;
+        "serve.desc.bleScanIncludeUnknown": string;
         "serve.sum.bleUpdateFirmware": string;
         "serve.sum.bleReset": string;
         "serve.sum.blePosition": string;
@@ -177,6 +180,7 @@ declare namespace _default {
         "serve.desc.bleModelWifi": string;
         "serve.desc.bleCompanyId": string;
         "serve.desc.bleCollectMs": string;
+        "serve.sum.bleBioListGet": string;
         "serve.desc.blePositionLock": string;
         "serve.desc.blePositionUnlock": string;
         "serve.bleWifiNotSupported": string;
@@ -367,6 +371,9 @@ declare namespace _default {
         "serve.sum.eventsUnsubscribe": string;
         "serve.sum.nsOp": string;
         "serve.desc.nsParams": string;
+        "serve.sum.bleScan": string;
+        "serve.desc.bleScanTimeoutMs": string;
+        "serve.desc.bleScanIncludeUnknown": string;
         "serve.sum.bleUpdateFirmware": string;
         "serve.sum.bleReset": string;
         "serve.sum.blePosition": string;
@@ -377,6 +384,7 @@ declare namespace _default {
         "serve.desc.bleModelWifi": string;
         "serve.desc.bleCompanyId": string;
         "serve.desc.bleCollectMs": string;
+        "serve.sum.bleBioListGet": string;
         "serve.desc.blePositionLock": string;
         "serve.desc.blePositionUnlock": string;
         "serve.bleWifiNotSupported": string;

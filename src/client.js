@@ -480,6 +480,9 @@ export class SesameHub3 {
       },
       timeoutMs,
       onTimeout: () => timeoutError(t("domain.client.getCompanyDeviceTimeout")),
+      // P1-5: 同 action の success:false (即時エラー応答) で timeout を待たず失敗確定
+      // (useManageDevice.js:27-34 の !message.success 判定)。devices.js getUserDevices と同形。
+      errorAction: ACTION_TYPES.BIZ3_MANAGE_DEVICE,
       result: () => acc,
       subscriptions: [{
         key: `${ACTION_TYPES.BIZ3_MANAGE_DEVICE}:PubedCompanyDevice`,
@@ -1434,15 +1437,25 @@ export class SesameHub3 {
 
   /**
    * デバイス state push の購読 (複数デバイスまとめて)。
+   *
+   * P1-4: WS 再接続後にサーバ側購読が失われるため、再接続時に購読フレームを再送する。
+   * vendor: useManageDevice.js:352-358 — `onConnectionIdChange(() => getCompanyDevices())`
+   * → useManageDevice.js:48-51 で `subscribeDevices(...)` を再送。
+   * onLockStateChangeDevice と同型の onReconnect パターン。
+   *
    * @param {{deviceUUID:string, deviceModel?:string}[]} items
    * @param {(msg:any) => void} fn
+   * @returns {() => void} unsubscribe
    */
   onDeviceUpdate(items, fn) {
     const ws = this._ensureConnected();
-    return devices.subscribeDevicesUpdate(ws, {
+    const { unsubscribe: offSub, sendFrame } = devices.subscribeDevicesUpdate(ws, {
       companyID: this._companyID,
       items,
       onUpdate: fn,
     });
+    // 再接続時はサーバ側購読が消えるため frame を再送する (P1-4)。
+    const offReconnect = this.onReconnect(sendFrame);
+    return () => { offReconnect(); offSub(); };
   }
 }

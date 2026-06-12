@@ -326,6 +326,8 @@ export class Daemon {
 
   _reestablishStateSub() {
     // 再接続後に購読者が居れば張り直す (サーバ側 subscribe frame は再送が要るため)。
+    // P1-4 以降、ライブラリ層 (onDeviceUpdate) も onReconnect で frame を再送するため、
+    // ここでの再送は二重になるが無害 (サーバは同じ items の subscribe を冪等に受け付ける)。
     // 旧 unsub を必ず呼んでから張り直す。呼ばないと transport の subscribers に古い fn が
     // 残り、新 fn と二重配信になる (subscribers は再接続を跨いで保持されるため)。
     if (this._stateUnsub) { try { this._stateUnsub(); } catch { /* ignore */ } this._stateUnsub = null; }

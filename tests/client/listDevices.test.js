@@ -19,10 +19,16 @@ import { SesameHub3 } from "../../src/client.js";
 const ACTION = "biz3ManageDevice";
 const PUBED_KEY = `${ACTION}:PubedCompanyDevice`;
 
-/** subscribeChunks が要求する最小 fake ws (subscribe/send + テスト用 emit)。 */
+/**
+ * subscribeChunks が要求する最小 fake ws (subscribe/send + テスト用 emit)。
+ * onMessage は util.subscribeChunks の errorAction 機構 (P1-5) が使う全受信フック。
+ * 導出元: src/transport.js の Hub3WsClient.onMessage / subscribeChunks:165-173 の
+ * `typeof client.onMessage === "function"` ガード。
+ */
 function makeFakeWs() {
   const sends = [];
   const subscriptions = new Map(); // key -> Set<fn>
+  const msgListeners = []; // onMessage ハンドラのリスト (errorAction 機構用)
   return {
     sends,
     send: vi.fn((frame) => { sends.push(frame); }),
@@ -31,8 +37,20 @@ function makeFakeWs() {
       subscriptions.get(key).add(fn);
       return () => subscriptions.get(key)?.delete(fn);
     }),
+    /** transport.js Hub3WsClient.onMessage と同型: リスナー登録 + unsubscribe 返却。 */
+    onMessage: vi.fn((fn) => {
+      msgListeners.push(fn);
+      return () => {
+        const i = msgListeners.indexOf(fn);
+        if (i >= 0) msgListeners.splice(i, 1);
+      };
+    }),
     emit(key, msg) {
       for (const fn of subscriptions.get(key) ?? []) fn(msg);
+    },
+    /** onMessage ハンドラ全員に msg を配信 (errorAction の success:false 検知に使う)。 */
+    emitRaw(msg) {
+      for (const fn of [...msgListeners]) fn(msg);
     },
     /** 現在の購読数 (unsubscribe 漏れ検出用)。 */
     subCount(key) { return subscriptions.get(key)?.size ?? 0; },

@@ -150,13 +150,16 @@ export function switchRechargeableBattery(client: WsClient, { deviceUUID, isRech
  *
  * @param {WsClient} client
  * @param {{companyID: string, items: any[], onUpdate: (msg: any) => void}} p
- * @returns {() => void} unsubscribe
+ * @returns {{ unsubscribe: () => void, sendFrame: () => void }}
  */
 export function subscribeDevicesUpdate(client: WsClient, { companyID, items, onUpdate }: {
     companyID: string;
     items: any[];
     onUpdate: (msg: any) => void;
-}): () => void;
+}): {
+    unsubscribe: () => void;
+    sendFrame: () => void;
+};
 /**
  * デバイス一覧の増減 push (`pubUserDeviceChange`) を購読する (P3-5)。
  *

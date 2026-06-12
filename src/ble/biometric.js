@@ -137,11 +137,25 @@ function hexNameToBytes(hexName) {
  */
 export function parseTouchCard(data) {
   const buf = Buffer.from(data);
+  // 範囲検証: Kotlin CHSesameTouchCard(data) は data[1] / data[nameIndex] / data.sliceArray(...) へ
+  // 直接アクセスするため、短小入力や idLength 過大は ArrayIndexOutOfBoundsException を throw して
+  // 呼び出し元 (do-while ループ) から脱出する
+  // (CHSesameBiometricParseData.kt:10-17 / CHCardEventHandlers.kt:22-34)。
+  // JS ポートは AIOOBE を throw に写像して同じセマンティクスを実現する。
+  const idLength = buf[1]; // buf.length < 2 のとき undefined → 次の検証で捕捉
+  const nameIndex = (idLength ?? 0) + 2;
+  const nameLength = buf[nameIndex]; // nameIndex が範囲外のとき undefined → 捕捉
+  if (
+    buf.length < 2 ||
+    (idLength + 2) >= buf.length ||
+    (nameIndex + 1 + nameLength) > buf.length
+  ) {
+    throw new Error(
+      `parseTouchCard: truncated record (buf=${buf.length}B idLength=${idLength} nameLength=${nameLength})`,
+    );
+  }
   const cardType = buf[0];
-  const idLength = buf[1];
   const cardID = bytesToHex(buf.subarray(2, idLength + 2));
-  const nameIndex = idLength + 2;
-  const nameLength = buf[nameIndex];
   const cardName = bytesToHex(buf.subarray(nameIndex + 1, nameIndex + 1 + nameLength));
   // NOTIFY は複数レコードが連結されうる (CHCardEventHandlers.kt:31-39)。1 レコードのバイト長 =
   // type(1) + idLen(1) + id(idLength) + nameLen(1) + name(nameLength)。
@@ -160,11 +174,23 @@ export function parseTouchCard(data) {
  */
 export function parseTouchFace(data) {
   const buf = Buffer.from(data);
-  const type = buf[0];
+  // parseTouchCard と同型の範囲検証。CHSesameTouchFace(data) コンストラクタ
+  // (CHSesameBiometricParseData.kt:28-36) も data[1] / data[nameIndex] へ直接アクセスするため
+  // 短小入力は ArrayIndexOutOfBoundsException を throw する。JS ポートは throw に写像する。
   const idLength = buf[1];
-  const id = bytesToHex(buf.subarray(2, idLength + 2));
-  const nameIndex = idLength + 2;
+  const nameIndex = (idLength ?? 0) + 2;
   const nameLength = buf[nameIndex];
+  if (
+    buf.length < 2 ||
+    (idLength + 2) >= buf.length ||
+    (nameIndex + 1 + nameLength) > buf.length
+  ) {
+    throw new Error(
+      `parseTouchFace: truncated record (buf=${buf.length}B idLength=${idLength} nameLength=${nameLength})`,
+    );
+  }
+  const type = buf[0];
+  const id = bytesToHex(buf.subarray(2, idLength + 2));
   const nameUUID = bytesToHex(buf.subarray(nameIndex + 1, nameIndex + 1 + nameLength));
   return { type, idLength, id, nameLength, nameUUID };
 }
@@ -703,12 +729,18 @@ export function handleBiometricPublish(pkt, delegate, device, { isRemote = null,
       call(delegate.onCardReceiveEnd); return true;
     case ITEM.CARD_NOTIFY: {
       // NOTIFY は複数レコードの連結 (CHCardEventHandlers.kt:31-39)。recordSize ずつ前進。
+      // parseTouchCard が throw したら当該レコードを破棄してループ脱出する
+      // (Kotlin は CHSesameTouchCard コンストラクタの AIOOBE で自然脱出: kt:22-34)。
       let rest = payload;
       while (rest.length > 0) {
-        const card = parseTouchCard(rest);
-        call(delegate.onCardReceive, card.cardID, card.cardName, card.cardType);
-        if (card.recordSize <= 0 || card.recordSize > rest.length) break;
-        rest = rest.subarray(card.recordSize);
+        try {
+          const card = parseTouchCard(rest);
+          call(delegate.onCardReceive, card.cardID, card.cardName, card.cardType);
+          if (card.recordSize <= 0 || card.recordSize > rest.length) break;
+          rest = rest.subarray(card.recordSize);
+        } catch {
+          break;
+        }
       }
       return true;
     }
@@ -756,12 +788,18 @@ export function handleBiometricPublish(pkt, delegate, device, { isRemote = null,
       call(delegate.onKeyBoardReceiveEnd); return true;
     case ITEM.PASSCODE_NOTIFY: {
       // card と同じく複数レコード連結 (CHPassCodeEventHandlers.kt:28-37)。
+      // parseTouchCard が throw したら当該レコードを破棄してループ脱出する
+      // (Kotlin は CHSesameTouchCard コンストラクタの AIOOBE で自然脱出: kt:22-34)。
       let rest = payload;
       while (rest.length > 0) {
-        const card = parseTouchCard(rest);
-        call(delegate.onKeyBoardReceive, card.cardID, card.cardName, card.cardType);
-        if (card.recordSize <= 0 || card.recordSize > rest.length) break;
-        rest = rest.subarray(card.recordSize);
+        try {
+          const card = parseTouchCard(rest);
+          call(delegate.onKeyBoardReceive, card.cardID, card.cardName, card.cardType);
+          if (card.recordSize <= 0 || card.recordSize > rest.length) break;
+          rest = rest.subarray(card.recordSize);
+        } catch {
+          break;
+        }
       }
       return true;
     }
@@ -1242,6 +1280,105 @@ function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 // STP コードは itemcodes.js の STP_ITEM_CODES へ昇格済み。後方互換のため本モジュールからも
 // STP_ITEM 名で再公開する (中身は同一オブジェクト)。
 export { STP_ITEM_CODES as STP_ITEM };
+
+// =====================================================================
+//  P1-8 (R2:SURF-26 + R2:SURF-39): 生体一覧収集ヘルパ
+//
+//  CLI の `sesame ble cards|passcodes|fingers|faces|palms <device>` と
+//  serve の `ble.biometric.cardGet` 等の専用収集ハンドラが共通で使う publish 収集ロジック。
+//  元は cli/ble.js にのみ存在したが、serve 経由でも SDK 消費者が一覧を取得できるよう
+//  biometric.js へ移管して export する (CLI は import に差し替え)。
+//
+//  設計: GET 要求 → デバイスが publish(FIRST → NOTIFY×N → LAST/END) を返す設計で、
+//  END 受信または timeout で収集を確定する。同一実装の参照パターンは
+//  serve/registry.js の collectWifiScan (ble.wifi.scan の専用収集ハンドラ)。
+// =====================================================================
+
+/**
+ * 生体タイプ別の「GET メソッド名」と「収集に使う delegate コールバック名」。
+ * CLI (cli/ble.js) と serve (registry.js の専用収集ハンドラ) の両方が参照する。
+ * @typedef {{ getter: string, start: string, recv: string, end: string, single?: boolean }} BioSpec
+ */
+
+/**
+ * card/passcode/finger/face/palm ごとの spec 表。
+ * 出典: BiometricCommands の各 getter (cardGet/passcodeGet/fingerPrints/faceListGet/palmListGet) と
+ *   registerDelegate の delegate コールバック名 (CHCard/PassCode/FingerPrint/Face/PalmEventHandlers.kt)。
+ * @type {Readonly<Record<string, BioSpec>>}
+ */
+export const BIO_LIST = Object.freeze({
+  card: { getter: "cardGet", start: "onCardReceiveStart", recv: "onCardReceive", end: "onCardReceiveEnd" },
+  passcode: { getter: "passcodeGet", start: "onKeyBoardReceiveStart", recv: "onKeyBoardReceive", end: "onKeyBoardReceiveEnd" },
+  finger: { getter: "fingerPrints", start: "onFingerPrintReceiveStart", recv: "onFingerPrintReceive", end: "onFingerPrintReceiveEnd" },
+  face: { getter: "faceListGet", start: "onFaceReceiveStart", recv: "onFaceReceive", end: "onFaceReceiveEnd", single: true },
+  palm: { getter: "palmListGet", start: "onPalmReceiveStart", recv: "onPalmReceive", end: "onPalmReceiveEnd", single: true },
+});
+
+/**
+ * Buffer/Uint8Array の名前を UTF-8 文字列へ変換する。既に文字列ならそのまま返す。
+ * CLI (cli/ble.js の bufToText) と同一ロジックをここに一本化する。
+ * @param {unknown} v
+ * @returns {string}
+ */
+function bioNameToText(v) {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  try {
+    const s = Buffer.from(/** @type {Uint8Array|number[]} */ (v)).toString("utf8");
+    let end = s.length;
+    // 末尾 NUL 除去 (ReDoS 懸念のため正規表現 /\0+$/ を避けて線形ループで処理する)。
+    while (end > 0 && s.charCodeAt(end - 1) === 0x00) end--;
+    return s.slice(0, end);
+  } catch { return String(v); }
+}
+
+/**
+ * GET 要求 → publish(FIRST → NOTIFY×N → LAST/END) を収集し、END または timeout で確定する。
+ *
+ * serve の collectWifiScan (registry.js) と同パターン:
+ *   1. registerDelegate でコールバックを登録する
+ *   2. getter を呼ぶ (ack は即返るが実データは publish で来る)
+ *   3. END コールバック or timeout で resolve する
+ *
+ * spec.single=true の場合 (face/palm): recv コールバックは (device, obj) の形で
+ *   obj がパース済みオブジェクト。false (card/passcode/finger): (device, id, name, cardType) の
+ *   形で {id, name(UTF-8化), type} に整形する。
+ *
+ * @param {Record<string, Function>} cmds  BiometricCommands インスタンス (registerDelegate + getter を持つ)
+ * @param {BioSpec} spec  BIO_LIST の 1 entry
+ * @param {number} timeoutMs
+ * @returns {Promise<unknown[]>}
+ */
+export function collectBiometricList(cmds, spec, timeoutMs) {
+  return new Promise((/** @type {(records: unknown[]) => void} */ resolve) => {
+    /** @type {unknown[]} */
+    const records = [];
+    let done = false;
+    /** @type {() => void} */
+    let off = () => {};
+    /** @type {ReturnType<typeof setTimeout>|null} */
+    let timer = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      off();
+      resolve(records);
+    };
+    const delegate = {
+      [spec.start]: () => {},
+      [spec.recv]: spec.single
+        ? (/** @type {unknown} */ _dev, /** @type {unknown} */ obj) => records.push(obj)
+        : (/** @type {unknown} */ _dev, /** @type {unknown} */ id, /** @type {unknown} */ name, /** @type {unknown} */ cardType) =>
+            records.push({ id, name: bioNameToText(name), type: cardType }),
+      [spec.end]: () => finish(),
+    };
+    off = cmds.registerDelegate(delegate);
+    timer = setTimeout(finish, timeoutMs);
+    // GET を撃つ (応答 ack は即返るが、実データは publish で来る → finish は END/timeout 駆動)。
+    Promise.resolve(cmds[spec.getter]()).catch(() => { /* publish/timeout を待つ */ });
+  });
+}
 
 // =====================================================================
 //  SURF-08 段階3: RPC 公開仕様 (biometric / fingerPrint / remoteNano サブファサード)

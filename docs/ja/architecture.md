@@ -52,7 +52,7 @@
   **操作できる op = 両者の和集合**で、session の対象・操作メニュー・`pickTransport` の経路選択はすべて
   この和集合から導きます。
   - 例: ロックは `ble` に autolock があり `cloud` に無い → autolock は BLE 専用。
-  - OS2 ロックは `ble` 空・`cloud` に lock/unlock/toggle → クラウドのみで操作可。
+  - OS2 ロック (sesame_2/3/4・ssmbot_1・bike_1) は `cloud` と `ble` の両方に lock/unlock/toggle を持ちます。CLI の BLE 操作は専用の `SesameOS2Ble` ファサード (OS3 とはハンドシェイク・暗号が別物) へルーティングします。BLE 経路を使うには `sesame locks add --ssm-public-key` で ssmPublicKey を config に保存する必要があります。
   - Hub3 は `cloud` に ir/relay/led。
 - 既定は経路を意識しない**オート**で、固定したいときだけ `--ble-only` / `--cloud-only`。
 

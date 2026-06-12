@@ -443,6 +443,24 @@ export function createEnrollCollector({ onEnrolled, card, passcode }?: {
     passcode?: boolean;
 }): BiometricDelegate;
 /**
+ * GET 要求 → publish(FIRST → NOTIFY×N → LAST/END) を収集し、END または timeout で確定する。
+ *
+ * serve の collectWifiScan (registry.js) と同パターン:
+ *   1. registerDelegate でコールバックを登録する
+ *   2. getter を呼ぶ (ack は即返るが実データは publish で来る)
+ *   3. END コールバック or timeout で resolve する
+ *
+ * spec.single=true の場合 (face/palm): recv コールバックは (device, obj) の形で
+ *   obj がパース済みオブジェクト。false (card/passcode/finger): (device, id, name, cardType) の
+ *   形で {id, name(UTF-8化), type} に整形する。
+ *
+ * @param {Record<string, Function>} cmds  BiometricCommands インスタンス (registerDelegate + getter を持つ)
+ * @param {BioSpec} spec  BIO_LIST の 1 entry
+ * @param {number} timeoutMs
+ * @returns {Promise<unknown[]>}
+ */
+export function collectBiometricList(cmds: Record<string, Function>, spec: BioSpec, timeoutMs: number): Promise<unknown[]>;
+/**
  * BiometricCommands が消費する session の最小契約 (SesameBleSession 互換)。
  * @typedef {Object} BiometricSession
  * @property {(itemCode: number, data: Buffer, opts?: object) => Promise<{resultCode:number, payload:Buffer}>} request
@@ -678,6 +696,18 @@ export class BiometricCommands {
 }
 export { STP_ITEM_CODES as STP_ITEM };
 /**
+ * 生体タイプ別の「GET メソッド名」と「収集に使う delegate コールバック名」。
+ * CLI (cli/ble.js) と serve (registry.js の専用収集ハンドラ) の両方が参照する。
+ * @typedef {{ getter: string, start: string, recv: string, end: string, single?: boolean }} BioSpec
+ */
+/**
+ * card/passcode/finger/face/palm ごとの spec 表。
+ * 出典: BiometricCommands の各 getter (cardGet/passcodeGet/fingerPrints/faceListGet/palmListGet) と
+ *   registerDelegate の delegate コールバック名 (CHCard/PassCode/FingerPrint/Face/PalmEventHandlers.kt)。
+ * @type {Readonly<Record<string, BioSpec>>}
+ */
+export const BIO_LIST: Readonly<Record<string, BioSpec>>;
+/**
  * `biometric` サブファサード (Touch / Touch Pro / Face / Palm の card/passcode/face/palm 登録 +
  * connector 共通面) の RPC 公開仕様。
  *
@@ -849,6 +879,17 @@ export type BiometricSession = {
         payload: Buffer;
     }>;
     onPublish?: ((fn: (pkt: BiometricPublishPacket) => void) => (() => void)) | undefined;
+};
+/**
+ * 生体タイプ別の「GET メソッド名」と「収集に使う delegate コールバック名」。
+ * CLI (cli/ble.js) と serve (registry.js の専用収集ハンドラ) の両方が参照する。
+ */
+export type BioSpec = {
+    getter: string;
+    start: string;
+    recv: string;
+    end: string;
+    single?: boolean;
 };
 import { Buffer } from "node:buffer";
 import { STP_ITEM_CODES } from "../itemcodes.js";

@@ -97,8 +97,29 @@ export const RESULT_SCHEMAS = Object.freeze({
   "lock.toggle": LOCK_ACK,
   "lock.click": LOCK_ACK,
 
-  // BLE 専用 RPC (P4-1 段階2)。kit 自前の整形 (registry の handler が組む) なので形は確実。
+  // BLE 専用 RPC (P4-1 段階2 / P1-7)。kit 自前の整形 (registry の handler が組む) なので形は確実。
   // experimental だが SDK の戻り型を Any に劣化させないためスキーマを出す。
+
+  // P1-7 (R2:SURF-25): ble.scan — 近接デバイス発見一覧。scrubDiscovery が組む {ok, count, devices[]}。
+  // devices の各要素の形は listNearbyDevices の DiscoveryEntry から peripheral を除いたもの。
+  // peripheral は JSON 不可 (noble 内部オブジェクト) なので除外する。
+  "ble.scan": obj(
+    {
+      ok: BOOL,
+      count: NUM,
+      devices: arr(obj({
+        deviceUUID: STR,
+        productType: NUM,
+        model: nullable(STR),
+        kind: STR,
+        isRegistered: BOOL,
+        rssi: nullable(NUM),
+        localName: nullable(STR),
+        address: nullable(STR),
+      }, ["deviceUUID"])),
+    },
+    ["ok", "count", "devices"],
+  ),
   "ble.reset": BLE_ACK,
   "ble.position": BLE_ACK,
   "ble.wifi.setSsid": BLE_ACK,
@@ -113,4 +134,14 @@ export const RESULT_SCHEMAS = Object.freeze({
     { ssids: arr(obj({ ssid: STR, rssi: NUM }, ["ssid", "rssi"])) },
     ["ssids"],
   ),
+
+  // P1-8 (R2:SURF-26 + R2:SURF-39): 生体一覧専用収集ハンドラの戻り型。
+  // records 配列: card/passcode/finger は {id, name, type} (collectBiometricList の整形)、
+  // face/palm は parseTouchFace の戻り値オブジェクト (フィールド未確定 → OBJ)。
+  // handler が組む {records:[...]} は kit 自前なので形は確実。
+  "ble.biometric.cardGet": obj({ records: arr(obj({ id: STR, name: STR, type: NUM }, ["id"])) }, ["records"]),
+  "ble.biometric.passcodeGet": obj({ records: arr(obj({ id: STR, name: STR, type: NUM }, ["id"])) }, ["records"]),
+  "ble.biometric.faceListGet": obj({ records: arr(OBJ) }, ["records"]),
+  "ble.biometric.palmListGet": obj({ records: arr(OBJ) }, ["records"]),
+  "ble.fingerPrint.fingerPrints": obj({ records: arr(obj({ id: STR, name: STR, type: NUM }, ["id"])) }, ["records"]),
 });

@@ -381,7 +381,9 @@ export class Hub3Commands {
 export const HUB3_RPC_OPS = {
   // 周辺 Wi-Fi SSID スキャン (HUB3_ITEM_CODE_WIFI_SSID=131)。位置引数なし。結果は SSID_NOTIFY publish。
   // CHHub3Device.kt:238-244。ack は送信受理のみ (SSID は publish 経由)。
-  "hub3.scanWifiSSID": { params: [], result: "ack", summary: "start a Wi-Fi SSID scan on the Hub3 (results arrive via publish)" },
+  // ★ RPC (ble.hub3.scanWifiSSID) はこの raw op のままで publish を収集せず ack しか返さない。
+  //   SSID 一覧を取得するには `ble.wifi.scan` (collectWifiScan: publish 収集ハンドラ) を使うこと。
+  "hub3.scanWifiSSID": { params: [], result: "ack", summary: "start a Wi-Fi SSID scan on the Hub3 (results arrive via publish — use ble.wifi.scan instead to collect the SSID list)" },
   // Wi-Fi SSID を設定 (HUB3_UPDATE_WIFI_SSID=136)。位置引数 0 = ssid。CHHub3Device.kt:255-265。
   "hub3.setWifiSSID": { params: [{ name: "ssid", type: "string", required: true, desc: "Wi-Fi SSID to set on the Hub3" }], result: "ack", summary: "set the Hub3 Wi-Fi SSID" },
   // Wi-Fi パスワードを設定 (HUB3_ITEM_CODE_WIFI_PASSWORD=135)。位置引数 0 = password。

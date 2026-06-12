@@ -1,5 +1,7 @@
-// BLE 専用 RPC (P4-1 段階2) の配線テストと invokePath の fail-closed (P4-2) 否定ケース。
+// BLE 専用 RPC (P4-1 段階2 / P1-7) の配線テストと invokePath の fail-closed (P4-2) 否定ケース。
 //
+// - P1-7 (R2:SURF-25): ble.scan が SesameBle.listNearby を呼び、peripheral ハンドルを除去した
+//   JSON 配列を {ok, count, devices} に包んで返すこと。
 // - ble.updateFirmware / ble.reset / ble.position / ble.wifi.* が SesameBle ファサードの
 //   対応メソッドへ正しい引数で委譲し、JSON 化可能な ack を返すこと。
 // - invokePath が allowlist 非掲載の第 1 セグメントを **getter を実行する前に** bad_params で
@@ -241,6 +243,94 @@ describe("invokePath の fail-closed (P4-2)", () => {
     expect(fake.close).not.toHaveBeenCalled();
     const r = await e.handler({ hub: {}, daemon, params: { ...TARGET, op: "status" } });
     expect(r).toEqual({ ok: 1 });
+  });
+});
+
+// ---------- P1-7 (R2:SURF-25): ble.scan 結線テスト ----------
+describe("ble.scan: 近接デバイス発見の結線テスト (P1-7 / R2:SURF-25)", () => {
+  it("discovery 2 件 → {ok:true, count:2, devices:[...]} を返す (peripheral ハンドル非含有)", async () => {
+    // SesameBle.listNearby が返す mock 発見結果 (peripheral を含む) を用意する。
+    // 発見結果の形: listNearbyDevices の DiscoveryEntry
+    //   (_sesame_sdk_ref/sesame-sdk/.../ble/BleManager.kt の chDeviceMap 構築に対応)。
+    const fakePeripheral = { id: "noble-handle", connect: () => {} };
+    const fakeDevices = [
+      {
+        deviceUUID: "aaaabbbb-cccc-dddd-eeee-111111111111",
+        productType: 5,
+        model: "sesame_5",
+        kind: "os3lock",
+        isRegistered: true,
+        rssi: -60,
+        localName: null,
+        address: "AA:BB:CC:DD:EE:FF",
+        peripheral: fakePeripheral, // JSON 不可 — scrubDiscovery で除去されること
+      },
+      {
+        deviceUUID: "11112222-3333-4444-5555-aaaaaaaaaaaa",
+        productType: 0,
+        model: "sesame_2",
+        kind: "os2lock",
+        isRegistered: false,
+        rssi: -75,
+        localName: "c29tZXVzZXI=",
+        address: null,
+        peripheral: fakePeripheral,
+      },
+    ];
+    vi.spyOn(SesameBle, "listNearby").mockResolvedValue(fakeDevices);
+
+    const e = reg.get("ble.scan");
+    expect(e, "ble.scan がレジストリに存在すること").toBeTruthy();
+
+    const r = await e.handler({ hub: {}, daemon, params: {} });
+
+    expect(r.ok).toBe(true);
+    expect(r.count).toBe(2);
+    expect(r.devices).toHaveLength(2);
+
+    // peripheral ハンドルが含まれていないこと
+    for (const d of r.devices) {
+      expect(Object.prototype.hasOwnProperty.call(d, "peripheral")).toBe(false);
+    }
+
+    // 各フィールドが保持されていること
+    expect(r.devices[0]).toMatchObject({
+      deviceUUID: "aaaabbbb-cccc-dddd-eeee-111111111111",
+      model: "sesame_5",
+      kind: "os3lock",
+      isRegistered: true,
+      rssi: -60,
+      address: "AA:BB:CC:DD:EE:FF",
+    });
+    expect(r.devices[1]).toMatchObject({
+      deviceUUID: "11112222-3333-4444-5555-aaaaaaaaaaaa",
+      model: "sesame_2",
+      isRegistered: false,
+      rssi: -75,
+    });
+  });
+
+  it("discovery 0 件 → {ok:true, count:0, devices:[]}", async () => {
+    vi.spyOn(SesameBle, "listNearby").mockResolvedValue([]);
+    const r = await reg.get("ble.scan").handler({ hub: {}, daemon, params: {} });
+    expect(r).toEqual({ ok: true, count: 0, devices: [] });
+  });
+
+  it("scanTimeoutMs / includeUnknown を SesameBle.listNearby へ透過する", async () => {
+    const spy = vi.spyOn(SesameBle, "listNearby").mockResolvedValue([]);
+    await reg.get("ble.scan").handler({
+      hub: {}, daemon,
+      params: { scanTimeoutMs: 3000, includeUnknown: true },
+    });
+    expect(spy).toHaveBeenCalledWith({ timeoutMs: 3000, includeUnknown: true });
+  });
+
+  it("ble.scan は secretKey 不要 (params に secretKey がない状態でエラーにならない)", async () => {
+    vi.spyOn(SesameBle, "listNearby").mockResolvedValue([]);
+    // secretKey 無し = {} で呼んでもエラーにならないこと
+    await expect(
+      reg.get("ble.scan").handler({ hub: {}, daemon, params: {} }),
+    ).resolves.toMatchObject({ ok: true });
   });
 });
 

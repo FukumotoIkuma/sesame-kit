@@ -30,6 +30,9 @@ import {
   BLE_RPC_ALLOWLIST, OS2_BLE_RPC_ALLOWLIST, resultName,
   BLE_RPC_OPS, OS2_BLE_RPC_OPS,
 } from "../ble/index.js";
+// P1-8 (R2:SURF-26 + R2:SURF-39): 生体一覧収集ヘルパを biometric.js から import する。
+// CLI と serve の両方が同一実装を使うことで経路対称性 (規範4) を実現する。
+import { collectBiometricList, BIO_LIST } from "../ble/biometric.js";
 import { ITEM_CODES } from "../itemcodes.js";
 import { resolveRegisterTransport } from "../devices.js";
 
@@ -284,6 +287,19 @@ export function collectWifiScan(view, { collectMs = WIFI_SCAN_COLLECT_MS } = {})
  */
 export function bleCommandAck(r) {
   return { resultCode: r.resultCode, resultName: resultName(r.resultCode) };
+}
+
+/**
+ * listNearbyDevices / SesameBle.listNearby の発見結果 1 件から peripheral ハンドルを除去し、
+ * JSON 化可能な平坦オブジェクトを返す。
+ * peripheral は noble の内部オブジェクトで JSON 不可のため除外する (CLI cmdScan の
+ * scrubDiscovery と同一の変換)。
+ * @param {Record<string, unknown>} d
+ * @returns {Record<string, unknown>}
+ */
+function scrubDiscovery(d) {
+  const { peripheral, ...rest } = d || {};
+  return rest;
 }
 
 /**
@@ -986,6 +1002,26 @@ function topLevelEntries() {
       result: "biometrics response",
       handler: ({ hub, params, daemon }) => { requireAuth(daemon); return hub.updateAuthenticationName(params); },
     },
+    // P1-7 (R2:SURF-25): 近接 SESAME の発見一覧。BLE scan は鍵不要 (advertise のみ) で、
+    // ble.register / ble.os2.register が要求する deviceUUID を RPC 消費者が自己解決できるようにする。
+    // secretKey 不要・experimental (STABLE_METHODS 非掲載)。
+    "ble.scan": {
+      summary: t("serve.sum.bleScan"),
+      params: [
+        { name: "scanTimeoutMs", required: false, desc: t("serve.desc.bleScanTimeoutMs"), schema: N },
+        { name: "includeUnknown", required: false, desc: t("serve.desc.bleScanIncludeUnknown"), schema: B },
+      ],
+      result: "{ ok: true, count, devices: [{deviceUUID, model, kind, productType, isRegistered, rssi, …}] }",
+      handler: async ({ params }) => {
+        const found = /** @type {Array<Record<string, unknown>>} */ (
+          await SesameBle.listNearby({
+            timeoutMs: params.scanTimeoutMs,
+            includeUnknown: !!params.includeUnknown,
+          })
+        );
+        return { ok: true, count: found.length, devices: found.map(scrubDiscovery) };
+      },
+    },
     "ble.invoke": {
       summary: t("serve.sum.bleInvoke"),
       params: [
@@ -1114,6 +1150,66 @@ function topLevelEntries() {
         });
       },
     },
+    // P1-8 (R2:SURF-26 + R2:SURF-39): 生体一覧 5 op の専用収集ハンドラ。
+    // ble.wifi.scan (collectWifiScan) と同パターン: GET 要求 → publish(FIRST→NOTIFY×N→LAST) を
+    // registerDelegate で収集し records 配列を返す。
+    // これらは `bleOpEntries` が生成する "ack" 返しのハンドラ (ble.biometric.cardGet 等) を
+    // topLevelEntries に明示し override する。override の理由: biometric.js の BIOMETRIC_RPC_OPS
+    // では result:"ack" 宣言だが実際には publish 収集が必要で、ack だけ返しても消費者は実データを
+    // 取得できない (P1-8 の問題の本質)。
+    //
+    // タイムアウト: ble.wifi.scan と同じ収集時間をデフォルトとする (collectMs param で上書き可)。
+    // experimental (STABLE_METHODS 非掲載) — P4-1 の changelog に記載。
+    ...(() => {
+      // 5 op の共通ヘルパ: SesameBle.use → biometricView → collectBiometricList を共通化する。
+      /**
+       * type (card/passcode/finger/face/palm) に対応する biometric view を SesameBle facade から選ぶ。
+       * finger は Bike3 の fingerPrint view、それ以外は biometric view を使う。
+       * CLI の biometricView (cli/ble.js) と同一判別ロジック。
+       * @param {import("../ble/index.js").SesameBle} ble
+       * @param {string} type
+       * @returns {Record<string, Function>}
+       */
+      function biometricViewOf(ble, type) {
+        const caps = ble.capabilities;
+        if (type === "finger" && caps.fingerprint && !caps.biometric) {
+          return /** @type {Record<string, Function>} */ (/** @type {unknown} */ (ble.fingerPrint));
+        }
+        return /** @type {Record<string, Function>} */ (/** @type {unknown} */ (ble.biometric));
+      }
+      /** @param {string} type card|passcode|finger|face|palm */
+      const bioListEntry = (type) => {
+        const spec = BIO_LIST[/** @type {keyof typeof BIO_LIST} */ (type)];
+        // op パスは BIOMETRIC_RPC_OPS / FINGERPRINT_RPC_OPS の getter 名に合わせる:
+        //   card → biometric.cardGet
+        //   passcode → biometric.passcodeGet
+        //   face → biometric.faceListGet
+        //   palm → biometric.palmListGet
+        //   finger → fingerPrint.fingerPrints
+        return {
+          summary: t("serve.sum.bleBioListGet", { type }),
+          params: [
+            ...bleTargetParams,
+            { name: "collectMs", required: false, desc: t("serve.desc.bleCollectMs"), schema: N },
+          ],
+          result: "{ records: Array<{id, name, type} | object> }",
+          handler: async (/** @type {HandlerCtx} */ { hub, params }) => {
+            const collectMs = typeof params.collectMs === "number" ? params.collectMs : 8_000;
+            return SesameBle.use(bleUseOptsFromParams(hub, params), (ble) => {
+              const cmds = biometricViewOf(ble, type);
+              return collectBiometricList(cmds, spec, collectMs).then((records) => ({ records }));
+            });
+          },
+        };
+      };
+      return {
+        "ble.biometric.cardGet":    bioListEntry("card"),
+        "ble.biometric.passcodeGet": bioListEntry("passcode"),
+        "ble.biometric.faceListGet": bioListEntry("face"),
+        "ble.biometric.palmListGet": bioListEntry("palm"),
+        "ble.fingerPrint.fingerPrints": bioListEntry("finger"),
+      };
+    })(),
     "ble.register": {
       summary: t("serve.sum.bleRegister"),
       params: [

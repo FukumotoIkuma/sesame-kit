@@ -218,6 +218,7 @@ declare namespace _default {
         "cli.opsNone": string;
         "cli.secondsRange": string;
         "cli.cloudNotLoggedIn": string;
+        "cli.os2BleNeedSsmPublicKey": string;
         "cli.okMigrated": string;
         "cli.imported": string;
         "cli.importedNone": string;
@@ -593,6 +594,7 @@ declare namespace _default {
         "cli.opsNone": string;
         "cli.secondsRange": string;
         "cli.cloudNotLoggedIn": string;
+        "cli.os2BleNeedSsmPublicKey": string;
         "cli.okMigrated": string;
         "cli.imported": string;
         "cli.importedNone": string;

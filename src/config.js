@@ -20,7 +20,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { configPaths } from "./paths.js";
-import { writeSecretJson } from "./secure-fs.js";
+import { writeSecretJson, withFileLock } from "./secure-fs.js";
 import { DEFAULT_IR_TYPE } from "./crypto.js";
 import { t } from "./i18n.js";
 import { badRequest } from "./util.js";
@@ -311,6 +311,64 @@ export function normalizeConfig(raw = {}) {
   return cfg;
 }
 
+// merge 規則 (P1-6 / ARCH-01 — プロセス間 lost-update 防止):
+//
+// serve デーモン (refreshAccount/syncLocks/syncHub3s/syncRemotes 等) と
+// CLI (locks add / remote add / init 等) が同じ config.json を共有するため、
+// 「デーモンが syncLocks で secretKey を保存 → 古いスナップショットを持つ CLI が save」
+// の順で新規デバイスの secretKey エントリが消える競合が現実に起きうる。
+// save はロック内で「ディスクを読み直し → merge → 書き込み」してこれを防ぐ。
+//
+//   1. コレクション (devices/remotes) はキー単位の union で保持する:
+//      ディスク側にのみ存在するキー (他プロセスが追加したエントリ) は温存する。
+//      「自分が触っていないキーを消さない」が核心。
+//      ただし「自分が load した時点で存在していたが今は消えているキー」(= 意図的削除) は
+//      ディスク側に残っていても復活させない (baseline 追跡で判定する)。
+//   2. スカラ設定 (companyID/wsUrl/lang/default/* 等) は incoming 優先:
+//      呼び出し側の意図的な変更 (CLI からの lang 書き換え等) を
+//      ディスク値で上書きしない。
+//   3. 削除系 API (removeLock 等) はロック内 load-modify-save に統一:
+//      ConfigStore インスタンスは load() 時点のコレクションキー集合を
+//      _baselineKeys に記録し、save() で「load 時に存在したが今は無いキー =
+//      意図的削除」を判定する。tombstone は使用しない。
+//   4. ディスクが壊れた JSON の場合は merge せず incoming で上書き回復する
+//      (save まで SyntaxError で死ぬと破損から復旧する手段が clear しかなくなる)。
+/**
+ * ディスク上の現在値と呼び出し側の変更内容をマージする。
+ * コレクション (devices/remotes) はキー単位 union で合成するが、
+ * baselineKeys に含まれ incoming に存在しないキーは「意図的削除」として
+ * ディスク側からも除外する (規則 3)。スカラは incoming 優先 (規則 2)。
+ * @param {Record<string, unknown>|null} disk  ロック内で読み直したディスクの persist 形式
+ * @param {Record<string, unknown>} incoming  save 呼び出し側の persist 形式
+ * @param {{ devices?: ReadonlySet<string>, remotes?: ReadonlySet<string> }} baselineKeys
+ *   load() 時点のコレクションキー集合。意図的削除の判定に使う。
+ * @returns {Record<string, unknown>}
+ */
+function mergeConfigData(disk, incoming, baselineKeys = {}) {
+  if (!disk) return incoming;
+  /** @type {Record<string, unknown>} */
+  const merged = { ...disk, ...incoming };
+  // コレクション (devices/remotes) はキー単位 union:
+  // ディスク側キー = 他プロセスが追加したエントリとして温存するが、
+  // 自分が load 時点で知っていた (baselineKeys に含まれる) のに incoming に無い
+  // キー = 意図的削除なので復活させない。
+  for (const col of /** @type {const} */ (["devices", "remotes"])) {
+    const diskCol = /** @type {Record<string, unknown>} */ (disk[col] ?? {});
+    const incomingCol = /** @type {Record<string, unknown>} */ (incoming[col] ?? {});
+    const baseline = baselineKeys[col] ?? new Set();
+    /** @type {Record<string, unknown>} */
+    const result = {};
+    for (const [k, v] of Object.entries(diskCol)) {
+      // baseline に含まれるが incoming に無い = このインスタンスが意図的に削除した
+      if (baseline.has(k) && !(k in incomingCol)) continue;
+      result[k] = v;
+    }
+    Object.assign(result, incomingCol);
+    merged[col] = result;
+  }
+  return merged;
+}
+
 export class ConfigStore {
   /**
    * @param {string} configPath 絶対パス
@@ -320,6 +378,11 @@ export class ConfigStore {
     this.configPath = configPath;
     /** @type {ConfigData|null} */
     this.data = null;
+    // P1-6: merge の意図的削除判定に使うキー集合 (load() 時点で存在したコレクションキー)。
+    // baseline に含まれ save() 時に存在しないキーは「このインスタンスが削除した」と判定し、
+    // ディスク側に残っていても復活させない (規則 3)。
+    /** @type {{ devices: Set<string>, remotes: Set<string> }} */
+    this._baselineKeys = { devices: new Set(), remotes: new Set() };
   }
 
   /**
@@ -341,6 +404,7 @@ export class ConfigStore {
     if (!existsSync(this.configPath)) {
       this.data = emptyConfig();
       this._reproject();
+      this._recordBaseline();
       return /** @type {LoadedConfig} */ (this.data);
     }
     /** @type {Partial<ConfigData>} */
@@ -353,8 +417,22 @@ export class ConfigStore {
     // P5-6: 旧 shape の解釈は migrateConfig (MIGRATIONS テーブル)、最新 shape の正規化は
     // normalizeConfig という役割分担で通す。
     this.data = normalizeConfig(migrateConfig(raw));
+    this._recordBaseline();
     if (forced) { try { this.save(); } catch { /* 読み取り専用環境では in-memory のみ */ } }
     return /** @type {LoadedConfig} */ (this.data);
+  }
+
+  /**
+   * load() / save() 完了後に現在の devices/remotes キー集合を baseline として記録する。
+   * merge の意図的削除判定 (_baselineKeys) を最新状態に保つ。
+   * @private
+   */
+  _recordBaseline() {
+    const cfg = /** @type {ConfigData} */ (this.data);
+    this._baselineKeys = {
+      devices: new Set(Object.keys(cfg.devices || {})),
+      remotes: new Set(Object.keys(cfg.remotes || {})),
+    };
   }
 
   /** devices{} から locks{}/hub3s{} の派生 view (旧 shape) を都度組み立てる。reader 互換用。 */
@@ -380,15 +458,41 @@ export class ConfigStore {
     // save() で黙って消していた (ダウングレード/新旧併用で破壊的)。ホワイトリストは
     // ドキュメントとしてのみ残し、除外は派生 view 専用のブラックリストに限定する。
     /** @type {Record<string, unknown>} */
-    const persist = {};
+    const incoming = {};
     const data = /** @type {Record<string, unknown>} */ (this.data);
     for (const [k, v] of Object.entries(data)) {
       if (DERIVED_KEYS.includes(k)) continue; // locks/hub3s は devices からの再生成物なので書かない
-      if (v !== undefined) persist[k] = v;
+      if (v !== undefined) incoming[k] = v;
     }
+    // P1-6 / ARCH-01: プロセス間 lost-update 防止。
+    // ロック内で「ディスク再読込 (migrateConfig→normalizeConfig) → merge → アトミック書き込み」
+    // し、serve デーモンと CLI の concurrent save が競合してもエントリが失われないようにする。
+    // merge 規則は mergeConfigData のコメント参照。意図的削除の判定は _baselineKeys を渡す。
     // config.json には ロックの secretKey (32hex 平文) が入るので tokens.json 同様
     // mode 0600 / 親 0700 でアトミックに保存する (secure-fs.js に一本化)。
-    writeSecretJson(this.configPath, persist);
+    const baselineKeys = this._baselineKeys;
+    withFileLock(this.configPath, () => {
+      /** @type {Record<string, unknown>|null} */
+      let disk = null;
+      try {
+        if (existsSync(this.configPath)) {
+          const raw = /** @type {Record<string, unknown>} */ (JSON.parse(readFileSync(this.configPath, "utf8")));
+          // 規則 4: migrateConfig で旧 shape を正規化してから merge する。
+          // ただし DERIVED_KEYS (locks/hub3s) は merge の対象外 (再生成物)。
+          const migrated = /** @type {Record<string, unknown>} */ (migrateConfig(raw));
+          disk = {};
+          for (const [k, v] of Object.entries(migrated)) {
+            if (DERIVED_KEYS.includes(k)) continue;
+            if (v !== undefined) disk[k] = v;
+          }
+        }
+      } catch {
+        // 規則 4: 破損 JSON は merge をあきらめて incoming で上書き回復する。
+      }
+      writeSecretJson(this.configPath, mergeConfigData(disk, incoming, baselineKeys));
+    });
+    // save 後に baseline を更新: 次の save はここから計算された差分で削除を判定する。
+    this._recordBaseline();
   }
 
   /**

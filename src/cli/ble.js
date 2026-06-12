@@ -26,6 +26,9 @@ import {
   SesameBle, SesameOS2Ble, createBleTransport, capabilitiesForModel,
   BLE_RPC_ALLOWLIST, OS2_BLE_RPC_ALLOWLIST,
 } from "../ble/index.js";
+// P1-8 (R2:SURF-26 + R2:SURF-39): 生体一覧収集ロジックを biometric.js へ移管済み。
+// CLI はここから import して差し替える (collect ロジックの単一実装 = biometric.js)。
+import { collectBiometricList, BIO_LIST } from "../ble/biometric.js";
 // ble.invoke RPC と「同じドット op パス・同じ JSON 引数 revive 規約・同じ allowlist 照合」を
 // 共有するため、単一実装 (serve/registry.js) を import する (P4-1 段階1: CLI 汎用脱出口)。
 import { invokePath, collectWifiScan, wifiViewOf, bleCommandAck } from "../serve/registry.js";
@@ -83,18 +86,13 @@ import { hexToBuf } from "../crypto.js";
 
 /**
  * BIO_LIST の 1 entry (getter 名 + collect 用 delegate コールバック名)。
- * @typedef {{ getter: string, start: string, recv: string, end: string, single?: boolean }} BioSpec
+ * P1-8: biometric.js で定義・export 済み。ここは型参照のみ。
+ * @typedef {import("../ble/biometric.js").BioSpec} BioSpec
  */
 
-// 生体タイプ別の「GET メソッド名」と「収集に使う delegate コールバック名」。
-// recv が (device,id,name,type) を返すか単一オブジェクトを返すかで record 化を変える。
-export const BIO_LIST = {
-  card: { getter: "cardGet", start: "onCardReceiveStart", recv: "onCardReceive", end: "onCardReceiveEnd" },
-  passcode: { getter: "passcodeGet", start: "onKeyBoardReceiveStart", recv: "onKeyBoardReceive", end: "onKeyBoardReceiveEnd" },
-  finger: { getter: "fingerPrints", start: "onFingerPrintReceiveStart", recv: "onFingerPrintReceive", end: "onFingerPrintReceiveEnd" },
-  face: { getter: "faceListGet", start: "onFaceReceiveStart", recv: "onFaceReceive", end: "onFaceReceiveEnd", single: true },
-  palm: { getter: "palmListGet", start: "onPalmReceiveStart", recv: "onPalmReceive", end: "onPalmReceiveEnd", single: true },
-};
+// BIO_LIST / collectBiometricList は biometric.js へ移管済み (P1-8 R2:SURF-26 + R2:SURF-39)。
+// import は本ファイル冒頭で行う。re-export は後方互換のため維持する。
+export { BIO_LIST, collectBiometricList } from "../ble/biometric.js";
 
 // 生体モード取得メソッド (card/passcode/finger/face/palm → *ModeGet)。応答 1 値の単純 request。
 const BIO_MODE = {
@@ -824,48 +822,12 @@ function biometricView(dev, type, caps) {
   );
 }
 
-/**
- * GET 要求 → publish(START→NOTIFY×N→END) を収集し、END または timeout で確定する。
- * (テストのため export。spec は BIO_LIST の 1 entry。)
- * @param {Record<string, Function>} cmds  biometricView の返り値 (registerDelegate + getter)
- * @param {BioSpec} spec
- * @param {number} timeoutMs
- * @returns {Promise<unknown[]>}
- */
-export function collectBiometricList(cmds, spec, timeoutMs) {
-  return new Promise((/** @type {(records: unknown[]) => void} */ resolve) => {
-    /** @type {unknown[]} */
-    const records = [];
-    let done = false;
-    /** @type {() => void} */
-    let off = () => {};
-    /** @type {ReturnType<typeof setTimeout>|null} */
-    let timer = null;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      if (timer) clearTimeout(timer);
-      off();
-      resolve(records);
-    };
-    const delegate = {
-      [spec.start]: () => {},
-      [spec.recv]: spec.single
-        ? (/** @type {unknown} */ _dev, /** @type {unknown} */ obj) => records.push(obj)
-        : (/** @type {unknown} */ _dev, /** @type {unknown} */ id, /** @type {unknown} */ name, /** @type {unknown} */ cardType) =>
-            records.push({ id, name: bufToText(name), type: cardType }),
-      [spec.end]: () => finish(),
-    };
-    off = cmds.registerDelegate(delegate);
-    timer = setTimeout(finish, timeoutMs);
-    // GET を撃つ (応答 ack は即返るが、実データは publish で来る → finish は END/timeout 駆動)。
-    Promise.resolve(cmds[spec.getter]()).catch(() => { /* publish/timeout を待つ */ });
-  });
-}
+// collectBiometricList / BIO_LIST は biometric.js へ移管済み (P1-8 R2:SURF-26 + R2:SURF-39)。
+// export { BIO_LIST, collectBiometricList } は本ファイル上部の re-export 宣言で行っている。
 
 /**
  * record (card/passcode/finger は {id,name,type}、face/palm はパース済みオブジェクト) を1行に。
- * (テストのため export。)
+ * (テストのため export。CLI 出力整形専用、biometric.js へは移さない。)
  * @param {unknown} r
  * @returns {string}
  */
@@ -875,25 +837,6 @@ export function formatRecord(r) {
     return `${rec.id}\t${rec.name || ""}\ttype=${rec.type ?? "?"}`;
   }
   return JSON.stringify(r);
-}
-
-/**
- * Buffer/Uint8Array の名前を UTF-8 文字列へ。既に文字列ならそのまま。
- * @param {unknown} v
- * @returns {string}
- */
-function bufToText(v) {
-  if (v == null) return "";
-  if (typeof v === "string") return v;
-  // v は Buffer/Uint8Array 等のバイト列を想定 (BLE 名前フィールド)。Buffer.from の
-  // 入力許容型 (WithImplicitCoercion<ArrayLike<number>|...>) に合わせてナロー化する。
-  try {
-    // 末尾の NUL を線形ループで除去 (正規表現 /\0+$/ は ReDoS 懸念のため避ける)。
-    const s = Buffer.from(/** @type {Uint8Array|number[]} */ (v)).toString("utf8");
-    let end = s.length;
-    while (end > 0 && s.charCodeAt(end - 1) === 0x00) end--;
-    return s.slice(0, end);
-  } catch { return String(v); }
 }
 
 /**
@@ -911,6 +854,25 @@ function parseHexOption(ctx, value, name) {
     ctx.die(t("ble.cli.badHex", { name }), 2);
     return undefined;
   }
+}
+
+/**
+ * Buffer/Uint8Array の名前を UTF-8 文字列へ変換する (cmdScript の Bot スクリプト名用)。
+ * biometric.js の bioNameToText と同一ロジックだが CLI ローカルの用途 (Bot2 script 名) のため
+ * こちらに残す。biometric.js の collectBiometricList は bioNameToText を独立に持つ。
+ * @param {unknown} v
+ * @returns {string}
+ */
+function bufToText(v) {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  try {
+    const s = Buffer.from(/** @type {Uint8Array|number[]} */ (v)).toString("utf8");
+    let end = s.length;
+    // 末尾 NUL 除去。
+    while (end > 0 && s.charCodeAt(end - 1) === 0x00) end--;
+    return s.slice(0, end);
+  } catch { return String(v); }
 }
 
 /**

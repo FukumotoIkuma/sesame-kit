@@ -127,10 +127,46 @@ function hexToUuid(hex) {
 const WM2_UUID_PREFIX = "00000000055afd810001";
 const HUB3_UUID_PREFIX = "00000000055afd810d00";
 
+// OS2 の productType 集合 (SESAME2/BOT_OS2/BIKE_OS2 の kind を持つ)。
+// PRODUCT_TYPES から動的に導出し、ハードコードを避ける。
+const OS2_PRODUCT_TYPES = new Set(
+  Object.entries(PRODUCT_TYPES)
+    .filter(([, v]) => v.kind === KIND.SESAME2 || v.kind === KIND.BOT_OS2 || v.kind === KIND.BIKE_OS2)
+    .map(([k]) => Number(k)),
+);
+// 現状: 0(sesame_2/SESAME2), 2(ssmbot_1/BOT_OS2), 3(bike_1/BIKE_OS2), 4(sesame_4/SESAME2)
+
+/**
+ * OS2 機種の BLE deviceName (base64 22 文字) を 16B UUID に変換する。
+ *
+ * OS2 の deviceID は manufacturerData ではなく BLE advertise の deviceName(base64 22 文字 + "==")
+ * から導出する (OS3 系と根本的に異なる)。
+ *   (deviceName + "==").base64decodeHex().noHashtoUUID()
+ * 出典: Sesame2BleAdvertisement.kt:68-74
+ *       DataExtention.kt:36-46 (base64decodeHex / noHashtoUUID)
+ *
+ * base64 decode 後に 16B でなければ null を返す (Kotlin の catch→null の写像)。
+ *
+ * @param {string|null|undefined} localName BLE advertise の deviceName
+ * @returns {string|null} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字) or null
+ */
+export function os2NameToUuid(localName) {
+  if (!localName) return null;
+  try {
+    // deviceName + "==" を base64 デコードして hex 化する。
+    // 出典: DataExtention.kt:36-39 base64decodeHex / DataExtention.kt:41-46 noHashtoUUID
+    const decoded = Buffer.from(localName + "==", "base64");
+    if (decoded.length !== 16) return null; // Kotlin の catch→null に相当: 長さ不正は null
+    return hexToUuid(decoded.toString("hex"));
+  } catch {
+    return null; // Kotlin の catch→null
+  }
+}
+
 /**
  * SESAME の advertise manufacturerData を機種別レイアウトで解析する
- * (Sesame2BleAdvertisement.kt CHadv の移植)。WM2 / Hub3 / SS5(Touch/Face 等) の
- * 3 レイアウトと productType・registered フラグ・isConnectable を網羅する。
+ * (Sesame2BleAdvertisement.kt CHadv の移植)。WM2 / Hub3 / OS2 / SS5(Touch/Face 等) の
+ * 4 レイアウトと productType・registered フラグ・isConnectable を網羅する。
  *
  * レイアウト (advBytes 座標、md では +ADV_OFF):
  *   advBytes[0]            : productType (CHProductModel.getByValue, copyOfRange(0,1))
@@ -138,15 +174,18 @@ const HUB3_UUID_PREFIX = "00000000055afd810d00";
  *   advBytes[2]            : それ以外の registered bit0 / adv_tag_b1=bit1 (行33,43)
  *   WM2  deviceID          : advBytes[3..9) の 6B → WM2_UUID_PREFIX に連結 (行49-56)
  *   Hub3 deviceID          : advBytes[2..8) の 6B → HUB3_UUID_PREFIX に連結 (行58-66)
+ *   OS2  deviceID          : (localName + "==").base64decodeHex().noHashtoUUID() (行68-74)
  *   SS5  deviceID          : advBytes[3..19) の 16B をそのまま UUID 化 (行76-89)
  *   WM2  isConnectable     : advBytes.last()==0 (行51)
  *
  * @param {Buffer|Uint8Array|null|undefined} md noble の manufacturerData (company ID 2B 含む)
+ * @param {string|null|undefined} [localName] BLE advertise の deviceName。OS2 機種の deviceID 導出に必須。
+ *   省略可 (後方互換): OS2 機種で localName が無い場合は deviceUUID=null になる。
  * @returns {{productType:number, model:(string|null), kind:string, isRegistered:boolean,
  *            advTagB1:boolean, isConnectable:boolean, deviceUUID:(string|null)}|null}
  *   SESAME でない (company 不一致 / 長さ不足) は null。
  */
-export function parseAdvertisement(md) {
+export function parseAdvertisement(md, localName) {
   if (!md) return null;
   const b = Buffer.isBuffer(md) ? md : Buffer.from(md);
   // company ID は LE で 5A 05 (= 0x055A)。先頭 2B が一致しなければ SESAME でない。
@@ -183,6 +222,12 @@ export function parseAdvertisement(md) {
       const idHex = b.subarray(ADV_OFF + 2, ADV_OFF + 8).toString("hex");
       deviceUUID = hexToUuid(HUB3_UUID_PREFIX + idHex);
     }
+  } else if (OS2_PRODUCT_TYPES.has(productType)) {
+    // OS2 機種 (SS2/Bot1/Bike1/SS4): deviceID は manufacturerData ではなく BLE deviceName から導出。
+    // OS2 の manufacturerData は短く 16B UUID を含まない。
+    // (deviceName + "==").base64decodeHex().noHashtoUUID()
+    // 出典: Sesame2BleAdvertisement.kt:68-74 / DataExtention.kt:36-46
+    deviceUUID = os2NameToUuid(localName);
   } else {
     // SS5/Touch/Face/Bot2/Bike2/OpenSensor/Remote 等: advBytes[3..18] (16B、inclusive) = md[5..21)。
     if (b.length >= ADV_OFF + 19) {
@@ -197,13 +242,14 @@ export function parseAdvertisement(md) {
 /**
  * SESAME の advertise manufacturerData から deviceUUID を抽出する (後方互換の薄いラッパ)。
  * 機種別レイアウトの全分岐は parseAdvertisement に集約し、ここはその deviceUUID だけを返す。
- * これにより SS5 だけでなく WM2/Hub3 でも正しい UUID が得られる (旧実装は SS5 レイアウト固定だった)。
+ * これにより SS5 だけでなく WM2/Hub3/OS2 でも正しい UUID が得られる (旧実装は SS5 レイアウト固定だった)。
  *
  * @param {Buffer|Uint8Array|null|undefined} md
+ * @param {string|null|undefined} [localName] BLE advertise の deviceName (OS2 機種の UUID 導出に必要)
  * @returns {string|null} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字) or null
  */
-export function advToDeviceUUID(md) {
-  const parsed = parseAdvertisement(md);
+export function advToDeviceUUID(md, localName) {
+  const parsed = parseAdvertisement(md, localName);
   return parsed ? parsed.deviceUUID : null;
 }
 
@@ -422,7 +468,8 @@ export async function scanSesames({ deviceUUIDs = [], timeoutMs = 8_000, debug =
     const to = setTimeout(finish, timeoutMs);
     /** @param {NoblePeripheral} p */
     const onDiscover = (p) => {
-      const uuid = advToDeviceUUID(p.advertisement?.manufacturerData);
+      // OS2 機種の UUID 導出に localName が必要。Sesame2BleAdvertisement.kt:68-74 参照。
+      const uuid = advToDeviceUUID(p.advertisement?.manufacturerData, p.advertisement?.localName);
       if (!uuid) return; // SESAME でない
       if (want.size && !want.has(nobleUuid(uuid))) return; // 対象外
       if (!found.has(uuid)) { found.set(uuid, p); log("found", uuid); }
@@ -453,7 +500,9 @@ export async function scanSesames({ deviceUUIDs = [], timeoutMs = 8_000, debug =
  *           localName:(string|null), address:(string|null), peripheral:any}|null}
  */
 export function peripheralToDiscovery(p, { includeUnknown = false } = {}) {
-  const parsed = parseAdvertisement(p?.advertisement?.manufacturerData);
+  // OS2 機種の deviceID 導出に localName が必要なため peripheral.advertisement.localName を渡す。
+  // 出典: Sesame2BleAdvertisement.kt:68-74 (deviceName → UUID 導出)
+  const parsed = parseAdvertisement(p?.advertisement?.manufacturerData, p?.advertisement?.localName);
   if (!parsed) return null;            // SESAME でない (company 不一致 / 長さ不足)
   if (!parsed.deviceUUID) return null; // deviceID=null は列挙しない (操作を捏造しない)
   // SDK の onScanResult は productModel?.let で未知機種を無視する。既定はそれに倣い model=null を除外。
@@ -747,11 +796,18 @@ export class NobleTransport {
       /** @param {NoblePeripheral} peripheral */
       const onDiscover = async (peripheral) => {
         const md = peripheral.advertisement?.manufacturerData;
-        const advUuid = advToDeviceUUID(md);
-        // 照合: deviceUUID 指定があれば advertise の deviceUUID か BLE アドレスで一致、
+        // OS2 機種の UUID 導出に localName が必要。Sesame2BleAdvertisement.kt:68-74 参照。
+        const localName = peripheral.advertisement?.localName;
+        const parsed = parseAdvertisement(md, localName);
+        // SESAME 判定: company ID 一致 (parseAdvertisement が非 null) であれば SESAME とみなす。
+        // 旧実装の `advUuid != null` ゲートは OS2 機種を address 照合の前に弾いていたため修正。
+        // OS2 は manufacturerData から UUID を取れないが company ID は 0x055A で全機種共通 (BLE-transport 内で
+        // parseAdvertisement が company ID チェック済み)。advUuid=null でも address 照合を許可する。
+        if (!parsed) return;
+        const advUuid = parsed.deviceUUID;
+        // 照合: deviceUUID 指定があれば advertise の deviceUUID で一致、
+        // address 指定があれば BLE アドレスで一致 (OS2 で advUuid=null のとき address 照合が必要)、
         // どちらも未指定なら最初に見つかった SESAME (company 0x055A) を採用。
-        const isSesame = advUuid != null;
-        if (!isSesame) return;
         const match =
           (!deviceUUID && !address) ||
           (deviceUUID && advUuid && idEquals(advUuid, deviceUUID)) ||

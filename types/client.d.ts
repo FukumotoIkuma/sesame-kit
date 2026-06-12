@@ -725,8 +725,15 @@ export class SesameHub3 {
     onIRLearned(hub3Name: string, fn: (data: unknown) => void): Promise<() => Promise<void>>;
     /**
      * デバイス state push の購読 (複数デバイスまとめて)。
+     *
+     * P1-4: WS 再接続後にサーバ側購読が失われるため、再接続時に購読フレームを再送する。
+     * vendor: useManageDevice.js:352-358 — `onConnectionIdChange(() => getCompanyDevices())`
+     * → useManageDevice.js:48-51 で `subscribeDevices(...)` を再送。
+     * onLockStateChangeDevice と同型の onReconnect パターン。
+     *
      * @param {{deviceUUID:string, deviceModel?:string}[]} items
      * @param {(msg:any) => void} fn
+     * @returns {() => void} unsubscribe
      */
     onDeviceUpdate(items: {
         deviceUUID: string;

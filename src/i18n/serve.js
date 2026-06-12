@@ -196,7 +196,11 @@ Examples:
     "serve.sum.eventsUnsubscribe": "unsubscribe from events",
     "serve.sum.nsOp": "{op} of {ns} (auto-exposed)",
     "serve.desc.nsParams": "pass the biz3 op params as-is",
-    // ---- ble.* 専用 RPC (P4-1 段階2) ----
+    // ---- ble.* 専用 RPC (P4-1 段階2 / P1-7) ----
+    // P1-7 (R2:SURF-25): ble.scan — 近接 SESAME 発見一覧 (鍵不要)
+    "serve.sum.bleScan": "[experimental] scan for nearby SESAME devices over BLE (no key required; returns deviceUUID/model/kind/isRegistered/rssi per device)",
+    "serve.desc.bleScanTimeoutMs": "scan duration in ms (default: transport default ~8000)",
+    "serve.desc.bleScanIncludeUnknown": "include devices whose productType is not recognized (default: false)",
     "serve.sum.bleUpdateFirmware": "start BLE firmware update (WM2: OPEN_OTA_SERVER / Hub3: MOVE_TO / OS3 locks: no command sent, SDK no-op path)",
     "serve.sum.bleReset": "factory-reset an OS3 device over BLE (destructive: invalidates its keys)",
     "serve.sum.blePosition": "configure lock/unlock angles over BLE (configureLockPosition; OS3 Sesame5/6-family locks)",
@@ -206,7 +210,9 @@ Examples:
     "serve.sum.bleWifiConnect": "connect WM2 to the configured Wi-Fi (CONNECT_WIFI; WM2 only)",
     "serve.desc.bleModelWifi": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
     "serve.desc.bleCompanyId": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
-    "serve.desc.bleCollectMs": "how long to collect SSID publishes in ms (default 8000; Hub3 finishes early on the SSID_LAST marker)",
+    "serve.desc.bleCollectMs": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+    // P1-8 (R2:SURF-26 + R2:SURF-39): 生体一覧専用収集ハンドラ
+    "serve.sum.bleBioListGet": "[experimental] retrieve the registered {type} list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
     "serve.desc.blePositionLock": "lock angle (signed 16-bit integer)",
     "serve.desc.blePositionUnlock": "unlock angle (signed 16-bit integer)",
     "serve.bleWifiNotSupported": "{label} has no Wi-Fi provisioning over BLE (WM2/Hub3 only; check the model param)",
@@ -445,7 +451,11 @@ Watch events (SSE):
     "serve.sum.eventsUnsubscribe": "イベント購読解除",
     "serve.sum.nsOp": "{ns} の {op} (自動公開)",
     "serve.desc.nsParams": "biz3 op の params をそのまま渡す",
-    // ---- ble.* 専用 RPC (P4-1 段階2) ----
+    // ---- ble.* 専用 RPC (P4-1 段階2 / P1-7) ----
+    // P1-7 (R2:SURF-25): ble.scan — 近接 SESAME 発見一覧 (鍵不要)
+    "serve.sum.bleScan": "[experimental] BLE で周辺 SESAME デバイスをスキャン (鍵不要。deviceUUID/model/kind/isRegistered/rssi を返す)",
+    "serve.desc.bleScanTimeoutMs": "スキャン時間 ms (既定: transport の既定値 ~8000)",
+    "serve.desc.bleScanIncludeUnknown": "productType が未知のデバイスを含める (既定: false)",
     "serve.sum.bleUpdateFirmware": "BLE ファームウェア更新を開始 (WM2: OPEN_OTA_SERVER / Hub3: MOVE_TO / OS3 ロック系: SDK 同様コマンド無送信)",
     "serve.sum.bleReset": "OS3 デバイスを BLE で工場出荷状態へ戻す (破壊的: 登録済みの鍵が無効化される)",
     "serve.sum.blePosition": "施錠/解錠角を BLE で設定 (configureLockPosition。OS3 Sesame5/6 系ロック)",
@@ -455,7 +465,9 @@ Watch events (SSE):
     "serve.sum.bleWifiConnect": "WM2 を設定済み Wi-Fi へ接続 (CONNECT_WIFI。WM2 のみ)",
     "serve.desc.bleModelWifi": "デバイス model (必須: WM2 [専用 GATT] か Hub3 かのコマンド体系を決める)",
     "serve.desc.bleCompanyId": "WM2 connect の verification に使う companyId (既定: app.properties の API_GATEWAY_CLIENT_ID)",
-    "serve.desc.bleCollectMs": "SSID publish の収集時間 ms (既定 8000。Hub3 は SSID_LAST マーカーで早期確定)",
+    "serve.desc.bleCollectMs": "publish の収集時間 ms (既定 8000。Wi-Fi Hub3 は SSID_LAST マーカーで早期確定)",
+    // P1-8 (R2:SURF-26 + R2:SURF-39): 生体一覧専用収集ハンドラ
+    "serve.sum.bleBioListGet": "[experimental] BLE で登録済み {type} 一覧を取得 (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish 収集)",
     "serve.desc.blePositionLock": "施錠角 (符号付き 16bit 整数)",
     "serve.desc.blePositionUnlock": "解錠角 (符号付き 16bit 整数)",
     "serve.bleWifiNotSupported": "{label} は BLE の Wi-Fi プロビジョニングを持ちません (WM2/Hub3 のみ。model param を確認してください)",

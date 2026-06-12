@@ -285,13 +285,20 @@ export async function switchRechargeableBattery(client, { deviceUUID, isRecharge
  *
  * @param {WsClient} client
  * @param {{companyID: string, items: any[], onUpdate: (msg: any) => void}} p
- * @returns {() => void} unsubscribe
+ * @returns {{ unsubscribe: () => void, sendFrame: () => void }}
  */
 export function subscribeDevicesUpdate(client, { companyID, items, onUpdate }) {
-  client.send({ action: ACT_MANAGE, op: "subscribeDevicesUpdate", items, companyID });
-  return client.subscribe(`biz3TriggerLocker:pubDeviceStateChange`, (msg) => {
+  // P1-4: 購読フレーム送信部分を関数化し、WS 再接続時の再送に利用できるようにする。
+  // サーバは接続ごとに購読状態を持つため、再接続後は必ずフレームを再送しなければならない
+  // (vendor: useManageDevice.js:352-358 — onConnectionIdChange で getCompanyDevices() → subscribeDevices())。
+  const sendFrame = () => {
+    client.send({ action: ACT_MANAGE, op: "subscribeDevicesUpdate", items, companyID });
+  };
+  sendFrame();
+  const offSub = client.subscribe(`biz3TriggerLocker:pubDeviceStateChange`, (msg) => {
     try { onUpdate(msg); } catch { /* ignore */ }
   });
+  return { unsubscribe: offSub, sendFrame };
 }
 
 /**

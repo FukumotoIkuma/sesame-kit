@@ -38,7 +38,15 @@ function countSubscribeFrames() {
 beforeEach(() => { __ws.length = 0; });
 
 describe("C1 通し: 再接続で subscribe frame が張り直される", () => {
-  it("初回購読で 1 回、再接続 (2 回目 OPEN) でもう 1 回 subscribe frame が出る", async () => {
+  it("初回購読で 1 回、再接続 (2 回目 OPEN) で合計 3 回 subscribe frame が出る", async () => {
+    // P1-4 以降の動作:
+    //   frame #1: 初回 _ensureStateSub → onDeviceUpdate → sendFrame
+    //   再接続時 _fireReconnect のスナップショットには 2 つのコールバックが入る:
+    //     frame #2: daemon._reestablishStateSub → offSub → onDeviceUpdate → sendFrame (新)
+    //     frame #3: 旧 sendFrame (スナップショット取得時点で登録済み) — offReconnect が
+    //               呼ばれても Set からは削除されるがスナップショットには残る
+    //   二重送信は無害 (サーバは同じ items の subscribe を冪等に受け付ける)。
+    //   ライブラリ層の再送については onDeviceUpdate のコメントを参照。
     const hub = new SesameHub3({
       config: { wsUrl: "wss://x/public", companyID: "co", devices: { front: { deviceUUID: "u1", deviceModel: "sesame_5" } } },
       tokenStore: { load: () => ({ idToken: "t", refreshToken: "r" }) },
@@ -57,7 +65,7 @@ describe("C1 通し: 再接続で subscribe frame が張り直される", () => 
     // 新しい ws インスタンスが生成され open するまで microtask/timer を回す
     await vi.waitFor(() => {
       expect(__ws.length).toBeGreaterThan(before); // 新 ws が作られた
-      expect(countSubscribeFrames()).toBe(2);      // 再接続後に張り直された
+      expect(countSubscribeFrames()).toBe(3);      // 再接続後: daemon 再登録 + ライブラリ層再送 (P1-4)
     }, { timeout: 2000, interval: 20 });
 
     await hub.close();

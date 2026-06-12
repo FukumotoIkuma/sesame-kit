@@ -243,6 +243,7 @@ export default {
     "cli.opsNone": "none",
     "cli.secondsRange": "seconds must be an integer in 0..65535 (0=disable).",
     "cli.cloudNotLoggedIn": "Not logged in to the cloud. Log in with `sesame login <email>` → `sesame verify`, or use `--ble-only` / `sesame session` to operate over BLE.",
+    "cli.os2BleNeedSsmPublicKey": "OS2 BLE login requires the device public key (ssmPublicKey). Save it once with `sesame locks add --ssm-public-key <128hex>` (value from `sesame ble os2-register`), or pass it via `sesame ble os2-invoke` instead.",
 
     // ---- migrate ----
     "cli.okMigrated": "OK: migrated to {dir}",
@@ -651,6 +652,7 @@ export default {
     "cli.opsNone": "なし",
     "cli.secondsRange": "seconds は 0..65535 の整数 (0=無効)。",
     "cli.cloudNotLoggedIn": "クラウド未ログインです。`sesame login <email>` → `sesame verify` でログインするか、BLE で操作する場合は `--ble-only` か `sesame session` を使ってください。",
+    "cli.os2BleNeedSsmPublicKey": "OS2 の BLE login にはデバイス公開鍵 (ssmPublicKey) が必要です。`sesame locks add --ssm-public-key <128hex>` で一度 config に保存してください (値は `sesame ble os2-register` の出力)。`sesame ble os2-invoke` でその都度渡す方法もあります。",
 
     // ---- migrate ----
     "cli.okMigrated": "OK: migrated to {dir}",
