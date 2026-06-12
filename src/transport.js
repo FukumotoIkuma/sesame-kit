@@ -114,6 +114,10 @@ function redactPayloadForLog(payload) {
     /** @type {Record<string, unknown>} */
     const out = {};
     for (const [k, val] of Object.entries(v)) {
+      // prototype 汚染キー (__proto__ / constructor / prototype) は動的書き込みすると
+      // out の prototype を汚染し得る (remote-property-injection)。ログ伏字では落とす
+      // (registry.js reviveJsonArg と同じ防御。実 payload には現れない)。
+      if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
       out[k] = SENSITIVE_LOG_KEYS.has(k) ? "***" : walk(val);
     }
     return out;

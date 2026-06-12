@@ -32,4 +32,14 @@ describe("debug ログの資格情報伏字", () => {
     c.send({ action: "x", apiKeyId: "SECRET_KEY_ID" });
     expect(logged()).toBe("");
   });
+
+  it("payload の __proto__/constructor キーで prototype 汚染しない (remote-property-injection)", () => {
+    const c = new Hub3WsClient({ wsUrl: "wss://example/public", idToken: "tok", debug: true });
+    c.send(JSON.parse('{"action":"x","__proto__":{"polluted":1},"constructor":"y","ok":1}'));
+    expect(({}).polluted).toBeUndefined(); // 汚染されていない
+    const out = logged();
+    expect(out).toContain("queued (not open)");
+    expect(out).toContain("ok"); // 通常キーは残る
+  });
+
 });
