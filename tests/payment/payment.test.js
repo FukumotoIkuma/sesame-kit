@@ -67,6 +67,28 @@ describe("payment namespace", () => {
     });
   });
 
+  // P3-4 (R2:BIZ-02): Free 会社は subscriptionId が undefined になり subId なしで送信される。
+  // 参照: references_web/src/api/useStripeInfo.js:200-219 — ガードは customerId のみで
+  //       subId は priorityCompany(:41-47) の subscriptionId が undefined のとき欠落する。
+  it("payUpdateLevel omits subId when not provided (Free company initial upgrade)", async () => {
+    const c = mockClient({ success: true, data: { accepted: true } });
+    await payUpdateLevel(c, {
+      companyID: "ch_A",
+      level: 2,
+      isUpgrade: true,
+    });
+    // subId キーが存在しないこと(undefined プロパティとして設定されていないこと)を確認
+    expect(c.sent[0]).not.toHaveProperty("subId");
+    expect(c.sent[0]).toEqual({
+      action: "biz3ManagePayment",
+      isUpgrade: true,
+      level: 2,
+      isCancel: false,
+      customerId: "ch_A",
+      op: "payUpdateLevel",
+    });
+  });
+
   it("getDevApiInfo omits update unless requested", async () => {
     const c = mockClient({ success: true, data: { apiKeyId: "key" } });
     await getDevApiInfo(c, { companyID: "ch_A", email: "owner@example.com" });

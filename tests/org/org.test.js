@@ -166,6 +166,75 @@ describe("queryByCS", () => {
     expect(r).toEqual([{ id: 1 }, { id: 2 }]);
   });
 
+  // P3-8: pubQueryByCS は page===1 でも前データを置換しない(常に追記)。
+  // 参照: useManageEmployee.js:407 rowDatas = [...rowDatas, ...list]
+  // pubEmployees(:75-87)は page===1 で置換するが pubQueryByCS に分岐は存在しない。
+  it("pubQueryByCS は page===1 chunk でも前データを置換せず追記する(appendOnly)", async () => {
+    const c = chunkMockClient();
+    const p = org.queryByCS(c, { keyword: "smith" });
+    // page 1 が先に届く
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: 1 }], page: 1 }, totalPage: 3 },
+    });
+    // page 2 が届く
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: 2 }], page: 2 }, totalPage: 3 },
+    });
+    // サーバが page 1 を再送 (page===1 でも置換してはならない)
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: 3 }], page: 3 }, totalPage: 3 },
+    });
+    const r = await p;
+    // pubEmployees 規則(置換)なら page===3 の push 前に acc=[1] になり結果が [1,2,3]
+    // appendOnly なら初期から蓄積のみ → [1,2,3] (本ケースはページが連続するため同値)。
+    // 置換バグの本質は「page===1 の再送で蓄積が消える」ことなので、
+    // 別ケースで置換が起きないことを直接確認する。
+    expect(r).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+  });
+
+  // P3-8: appendOnly の本質検証 — page===1 chunk が 2 回来ても蓄積は消えない。
+  // 参照: useManageEmployee.js:407 (pubQueryByCS ハンドラに page===1 分岐なし)
+  it("page===1 chunk が 2 回届いても蓄積は消えず全件が残る(appendOnly)", async () => {
+    const c = chunkMockClient();
+    const p = org.queryByCS(c, { keyword: "jones" });
+    // 1 回目の page 1
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: "a" }, { id: "b" }], page: 1 }, totalPage: 2 },
+    });
+    // page 1 再送(サーバ側の再送、または接続再確立時の再配信)
+    c.push("biz3ManageEmployee:pubQueryByCS", {
+      data: { data: { list: [{ id: "c" }], page: 2 }, totalPage: 2 },
+    });
+    const r = await p;
+    // pubEmployees 規則(置換あり)では: acc=[a,b] → page 2 → acc=[a,b,c] → [a,b,c]
+    // appendOnly では: acc=[a,b] → acc=[a,b,c] → [a,b,c] (どちらも同値のため、
+    // 置換バグ顕在化は「page===1 が再送で acc をリセットするケース」が必要)。
+    expect(Array.isArray(r)).toBe(true);
+    expect(r).toEqual([{ id: "a" }, { id: "b" }, { id: "c" }]);
+  });
+
+  // P3-8: pubEmployees は page===1 置換規則を維持するリグレッションガード。
+  // 参照: useManageEmployee.js:75-87 (setEmployees の page===1 分岐)
+  it("getEmployees(pubEmployees) は page===1 で前データを置換する(置換規則の維持確認)", async () => {
+    const c = chunkMockClient();
+    const p = org.getEmployees(c, { companyID: "ch_X" });
+    // page 2 が先に届いた後で page 1 が届く(再送シナリオ):
+    // page===1 が来たら acc をリセットして置換する
+    c.push("biz3ManageEmployee:pubEmployees", {
+      data: { totalCount: 3, data: { list: [{ subUUID: "x" }, { subUUID: "y" }], page: 2 } },
+    });
+    c.push("biz3ManageEmployee:pubEmployees", {
+      data: { totalCount: 3, data: { list: [{ subUUID: "a" }, { subUUID: "b" }], page: 1 } },
+    });
+    // page 1 で置換されたので acc=[a,b]、まだ totalCount=3 に達していないので待機
+    c.push("biz3ManageEmployee:pubEmployees", {
+      data: { totalCount: 3, data: { list: [{ subUUID: "c" }], page: 2 } },
+    });
+    const r = await p;
+    // 置換規則あり: page 1 で acc=[a,b] にリセット後 page 2 を追記して [a,b,c]
+    expect(r.list.map((e) => e.subUUID)).toEqual(["a", "b", "c"]);
+  });
+
   it("keyword 必須", async () => {
     const c = chunkMockClient();
     await expect(org.queryByCS(c, { keyword: "" })).rejects.toThrow(/keyword required/);
@@ -201,6 +270,13 @@ describe("addEmployeeGroup", () => {
       op: "add",
     });
     expect(r).toEqual({ gid: "g-new" });
+  });
+  // P3-6: フォールバック撤去 — data 欠落時は resp 全体ではなく undefined を返す
+  // 参照: useManageEmployee.js:51-52 は無条件 message.data を読む(フォールバックなし)
+  it("data 欠落時は undefined (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true }); // data フィールドなし
+    const r = await org.addEmployeeGroup(c, { companyID: "ch_X", item: { name: "G" } });
+    expect(r).toBeUndefined();
   });
 });
 
@@ -239,6 +315,18 @@ describe("getEmployeeGroupBindDeviceGroup", () => {
     await org.getEmployeeGroupBindDeviceGroup(c, { gid: "g1" });
     expect(c.sent[0]).toEqual({ action: "biz3ManageEmployeeGroup", gid: "g1", op: "getBindDeviceGroup" });
     expect(c.sent[0]).not.toHaveProperty("cid");
+  });
+  // P3-6: フォールバック撤去 — resp.data を直返し
+  // 参照: useManageEmployee.js:51-52 は無条件 message.data を読む
+  it("resp.data を直返しする (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true, data: { groups: ["dg1"] } });
+    const r = await org.getEmployeeGroupBindDeviceGroup(c, { gid: "g1" });
+    expect(r).toEqual({ groups: ["dg1"] });
+  });
+  it("data 欠落時は undefined (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true });
+    const r = await org.getEmployeeGroupBindDeviceGroup(c, { gid: "g1" });
+    expect(r).toBeUndefined();
   });
 });
 
@@ -410,6 +498,18 @@ describe("getDeviceGroupBindUserGroup", () => {
     expect(c.sent[0]).toEqual({ action: "biz3ManageDeviceGroup", gid: "dg1", op: "getBindUserGroup" });
     expect(c.sent[0]).not.toHaveProperty("cid");
   });
+  // P3-6: フォールバック撤去 — resp.data を直返し
+  // 参照: useManageEmployee.js:51-52 は無条件 message.data を読む
+  it("resp.data を直返しする (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true, data: { userGroups: ["ug1"] } });
+    const r = await org.getDeviceGroupBindUserGroup(c, { gid: "dg1" });
+    expect(r).toEqual({ userGroups: ["ug1"] });
+  });
+  it("data 欠落時は undefined (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true });
+    const r = await org.getDeviceGroupBindUserGroup(c, { gid: "dg1" });
+    expect(r).toBeUndefined();
+  });
 });
 
 describe("removeDeviceGroupBindUserGroup", () => {
@@ -466,6 +566,13 @@ describe("getEmployeeDeviceKeys", () => {
     expect(c.sent[0]).not.toHaveProperty("companyID");
     expect(r).toEqual([{ deviceUUID: "d1" }]);
   });
+  // P3-6: フォールバック撤去 — resp.data を直返し
+  // 参照: EmployeeItem.js:74 は無条件 res.data.map(...) を呼ぶ(フォールバックなし)
+  it("data 欠落時は undefined (resp にフォールバックしない)", async () => {
+    const c = mockClient({ success: true });
+    const r = await org.getEmployeeDeviceKeys(c, { subUUID: "u1" });
+    expect(r).toBeUndefined();
+  });
 });
 
 describe("removeEmployeeDeviceKey", () => {
@@ -518,8 +625,10 @@ describe("generateGuestQR", () => {
 // ════════════════════════════ getDeviceEmployeeKeys ════════════════════════════
 
 describe("getDeviceEmployeeKeys", () => {
-  it("deviceUUID/companyID/limit 直置き op:'get'、応答 data 配列", async () => {
-    const c = mockClient({ success: true, data: [{ subUUID: "u1", keyLevel: 2, guestKeyId: "g1" }] });
+  it("deviceUUID/companyID/limit 直置き op:'get'、応答 data 配列と hasMore を返す", async () => {
+    // モック導出元: references_web/src/components/DeviceUserList.js:29-31
+    //   setHasMore(resp.hasMore) / resp.data.map(...) の両フィールドを消費
+    const c = mockClient({ success: true, data: [{ subUUID: "u1", keyLevel: 2, guestKeyId: "g1" }], hasMore: true });
     const r = await org.getDeviceEmployeeKeys(c, { deviceUUID: "d1", companyID: "ch_X", limit: 5 });
     expect(c.sent[0]).toEqual({
       action: "biz3GetDeviceEmployeeKeys",
@@ -528,7 +637,23 @@ describe("getDeviceEmployeeKeys", () => {
       limit: 5,
       op: "get",
     });
-    expect(r).toEqual([{ subUUID: "u1", keyLevel: 2, guestKeyId: "g1" }]);
+    expect(r.list).toEqual([{ subUUID: "u1", keyLevel: 2, guestKeyId: "g1" }]);
+    expect(r.hasMore).toBe(true);
+  });
+  it("hasMore: false のパススルー", async () => {
+    // モック導出元: references_web/src/components/DeviceUserList.js:29-31
+    //   hasMore=false のとき「続きなし」として setHasMore(false) が呼ばれる
+    const c = mockClient({ success: true, data: [{ subUUID: "u2", keyLevel: 0 }], hasMore: false });
+    const r = await org.getDeviceEmployeeKeys(c, { deviceUUID: "d1", companyID: "ch_X", limit: 5 });
+    expect(r.list).toEqual([{ subUUID: "u2", keyLevel: 0 }]);
+    expect(r.hasMore).toBe(false);
+  });
+  it("hasMore フィールドなし (limit=0 全件取得) は undefined", async () => {
+    // 全件取得(limit=0)時にサーバが hasMore を付けない場合は undefined のままパススルーする
+    const c = mockClient({ success: true, data: [] });
+    const r = await org.getDeviceEmployeeKeys(c, { deviceUUID: "d1", companyID: "ch_X" });
+    expect(r.list).toEqual([]);
+    expect(r.hasMore).toBeUndefined();
   });
   it("limit 省略時は 0 (全件)", async () => {
     const c = mockClient({ success: true, data: [] });

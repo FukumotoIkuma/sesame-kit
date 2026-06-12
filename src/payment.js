@@ -108,8 +108,11 @@ export async function removePayment(client, params = {}) {
 /**
  * Update/cancel the company's paid level.
  *
- * biz3 updateLevel (useStripeInfo.js:202-220):
- * { action:'biz3ManagePayment', subId, isUpgrade, level, isCancel, customerId, op:'payUpdateLevel' }
+ * biz3 updateLevel (useStripeInfo.js:200-219):
+ * { action:'biz3ManagePayment', [subId,] isUpgrade, level, isCancel, customerId, op:'payUpdateLevel' }
+ *
+ * subId は Free 会社(初回アップグレード)では undefined となりフレームに含まれない
+ * (references_web/src/api/useStripeInfo.js:41-47 で subscriptionId は optional)。
  *
  * `level` is the encoded biz3 level (`planIndex * 2 + yearlyBit`), not just the plan index.
  *
@@ -120,15 +123,18 @@ export async function removePayment(client, params = {}) {
 export async function payUpdateLevel(client, params = {}) {
   const { level, isUpgrade, isCancel = false, timeoutMs = DEFAULT_TIMEOUT_MS } = params;
   const customerId = customerIdOf(params);
-  const subId = params.subId || params.subscriptionId;
+  // references_web/src/api/useStripeInfo.js:200-219: ガードは customerId のみ。
+  // subscriptionId は priorityCompany(:41-47) で undefined になり得て、
+  // undefined は JSON.stringify で落ち subId なしで送信される(Free 会社の初回アップグレード経路)。
+  const subId = params.subId || params.subscriptionId || undefined;
   if (!customerId) throw badRequest("payment.err.customerIdRequired");
-  if (!subId) throw badRequest("payment.err.subIdRequired");
   if (level == null || Number.isNaN(Number(level))) throw badRequest("payment.err.levelRequired");
   if (typeof isUpgrade !== "boolean") throw badRequest("payment.err.isUpgradeRequired");
-  const resp = await client.request(
-    { action: ACT_PAYMENT, subId, isUpgrade, level: Number(level), isCancel: !!isCancel, customerId, op: "payUpdateLevel" },
-    timeoutMs,
-  );
+  /** @type {import("./transport.js").WsFrame} */
+  const frame = { action: ACT_PAYMENT, isUpgrade, level: Number(level), isCancel: !!isCancel, customerId, op: "payUpdateLevel" };
+  // subId != null のときのみフレームに含める(参照の「undefined は直列化で落ちる」挙動の 1:1)。
+  if (subId != null) frame.subId = subId;
+  const resp = await client.request(frame, timeoutMs);
   assertSuccess(resp, "payUpdateLevel");
   return resp?.data ?? null;
 }

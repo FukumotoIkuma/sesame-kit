@@ -107,7 +107,7 @@ export async function getCurrentUserInfo(client, { timeoutMs = DEFAULT_TIMEOUT_M
  * biz3: { action, items, op:'add' }。items は配列で各要素内に companyID を入れる
  * (useManageEmployee.js:263-274, AddEmployee.js:64-78)。トップレベル companyID 無し。
  * 各 item 例: { employeeEmail, employeeName, phone, department, tag:[...], companyID }
- * (空 phone/department は undefined。tag はロール/タグ id の配列)。
+ * (空 phone/department は undefined。tag はタグ名文字列の配列 (references_web/src/components/biz/device/AddEmployee.js:346-357))。
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{items:object[], timeoutMs?:number}} params
@@ -196,6 +196,9 @@ export async function queryByCS(client, { keyword, timeoutMs = DEFAULT_TIMEOUT_M
     timeoutMs,
     returnListOnly: true,
     partialOnTimeout,
+    // P3-8: pubQueryByCS は page===1 でも置換せず常に追記
+    // (useManageEmployee.js:407: rowDatas = [...rowDatas, ...list])。
+    appendOnly: true,
     // chunk 形: res.data = { data:{ list, page }, totalPage } (:405-408)
     parseChunk: (msg) => {
       const top = msg?.data ?? {};
@@ -268,7 +271,8 @@ export async function addEmployeeGroup(client, { companyID, item, timeoutMs = DE
     timeoutMs,
   );
   assertSuccess(resp, "addEmployeeGroup");
-  return resp?.data ?? resp;
+  // 参照は無条件に message.data を読む (useManageEmployee.js:51-52: `message.data`)
+  return /** @type {object} */ (resp.data);
 }
 
 /**
@@ -312,7 +316,7 @@ export async function removeEmployeeGroups(client, { companyID, gids, timeoutMs 
  * biz3: { action, gid, op:'getBindDeviceGroup' } — cid は送らない (useManageEmployee.js:321-334)。
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{gid:string, timeoutMs?:number}} params
- * @returns {Promise<object>} 応答 message (data 構造は未確認)
+ * @returns {Promise<object>} resp.data (参照: useManageEmployee.js:51-52 は無条件 message.data を読む)
  */
 export async function getEmployeeGroupBindDeviceGroup(client, { gid, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!gid) throw badRequest("org.req.gid");
@@ -321,7 +325,8 @@ export async function getEmployeeGroupBindDeviceGroup(client, { gid, timeoutMs =
     timeoutMs,
   );
   assertSuccess(resp, "getEmployeeGroupBindDeviceGroup");
-  return resp?.data ?? resp;
+  // 参照は無条件に message.data を読む (useManageEmployee.js:51-52: `message.data`)
+  return /** @type {object} */ (resp.data);
 }
 
 /**
@@ -559,7 +564,7 @@ export async function removeDeviceInGroup(client, { companyID, gid, uuids, items
  * biz3: { action, gid, op:'getBindUserGroup' } — cid 無し (useManageGroup.js:189-200)。
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{gid:string, timeoutMs?:number}} params
- * @returns {Promise<object>} 応答 message (data 構造は未確認)
+ * @returns {Promise<object>} resp.data (参照: useManageEmployee.js:51-52 は無条件 message.data を読む)
  */
 export async function getDeviceGroupBindUserGroup(client, { gid, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!gid) throw badRequest("org.req.gid");
@@ -568,7 +573,8 @@ export async function getDeviceGroupBindUserGroup(client, { gid, timeoutMs = DEF
     timeoutMs,
   );
   assertSuccess(resp, "getDeviceGroupBindUserGroup");
-  return resp?.data ?? resp;
+  // 参照は無条件に message.data を読む (useManageEmployee.js:51-52: `message.data`)
+  return /** @type {object} */ (resp.data);
 }
 
 /**
@@ -638,7 +644,7 @@ export async function shareDeviceGroupKeysToEmployeeGroup(client, { companyID, i
  * biz3: { action, subUUID, op:'get' }、companyID 無し (useManageGroup.js:137-148)。
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{subUUID:string, timeoutMs?:number}} params
- * @returns {Promise<object>} 応答 message (data 構造は未確認)
+ * @returns {Promise<object>} resp.data (参照: EmployeeItem.js:74 は無条件 res.data.map を呼ぶ)
  */
 export async function getEmployeeDeviceKeys(client, { subUUID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!subUUID) throw badRequest("org.req.subUUID");
@@ -647,7 +653,8 @@ export async function getEmployeeDeviceKeys(client, { subUUID, timeoutMs = DEFAU
     timeoutMs,
   );
   assertSuccess(resp, "getEmployeeDeviceKeys");
-  return resp?.data ?? resp;
+  // 参照は無条件に res.data を読む (EmployeeItem.js:74: `res.data.map(...)`)
+  return /** @type {object} */ (resp.data);
 }
 
 /**
@@ -721,9 +728,12 @@ export async function generateGuestQR(client, { data, timeoutMs = DEFAULT_TIMEOU
  * companyID 必須。limit=0 で全件 / 5 で非管理モード (DeviceUserList)。
  * 応答: resp.data = 配列。各 item = { keyLevel(数値:2=guest), subUUID, employeeName,
  *   guestKeyId(ゲスト時に length>0), ... } (DeviceUserList.js:29-40,119)。
+ * resp.hasMore = true のとき limit=5 で打ち切られており続きが存在する
+ *   (references_web/src/components/DeviceUserList.js:29-31: setHasMore(resp.hasMore))。
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{deviceUUID:string, companyID:string, limit?:number, timeoutMs?:number}} params
- * @returns {Promise<any[]>} 鍵保有従業員の配列
+ * @returns {Promise<{list: any[], hasMore: boolean|undefined}>}
+ *   list: 鍵保有従業員の配列、hasMore: 続きが存在するか (limit<全件時のみサーバが設定)
  */
 export async function getDeviceEmployeeKeys(client, { deviceUUID, companyID, limit = 0, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!deviceUUID) throw badRequest("org.req.deviceUUID");
@@ -733,7 +743,13 @@ export async function getDeviceEmployeeKeys(client, { deviceUUID, companyID, lim
     timeoutMs,
   );
   assertSuccess(resp, "getDeviceEmployeeKeys");
-  return /** @type {any[]} */ (resp?.data ?? []);
+  // 参照: references_web/src/components/DeviceUserList.js:29-31
+  //   setHasMore(resp.hasMore) / resp.data.map(...) の両フィールドを消費する。
+  //   kit は従来 data のみ返していたが hasMore を捨てていた (R2:BIZ-01)。
+  return /** @type {{list: any[], hasMore: boolean|undefined}} */ ({
+    list: resp.data ?? [],
+    hasMore: resp.hasMore,
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -765,11 +781,12 @@ export async function getDeviceEmployeeKeys(client, { deviceUUID, companyID, lim
  *   parseChunk:(msg:any)=>{list:any[], page:number, totalPage?:number, totalCount?:number},
  *   returnListOnly?:boolean,
  *   partialOnTimeout?:boolean,
+ *   appendOnly?:boolean,
  * }} cfg
  * @returns {Promise<{count:number, list:any[]} | any[] | {partial:boolean, count?:number, list:any[]}>}
  */
 function collectChunks(client, cfg) {
-  const { action, pubOp, sendFrame, timeoutMs, parseChunk, returnListOnly, partialOnTimeout = false } = cfg;
+  const { action, pubOp, sendFrame, timeoutMs, parseChunk, returnListOnly, partialOnTimeout = false, appendOnly = false } = cfg;
   // 蓄積は本関数のクロージャで持ち、ライフサイクル (Promise/cleanup/timeout/二重解決ガード) は
   // util.subscribeChunks に委譲する (devices/access と共通の定型)。
   /** @type {any[]} */
@@ -806,8 +823,11 @@ function collectChunks(client, cfg) {
         }
         const chunk = parseChunk(msg); // throw は subscribeChunks が捕捉して reject
 
-        // page===1 で全置換、それ以外は追記 (biz3 pubEmployees の蓄積規則と同じ :75-87)。
-        if (chunk.page === 1) acc = [...chunk.list];
+        // P3-8: 蓄積規則は op によって異なる。
+        // - pubEmployees: page===1 で全置換、それ以外は追記 (useManageEmployee.js:75-87)。
+        // - pubQueryByCS: 分岐なしの常に追記 (useManageEmployee.js:407)。
+        //   appendOnly=true でこちらを選択する。
+        if (!appendOnly && chunk.page === 1) acc = [...chunk.list];
         else acc = [...acc, ...chunk.list];
 
         if (typeof chunk.totalCount === "number") total = chunk.totalCount;

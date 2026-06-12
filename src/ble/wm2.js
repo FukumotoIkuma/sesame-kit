@@ -207,10 +207,11 @@ export function removeSesameData(sesameKeyTag) {
   return utf8(sesameKeyTag.toUpperCase());
 }
 
-/** networkStatus 取得コマンドの data (無し)。状態は publish (NETWORK_STATUS) で届く。 */
-export function networkStatusData() {
-  return Buffer.alloc(0);
-}
+// P3-20: NETWORK_STATUS の送信(要求)経路は実装しない。SDK に送信メソッドは存在せず
+// (CHWifiModule2Device.kt:502-510 は受信専用、CHWifiModule2.kt:30-39 に対応 API 無し)、
+// ネットワーク状態は onPublish の {kind:"networkStatus"} で受信する。
+// 旧 networkStatus() メソッド・networkStatusData() ビルダ・wifi.networkStatus RPC op はいずれも
+// 削除済み (発明 op の捏造禁止・規範2)。
 
 // ---------- publish payload 解析 (onGattWM2Publish, CHWifiModule2Device.kt:461-529) ----------
 
@@ -416,20 +417,6 @@ export class WifiModule2 {
   }
 
   /**
-   * WM2 に現在の network 状態を要求する (NETWORK_STATUS=6 を空 data で送信)。
-   *
-   * 注 (BLEP-07): SDK に NETWORK_STATUS の **送信 (要求)** 経路は存在しない —
-   *   CHWifiModule2Device.kt は NETWORK_STATUS を publish 受信 (kt:502-510) でしか扱わず、
-   *   CHWifiModule2 公開 API (CHWifiModule2.kt:30-39) にも対応メソッドが無い。要求コマンドと
-   *   して空 data を送る本メソッドは kit 独自の発明であり、デバイスが応答する保証はない。
-   * @experimental 実機未検証。受信だけ必要なら onPublish の {kind:"networkStatus"} を購読すればよい
-   *   (デバイスは状態変化時に自発 publish する)。
-   */
-  networkStatus() {
-    return this._session.request(WM2_ACTION.NETWORK_STATUS, networkStatusData());
-  }
-
-  /**
    * 子 Sesame の鍵を WM2 に登録する。
    * @param {ChildSesameKey} sesameKey
    */
@@ -501,7 +488,10 @@ export class WifiModule2 {
 //   特殊ロジックを持ち、こちらが正)。よって専用ハンドラのある op はここに載せない。
 //
 // ここに載せるのは「専用ハンドラの無い残りの WM2 op」:
-//   insertSesames / removeSesame / networkStatus / reset。
+//   insertSesames / removeSesame / reset。
+// P3-20: wifi.networkStatus は削除済み。SDK に NETWORK_STATUS 送信経路は無い
+//   (CHWifiModule2Device.kt:502-510 は受信専用、CHWifiModule2.kt:30-39 に対応 API 無し)。
+//   受信は onPublish の {kind:"networkStatus"} で行う。
 /** @type {import("./index.js").BleRpcOpSpec} */
 export const WM2_RPC_OPS = {
   // 子 Sesame 鍵を WM2 に登録 (ADD_SESAME=8)。位置引数 0 = sesameKey
@@ -510,11 +500,6 @@ export const WM2_RPC_OPS = {
   // 子 Sesame 鍵を WM2 から削除 (DELETE_SESAME=7)。位置引数 0 = sesameKeyTag (大文字 UTF-8 で送出)。
   // CHWifiModule2Device.kt:411-417。
   "wifi.removeSesame": { params: [{ name: "sesameKeyTag", type: "string", required: true, desc: "child Sesame key tag (UUID string) to remove" }], result: "ack", summary: "remove a child Sesame key from the WM2" },
-  // network 状態を要求 (NETWORK_STATUS=6 を空 data で送信)。位置引数なし。
-  // ★ unverified / not in SDK: SDK に NETWORK_STATUS の送信(要求)経路は存在せず (kt は受信のみ、
-  //   CHWifiModule2.kt:30-39 に対応 API 無し)、空 data 要求は kit 独自の発明でデバイス応答は未保証。
-  //   受信だけ必要なら onPublish の {kind:"networkStatus"} を購読する (デバイスが自発 publish)。
-  "wifi.networkStatus": { params: [], result: "ack", summary: "request WM2 network status (experimental)" },
   // WM2 を工場出荷状態へリセット (RESET_WM2=18)。位置引数 0 = opts ({timeoutMs?})。RPC では opts を
   // 公開せず引数なしで既定動作 (成功時 session 破棄)。CHWifiModule2Device.kt:437-448。
   // (ble.resetWifiModule2 は OS3 トップレベルの別経路。こちらは wifi サブファサード直の reset。)

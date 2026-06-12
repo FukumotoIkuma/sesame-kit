@@ -41,8 +41,9 @@ describe("errorFromThrow: BleResultError の透過 (SURF-11)", () => {
     });
   });
 
-  it("invalidFormat(1)/invalidParam(8)/invalidAction(9) → bad_params + INVALID_PARAMS", () => {
-    for (const [code, name] of [[1, "invalidFormat"], [8, "invalidParam"], [9, "invalidAction"]]) {
+  it("invalidFormat(1)/invalidParam(8) → bad_params + INVALID_PARAMS", () => {
+    // SesameProtocols.kt:28-30 で確認済みの 1:1 写像 (P3-16: 検証済みコードのみ)。
+    for (const [code, name] of [[1, "invalidFormat"], [8, "invalidParam"]]) {
       const env = errorFromThrow(1, new BleResultError("command", code, 11));
       expect(env.error.code).toBe(RPC.INVALID_PARAMS);
       expect(env.error.data).toMatchObject({ kind: "bad_params", bleResultCode: code, bleResultName: name });
@@ -54,6 +55,18 @@ describe("errorFromThrow: BleResultError の透過 (SURF-11)", () => {
       const env = errorFromThrow(1, new BleResultError("command", code));
       expect(env.error.data).toMatchObject({ kind: "rejected", retryable: false, bleResultCode: code });
     }
+  });
+
+  it("コード9 (invalidAction) は未検証 (references_ios/ 不在) → resultName=unknown(9) → rejected にフォールバック (P3-16)", () => {
+    // RESULT 本体は SesameProtocols.kt:28-30 と 1:1 で 8 で終端。コード 9 は UNVERIFIED_RESULT_NAMES に
+    // 隔離されており resultName(9) = "unknown(9)" を返す。BLE_RESULT_TO_RPC に "unknown(9)" キーは
+    // 存在しないため errorFromThrow の fallback (rejected) で処理される。
+    const env = errorFromThrow(1, new BleResultError("command", 9, 11));
+    expect(env.error.data).toMatchObject({
+      kind: "rejected", bleResultCode: 9, bleResultName: "unknown(9)",
+    });
+    // bad_params には**ならない**こと (確証のある写像ではない)。
+    expect(env.error.data.kind).not.toBe("bad_params");
   });
 
   it("未知の結果コード (resultName=unknown(N)) は rejected にフォールバック", () => {

@@ -96,8 +96,8 @@ export function postCards(client: import("./transport.js").Hub3WsClient, { devic
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{deviceUUID:string, list:object[], timeoutMs?:number}} params
- *   list 要素の正確なフィールドは biz3 のこのファイル内では未確認 (UI 由来)。getPasscodes 応答 item
- *   (passwordID 等) と対応すると推測される。**未確認: 実機検証要**。
+ *   list 要素: { passwordID, name, nameUUID } (references_web/src/pages/biz/access-control/password/passwords.js:101-113)。
+ *   nameUUID は biz3utils.insertUUIDIsolationCharacter 整形済み UUID 文字列。
  * @returns {Promise<object|null>}
  */
 export function postPasscodes(client: import("./transport.js").Hub3WsClient, { deviceUUID, list, timeoutMs }: {
@@ -220,17 +220,26 @@ export function updatePasscodeName(client: import("./transport.js").Hub3WsClient
  *
  * biz3 (useManageAuthData.js:346-353) は 'ownerSubUUID' in item の時だけ送る。
  * ownerSubUUID は割り当てるメンバーの subUUID。空文字 '' でも送信 = 未割当解除。
- * frame は { action, obj:{ cardID, ownerSubUUID }, op:'updateCardOwner' }。
- * 応答は reqContext:{ cardID, ownerSubUUID } を echo back (235-259)。
+ *
+ * 送信フレーム: { action, obj:{...item}, op:'updateCardOwner' }
+ * 参照: useManageAuthData.js:346-353 は updateCardOwner(item, cb) を受け、
+ *       handlePutCardName (同 331-343) が obj:{...item} をそのまま送る。
+ *       呼び出し元 cards/index.js:385-396 は item として
+ *       { cardID, name, cardNameUUID, ownerSubUUID, timestamp, cardType, stpDeviceUUID }
+ *       の全フィールドを渡す。2 フィールド固定 (旧実装) ではこのフレームを再現できない。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{cardID:string, ownerSubUUID:string, timeoutMs?:number}} params
- *   ownerSubUUID は省略 (undefined) すると送信しない (null 相当)。'' は送信して未割当解除。
- * @returns {Promise<object|null>} ownerSubUUID 未指定なら null。
+ * @param {{item?: object, cardID?: string, ownerSubUUID?: string, timeoutMs?: number}} params
+ *   推奨: item に全フィールドを持つオブジェクトを渡す (cards/index.js:385-396 相当)。
+ *   後方互換: item 省略時は { cardID, ownerSubUUID } を item として合成する。
+ *   ownerSubUUID が item に存在しない (undefined) 場合は送信しない。
+ *   '' は送信して未割当解除 (useManageAuthData.js:348: 'ownerSubUUID' in item のみ送る)。
+ * @returns {Promise<object|null>} ownerSubUUID が item に存在しなければ null。
  */
-export function updateCardOwner(client: import("./transport.js").Hub3WsClient, { cardID, ownerSubUUID, timeoutMs }: {
-    cardID: string;
-    ownerSubUUID: string;
+export function updateCardOwner(client: import("./transport.js").Hub3WsClient, { item, cardID, ownerSubUUID, timeoutMs }: {
+    item?: object;
+    cardID?: string;
+    ownerSubUUID?: string;
     timeoutMs?: number;
 }): Promise<object | null>;
 /**
@@ -239,9 +248,9 @@ export function updateCardOwner(client: import("./transport.js").Hub3WsClient, {
  *
  * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
  * @param {AuthDataParams} params
- * @returns {Promise<object[]|object>} SDK と同じく response.data.items があればそれを返し、無ければ応答全体
+ * @returns {Promise<object[]>} response.data.items (CHDataSynchronizeCapableImpl.kt:23: `responses.data.items`)
  */
-export function postAuthenticationData(_client: import("./transport.js").Hub3WsClient | null, params: AuthDataParams): Promise<object[] | object>;
+export function postAuthenticationData(_client: import("./transport.js").Hub3WsClient | null, params: AuthDataParams): Promise<object[]>;
 /**
  * Kotlin SDK CHDataSynchronizeCapable.putAuthenticationData と同じ REST 操作。
  * body = { op: `${operation}_put`, deviceID, items }。

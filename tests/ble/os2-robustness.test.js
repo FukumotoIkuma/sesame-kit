@@ -40,7 +40,9 @@ class DisconnectableOS2Mock {
     // login (PLAINTEXT, SYNC+LOGIN) のみ応答。暗号化コマンドは無視 → pending を残す。
     if (a.type === SEG.PLAINTEXT && a.data[0] === OP.SYNC && a.data[1] === ITEM.LOGIN) {
       const lr = Buffer.alloc(28);
-      lr.writeUInt32BE(Math.floor(Date.now() / 1000), 0);
+      // 導出元: CHSesame2Device.kt:627 `systemTime = payload[0..3].toBigLong()`。
+      // toBigLong (DataExtention.kt:69-71) = reversedArray を hex parse = little-endian 読み。
+      lr.writeUInt32LE(Math.floor(Date.now() / 1000), 0);
       lr[27] = 0x02; // mech_status flags = byte7 (CHSesame2.kt:37) → locked
       // response = [RESPONSE, item, op, result] (導出元: SesameProtocols.kt:15-19
       // SSM2ResponsePayload — cmdItCode=data[0], cmdOPCode=data[1], cmdResultCode=data[2])。
@@ -109,5 +111,105 @@ describe("OS2 session fail-fast on transport disconnect", () => {
     const err = await session.connect().then(() => null, (e) => e);
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toMatch(/link lost|リンク/);
+  });
+});
+
+// ---------- P3-22: initial token 全長保持 + 非 4B 明示エラー ----------
+// 参照: CHSesame2Device.kt:519 `mSesameToken = receivePayload.payload` — 全長使用、切り詰めなし。
+// 変更前の kit は `token.subarray(0, 4)` で黙って切り詰めていた(出典なし防御)。
+// 変更後: 4B 以外の initial token は connect()/register() の Promise を明示 reject する。
+
+/**
+ * 任意の initial payload を 1 パケットで送る最小 mock transport。
+ * login 応答は返さないため connect() は reject されるまで待つか、initial が reject させる。
+ * 導出元: CHSesame2Device.kt:518-519 (initial publish → mSesameToken = receivePayload.payload)。
+ */
+function makeInitialOnlyTransport(tokenBytes) {
+  return {
+    async connect(onPacket) {
+      // device → app: initial publish frame = [PUBLISH(8), INITIAL(14), ...token]
+      // セグメントヘッダ: (SEG.PLAINTEXT << 1) | 1 = start-of-single-segment。
+      const frame = Buffer.concat([Buffer.from([OP.PUBLISH, ITEM.INITIAL]), tokenBytes]);
+      const header = (SEG.PLAINTEXT << 1) | 1;
+      onPacket(Buffer.concat([Buffer.from([header]), frame]));
+    },
+    write() {},
+    async disconnect() {},
+  };
+}
+
+describe("OS2 session — initial token 長 検証 (P3-22)", () => {
+  it("4B initial token で正常に login まで到達する (既存挙動の維持)", async () => {
+    // 正常系: 4B token は全長保持のまま sessionToken() に渡る → login 成立。
+    const dev = new DisconnectableOS2Mock({ mSesameToken: Buffer.from([0xaa, 0xbb, 0xcc, 0xdd]) });
+    const session = new SesameOS2BleSession({
+      transport: dev,
+      secretKey: Buffer.alloc(16, 0x33),
+      keyIndex: Buffer.from("0002", "hex"),
+      ssmPublicKey: makeSsmPublicKey(),
+    });
+    await session.connect();
+    expect(session.isLoggedIn).toBe(true);
+  });
+
+  it("5B initial token (>4B) は connect() を即 reject し 4B 違反メッセージを含む", async () => {
+    // 変更前: subarray(0,4) で 5B → 4B に黙って切り詰め、login は通っていた。
+    // 変更後: 4B 以外は「firmware protocol violation」で明示 reject。
+    // 導出元: CHSesame2Device.kt:519 は切り詰めしないため kit も切り詰めないが、
+    //         sessionToken() の 4B 契約を破るなら明示エラーが正しい。
+    const tok5 = Buffer.from([0x01, 0x02, 0x03, 0x04, 0x05]);
+    const session = new SesameOS2BleSession({
+      transport: makeInitialOnlyTransport(tok5),
+      secretKey: Buffer.alloc(16, 0x33),
+      keyIndex: Buffer.from("0002", "hex"),
+      ssmPublicKey: makeSsmPublicKey(),
+    });
+    const err = await session.connect().then(() => null, (e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/4 bytes|protocol violation/i);
+  });
+
+  it("3B initial token (<4B) は connect() を即 reject し 4B 違反メッセージを含む", async () => {
+    // 変更前: token.length < 4 のとき _log して return (login timeout)。
+    // 変更後: 非 4B として即 reject。
+    const tok3 = Buffer.from([0x01, 0x02, 0x03]);
+    const session = new SesameOS2BleSession({
+      transport: makeInitialOnlyTransport(tok3),
+      secretKey: Buffer.alloc(16, 0x33),
+      keyIndex: Buffer.from("0002", "hex"),
+      ssmPublicKey: makeSsmPublicKey(),
+    });
+    const err = await session.connect().then(() => null, (e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/4 bytes|protocol violation/i);
+  });
+
+  it("空 initial token は connect() を即 reject する", async () => {
+    const tok0 = Buffer.alloc(0);
+    const session = new SesameOS2BleSession({
+      transport: makeInitialOnlyTransport(tok0),
+      secretKey: Buffer.alloc(16, 0x33),
+      keyIndex: Buffer.from("0002", "hex"),
+      ssmPublicKey: makeSsmPublicKey(),
+    });
+    const err = await session.connect().then(() => null, (e) => e);
+    expect(err).toBeInstanceOf(Error);
+    // 空 (length=0) は "missing" か "must be 4 bytes" いずれかのメッセージ。
+    expect(err.message).toMatch(/missing|4 bytes|protocol violation/i);
+  });
+
+  it("register() で 5B initial token は readyWaiter を reject する", async () => {
+    // register() は _readyWaiter を待つ。non-4B initial は readyWaiter を reject する。
+    const tok5 = Buffer.from([0x11, 0x22, 0x33, 0x44, 0x55]);
+    const session = new SesameOS2BleSession({
+      transport: makeInitialOnlyTransport(tok5),
+      // secretKey を渡さない → 工場出荷 (ReadyToRegister を待つ経路)。
+    });
+    const err = await session.register({
+      deviceUUID: "00000000-0000-0000-0000-000000000001",
+      registerServer: async () => ({ sig1: "AAAA", serverToken: "BBBB", sesamePublicKey: "CCCC" }),
+    }).then(() => null, (e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/4 bytes|protocol violation/i);
   });
 });

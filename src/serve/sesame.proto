@@ -119,7 +119,6 @@ service Sesame {
   rpc BleRemoteNanoSetRadarSensitivity (BleRemoteNanoSetRadarSensitivityRequest) returns (JsonRpc);
   rpc BleWifiInsertSesames (BleWifiInsertSesamesRequest) returns (JsonRpc);
   rpc BleWifiRemoveSesame (BleWifiRemoveSesameRequest) returns (JsonRpc);
-  rpc BleWifiNetworkStatus (BleWifiNetworkStatusRequest) returns (JsonRpc);
   rpc BleWifiReset (BleWifiResetRequest) returns (JsonRpc);
   rpc BleHub3ScanWifiSSID (BleHub3ScanWifiSSIDRequest) returns (JsonRpc);
   rpc BleHub3SetWifiSSID (BleHub3SetWifiSSIDRequest) returns (JsonRpc);
@@ -485,9 +484,10 @@ message AccessUpdatePasscodeNameRequest {
   double timeoutMs = 2;
 }
 message AccessUpdateCardOwnerRequest {
-  string cardID = 1;
-  string ownerSubUUID = 2;
-  double timeoutMs = 3;
+  string item = 1;
+  string cardID = 2;
+  string ownerSubUUID = 3;
+  double timeoutMs = 4;
 }
 message IotSendIotCmdRequest {
   string topic = 1;
@@ -1066,16 +1066,6 @@ message BleWifiRemoveSesameRequest {
   bool needAuthFromServer = 7;
   string registerBaseUrl = 8;
   string sesameKeyTag = 9;
-}
-message BleWifiNetworkStatusRequest {
-  string deviceUUID = 1;
-  string address = 2;
-  string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
 }
 message BleWifiResetRequest {
   string deviceUUID = 1;

@@ -1,23 +1,23 @@
 {
   "method": "device.battery",
-  "note": "synthetic — vendor battery telemetry (verified shape). records[].ts required; lastEvaluatedKey is an opaque pagination cursor object that is present on intermediate pages.",
+  "note": "synthetic — vendor battery telemetry (verified shape). records[].ts は秒単位 (MobileBatteryChart.js:41-42: new Date(item.ts * 1000)); lastEvaluatedKey is an opaque pagination cursor object that is present on intermediate pages.",
   "sample": {
     "records": [
       {
-        "ts": 1717977600000,
+        "ts": 1717977600,
         "light": 6000,
         "heavy": 5800,
         "lightPercentage": 92,
         "heavyPercentage": 88
       },
       {
-        "ts": 1717981200000,
+        "ts": 1717981200,
         "light": 5950,
         "heavy": 5750,
         "lightPercentage": 90,
         "heavyPercentage": 86
       }
     ],
-    "lastEvaluatedKey": { "deviceUUID": "AABBCCDD-1122-3344-5566-778899AABBCC", "ts": 1717981200000 }
+    "lastEvaluatedKey": { "deviceUUID": "AABBCCDD-1122-3344-5566-778899AABBCC", "ts": 1717981200 }
   }
 }

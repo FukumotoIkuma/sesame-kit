@@ -96,6 +96,34 @@ describe("SesameBleSession mechSetting/time/versionTag/history", () => {
     expect(session.lastMechSetting.unlockPosition).toBe(-256);
   });
 
+  it("autolock が AUTOLOCK(11) を 2B LE で送り autoLockSecond キャッシュを更新する", async () => {
+    // ペイロード導出: delay.toShort().toReverseBytes() (CHSesame5Device.kt:99)
+    //   30 = 0x001e → LE 2B = 1e 00
+    await session.connect();
+    const res = await session.autolock(30);
+    expect(res.resultCode).toBe(0);
+    const cmd = dev.commands.find((c) => c.item === ITEM.AUTOLOCK);
+    expect(cmd).toBeTruthy();
+    expect(cmd.data.toString("hex")).toBe("1e00");
+    // 成功後に mechSetting?.autoLockSecond を更新する (CHSesame5Device.kt:102)
+    expect(session.lastMechSetting.autoLockSecond).toBe(30);
+    // キャッシュ未初期化時は lock/unlock=0 で新規作成 (configureLockPosition と同流儀)
+    expect(session.lastMechSetting.lockPosition).toBe(0);
+    expect(session.lastMechSetting.unlockPosition).toBe(0);
+  });
+
+  it("autolock が既存キャッシュを保持しつつ autoLockSecond のみ差し替える", async () => {
+    // mechSetting(80) publish でキャッシュを初期化してから autolock を呼ぶ
+    await session.connect();
+    // parseMechSetting の出力形式: lockPosition=256, unlockPosition=-256, autoLockSecond=120
+    dev.emitMechSetting(Buffer.from("000100ff7800", "hex"));
+    expect(session.lastMechSetting).toEqual({ lockPosition: 256, unlockPosition: -256, autoLockSecond: 120 });
+    const res = await session.autolock(60);
+    expect(res.resultCode).toBe(0);
+    // autoLockSecond だけ更新し、lock/unlock 位置は保持される (CHSesame5Device.kt:102 と同流儀)
+    expect(session.lastMechSetting).toEqual({ lockPosition: 256, unlockPosition: -256, autoLockSecond: 60 });
+  });
+
   it("magnet が MAGNET(17) を空ペイロードで送り resultCode 0 を返す", async () => {
     await session.connect();
     const res = await session.magnet();

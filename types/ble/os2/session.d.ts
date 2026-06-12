@@ -29,6 +29,7 @@ export class SesameOS2BleSession {
      *   secretKey?: string|Buffer,        // 16B ロック共通鍵 (登録済みデバイスの login に必須)
      *   keyIndex?: string|Buffer,         // userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。既定 "0000" (2B)。空は明示エラー
      *   ssmPublicKey?: string|Buffer,     // デバイス公開鍵 64B (sesame2KeyData.sesame2PublicKey)。login の ECDH 相手
+     *   model?: string|null,              // 機種識別子 ("ssmbot_1"/"bike_1" で timePhone 条件が変わる)
      *   debug?: boolean,
      *   defaultTimeoutMs?: number,
      * }} opts
@@ -40,11 +41,12 @@ export class SesameOS2BleSession {
      *   pending/待機者を fail-fast するだけなので、再接続したい場合は呼び出し側が新しいインスタンスを
      *   構築し直す (使い捨てセッション)。
      */
-    constructor({ transport, secretKey, keyIndex, ssmPublicKey, debug, defaultTimeoutMs }: {
+    constructor({ transport, secretKey, keyIndex, ssmPublicKey, model, debug, defaultTimeoutMs }: {
         transport: BleTransport;
         secretKey?: string | Buffer;
         keyIndex?: string | Buffer;
         ssmPublicKey?: string | Buffer;
+        model?: string | null;
         debug?: boolean;
         defaultTimeoutMs?: number;
     });

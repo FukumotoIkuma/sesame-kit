@@ -348,6 +348,86 @@ describe("getCards", () => {
     const r = await p;
     expect(r.byDevice.dev1.map((x) => x.cardID)).toEqual(["C1", "C2"]);
   });
+
+  // ---- P3-7: graceTimer cleanup on early finish ----
+
+  describe("graceTimer cleanup (P3-7)", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("grace 起動後に別経路で finish されても graceTimer は Promise 解決後にクリアされる (タイマーリーク無し)", async () => {
+      // 参照: useManageAuthData.js:179-185 — 完了通知は done:true をセットするのみで
+      // タイマーを持たない。grace timer は kit 独自の追加であり、Promise 解決後に
+      // clearTimeout する必要がある (P3-7)。
+      vi.useFakeTimers();
+      const c = pushClient();
+      // dev1 / dev2 の 2 デバイスを要求。graceMs を短くしてタイマー動作を確認可能にする。
+      const p = getCards(c, { deviceUUIDs: ["dev1", "dev2"], graceMs: 100, timeoutMs: 1000 });
+
+      // dev1 のデータは届く。dev2 は届かない → 完了通知時に missing=true → graceTimer 起動。
+      c.push(`${ACTION}:pubCardLinkedIDs`, {
+        data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
+      });
+      // 完了通知: dev2 欠落のため grace timer が起動する。
+      c.push(`${ACTION}:getCards`, {});
+
+      // grace 内に dev2 が到着し grace 完了を待つ。
+      c.push(`${ACTION}:pubCardLinkedIDs`, {
+        data: { deviceUUID: "dev2", page: 1, list: [{ cardID: "C2" }] },
+      });
+      // grace timer を経過させて解決させる。
+      vi.advanceTimersByTime(100);
+      const r = await p;
+      // dev1 / dev2 ともにデータが揃っている。
+      expect(r.byDevice.dev1.map((x) => x.cardID)).toEqual(["C1"]);
+      expect(r.byDevice.dev2.map((x) => x.cardID)).toEqual(["C2"]);
+
+      // Promise 解決後: 残タイマーが 0 件 = グレースタイマーは finally でクリア済み。
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("timeout による reject 後も graceTimer は finally でクリアされる", async () => {
+      // タイムアウトが先に発火した場合、grace timer が残存すると test に干渉する。
+      vi.useFakeTimers();
+      const c = pushClient();
+      const p = getCards(c, { deviceUUIDs: ["dev1", "dev2"], graceMs: 500, timeoutMs: 200 });
+
+      // dev1 のみ届く → 完了通知で dev2 欠落 → graceTimer(500ms) 起動。
+      c.push(`${ACTION}:pubCardLinkedIDs`, {
+        data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
+      });
+      c.push(`${ACTION}:getCards`, {});
+
+      // timeout(200ms) を先に発火させる。
+      vi.advanceTimersByTime(200);
+      await expect(p).rejects.toThrow(/getCards timeout/);
+
+      // reject 後: graceTimer(500ms) は finally でクリアされており、残タイマーは 0 件。
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  // ---- P3-7: ページ粒度の保護範囲ドキュメント ----
+
+  it("page≥2 が完了通知より後に届く場合は吸収されない (参照準拠: §9 V8 / useManageAuthData.js:179-185)", async () => {
+    // useManageAuthData.js:179-185 は完了通知で done:true をセットするのみで
+    // page≥2 の継続を待つ機構を持たない。grace window は
+    // 「byDevice[u] === undefined」のデバイスのみを対象とするため、
+    // page 1 が届き済みの dev1 は grace を起動せず即 finish する。
+    // この挙動は参照に整合する (保護対象外と明記 — P3-7)。
+    const c = pushClient();
+    const p = getCards(c, { deviceUUIDs: ["dev1"], graceMs: 50 });
+    // page 1 が先に届く → byDevice["dev1"] が存在する状態で完了通知。
+    c.push(`${ACTION}:pubCardLinkedIDs`, {
+      data: { deviceUUID: "dev1", page: 1, list: [{ cardID: "C1" }] },
+    });
+    // 完了通知: missing=false → 即 finish。
+    c.push(`${ACTION}:getCards`, {});
+    const r = await p;
+    // page 2 はまだ届いていないが Promise はすでに resolve 済み。
+    // この後 page 2 を push しても無視される (grace 保護対象外)。
+    expect(r.byDevice.dev1.map((x) => x.cardID)).toEqual(["C1"]);
+    expect(r.items).toHaveLength(1);
+  });
 });
 
 describe("getPasscodes", () => {
@@ -507,21 +587,60 @@ describe("updatePasscodeName", () => {
 });
 
 describe("updateCardOwner", () => {
-  it("obj:{cardID, ownerSubUUID} / op:updateCardOwner", async () => {
+  // --- 後方互換パス: item 省略、直接 cardID/ownerSubUUID 指定 ---
+
+  it("obj:{cardID, ownerSubUUID} / op:updateCardOwner (後方互換パス)", async () => {
     const c = requestClient({ success: true });
     await updateCardOwner(c, { cardID: "C1", ownerSubUUID: "sub-1" });
     expect(c.sent[0]).toEqual({ action: ACTION, obj: { cardID: "C1", ownerSubUUID: "sub-1" }, op: "updateCardOwner" });
   });
 
-  it("空文字 ownerSubUUID は送信する (未割当解除)", async () => {
+  it("空文字 ownerSubUUID は送信する (未割当解除) (後方互換パス)", async () => {
     const c = requestClient({ success: true });
     await updateCardOwner(c, { cardID: "C1", ownerSubUUID: "" });
     expect(c.sent[0].obj).toEqual({ cardID: "C1", ownerSubUUID: "" });
   });
 
-  it("ownerSubUUID undefined なら送信せず null (biz3: 'ownerSubUUID' in item)", async () => {
+  it("ownerSubUUID undefined なら送信せず null (後方互換パス、biz3: 'ownerSubUUID' in item)", async () => {
     const c = requestClient({ success: true });
     expect(await updateCardOwner(c, { cardID: "C1" })).toBeNull();
+    expect(c.sent).toHaveLength(0);
+  });
+
+  // --- item 透過パス (P3-5: 全フィールド透過) ---
+  // 参照: useManageAuthData.js:346-353 (updateCardOwner は item をそのまま handlePutCardName へ)
+  // 参照: useManageAuthData.js:331-343 (handlePutCardName は obj:{...item} で送る)
+  // 参照: cards/index.js:385-396 (item = { cardID, name, cardNameUUID, ownerSubUUID, timestamp,
+  //                                          cardType, stpDeviceUUID })
+
+  it("item 透過: 全フィールドが obj に展開される (cards/index.js:385-396 相当)", async () => {
+    const c = requestClient({ success: true });
+    const item = {
+      cardID: "C2",
+      name: "Alice",
+      cardNameUUID: "uuid-card-name",
+      ownerSubUUID: "sub-alice",
+      timestamp: 1700000000000,
+      cardType: "NFC",
+      stpDeviceUUID: "stp-device-uuid",
+    };
+    await updateCardOwner(c, { item });
+    // handlePutCardName (useManageAuthData.js:331-343) は obj:{...item} をそのまま送る。
+    expect(c.sent[0]).toEqual({ action: ACTION, obj: { ...item }, op: "updateCardOwner" });
+  });
+
+  it("item 透過: 空文字 ownerSubUUID は送信する (未割当解除)", async () => {
+    const c = requestClient({ success: true });
+    const item = { cardID: "C3", ownerSubUUID: "" };
+    await updateCardOwner(c, { item });
+    expect(c.sent[0].obj).toEqual({ cardID: "C3", ownerSubUUID: "" });
+  });
+
+  it("item 透過: ownerSubUUID キー不在なら送信せず null (useManageAuthData.js:348)", async () => {
+    const c = requestClient({ success: true });
+    // cardID のみ: 'ownerSubUUID' in item が false → 送らない
+    const result = await updateCardOwner(c, { item: { cardID: "C4" } });
+    expect(result).toBeNull();
     expect(c.sent).toHaveLength(0);
   });
 });
@@ -701,5 +820,25 @@ describe("postAuthenticationData ほか (withSuffix — BIZ-08)", () => {
     });
     expect(calls[0].body.op).toBe("fingerprint_put_put");
     expect(calls[1].body.op).toBe("palm_delete_delete");
+  });
+
+  // P3-6: フォールバック撤去 — resp.data.items を直返し
+  // 参照: CHDataSynchronizeCapableImpl.kt:23 は無条件 responses.data.items を読む(フォールバックなし)
+  it("data.items を直返しする (resp にフォールバックしない)", async () => {
+    const items = [{ id: "card-1", type: "nfc" }];
+    const transport = async () => ({ status: 200, json: { data: { items } } });
+    const r = await postAuthenticationData(null, {
+      operation: "nfc_card", deviceID: "d1", items: [], transport,
+    });
+    expect(r).toEqual(items);
+  });
+
+  it("data.items 欠落時は undefined (resp にフォールバックしない)", async () => {
+    // captureTransport は json:{} を返すため data.items は存在しない
+    const calls = [];
+    const r = await postAuthenticationData(null, {
+      operation: "nfc_card", deviceID: "d1", items: [], transport: captureTransport(calls),
+    });
+    expect(r).toBeUndefined();
   });
 });

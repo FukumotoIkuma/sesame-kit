@@ -128,7 +128,9 @@ function makeMockRegisterDevice({ mSesameToken, erHex }) {
 
       // login publish (cipher) で登録完了を通知 (CHSesame2Device.kt:508-517)。
       const lr = Buffer.alloc(28);
-      lr.writeUInt32BE(Math.floor(Date.now() / 1000), 0);
+      // 導出元: CHSesame2Device.kt:627 `systemTime = payload[0..3].toBigLong()`。
+      // toBigLong (DataExtention.kt:69-71) = reversedArray を hex parse = little-endian 読み。
+      lr.writeUInt32LE(Math.floor(Date.now() / 1000), 0);
       lr[27] = 0x02; // mech_status flags = byte7 (CHSesame2.kt:37) → locked
       sendCipher(Buffer.from([OP.PUBLISH, ITEM.LOGIN, ...lr]));
       return;
@@ -199,7 +201,9 @@ function makeMockLoginDevice({ deviceSecretKey, regPriKey, mSesameToken }) {
       const pre16 = devEcdh.computeSecret(Buffer.concat([Buffer.from([0x04]), appPub])).subarray(0, 16);
       deviceCipher = makeDeviceCipher(cmacBuf(pre16, st), st);
       const lr = Buffer.alloc(28);
-      lr.writeUInt32BE(Math.floor(Date.now() / 1000), 0);
+      // 導出元: CHSesame2Device.kt:627 `systemTime = payload[0..3].toBigLong()`。
+      // toBigLong (DataExtention.kt:69-71) = reversedArray を hex parse = little-endian 読み。
+      lr.writeUInt32LE(Math.floor(Date.now() / 1000), 0);
       lr[27] = 0x02; // mech_status flags = byte7 (CHSesame2.kt:37) → locked
       // response = [RESPONSE, item, op, result] (SesameProtocols.kt:15-19)。
       sendPlain(Buffer.concat([Buffer.from([OP.RESPONSE, ITEM.LOGIN, OP.SYNC, 0x00]), lr]));

@@ -2205,8 +2205,16 @@
       "summary": "updateCardOwner of access (auto-exposed)",
       "params": [
         {
+          "name": "item",
+          "required": false,
+          "description": "object",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
           "name": "cardID",
-          "required": true,
+          "required": false,
           "description": "string",
           "schema": {
             "type": "string"
@@ -2214,7 +2222,7 @@
         },
         {
           "name": "ownerSubUUID",
-          "required": true,
+          "required": false,
           "description": "string",
           "schema": {
             "type": "string"
@@ -6889,85 +6897,6 @@
           "name": "sesameKeyTag",
           "required": true,
           "description": "child Sesame key tag (UUID string) to remove",
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "result": {
-        "name": "result",
-        "schema": {
-          "description": "{ resultCode, resultName }",
-          "type": "object"
-        }
-      },
-      "x-stability": "experimental",
-      "x-provenance": "unverified"
-    },
-    {
-      "name": "ble.wifi.networkStatus",
-      "summary": "request WM2 network status (experimental)",
-      "params": [
-        {
-          "name": "deviceUUID",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "address",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "secretKey",
-          "required": true,
-          "description": "",
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "model",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "scanTimeoutMs",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "number"
-          }
-        },
-        {
-          "name": "debug",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "needAuthFromServer",
-          "required": false,
-          "description": "",
-          "schema": {
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "registerBaseUrl",
-          "required": false,
-          "description": "",
           "schema": {
             "type": "string"
           }

@@ -47,18 +47,38 @@ export const SEG = Object.freeze({ APPEND_ONLY: 0, PLAINTEXT: 1, CIPHERTEXT: 2 }
 
 /**
  * SESAME OS3 デバイスがコマンド応答 (response 0x07) の先頭バイトで返す結果コード。
- * 出典: 公式 SesameSDK `enum SesameResultCode: UInt8`
- *   (references_ios/Sources/SesameSDK/Ble/CHDeviceProtocol.swift:195)。
+ * 出典: Android SDK `enum SesameResultCode` —
+ *   _sesame_sdk_ref/sesame-sdk/.../ble/SesameProtocols.kt:28-30
+ *     success(0)..INVALID_PARAM(8) で **8 で終端**。
+ * コード 9 ("invalidAction") は iOS SDK 由来と主張されていたが `references_ios/` は存在しない。
+ * 未検証値は UNVERIFIED_RESULT_NAMES に隔離し、この表は SesameProtocols.kt と 1:1 に保つ (P3-16)。
  * これは **デバイス層 (SesameOS3) の taxonomy** で BLE/WM2 で共通。クラウド (biz3) 経路は
  * この code を surface しないため、利用できるのは BLE 直接経路のみ。
  */
 export const RESULT = Object.freeze({
   0: "success", 1: "invalidFormat", 2: "notSupported", 3: "resultStorageFail",
-  4: "invalidSig", 5: "notFound", 6: "unknown", 7: "busy", 8: "invalidParam", 9: "invalidAction",
+  4: "invalidSig", 5: "notFound", 6: "unknown", 7: "busy", 8: "invalidParam",
+});
+
+/**
+ * 一次ソース (Android SDK SesameProtocols.kt:28-30) で**確認できない**結果コード名。
+ * RESULT 本体を参照と 1:1 に保つため、未検証値をここに隔離する (P3-14 UNVERIFIED_ITEM_CODES と同規範)。
+ * iOS SDK (`references_ios/` 不在) 等の別一次ソースまたは実機キャプチャで確認できたら
+ * RESULT へ昇格すること。確認できない場合は resultName が `unknown(N)` を返すため、
+ * jsonrpc.js の BLE_RESULT_TO_RPC は fallback (rejected) で処理する。
+ *
+ * 9: "invalidAction" — iOS SDK `CHError.BleInvalidAction` との対応が主張されていたが、
+ *   `CHError.BleInvalidAction` はクライアント側エラー enum であり結果コード 9 の根拠にならない。
+ *   SesameProtocols.kt:28-30 は 8 (INVALID_PARAM) で終端しており、9 は存在しない。
+ */
+export const UNVERIFIED_RESULT_NAMES = Object.freeze({
+  9: "invalidAction",
 });
 
 /**
  * 結果コード → 名前 (未知は unknown(N))。
+ * 検証済みコード (RESULT) を優先し、未知コードは `unknown(N)` を返す。
+ * UNVERIFIED_RESULT_NAMES の値は意図的にここから除外している (P3-16)。
  * @param {number} code
  * @returns {string}
  */

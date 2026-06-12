@@ -41,7 +41,7 @@ export function getCurrentUserInfo(client: import("./transport.js").Hub3WsClient
  * biz3: { action, items, op:'add' }。items は配列で各要素内に companyID を入れる
  * (useManageEmployee.js:263-274, AddEmployee.js:64-78)。トップレベル companyID 無し。
  * 各 item 例: { employeeEmail, employeeName, phone, department, tag:[...], companyID }
- * (空 phone/department は undefined。tag はロール/タグ id の配列)。
+ * (空 phone/department は undefined。tag はタグ名文字列の配列 (references_web/src/components/biz/device/AddEmployee.js:346-357))。
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{items:object[], timeoutMs?:number}} params
@@ -185,7 +185,7 @@ export function removeEmployeeGroups(client: import("./transport.js").Hub3WsClie
  * biz3: { action, gid, op:'getBindDeviceGroup' } — cid は送らない (useManageEmployee.js:321-334)。
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{gid:string, timeoutMs?:number}} params
- * @returns {Promise<object>} 応答 message (data 構造は未確認)
+ * @returns {Promise<object>} resp.data (参照: useManageEmployee.js:51-52 は無条件 message.data を読む)
  */
 export function getEmployeeGroupBindDeviceGroup(client: import("./transport.js").Hub3WsClient, { gid, timeoutMs }: {
     gid: string;
@@ -359,7 +359,7 @@ export function removeDeviceInGroup(client: import("./transport.js").Hub3WsClien
  * biz3: { action, gid, op:'getBindUserGroup' } — cid 無し (useManageGroup.js:189-200)。
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{gid:string, timeoutMs?:number}} params
- * @returns {Promise<object>} 応答 message (data 構造は未確認)
+ * @returns {Promise<object>} resp.data (参照: useManageEmployee.js:51-52 は無条件 message.data を読む)
  */
 export function getDeviceGroupBindUserGroup(client: import("./transport.js").Hub3WsClient, { gid, timeoutMs }: {
     gid: string;
@@ -412,7 +412,7 @@ export function shareDeviceGroupKeysToEmployeeGroup(client: import("./transport.
  * biz3: { action, subUUID, op:'get' }、companyID 無し (useManageGroup.js:137-148)。
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{subUUID:string, timeoutMs?:number}} params
- * @returns {Promise<object>} 応答 message (data 構造は未確認)
+ * @returns {Promise<object>} resp.data (参照: EmployeeItem.js:74 は無条件 res.data.map を呼ぶ)
  */
 export function getEmployeeDeviceKeys(client: import("./transport.js").Hub3WsClient, { subUUID, timeoutMs }: {
     subUUID: string;
@@ -471,15 +471,21 @@ export function generateGuestQR(client: import("./transport.js").Hub3WsClient, {
  * companyID 必須。limit=0 で全件 / 5 で非管理モード (DeviceUserList)。
  * 応答: resp.data = 配列。各 item = { keyLevel(数値:2=guest), subUUID, employeeName,
  *   guestKeyId(ゲスト時に length>0), ... } (DeviceUserList.js:29-40,119)。
+ * resp.hasMore = true のとき limit=5 で打ち切られており続きが存在する
+ *   (references_web/src/components/DeviceUserList.js:29-31: setHasMore(resp.hasMore))。
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{deviceUUID:string, companyID:string, limit?:number, timeoutMs?:number}} params
- * @returns {Promise<any[]>} 鍵保有従業員の配列
+ * @returns {Promise<{list: any[], hasMore: boolean|undefined}>}
+ *   list: 鍵保有従業員の配列、hasMore: 続きが存在するか (limit<全件時のみサーバが設定)
  */
 export function getDeviceEmployeeKeys(client: import("./transport.js").Hub3WsClient, { deviceUUID, companyID, limit, timeoutMs }: {
     deviceUUID: string;
     companyID: string;
     limit?: number;
     timeoutMs?: number;
-}): Promise<any[]>;
+}): Promise<{
+    list: any[];
+    hasMore: boolean | undefined;
+}>;
 export const NAMESPACE_OPS: string[];
 //# sourceMappingURL=org.d.ts.map

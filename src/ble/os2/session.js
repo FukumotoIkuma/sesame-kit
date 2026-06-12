@@ -79,6 +79,7 @@ export class SesameOS2BleSession {
    *   secretKey?: string|Buffer,        // 16B ロック共通鍵 (登録済みデバイスの login に必須)
    *   keyIndex?: string|Buffer,         // userIdx (sesame2KeyData.keyIndex)。login の signPayload に使う。既定 "0000" (2B)。空は明示エラー
    *   ssmPublicKey?: string|Buffer,     // デバイス公開鍵 64B (sesame2KeyData.sesame2PublicKey)。login の ECDH 相手
+   *   model?: string|null,              // 機種識別子 ("ssmbot_1"/"bike_1" で timePhone 条件が変わる)
    *   debug?: boolean,
    *   defaultTimeoutMs?: number,
    * }} opts
@@ -90,9 +91,10 @@ export class SesameOS2BleSession {
    *   pending/待機者を fail-fast するだけなので、再接続したい場合は呼び出し側が新しいインスタンスを
    *   構築し直す (使い捨てセッション)。
    */
-  constructor({ transport, secretKey, keyIndex, ssmPublicKey, debug = false, defaultTimeoutMs = DEFAULT_TIMEOUT_MS }) {
+  constructor({ transport, secretKey, keyIndex, ssmPublicKey, model = null, debug = false, defaultTimeoutMs = DEFAULT_TIMEOUT_MS }) {
     if (!transport) throw new Error("transport required");
     this._transport = transport;
+    this._model = model ?? null;
     this._secretKey = secretKey == null ? null : (Buffer.isBuffer(secretKey) ? secretKey : Buffer.from(secretKey, "hex"));
     // keyIndex (userIdx) の既定は "0000" = 2B [0x00,0x00]。SDK は登録完了時に CHDevice.keyIndex="0000"
     // を永続化し (CHSesame2Device.kt:462-469)、login で keyIndex.hexStringToByteArray() = 2B を
@@ -516,8 +518,20 @@ export class SesameOS2BleSession {
       if (itemCode === ITEM.INITIAL) { this._handleInitial(payload); return; }
       if (itemCode === ITEM.LOGIN) { this._handleLoginPublish(payload); return; }
       if (itemCode === ITEM.MECH_STATUS) {
-        try { this._lastStatus = parseMechStatus(payload); } catch { /* ignore */ }
+        // Bot1 固有意味論 (P3-24): kind="os2bot" を渡し state 2値化と motorStatus 由来 isStop を適用。
+        // 出典: CHSesameBotDevice.kt:334-346 (mechStatus publish ハンドラの isStop 上書きと state 2値)。
+        const mechOpts = this._model === "ssmbot_1" ? { kind: "os2bot" } : {};
+        try { this._lastStatus = parseMechStatus(payload, mechOpts); } catch { /* ignore */ }
         for (const fn of [...this._statusListeners]) { try { fn(this._lastStatus); } catch { /* ignore */ } }
+        // 【意図的逸脱: P3-26 / R2:BLE2-17】
+        // SDK (CHSesame2Device.kt:543-553) は mechStatus publish 受信時に
+        //   retCode != 0 または target == Short.MIN_VALUE(-32768) のとき
+        //   readHistoryCommand{} を自動発行し、サーバへ POST する。
+        // kit では **自動履歴読み出しを実装しない**。履歴を取得するには
+        // ファサードの history() を手動で呼び出すこと。
+        // 理由: 自動読み出しはデバイス内バッファのドレインであり、呼び出し元の
+        // 用途(ロギング・UI 更新)と切り離せない。kit は transport 層の純粋なポートに留め、
+        // ポリシー判断は呼び出し元に委ねる方針とする(参照: CHSesame2Device.kt:543-553)。
       }
       for (const fn of [...this._publishListeners]) { try { fn({ itemCode, payload }); } catch { /* ignore */ } }
       return;
@@ -532,8 +546,29 @@ export class SesameOS2BleSession {
 
   /** @param {Buffer} token */
   _handleInitial(token) {
-    if (!token || token.length < 4) { this._log("initial token too short"); return; }
-    this._mSesameToken = Buffer.from(token.subarray(0, 4));
+    // 参照: CHSesame2Device.kt:519 `mSesameToken = receivePayload.payload` — 全長を切り詰めも
+    // 検証もせず代入する。kit は sessionToken() の 4B 契約 (protocol.js sessionToken()) で
+    // 明示的にエラーを出す方針とする(黙って切り詰めない)。
+    // 実ファームウェアは常に 4B を送るため、長さ相違はプロトコル違反 → 明示 reject が正しい。
+    if (!token || token.length === 0) {
+      this._log("initial token missing");
+      this._rejectWaiter("_loginWaiter", new Error("initial token missing"));
+      this._rejectWaiter("_readyWaiter", new Error("initial token missing"));
+      return;
+    }
+    if (token.length !== 4) {
+      // 実ファームウェアは 4B 固定 (mAppToken4 ++ mSesameToken4 = sessionToken 8B の前提)。
+      // 全長保持のまま _startLogin() に渡すと protocol.js sessionToken() の 4B 検証で
+      // `mSesameToken must be 4 bytes` がスローされる。ここで先に reject して
+      // スタックトレースを明確にする。
+      const msg = `initial token must be 4 bytes (got ${token.length}); firmware protocol violation`;
+      this._log(msg);
+      this._rejectWaiter("_loginWaiter", new Error(msg));
+      this._rejectWaiter("_readyWaiter", new Error(msg));
+      return;
+    }
+    // 全長を保持して格納する (CHSesame2Device.kt:519 と同様、切り詰めは行わない)。
+    this._mSesameToken = Buffer.from(token);
     // secretKey も signLogin も無い (工場出荷) → login せず ReadyToRegister へ。
     if (!this._secretKey && !this._signLogin) {
       this._readyToRegister = true;
@@ -612,21 +647,28 @@ export class SesameOS2BleSession {
   _handleLoginResponse(resultCode, payload) {
     if (!this._loginWaiter) return;
     if (resultCode !== 0) { this._rejectWaiter("_loginWaiter", new BleResultError("login", resultCode, ITEM.LOGIN)); return; }
-    try { this._lastLoginResponse = parseLoginResponse(payload); this._lastStatus = this._lastLoginResponse.mechStatus; }
+    // Bot1 固有意味論 (P3-24): kind="os2bot" を渡し state 2値化と motorStatus 由来 isStop を適用。
+    // 出典: CHSesameBotDevice.kt:282-293 (login response の mechStatus isStop 上書き + state 2値)。
+    const mechOpts = this._model === "ssmbot_1" ? { kind: "os2bot" } : {};
+    try { this._lastLoginResponse = parseLoginResponse(payload, mechOpts); this._lastStatus = this._lastLoginResponse.mechStatus; }
     catch (e) { this._log("login response parse failed", /** @type {{message?:string}} */ (e)?.message); }
     this._loggedIn = true;
-    this._maybeSyncTime();
+    this._maybeSyncTime("login-response");
     this._resolveWaiter("_loginWaiter");
   }
 
   /** 登録直後はデバイスが response ではなく login **publish** で完了を知らせる (CHSesame2Device.kt:508-517)。 @param {Buffer} payload */
   _handleLoginPublish(payload) {
-    try { this._lastLoginResponse = parseLoginResponse(payload); this._lastStatus = this._lastLoginResponse.mechStatus; }
+    // Bot1 固有意味論 (P3-24): kind="os2bot" を渡し state 2値化と motorStatus 由来 isStop を適用。
+    // 出典: CHSesameBotDevice.kt:282-293 (register 完了の login publish でも同形処理)。
+    const mechOpts = this._model === "ssmbot_1" ? { kind: "os2bot" } : {};
+    try { this._lastLoginResponse = parseLoginResponse(payload, mechOpts); this._lastStatus = this._lastLoginResponse.mechStatus; }
     catch (e) { this._log("login publish parse failed", /** @type {{message?:string}} */ (e)?.message); }
-    // register() の登録完了通知。
+    // register() の登録完了通知。登録完了時は機種・fw・時刻差に関わらず無条件送信
+    // (CHSesame2Device.kt:511 / CHSesameBotDevice.kt:280)。
     if (this._registerWaiter) {
       this._loggedIn = true;
-      this._maybeSyncTime();
+      this._maybeSyncTime("register");
       this._resolveWaiter("_registerWaiter");
       return;
     }
@@ -634,29 +676,63 @@ export class SesameOS2BleSession {
     // Bot/Bike は publish 経路も持つ: CHSesameBotDevice.kt:273-305)。
     if (this._loginWaiter) {
       this._loggedIn = true;
-      this._maybeSyncTime();
+      this._maybeSyncTime("login-response");
       this._resolveWaiter("_loginWaiter");
     }
   }
 
-  /** login response の systemTime と現在時刻の差が大きければ timePhone を送る (CHSesame2Device.kt:259-265)。 */
-  _maybeSyncTime() {
+  /**
+   * 経路と機種に応じて timePhone 送信条件を分岐する (P3-14)。
+   *
+   * (a) route="register": 登録完了 login publish — 機種・fw・時刻差に関わらず無条件送信。
+   *   参照: CHSesame2Device.kt:511 (`sendEncryptCommand(... timePhone ...)`)
+   *         CHSesameBotDevice.kt:280 (同形)。
+   *
+   * (b) route="login-response", Bot/Bike: `nowSec - systemTime > 3` のみ (abs なし、fw ガードなし)。
+   *   参照: CHSesameBotDevice.kt:464 (`if (timeError > 3)` fw ガード無し)
+   *         CHSesameBikeDevice.kt:355 (同形)。
+   *   注: Kotlin は `Long - Long` で signed。Bot/Bike は時計が未来の場合でも
+   *   デバイスに timePhone を送らない (abs なし)。参照と 1:1 に合わせる。
+   *
+   * (c) route="login-response", SESAME2/3/4 (既定): `abs(nowSec - systemTime) > 3 && fw >= 1`。
+   *   参照: CHSesame2Device.kt:261-264 (`if (abs(timeError) > 3) { if (loginResponse.fw_version >= 1) ... }`)。
+   *
+   * @param {"login-response"|"register"} route
+   */
+  _maybeSyncTime(route) {
     const lr = this._lastLoginResponse;
     if (!lr) return;
+
+    // (a) register 完了: 無条件送信 (CHSesame2Device.kt:511 / CHSesameBotDevice.kt:280)。
+    if (route === "register") {
+      try { this._sendCipher(buildSendFrame(OP.UPDATE, ITEM.TIMEPHONE, timePhoneData())); }
+      catch (e) { this._log("timePhone sync (register) failed", /** @type {{message?:string}} */ (e)?.message); }
+      return;
+    }
+
+    // route === "login-response" 以降。
     const nowSec = Math.floor(Date.now() / 1000);
-    if (Math.abs(nowSec - lr.systemTime) > 3) {
-      // ★fwVersion >= 1 ガード (BLE2-09): SESAME2/3/4 は時刻差があっても fw_version >= 1 の
-      //   ときだけ timePhone を送る (CHSesame2Device.kt:262 `if (loginResponse.fw_version >= 1)`)。
-      //   旧ファーム (fw_version=0) は timePhone(16) 未対応のため送らない。
-      //   逸脱注記: 初代 Bot/Bike の SDK 経路 (CHSesameBotDevice.kt:460-467) はこのガードを
-      //   持たないが、kit は OS2 セッションを 1 クラスで共用するため安全側 (送らない) に倒す。
+    const timeError = nowSec - lr.systemTime;
+
+    // (b) Bot/Bike login response: abs なし・fw ガードなし
+    //   (CHSesameBotDevice.kt:464 / CHSesameBikeDevice.kt:355)。
+    if (this._model === "ssmbot_1" || this._model === "bike_1") {
+      if (timeError > 3) {
+        try { this._sendCipher(buildSendFrame(OP.UPDATE, ITEM.TIMEPHONE, timePhoneData())); }
+        catch (e) { this._log("timePhone sync (bot/bike) failed", /** @type {{message?:string}} */ (e)?.message); }
+      }
+      return;
+    }
+
+    // (c) SESAME2/3/4 login response: abs(timeError) > 3 かつ fw_version >= 1
+    //   (CHSesame2Device.kt:261-264)。
+    if (Math.abs(timeError) > 3) {
       if (lr.fwVersion < 1) {
         this._log("timePhone sync skipped (fw_version < 1)", { fwVersion: lr.fwVersion });
         return;
       }
-      // ★OS2 は TIME(8) ではなく timePhone(16) で時刻同期する (CHSesame2Device.kt:263)。
       try { this._sendCipher(buildSendFrame(OP.UPDATE, ITEM.TIMEPHONE, timePhoneData())); }
-      catch (e) { this._log("timePhone sync failed", /** @type {{message?:string}} */ (e)?.message); }
+      catch (e) { this._log("timePhone sync (sesame2) failed", /** @type {{message?:string}} */ (e)?.message); }
     }
   }
 

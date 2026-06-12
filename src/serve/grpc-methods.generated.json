@@ -289,7 +289,9 @@
   },
   "AccessUpdateCardOwner": {
     "method": "access.updateCardOwner",
-    "jsonFields": []
+    "jsonFields": [
+      "item"
+    ]
   },
   "IotSendIotCmd": {
     "method": "iot.sendIotCmd",
@@ -533,10 +535,6 @@
   },
   "BleWifiRemoveSesame": {
     "method": "ble.wifi.removeSesame",
-    "jsonFields": []
-  },
-  "BleWifiNetworkStatus": {
-    "method": "ble.wifi.networkStatus",
     "jsonFields": []
   },
   "BleWifiReset": {

@@ -66,8 +66,13 @@ function asBuf(v, name) {
 /**
  * OS2 の sessionToken (8B) = mAppToken(4B) ++ mSesameToken(4B)。
  * (CHSesame2Device.kt:237 / CHSesameBotDevice.kt:439)
+ *
+ * mSesameToken は initial publish payload の全長をそのまま渡すこと (_handleInitial で確認済み)。
+ * 実ファームウェアは必ず 4B を送る (CHSesame2Device.kt:519 で切り詰めなく格納)。
+ * 4B 以外が来た場合はここで明示エラーを出す (session.js _handleInitial が先に reject する)。
+ *
  * @param {Buffer} mAppToken 4B (アプリ側ランダム、CHSesameOS2.kt:17 generateRandomData(4))
- * @param {Buffer} mSesameToken 4B (initial publish でデバイスが返すトークン)
+ * @param {Buffer} mSesameToken 4B (initial publish payload の全長: CHSesame2Device.kt:519 参照)
  * @returns {Buffer} 8B
  */
 export function sessionToken(mAppToken, mSesameToken) {
@@ -155,10 +160,13 @@ export function loginPayload(userIdx, appPublicKey64, mAppToken4, sessionAuth16)
  * sessionKey/sessionToken で cipher を確立し (os2/cipher.js)、REGISTRATION 応答以降を暗号化する。
  * ownerKey は登録完了後に保存する device の鍵 (CHSesame2Device.kt:462-471 CHDevice の owner_key)。
  *
- * 注: registration の sessionToken は **serverToken(可変長) ++ mSesameToken(4B)** で、login の
- * sessionToken (mAppToken4 ++ mSesameToken4 = 8B) とは構造が異なる。cipher の nonce が要求する
- * 8B は「login 経路」の制約で、registration 経路の sessionToken 長は serverToken に依存する
- * (SDK では serverToken は server が返す。本実装は SDK のバイト連結をそのまま再現する)。
+ * 注: registration の sessionToken は **serverToken(4B) ++ mSesameToken(4B) = 8B 固定** である。
+ * serverToken は CHServerAuth.kt:54 の `val serverToken = ByteArray(4)` が示すとおり常に 4B。
+ * したがって sessionToken = 4B + 4B = 8B となり、login 経路の sessionToken
+ * (mAppToken4 ++ mSesameToken4 = 8B) と同じ長さになる。
+ * cipher.js の SesameOS2BleCipher コンストラクタが要求する 8B 検証は登録・ログイン両経路で満たされる。
+ * SesameOS2BleCipher.kt:7 はコンストラクタで長さ検証をしていないが、CCM nonce = counter5B ++ token
+ * の制約(nonce 上限 13B)から token ≤ 8B が必要であり、4B+4B=8B は最大値を使い切る正準形である。
  *
  * @param {Buffer} ecdhSecretPre16 16B
  * @param {Buffer} serverToken サーバが返すトークン (registerSesame1.st)
@@ -451,12 +459,26 @@ export const MECH_STATE = Object.freeze({ LOCKED: "locked", UNLOCKED: "unlocked"
  * 施錠/解錠/中間は isInLockRange / isInUnlockRange の 2 ビットで判定する
  * (CHSesame2Device.kt:551 / CHSesameBikeDevice.kt:299: lock / unlock / else=moved)。
  *
+ * Bot1 固有意味論 (kind="os2bot", P3-24 / R2:BLE2-15):
+ *   - state は 2 値のみ: isInLockRange → LOCKED、else → UNLOCKED (MOVED は出ない)。
+ *     出典: CHSesameBotDevice.kt:303 / :346 —
+ *       `deviceStatus = if (isInLockRange) CHDeviceStatus.Locked else CHDeviceStatus.Unlocked`
+ *   - isStop は motorStatus 由来で上書き計算される (CHSesameBotDevice.kt:286-293 / :334-344):
+ *       motorStatus 0 (noPower) → true
+ *       motorStatus 1 (forward)  → false
+ *       motorStatus 2 (hold)     → true
+ *       motorStatus 3 (backward) → false
+ *       else                     → false
+ *     (CHSesameBot.kt:28 の flags-based isStop はクラス初期値であり、
+ *      CHSesameBotDevice.kt:286-293 の when ブロックで必ず上書きされる)
+ *
  * @param {Buffer} buf mech_status_t (8B。Kotlin は data[7] まで読む固定レイアウト)
+ * @param {{kind?: string}} [opts] オプション。kind="os2bot" で Bot1 固有意味論を適用。
  * @returns {{state:string, isInLockRange:boolean, isInUnlockRange:boolean, isBatteryCritical:boolean,
  *            target:number|null, position:number|null, targetDeg:number|null, positionDeg:number,
  *            batteryRaw:number, retCode:number, flags:number, motorStatus:number, isStop:boolean}}
  */
-export function parseMechStatus(buf) {
+export function parseMechStatus(buf, { kind } = {}) {
   if (!Buffer.isBuffer(buf)) throw new Error("mechStatus must be a Buffer");
   // Kotlin の CHSesame2MechStatus/CHSesameBotMechStatus は data[7] (flags) まで無条件に読む 8B 固定。
   if (buf.length < 8) throw new Error(`OS2 mechStatus must be >= 8 bytes (got ${buf.length})`);
@@ -468,7 +490,24 @@ export function parseMechStatus(buf) {
   const isInLockRange = !!(flags & 0b0000_0010);   // flags and 2 (CHSesame2.kt:38)
   const isInUnlockRange = !!(flags & 0b0000_0100); // flags and 4 (CHSesame2.kt:39)
   const isBatteryCritical = !!(flags & 0b0010_0000); // flags and 32 (CHSesame2.kt:40)
-  const state = isInLockRange ? MECH_STATE.LOCKED : (isInUnlockRange ? MECH_STATE.UNLOCKED : MECH_STATE.MOVED);
+  const motorStatus = buf[4];                      // CHSesameBot.kt:23 / CHSesameBotDevice.kt:286
+
+  // Bot1 固有: state は 2 値 (LOCKED / UNLOCKED)、MOVED は出ない。
+  // 出典: CHSesameBotDevice.kt:303, :346 —
+  //   `deviceStatus = if (isInLockRange) CHDeviceStatus.Locked else CHDeviceStatus.Unlocked`
+  const isBot = kind === "os2bot";
+  const state = isInLockRange
+    ? MECH_STATE.LOCKED
+    : (isBot || isInUnlockRange ? MECH_STATE.UNLOCKED : MECH_STATE.MOVED);
+
+  // Bot1 固有: isStop は motorStatus 由来 (CHSesameBotDevice.kt:286-293, :334-344)。
+  // flags-based isStop (CHSesameBot.kt:28) はクラス初期値であり、
+  // when(motorStatus) ブロックで必ず上書きされるため、Bot では flags を使わない。
+  // Sesame2/Bike/その他は従来どおり flags bit0 == 0 で判定。
+  const isStop = isBot
+    ? (motorStatus === 0 || motorStatus === 2)  // noPower=0/hold=2 → true; forward=1/backward=3 → false; else false
+    : (flags & 0b0000_0001) === 0;              // CHSesameBot.kt:28 / Sesame2 既定
+
   return {
     state,
     isInLockRange,
@@ -484,11 +523,11 @@ export function parseMechStatus(buf) {
     batteryRaw,
     retCode,
     flags,
-    // Bot 固有フィールド (CHSesameBot.kt:23,28): motorStatus = data[4]
-    // (noPower=0/forward=1/hold=2/backward=3)、isStop = (flags & 1) == 0。
+    // Bot 固有フィールド (CHSesameBot.kt:23): motorStatus = data[4]
+    // (noPower=0/forward=1/hold=2/backward=3)。
     // Sesame2/Bike では motorStatus は position の下位バイトに重なるだけの参考値。
-    motorStatus: buf[4],
-    isStop: (flags & 0b0000_0001) === 0,
+    motorStatus,
+    isStop,
   };
 }
 
@@ -578,19 +617,26 @@ export function parseMechSettingBot(buf) {
  * (CHSesame2Device.kt:268 の NoSettings 判定に対応)。
  *
  * @param {Buffer} payload login response の payload (resultCode は含まない)
+ * @param {{kind?: string}} [opts] オプション。parseMechStatus へ転送 (Bot1 固有意味論に使用。P3-24)。
  * @returns {{systemTime:number, fwVersion:number, historyCnt:number,
  *            mechSetting:ReturnType<typeof parseMechSettingSesame2>,
  *            mechSettingBot:ReturnType<typeof parseMechSettingBot>,
  *            mechSettingBytes:Buffer, isConfigured:boolean, mechStatus:object}}
  */
-export function parseLoginResponse(payload) {
+export function parseLoginResponse(payload, opts = {}) {
   if (!Buffer.isBuffer(payload) || payload.length < 28) {
     throw new Error(`OS2 login response must be >= 28 bytes (got ${Buffer.isBuffer(payload) ? payload.length : "non-buffer"})`);
   }
   // toBigLong (DataExtention.kt:69-71) = reversedArray().toHexString() の 16 進 parse
   // = 元バイト列を little-endian として読むのと等価 (OS3 側 parseDeviceTimeSeconds と同じ)。
   const systemTime = payload.readUInt32LE(0);
-  const fwVersion = payload[4];
+  // Kotlin の Byte は符号付き (-128..127)。payload[4] は符号なし (0..255) なので
+  // readInt8(4) で符号付き読みに統一する。
+  // fw_version >= 1 のガード (_maybeSyncTime) は符号付き評価が正しく、
+  // 0x80 以上のファームでは Kotlin 側も負値となりガードが不成立になる。
+  // 出典: CHSesame2Device.kt:628 `var fw_version = loginPayload[4]` (Kotlin Byte = signed)
+  //       CHSesame2Device.kt:262 `if (loginResponse.fw_version >= 1)` (signed 比較)
+  const fwVersion = payload.readInt8(4);
   const historyCnt = payload[6];
   const mechSettingBytes = Buffer.from(payload.subarray(8, 20)); // mech_setting_t 12B
   const mechStatusBytes = Buffer.from(payload.subarray(20, 28)); // mech_status_t 8B
@@ -603,7 +649,7 @@ export function parseLoginResponse(payload) {
     mechSettingBot: parseMechSettingBot(mechSettingBytes),
     mechSettingBytes,
     isConfigured: mechSetting.isConfigured,
-    mechStatus: parseMechStatus(mechStatusBytes),
+    mechStatus: parseMechStatus(mechStatusBytes, opts),
   };
 }
 

@@ -25,8 +25,8 @@ import { registerSesame5 } from "../devices.js";
 import {
   deriveSessionKey, deriveSessionKeyFromEcdh, loginPayload, ccmEncrypt, ccmDecrypt,
   splitSegments, SegmentAssembler, buildSendFrame, parseRecvFrame, registrationData,
-  parseMechStatus, parseMechSetting, parseOpsSetting, configureLockPositionData,
-  opSensorControlData, bleTxPowerData,
+  parseMechStatus, parseMechSetting, parseOpsSetting, parseNetworkStatus, configureLockPositionData,
+  autolockData, opSensorControlData, bleTxPowerData,
   timeSyncData, parseDeviceTimeSeconds, needsTimeSync,
   historyReadData, historyDeleteData, OP, ITEM, SEG, resultName,
   SESSION_PROFILES, assertProfile,
@@ -84,7 +84,8 @@ export class BleResultError extends Error {
 export class SesameBleSession {
   /**
    * @param {{transport:BleTransport, secretKey?:string|Buffer, debug?:boolean,
-   *          defaultTimeoutMs?:number, profile?:("lock"|"wm2"), syncTime?:boolean}} opts
+   *          defaultTimeoutMs?:number, profile?:("lock"|"wm2"), syncTime?:boolean,
+   *          mechStatusKind?:("lock"|"bot"|"hub3"|"biometric")}} opts
    *   secretKey は **登録済みデバイスへのログイン時のみ必須**。工場出荷 (未登録) デバイスを
    *   register() で登録する場合は secretKey を渡さずに構築する (initial 受信で login を試みず
    *   ReadyToRegister 状態へ遷移する。CHSesameOS3.kt:468-491 isRegistered=false 相当)。
@@ -103,8 +104,18 @@ export class SesameBleSession {
    *     login 応答はコールバックで deviceStatus 遷移のみ)。WM2 も同様 (CHWifiModule2Device.kt:314-321。
    *     こちらは profile="wm2" で構造的に対象外)。ファサード (index.js) は kind が HUB3/WIFI の
    *     とき false を渡す。
+   *
+   *   mechStatusKind (既定 "lock"): MECH_STATUS(81) の解釈方法を kind で静的に決定する (P3-18)。
+   *     SDK は具象クラスが 81 の解釈を型で決める — Hub3=CHWifiModule2NetWorkStatus / OS3 ロック系=7B /
+   *     Bot/Bike=3B / 生体=raw 素通し (CHHub3Device.kt:291-301 / CHSesameBiometricDeviceImpl.kt:214-217)。
+   *     ファサード (index.js SesameBle) が caps.kind から導出して渡す。
+   *     - "lock"     : parseMechStatus (7B ロック形式、SESAME5/6 系)
+   *     - "bot"      : parseMechStatus (3B Bot/Bike 形式)
+   *     - "hub3"     : parseNetworkStatus (1B bit flags、CHHub3Device.kt:291-301)
+   *     - "biometric": parseBiometricMechStatus (raw 素通し、CHSesameBiometricDeviceImpl.kt:214-217)
+   *     長さ不一致は推測せず明示エラーログ (フォールバック連鎖は排除)。
    */
-  constructor({ transport, secretKey, debug = false, defaultTimeoutMs = DEFAULT_TIMEOUT_MS, profile = "lock", syncTime = true }) {
+  constructor({ transport, secretKey, debug = false, defaultTimeoutMs = DEFAULT_TIMEOUT_MS, profile = "lock", syncTime = true, mechStatusKind = "lock" }) {
     if (!transport) throw new Error(t("ble.transportRequired"));
     // secretKey 無し = 工場出荷デバイスの register() 用。connect()/login は secretKey を要求する。
     this._transport = transport;
@@ -117,6 +128,12 @@ export class SesameBleSession {
     this._profile = assertProfile(profile);
     /** @type {boolean} login 後の time(8) 自動同期 (BLE3-03。Hub3/WM2 は false)。 */
     this._syncTime = !!syncTime;
+    /**
+     * MECH_STATUS(81) の解釈方法 (P3-18)。SDK は具象クラスが型で決める。
+     * "lock" | "bot" | "hub3" | "biometric"。ファサードが caps.kind から導出して渡す。
+     * @type {"lock"|"bot"|"hub3"|"biometric"}
+     */
+    this._mechStatusKind = mechStatusKind;
     // initial publish の itemCode はプロファイル依存: lock=14 / wm2=13 (CHWifiModule2Device.kt:521,540)。
     this._initialItemCode = SESSION_PROFILES[this._profile].initialItemCode;
 
@@ -418,6 +435,29 @@ export class SesameBleSession {
 
   /**
    * 暗号化コマンドを送り、response(7)+item を待って返す。
+   *
+   * **【P3-27 意図的乖離】同一 itemCode の同時 request に関する SDK との意味論差**
+   *
+   * SDK (`CHSesameOS3.kt:349-372`) の `sendCommand()` は同一 itemCode が in-flight の間は
+   * ワイヤへの再送を抑止する:
+   *   1. `cmdCallBack[itemCode]` に既存エントリがある場合 → callback を差し替え、
+   *      ワイヤには**送らず return**する (重複送信なし)。
+   *   2. 前回コールから 2000ms 超経過していれば callback ごと破棄して扱いを「新規」に戻す。
+   * 結果: 同一 itemCode を連打すると SDK はフレームを 1 本しかワイヤに流さない
+   * (後続の call は先行 response を待って、先行がなければ最後の callback だけが呼ばれる)。
+   *
+   * kit の本実装は `_pending[itemCode]` FIFO キューに積むと同時に**毎回 _sendCipher() する**。
+   * 同一 itemCode を並行して呼ぶと、呼んだ回数分のフレームがワイヤに流れ、
+   * 各 Promise はデバイスから来た response を FIFO 順に 1:1 で消費して resolve/reject される。
+   * 単独呼び出し・直列呼び出しでは SDK と同一の観測可能な挙動になる。
+   *
+   * **乖離の影響**: lock 連打など同一 itemCode の並行呼び出し時、SDK は 1 フレームのみ送るが
+   * kit は N フレーム送る。デバイス側が busy を返すと N-1 個が BleResultError(busy) になる。
+   * これは fail-loud であり静かに壊れるわけではないが、SDK とは観測可能な差がある。
+   *
+   * **方針(P3-27)**: 注記実装で意図的乖離として固定する。直列化が必要になった時点で
+   * `_pending[itemCode].length > 0` ガードを追加する (P4-1 の契約面が確定するまで保留)。
+   *
    * @param {number} itemCode
    * @param {Buffer} [data]
    * @param {{timeoutMs?:number}} [opts]
@@ -435,6 +475,8 @@ export class SesameBleSession {
       if (!this._pending.has(itemCode)) this._pending.set(itemCode, []);
       /** @type {NonNullable<ReturnType<typeof this._pending.get>>} */ (this._pending.get(itemCode)).push(entry);
       // 送信は subscribe 登録後に (race 防止)
+      // 【P3-27】SDK (CHSesameOS3.kt:354-370) は in-flight の間は再送を抑止するが、
+      // kit は毎回 _sendCipher() する (意図的乖離 — 上記 JSDoc 参照)。
       this._sendCipher(buildSendFrame(itemCode, data));
     });
   }
@@ -456,6 +498,29 @@ export class SesameBleSession {
       this._lastMechSetting = { ...this._lastMechSetting, lockPosition: lockTarget, unlockPosition: unlockTarget };
     } else {
       this._lastMechSetting = { lockPosition: lockTarget, unlockPosition: unlockTarget, autoLockSecond: 0 };
+    }
+    return res;
+  }
+
+  /**
+   * autolock — オートロック秒数を設定する (CHSesame5Device.kt:96-105 と 1:1)。
+   *   item = autolock(11)、data = autolockData(seconds) (2B LE)。0=無効。
+   * SDK は成功時に mechSetting?.autoLockSecond = delay.toShort() でキャッシュを局所更新する
+   * (CHSesame5Device.kt:102)。本実装も成功 (resultCode==0) のとき _lastMechSetting.autoLockSecond
+   * を更新する。キャッシュが未初期化の場合は lock/unlock=0 で新規作成
+   * (configureLockPosition と同流儀)。
+   * @param {number} seconds 0..65535 (0 = 無効)
+   * @param {{timeoutMs?:number}} [opts]
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
+   */
+  async autolock(seconds, opts = {}) {
+    const data = autolockData(seconds);
+    const res = await this.request(ITEM.AUTOLOCK, data, opts);
+    // SDK は成功時に mechSetting?.autoLockSecond を更新する (CHSesame5Device.kt:102)。
+    if (this._lastMechSetting) {
+      this._lastMechSetting = { ...this._lastMechSetting, autoLockSecond: seconds };
+    } else {
+      this._lastMechSetting = { lockPosition: 0, unlockPosition: 0, autoLockSecond: seconds };
     }
     return res;
   }
@@ -668,15 +733,27 @@ export class SesameBleSession {
       // (CHWifiModule2Device.kt:521-528。自実装が 14 のみ処理すると WM2 はトークンを受け取れない)。
       if (itemCode === this._initialItemCode) { this._handleInitial(body); return; }
       if (itemCode === ITEM.MECH_STATUS) {
-        // ロック (Sesame5/6=7B, Bot/Bike=3B) は parseMechStatus で position/target/flags を読む。
-        // 生体・アクセス制御デバイス (Touch/Face/Palm) の mechStatus はロックのバイト構造を持たず
-        // (SDK CHSesameTouchProMechStatus は raw を保持するだけ)、長さも 7B/3B に一致しないため
-        // parseMechStatus は throw する。その場合は biometric.js の pass-through parse に落として
-        // _lastStatus を必ず更新する (CHSesameBiometricDeviceImpl.kt:214-217 handleMechStatus と整合)。
-        try {
-          this._lastStatus = parseMechStatus(body);
-        } catch {
+        // MECH_STATUS(81) の解釈は kind で静的ディスパッチする (P3-18)。
+        // SDK は具象クラスが型で 81 の意味を決める:
+        //   - Hub3  : CHWifiModule2NetWorkStatus として 1B bit flags (CHHub3Device.kt:291-301)
+        //   - ロック : CHSesame5MechStatus (7B) (CHSesameOS3LockBase.kt)
+        //   - Bot/Bike: CHSesameBot2MechStatus (3B)
+        //   - 生体   : raw 素通し (CHSesameBiometricDeviceImpl.kt:214-217)
+        // フォールバック連鎖 (try parseMechStatus catch parseBiometric) を排除し、
+        // Hub3 の 1B payload が biometric 形で lastStatus に入る問題を解消。
+        // 長さ不一致は推測せず明示エラーログ。
+        const kind = this._mechStatusKind;
+        if (kind === "hub3") {
+          // Hub3: 1B ネットワーク状態 bit flags (CHHub3Device.kt:291-301)
+          try { this._lastStatus = parseNetworkStatus(body); }
+          catch (e) { this._log("mechStatus(hub3) parse error", /** @type {{message?:string}} */ (e)?.message); }
+        } else if (kind === "biometric") {
+          // 生体: raw 素通し (CHSesameBiometricDeviceImpl.kt:214-217)
           this._lastStatus = parseBiometricMechStatus(body);
+        } else {
+          // "lock" (7B) または "bot" (3B) — parseMechStatus が長さで分岐
+          try { this._lastStatus = parseMechStatus(body); }
+          catch (e) { this._log("mechStatus(" + kind + ") parse error: unexpected length " + body.length, /** @type {{message?:string}} */ (e)?.message); }
         }
         for (const fn of [...this._statusListeners]) { try { fn(this._lastStatus); } catch { /* ignore */ } }
       }

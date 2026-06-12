@@ -77,6 +77,8 @@ export class SesameOS2Ble {
       secretKey: registerMode ? undefined : secretKey,
       keyIndex,
       ssmPublicKey,
+      // model を session へ伝搬: Bot/Bike は timePhone 条件が Sesame2/3/4 と異なるため (P3-14)。
+      model,
       debug,
     });
     this._model = model;
@@ -199,9 +201,26 @@ export class SesameOS2Ble {
    */
   async getAutolock() {
     const r = await this._session.request(OP.READ, ITEM.AUTOLOCK, Buffer.alloc(0));
-    // payload を reversedArray して整数化 (CHSesame2Device.kt:159 java.lang.Long.parseLong(reversed.toHex,16))。
-    // = LE 整数。長さ可変に備え readUIntLE で読む。
-    return r.payload.length ? r.payload.readUIntLE(0, r.payload.length) : 0;
+    // payload を reversedArray して整数化: CHSesame2Device.kt:159
+    //   `java.lang.Long.parseLong(res.payload.reversedArray().toHexString(), 16).toInt()`
+    // = バイト列を LE として読んで Long(64bit) に収める。
+    // Node.js readUIntLE は最大 6B。7〜8B でもゼロ上位なら同値だが readUIntLE は throw する。
+    // 上位バイトが 0 の場合のみ下位 6B を readUIntLE で読む (1:1 対応)。
+    // 実ファームの autolock 値は秒数 (u32 相当) であり 6B 超はほぼ発生しないが、
+    // 参照が 8B まで許容するため同等の明示処理を行う。
+    const p = r.payload;
+    if (!p.length) return 0;
+    if (p.length <= 6) return p.readUIntLE(0, p.length);
+    // 7B 以上: 上位バイトがすべて 0 なら有効下位バイトのみで readUIntLE。
+    // そうでなければ BigInt 経由で Number に変換 (Long.parseLong と等価)。
+    // 出典: CHSesame2Device.kt:159 (java.lang.Long は 8B 符号付き)。
+    let high = 0n;
+    for (let i = p.length - 1; i >= 6; i--) high = (high << 8n) | BigInt(p[i]);
+    if (high === 0n) return p.readUIntLE(0, 6);
+    // ゼロでない上位バイトが存在: BigInt 全体を Number に変換。
+    let val = 0n;
+    for (let i = p.length - 1; i >= 0; i--) val = (val << 8n) | BigInt(p[i]);
+    return Number(val);
   }
 
   /**
@@ -230,6 +249,13 @@ export class SesameOS2Ble {
    * 履歴を 1 バッチ取得 (OP.read, item=4)。payload の解析は呼び出し側 (生バイト返し)。
    * SDK は isInternetAvailable() で 0x01/0x00 を切り替える (CHSesame2Device.kt:606-612)。
    * BLE 直接用途では既定 0x01 (取得後デバイス側で消す挙動) を送る。
+   *
+   * ★【意図的逸脱: P3-26 / R2:BLE2-17】自動履歴読み出しは非実装。
+   * SDK (CHSesame2Device.kt:543-553) は mechStatus publish 受信時に retCode != 0 または
+   * target == Short.MIN_VALUE のとき readHistoryCommand{} を自動発行してサーバ POST するが、
+   * kit では実装しない。デバイス内履歴バッファが蓄積する可能性があるため、必要に応じて
+   * このメソッドを手動で呼び出すこと (参照: CHSesame2Device.kt:543-553)。
+   *
    * @param {{ack?:boolean}} [opts] ack=false で 0x00 (消さずに読むだけ)
    * @returns {Promise<Buffer>}
    */

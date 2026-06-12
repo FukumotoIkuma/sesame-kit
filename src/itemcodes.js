@@ -65,6 +65,21 @@ export const ITEM_CODES = Object.freeze({
   ADD_HUB3: 180,
   BOT2_ITEM_CODE_EDIT_SCRIPT: 181, // スクリプトの書き込み (sendClickScript)。送信 payload=[index 1B]+scriptBytes
 
+  // STP_ITEM_CODE_CARDS_ADD(182) — 出典: SesameProtocols.kt:49 (SesameItemCode 側の宣言)。
+  // ★SDK 内での SesameItemCode としての参照箇所は無い (送信も受信ハンドラも存在しない)。
+  //   さらに別 enum の StpItemCode 側 182 (STP_ITEM_CODE_CARDS_ADD, SesameProtocols.kt:66) と
+  //   **数値・名前とも衝突**する (182/183 は SesameItemCode と StpItemCode の両 enum に同名で
+  //   存在する唯一の番号群)。batchAdd の cmdItCode に使うのは STP_ITEM_CODES 側であり、
+  //   本定数は SesameItemCode enum の 1:1 完全性のためだけに置く (混同しないこと)。
+  STP_ITEM_CODE_CARDS_ADD: 182,
+
+  // STP_ITEM_CODE_DEVICE_STATUS(183) — 出典: SesameProtocols.kt:49 (SesameItemCode 側の宣言)。
+  // ★SDK 内で参照箇所が無い (送信も受信ハンドラも存在しない) 未使用コード。さらに別 enum の
+  //   StpItemCode 側 183 (STP_ITEM_CODE_CARDS_DELETE, SesameProtocols.kt:66) と **数値が衝突** する
+  //   (BLEP-10)。batchAdd/Delete の cmdItCode に使うのは STP_ITEM_CODES 側であり、本定数は
+  //   SesameItemCode enum の 1:1 完全性のためだけに置く (混同しないこと)。
+  STP_ITEM_CODE_DEVICE_STATUS: 183,
+
   // --- OS3 登録デバイス (Sesame Touch / Touch Pro / Face / Palm) ---
   // SDK では SesameItemCode の連番に同居。生体・カード・暗証番号の各操作は
   // CHANGE/DELETE/GET/NOTIFY/LAST/FIRST/MODE_GET/MODE_SET の 8 命令を基本セットとし、
@@ -161,13 +176,6 @@ export const ITEM_CODES = Object.freeze({
   HUB3_MATTER_PAIRING_CODE: 137,
   HUB3_ITEM_CODE_RELAY_SWITCH: 208,   // リレー切替の op (IoT 経由でも使う。CHHub3Device.kt:150)
 
-  // STP_ITEM_CODE_DEVICE_STATUS(183) — 出典: SesameProtocols.kt:49 (SesameItemCode 側の宣言)。
-  // ★SDK 内で参照箇所が無い (送信も受信ハンドラも存在しない) 未使用コード。さらに別 enum の
-  //   StpItemCode 側 183 (STP_ITEM_CODE_CARDS_DELETE, SesameProtocols.kt:66) と **数値が衝突** する
-  //   (BLEP-10)。batchAdd/Delete の cmdItCode に使うのは STP_ITEM_CODES 側であり、本定数は
-  //   SesameItemCode enum の 1:1 完全性のためだけに置く (混同しないこと)。
-  STP_ITEM_CODE_DEVICE_STATUS: 183,
-
   // Remote Nano (トリガ遅延) — 出典: SesameProtocols.kt:49
   // REMOTE_NANO_ITEM_CODE_SET_TRIGGER_DELAYTIME(190u) / REMOTE_NANO_ITEM_CODE_PUB_TRIGGER_DELAYTIME(191u)。
   // 送信(190): [time(UByte 1B)]。受信(191 publish): payload 先頭 1B(LE) = triggerDelaySecond。
@@ -239,8 +247,9 @@ export const WM2_ACTION_CODES = Object.freeze({
 });
 
 // StpItemCode (生体・アクセス制御デバイスの分割転送 batchAdd 専用)。
-// SesameItemCode とは別 enum で、数値空間が重複しうる (例: 182 は SesameItemCode の
-// いずれとも無関係)。WM2_ACTION_CODES と同様、混同を避けるため別オブジェクトに隔離する。
+// SesameItemCode とは別 enum で、数値空間が重複する。182/183 は SesameItemCode 側にも
+// 同名で宣言があり数値・名前とも衝突する (送信は StpItemCode 側を使う)。
+// WM2_ACTION_CODES と同様、混同を避けるため別オブジェクトに隔離する。
 // card/passcode の batchAdd は SesameItemCode ではなくこの cmdItCode で 209B ずつ送る。
 // 値の出典: SesameProtocols.kt:65-67 (internal enum class StpItemCode(val value: UByte))。
 export const STP_ITEM_CODES = Object.freeze({

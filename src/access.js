@@ -304,10 +304,17 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs,
   /** @type {Record<string, object[]>} deviceUUID → list (ページング累積) */
   const byDevice = {};
   // 完了通知後の grace timer (欠落デバイスがある時のみ起動。finish は冪等なので多重発火は無害)。
+  // タイマーは Promise 解決後に .finally で必ずクリアする (タイマーリーク防止 — P3-7)。
   /** @type {ReturnType<typeof setTimeout>|null} */
   let graceTimer = null;
   // 「(1) 取得 send → (2) pub データ push を集約 → (3) 完了通知 op で確定」の 2 購読モデル。
   // ライフサイクル (Promise/cleanup/timeout/二重解決) は util.subscribeChunks に委譲する。
+  //
+  // ⚠️ ページ粒度は grace 保護対象外 (P3-7 §9 V8):
+  //   grace window は「要求デバイスへの pub が 1 件も届いていない (byDevice[u] === undefined)」
+  //   場合のみ起動する。完了通知より後に届く page≥2 の追加ページは保護されない。
+  //   参照 (useManageAuthData.js:179-185) は完了通知を受けたら即 done:true とするのみで
+  //   ページ継続を保護する機構を持たないため、本挙動は参照に整合する (逸脱なし)。
   return subscribeChunks(client, {
     // (1) 取得リクエスト送信 (useManageAuthData.js:55-62)。obj.devices にカンマ連結文字列。
     sendFrame: { action: ACTION, obj: { devices: deviceIds }, op },
@@ -334,7 +341,7 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs,
           byDevice[deviceUUID] = page === 1 ? [...list] : [...current, ...list];
         },
       },
-      // (3) 完了通知 (useManageAuthData.js:180-185)。data 本体は無い。
+      // (3) 完了通知 (useManageAuthData.js:179-185)。data 本体は無い。
       //     要求した全デバイスの push が揃っていれば即確定。欠落があれば graceMs だけ
       //     残 push を吸収してから確定する (到着順序が未確認のため。§9 V8)。
       //     注: データ 0 件のデバイスには pub が来ない可能性もあるため、欠落時も
@@ -348,7 +355,10 @@ async function fetchAuthData(client, { op, pubOp, idKey, deviceUUIDs, timeoutMs,
         },
       },
     ],
-  });
+  // graceTimer は subscribeChunks 内部の cleanup では clear できないため、Promise 解決後に
+  // 必ず clearTimeout する (タイムアウトによる reject / 即時 finish / grace 完了のいずれでも動作)。
+  // 既に発火済みの場合は clearTimeout は無害 (P3-7)。
+  }).finally(() => { if (graceTimer != null) clearTimeout(graceTimer); });
 }
 
 /**
@@ -473,8 +483,8 @@ export async function postCards(client, { deviceUUID, list, timeoutMs = DEFAULT_
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{deviceUUID:string, list:object[], timeoutMs?:number}} params
- *   list 要素の正確なフィールドは biz3 のこのファイル内では未確認 (UI 由来)。getPasscodes 応答 item
- *   (passwordID 等) と対応すると推測される。**未確認: 実機検証要**。
+ *   list 要素: { passwordID, name, nameUUID } (references_web/src/pages/biz/access-control/password/passwords.js:101-113)。
+ *   nameUUID は biz3utils.insertUUIDIsolationCharacter 整形済み UUID 文字列。
  * @returns {Promise<object|null>}
  */
 export async function postPasscodes(client, { deviceUUID, list, timeoutMs = DEFAULT_TIMEOUT_MS }) {
@@ -613,16 +623,42 @@ export async function updatePasscodeName(client, { item, timeoutMs = DEFAULT_TIM
  *
  * biz3 (useManageAuthData.js:346-353) は 'ownerSubUUID' in item の時だけ送る。
  * ownerSubUUID は割り当てるメンバーの subUUID。空文字 '' でも送信 = 未割当解除。
- * frame は { action, obj:{ cardID, ownerSubUUID }, op:'updateCardOwner' }。
- * 応答は reqContext:{ cardID, ownerSubUUID } を echo back (235-259)。
+ *
+ * 送信フレーム: { action, obj:{...item}, op:'updateCardOwner' }
+ * 参照: useManageAuthData.js:346-353 は updateCardOwner(item, cb) を受け、
+ *       handlePutCardName (同 331-343) が obj:{...item} をそのまま送る。
+ *       呼び出し元 cards/index.js:385-396 は item として
+ *       { cardID, name, cardNameUUID, ownerSubUUID, timestamp, cardType, stpDeviceUUID }
+ *       の全フィールドを渡す。2 フィールド固定 (旧実装) ではこのフレームを再現できない。
  *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{cardID:string, ownerSubUUID:string, timeoutMs?:number}} params
- *   ownerSubUUID は省略 (undefined) すると送信しない (null 相当)。'' は送信して未割当解除。
- * @returns {Promise<object|null>} ownerSubUUID 未指定なら null。
+ * @param {{item?: object, cardID?: string, ownerSubUUID?: string, timeoutMs?: number}} params
+ *   推奨: item に全フィールドを持つオブジェクトを渡す (cards/index.js:385-396 相当)。
+ *   後方互換: item 省略時は { cardID, ownerSubUUID } を item として合成する。
+ *   ownerSubUUID が item に存在しない (undefined) 場合は送信しない。
+ *   '' は送信して未割当解除 (useManageAuthData.js:348: 'ownerSubUUID' in item のみ送る)。
+ * @returns {Promise<object|null>} ownerSubUUID が item に存在しなければ null。
  */
-export async function updateCardOwner(client, { cardID, ownerSubUUID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  // biz3: 'ownerSubUUID' in item の時だけ送る (348)。undefined は送らない。'' は送る。
+export async function updateCardOwner(client, { item, cardID, ownerSubUUID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+  // item を持つ呼び出し (cards/index.js:385-396 相当) と、後方互換の直接指定呼び出しを
+  // 両方サポートする。
+  if (item !== undefined) {
+    // --- item 透過パス (biz3 参照実装の正規経路) ---
+    // useManageAuthData.js:346-353: 'ownerSubUUID' in item の時だけ送る。
+    // handlePutCardName (同 331-343) は obj:{...item} をそのまま送る。
+    if (!('ownerSubUUID' in item)) return null;
+    return requestOp(
+      client,
+      { action: ACTION, obj: { ...item }, op: "updateCardOwner" },
+      "updateCardOwner",
+      timeoutMs,
+    );
+  }
+
+  // --- 後方互換パス: item 省略時は { cardID, ownerSubUUID } を合成 ---
+  // 旧シグネチャ updateCardOwner(client, { cardID, ownerSubUUID }) の呼び出し元
+  // (src/cli/access.js) を壊さないための互換層。
+  // ownerSubUUID undefined は「キー不在」扱いと同義 (useManageAuthData.js:348 と等価)。
   if (ownerSubUUID === undefined) return null;
   return requestOp(
     client,
@@ -640,7 +676,7 @@ export async function updateCardOwner(client, { cardID, ownerSubUUID, timeoutMs 
  *
  * @param {import("./transport.js").Hub3WsClient|null} _client WS 互換のため未使用
  * @param {AuthDataParams} params
- * @returns {Promise<object[]|object>} SDK と同じく response.data.items があればそれを返し、無ければ応答全体
+ * @returns {Promise<object[]>} response.data.items (CHDataSynchronizeCapableImpl.kt:23: `responses.data.items`)
  */
 export async function postAuthenticationData(_client, params) {
   const transport = resolveBiometricsTransport(params);
@@ -650,7 +686,9 @@ export async function postAuthenticationData(_client, params) {
     items: Array.isArray(params.items) ? params.items : [],
   };
   const resp = await postBiometrics(transport, body, "postAuthenticationData");
-  return resp?.data?.items ?? resp;
+  // 参照は無条件に responses.data.items を読む (CHDataSynchronizeCapableImpl.kt:23)。
+  // フォールバック `?? resp` は出典なし — 撤去。
+  return resp?.data?.items;
 }
 
 /**

@@ -67,13 +67,17 @@ describe("生成された ble.wifi.* RPC (WM2)", () => {
       .rejects.toThrow();
   });
 
-  it("networkStatus / reset は引数なしで呼ばれる", async () => {
-    const networkStatus = vi.fn(ackResolved);
+  // P3-20: ble.wifi.networkStatus は削除済み。SDK に NETWORK_STATUS 送信経路は無い
+  //   (CHWifiModule2Device.kt:502-510 受信専用、CHWifiModule2.kt:30-39 に対応 API 無し)。
+  //   受信は onPublish の {kind:"networkStatus"} で行う。
+  it("ble.wifi.networkStatus は登録されない (P3-20: 送信経路は SDK 非存在)", () => {
+    expect(reg.get("ble.wifi.networkStatus")).toBeUndefined();
+  });
+
+  it("reset は引数なしで呼ばれる", async () => {
     const reset = vi.fn(ackResolved);
-    stubBle({ wifi: () => ({ networkStatus, reset }) });
-    await reg.get("ble.wifi.networkStatus").handler({ hub: {}, daemon, params: { ...WM2_TARGET } });
+    stubBle({ wifi: () => ({ reset }) });
     await reg.get("ble.wifi.reset").handler({ hub: {}, daemon, params: { ...WM2_TARGET } });
-    expect(networkStatus).toHaveBeenCalledWith();
     expect(reset).toHaveBeenCalledWith();
   });
 

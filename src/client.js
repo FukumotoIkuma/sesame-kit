@@ -784,9 +784,30 @@ export class SesameHub3 {
     return ir.searchRemoteList(ws, { type, companyID: this._companyID, searchTerm });
   }
 
-  /** @param {object} remoteObj */
-  async addIRRemoteServer(remoteObj) {
+  /**
+   * プリセットリモコンをサーバへ登録する。送信前に 3 個上限チェックを行う。
+   *
+   * 上限ロジック 1:1 (references_web/src/api/useRemoteCtrl.js:525-531):
+   *   addIRRemote は送信前に canAddMoreRemote を通す。false なら拒否。
+   *
+   * 上限チェックには対象 Hub3 の現在の stateInfo.remoteList が必要。
+   *   - `currentRemoteList` を渡すと、その一覧をもとにチェックする。
+   *   - 省略時はチェックをスキップ (後方互換。直接 API 経路など一覧が手元にない場合)。
+   *
+   * @param {{type?: number|string, [k: string]: unknown}} remoteObj 追加するリモコンオブジェクト (type フィールド必須)
+   * @param {{ currentRemoteList?: Array<{type?: number|string}> }} [opts]
+   */
+  async addIRRemoteServer(remoteObj, { currentRemoteList } = {}) {
     const ws = this._ensureConnected();
+    // プリセット 3 個上限チェック (currentRemoteList が渡された場合のみ)。
+    // 出典: references_web/src/api/useRemoteCtrl.js:525-531 (addIRRemote が
+    //       送信前に canAddMoreRemote を通す)。
+    if (currentRemoteList !== undefined) {
+      const type = Number(remoteObj.type ?? 0);
+      if (!ir.canAddMoreRemote(type, currentRemoteList)) {
+        throw badRequest("domain.ir.presetRemoteLimit");
+      }
+    }
     return ir.addIRRemote(ws, { remote: remoteObj, companyID: this._companyID });
   }
 
@@ -1385,7 +1406,10 @@ export class SesameHub3 {
   /**
    * デバイス一覧の増減 push (`pubUserDeviceChange`) を購読 (P3-5)。
    * 鍵共有・デバイス追加/削除があるとサーバが push する。vendor はこれを受けて
-   * デバイス一覧を再取得する (useIotCtrl.js:12,23-25)。購読 frame は不要 (vendor も送らない)。
+   * デバイス一覧を再取得する (useIotCtrl.js:12,23-25)。
+   * 専用 subscribe op は存在しない (useIotCtrl.js:23-25 はハンドラ登録のみ)。
+   * ただし vendor 接続は常に subscribeDevicesUpdate を送信済み (useManageDevice.js:51,346) のため、
+   * 無購読接続にも push されるかは実機未検証 (§9 V14 参照)。
    * @param {(msg: import("./transport.js").WsMessage)=>void} fn
    * @returns {() => void} unsubscribe
    */

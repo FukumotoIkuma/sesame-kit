@@ -52,6 +52,8 @@ declare namespace _default {
         "domain.ir.learnTimeout": string;
         "domain.ir.learnFailed": string;
         "domain.ir.learnEmptyWaveform": string;
+        "domain.ir.addIRRemoteDeviceUUIDRequired": string;
+        "domain.ir.presetRemoteLimit": string;
         "domain.devices.getUserDeviceTimeout": string;
         "domain.devices.itemsArray": string;
         "domain.devices.listFirmwareTimeout": string;
@@ -143,6 +145,8 @@ declare namespace _default {
         "domain.ir.learnTimeout": string;
         "domain.ir.learnFailed": string;
         "domain.ir.learnEmptyWaveform": string;
+        "domain.ir.addIRRemoteDeviceUUIDRequired": string;
+        "domain.ir.presetRemoteLimit": string;
         "domain.devices.getUserDeviceTimeout": string;
         "domain.devices.itemsArray": string;
         "domain.devices.listFirmwareTimeout": string;

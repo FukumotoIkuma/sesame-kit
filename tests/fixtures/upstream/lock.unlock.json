@@ -1,12 +1,10 @@
 {
   "method": "lock.unlock",
-  "note": "synthetic — trigger ack (vendor-unverified; shape from src/lock.js observation, all fields optional except action). Captured for shape-pinning only; the live canary does not call write ops.",
+  "note": "synthetic — trigger ack (vendor-unverified; shape from src/lock.js 実機観測: {action:\"biz3TriggerLocker\", code:200, data:{}, success:true}). op フィールドは実機 ack に存在しない。Captured for shape-pinning only; the live canary does not call write ops.",
   "sample": {
-    "action": "unlock",
-    "code": 0,
+    "action": "biz3TriggerLocker",
+    "code": 200,
     "success": true,
-    "message": "ok",
-    "op": "cmd",
     "data": {}
   }
 }

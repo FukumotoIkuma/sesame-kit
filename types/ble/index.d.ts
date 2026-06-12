@@ -327,8 +327,8 @@ export class SesameBle {
     /**
      * WifiModule2 (WM2) の BLE プロビジョニング API。
      *
-     * scanWifiSSID / setWifiSSID / setWifiPassword / connectWifi / insertSesames / removeSesame /
-     * networkStatus と、正規化済み WM2 publish ({kind, ...}) を購読する onPublish を持つ
+     * scanWifiSSID / setWifiSSID / setWifiPassword / connectWifi / insertSesames / removeSesame と、
+     * 正規化済み WM2 publish ({kind, ...}; networkStatus は受信専用) を購読する onPublish を持つ
      * WifiModule2 を返す (実体は src/ble/wm2.js、契約は session.request / session.onPublish に乗る)。
      *
      * capabilitiesForModel(model).wifiProvisioning が true の機種 (= WM2) でのみ露出する。それ以外
@@ -501,9 +501,13 @@ export class SesameBle {
     /**
      * オートロック設定 (BLE item=11、2byte LE 秒数。0=無効)。Sesame5/6 ロックのみ。
      * **BLE 経由なら実機に反映される** (クラウドの biz3TriggerLocker では ack のみで未反映だった機能)。
+     * 成功後に lastMechSetting キャッシュの autoLockSecond も更新される (SDK と同じ局所更新)。
      * @param {number} seconds 0..65535
+     * @param {{timeoutMs?:number}} [opts]
      */
-    autolock(seconds: number): Promise<{
+    autolock(seconds: number, opts?: {
+        timeoutMs?: number;
+    }): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
@@ -737,7 +741,7 @@ export { NobleTransport, createBleTransport, advToDeviceUUID, parseAdvertisement
 export { capabilitiesForModel, kindForModel, supportsOp, isOperable, transportsForOp, CONTROL_OPS, KIND, PRODUCT_TYPES, BIO_CAPABILITY, bioCapsForModel } from "./devicemodel.js";
 export { BiometricCommands, handleBiometricPublish, parseTouchCard, parseTouchFace, parseRemoteNanoTrigger, remoteNanoTriggerDelayData, radarSensitivityData, insertSesameData as biometricInsertSesameData, removeSesameData as biometricRemoveSesameData, createEnrollCollector } from "./biometric.js";
 export { Bot2Commands, BOT_ACTION_TYPE, clickItemCode, bot2ActionToBytes, scriptToBytes, parseCurrentScript, parseScriptNameList } from "./bot2.js";
-export { WifiModule2, WM2_GATT, WM2_ACTION, scanWifiSSIDData, setWifiSSIDData, setWifiPasswordData, connectWifiData, insertSesamesData, removeSesameData, networkStatusData, parseScanWifiSSID, parseWifiSSIDPublish, parseWifiPasswordPublish, parseNetworkStatus, parseSesameKeys, parseWM2Publish } from "./wm2.js";
+export { WifiModule2, WM2_GATT, WM2_ACTION, scanWifiSSIDData, setWifiSSIDData, setWifiPasswordData, connectWifiData, insertSesamesData, removeSesameData, parseScanWifiSSID, parseWifiSSIDPublish, parseWifiPasswordPublish, parseNetworkStatus, parseSesameKeys, parseWM2Publish } from "./wm2.js";
 export { Hub3Commands, parseHub3Publish, parseNetworkType, parseMechSetting as parseHub3MechSetting, parseScanWifiSSID as parseHub3ScanWifiSSID, parseSesameKeys as parseHub3SesameKeys, networkTypeData } from "./hub3.js";
 export { updateFirmware, updateFirmwareBleOnly, updateFirmwareWM2, onMoveToOtaProgress, onWM2OtaProgress } from "./dfu.js";
 export { SesameOS2Ble, SesameOS2BleSession, SesameOS2BleCipher } from "./os2/index.js";

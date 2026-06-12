@@ -63,8 +63,11 @@ export function removePayment(client: import("./transport.js").Hub3WsClient, par
 /**
  * Update/cancel the company's paid level.
  *
- * biz3 updateLevel (useStripeInfo.js:202-220):
- * { action:'biz3ManagePayment', subId, isUpgrade, level, isCancel, customerId, op:'payUpdateLevel' }
+ * biz3 updateLevel (useStripeInfo.js:200-219):
+ * { action:'biz3ManagePayment', [subId,] isUpgrade, level, isCancel, customerId, op:'payUpdateLevel' }
+ *
+ * subId は Free 会社(初回アップグレード)では undefined となりフレームに含まれない
+ * (references_web/src/api/useStripeInfo.js:41-47 で subscriptionId は optional)。
  *
  * `level` is the encoded biz3 level (`planIndex * 2 + yearlyBit`), not just the plan index.
  *

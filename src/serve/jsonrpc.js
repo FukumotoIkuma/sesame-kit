@@ -124,19 +124,23 @@ export const KIND = Object.freeze({
 });
 
 // BLE デバイスの結果コード (BleResultError.resultName) → JSON-RPC kind 写像 (SURF-11)。
-// resultName の語彙は SesameResultCode (src/ble/protocol.js RESULT: success/invalidFormat/
-// notSupported/resultStorageFail/invalidSig/notFound/unknown/busy/invalidParam/invalidAction。
+// resultName の語彙は検証済み SesameResultCode (src/ble/protocol.js RESULT: success/invalidFormat/
+// notSupported/resultStorageFail/invalidSig/notFound/unknown/busy/invalidParam。
+// 出典: _sesame_sdk_ref/.../SesameProtocols.kt:28-30。8 (INVALID_PARAM) で終端。
 // OS2 側 src/ble/os2/protocol.js も同語彙)。タイムアウトは BleResultError ではなく
 // 通常 Error (ble.requestTimeout) で届くため、この表に timeout は現れない。
-//   - 呼び出し形の不正をデバイスが弾いたもの (invalidFormat/invalidParam/invalidAction) → bad_params
+//   - 呼び出し形の不正をデバイスが弾いたもの (invalidFormat/invalidParam) → bad_params
+//     (コード 9 "invalidAction" は iOS SDK 由来と主張されていたが一次ソース不在のため
+//     UNVERIFIED_RESULT_NAMES に隔離。resultName(9) = "unknown(9)" → 下記 fallback で rejected に
+//     フォールバックする — P3-16)
 //   - 鍵不一致 (invalidSig = secretKey mismatch) → not_authenticated
 //   - デバイスが明示的に実行を拒否/失敗 (busy/notFound/notSupported/storage/unknown) → rejected
 //     (busy のみ retryable=true: 他操作完了後の再試行で成功し得る)
+//   - テーブル未登録の resultName (例: "unknown(9)") → rejected (errorFromThrow の fallback が処理)
 /** @type {Record<string, { kind: string, code: number, retryable: boolean }>} */
 const BLE_RESULT_TO_RPC = Object.freeze({
   invalidFormat: { kind: "bad_params", code: RPC.INVALID_PARAMS, retryable: false },
   invalidParam: { kind: "bad_params", code: RPC.INVALID_PARAMS, retryable: false },
-  invalidAction: { kind: "bad_params", code: RPC.INVALID_PARAMS, retryable: false },
   invalidSig: { kind: "not_authenticated", code: RPC.APP_ERROR, retryable: false },
   busy: { kind: "rejected", code: RPC.APP_ERROR, retryable: true },
   notFound: { kind: "rejected", code: RPC.APP_ERROR, retryable: false },

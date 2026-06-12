@@ -61,6 +61,8 @@ export default {
     "domain.ir.learnTimeout": "learn timeout (no IR captured)",
     "domain.ir.learnFailed": "IR learn failed: {detail}",
     "domain.ir.learnEmptyWaveform": "IR learn returned an empty waveform (nothing captured)",
+    "domain.ir.addIRRemoteDeviceUUIDRequired": "remote.deviceUUID (hub3DeviceId) is required",
+    "domain.ir.presetRemoteLimit": "Preset remote limit reached (max 3 per Hub3). Self-learning remotes (0xFE00) are not counted.",
 
     // ---- devices.js ----
     "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",
@@ -171,6 +173,8 @@ export default {
     "domain.ir.learnTimeout": "learn timeout (no IR captured)",
     "domain.ir.learnFailed": "IR 学習に失敗しました: {detail}",
     "domain.ir.learnEmptyWaveform": "IR 学習で空の波形が返されました (何もキャプチャされていません)",
+    "domain.ir.addIRRemoteDeviceUUIDRequired": "remote.deviceUUID (hub3DeviceId) が必要です",
+    "domain.ir.presetRemoteLimit": "プリセットリモコンの上限に達しました (Hub3 1 台あたり最大 3 個)。自己学習リモコン (0xFE00) はカウントしません。",
 
     // ---- devices.js ----
     "domain.devices.getUserDeviceTimeout": "getUserDevice timeout",

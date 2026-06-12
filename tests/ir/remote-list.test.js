@@ -17,7 +17,7 @@
 //   useRemoteCtrl.js:404-414 (searchRemoteList: searchTerm + pagination:{page:1,pageSize:1000} 固定)
 
 import { describe, it, expect, vi } from "vitest";
-import { getRemoteList, searchRemoteList } from "../../src/ir.js";
+import { getRemoteList, searchRemoteList, matchRemote } from "../../src/ir.js";
 
 const ACTION = "biz3IRRemote";
 const COMPANY_ID = "co-A";
@@ -144,5 +144,43 @@ describe("searchRemoteList (P1-12)", () => {
   it("success:false は throw (assertSuccess strict)", async () => {
     const client = makeClient({ action: ACTION, op: "searchRemoteList", success: false, message: "denied" });
     await expect(searchRemoteList(client, { type: 0xc000, companyID: COMPANY_ID, searchTerm: "x" })).rejects.toThrow(/searchRemoteList/);
+  });
+});
+
+describe("P3-10: matchRemote のワイヤ形 — brandName 未指定時はキー省略 (useRemoteCtrl.js:785-797)", () => {
+  // 導出元: useRemoteCtrl.js:785-797 (references_web/src/api/useRemoteCtrl.js)
+  // brandName は常に値あり (model パラメータから来る) で送信されており、
+  // brandName 未指定時は空文字でなくキー自体を省くことで 1:1 逸脱を解消する。
+
+  const IR_DATA = "deadbeef".repeat(8); // 64 chars, length/2 = 32
+
+  it("brandName あり: フレームに brandName が存在する", async () => {
+    const client = makeClient({ action: ACTION, op: "matchRemote", success: true, data: { matches: [{ id: "r-1" }] } });
+    const result = await matchRemote(client, { irData: IR_DATA, irType: 1, brandName: "Panasonic", companyID: COMPANY_ID });
+    const frame = client.requests[0];
+    expect(frame.brandName).toBe("Panasonic");
+    expect(result).toEqual([{ id: "r-1" }]);
+  });
+
+  it("brandName 未指定: brandName キーがフレームに不在", async () => {
+    const client = makeClient({ action: ACTION, op: "matchRemote", success: true, data: { matches: [] } });
+    await matchRemote(client, { irData: IR_DATA, irType: 1, companyID: COMPANY_ID });
+    const frame = client.requests[0];
+    expect("brandName" in frame).toBe(false);
+  });
+
+  it("brandName が空文字でも旧実装の空文字キー送出になる (非 undefined → キー存在)", async () => {
+    // 呼び出し元が明示的に "" を渡した場合はキーを送る (undefined とは異なる)。
+    const client = makeClient({ action: ACTION, op: "matchRemote", success: true, data: {} });
+    await matchRemote(client, { irData: IR_DATA, irType: 1, brandName: "", companyID: COMPANY_ID });
+    const frame = client.requests[0];
+    expect("brandName" in frame).toBe(true);
+    expect(frame.brandName).toBe("");
+  });
+
+  it("irWaveLength は irData.length / 2", async () => {
+    const client = makeClient({ action: ACTION, op: "matchRemote", success: true, data: {} });
+    await matchRemote(client, { irData: IR_DATA, irType: 2, companyID: COMPANY_ID });
+    expect(client.requests[0].irWaveLength).toBe(IR_DATA.length / 2);
   });
 });

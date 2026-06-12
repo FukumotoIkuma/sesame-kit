@@ -69,6 +69,66 @@ class MockSesame {
   }
 }
 
+/**
+ * P3-27 テスト用: response を手動でトリガするまで応答を保留する mock。
+ * 導出元: CHSesameOS3.kt:354-370 の sendCommand() — SDK は同一 itemCode in-flight 時に
+ *         ワイヤへの再送を抑止するが、kit は毎回送る (意図的乖離)。
+ * mock の write() は受け取ったフレームを復号して commands[] に積むが返答はしない。
+ * flushOne(resultCode) を呼ぶと先頭コマンドの response をデバイス側から流す。
+ */
+class DeferredMockSesame {
+  constructor({ secret = SECRET, token = Buffer.from([1, 2, 3, 4]) } = {}) {
+    this.secret = Buffer.from(secret, "hex");
+    this.token = token;
+    this.key = deriveSessionKey(this.secret, this.token);
+    this.asm = new SegmentAssembler();
+    this.encCount = 0; // device→client
+    this.decCount = 0; // client→device
+    this.onPacket = null;
+    /** @type {Array<{item:number, data:Buffer}>} */
+    this.commands = [];
+    this.disconnected = false;
+  }
+
+  connect(onPacket) {
+    this.onPacket = onPacket;
+    this._emitPlain(Buffer.concat([Buffer.from([OP.PUBLISH, ITEM.INITIAL]), this.token]));
+    return Promise.resolve();
+  }
+
+  write(seg) {
+    const a = this.asm.feed(Buffer.from(seg));
+    if (!a) return;
+    let frame;
+    if (a.type === SEG.CIPHERTEXT) { frame = ccmDecrypt(this.key, this.decCount, this.token, a.data); this.decCount += 1; }
+    else frame = a.data;
+    const item = frame[0];
+    const data = frame.subarray(1);
+    if (item === ITEM.LOGIN) {
+      this._emitCipher(Buffer.from([OP.RESPONSE, ITEM.LOGIN, 0x00, 0, 0, 0, 0]));
+      return;
+    }
+    this.commands.push({ item, data: Buffer.from(data) });
+    // response は保留 — flushOne() を呼ぶまで返さない
+  }
+
+  /** 先頭コマンドの response を流す。 */
+  flushOne(resultCode = 0x00) {
+    const cmd = this.commands.shift();
+    if (!cmd) throw new Error("no pending command to flush");
+    this._emitCipher(Buffer.from([OP.RESPONSE, cmd.item, resultCode]));
+  }
+
+  disconnect() { this.disconnected = true; return Promise.resolve(); }
+
+  _emitPlain(frame) { for (const s of splitSegments(frame, SEG.PLAINTEXT)) this.onPacket(s); }
+  _emitCipher(frame) {
+    const ct = ccmEncrypt(this.key, this.encCount, this.token, frame);
+    this.encCount += 1;
+    for (const s of splitSegments(ct, SEG.CIPHERTEXT)) this.onPacket(s);
+  }
+}
+
 describe("SesameBleSession", () => {
   let dev, session;
   beforeEach(() => {
@@ -186,5 +246,52 @@ describe("SesameBleSession", () => {
     await session.disconnect();
     expect(dev.disconnected).toBe(true);
     expect(session.isLoggedIn).toBe(false);
+  });
+
+  // ---- P3-27: 同一 itemCode 同時 request の意味論 ----
+  //
+  // SDK (CHSesameOS3.kt:349-372) は同一 itemCode が in-flight の間はワイヤへの再送を抑止し
+  // callback を差し替えるだけ返す (重複フレーム = 0)。
+  // kit は毎回 _sendCipher() するため N 回呼べば N フレームがワイヤに流れる (意図的乖離)。
+  // このテストは kit の「N フレーム送信 + FIFO 解決」挙動を不変条件として固定する。
+
+  it("P3-27: 同一 itemCode を並行 request すると N フレームが送信され FIFO で resolve される (kit の意図的乖離)", async () => {
+    const deferred = new DeferredMockSesame();
+    // syncTime=false: 時刻同期 fire-and-forget (CHSesameOS3LockBase.kt:126-138) が
+    // DeferredMockSesame の commands に混入しないよう無効化する。
+    const s = new SesameBleSession({ transport: deferred, secretKey: SECRET, syncTime: false });
+    await s.connect();
+
+    // 同一 itemCode (LOCK=82) を 3 回同時に request する。
+    // kit は 3 フレームをワイヤに流す (SDK は 1 フレームのみ流す — 意図的乖離)。
+    const results = [];
+    const p1 = s.request(ITEM.LOCK, Buffer.from([0x00, 0x0e]));
+    const p2 = s.request(ITEM.LOCK, Buffer.from([0x00, 0x0e]));
+    const p3 = s.request(ITEM.LOCK, Buffer.from([0x00, 0x0e]));
+
+    // 3 フレームが deferred.commands に積まれていることを確認 (SDK は 1 フレームのみ)。
+    expect(deferred.commands.length).toBe(3);
+    expect(deferred.commands.every(c => c.item === ITEM.LOCK)).toBe(true);
+
+    // FIFO 順に response を流す → 各 Promise が順に resolve される。
+    deferred.flushOne(0x00); results.push(await p1);
+    deferred.flushOne(0x00); results.push(await p2);
+    deferred.flushOne(0x00); results.push(await p3);
+
+    expect(results).toHaveLength(3);
+    expect(results.every(r => r.resultCode === 0)).toBe(true);
+    // flush 後 commands は空になる。
+    expect(deferred.commands.length).toBe(0);
+  });
+
+  it("P3-27: 同一 itemCode の sequential (直列) request は SDK と同じ 1 フレームずつ送信", async () => {
+    // 直列呼び出しでは SDK と観測可能な差がない (P3-27 の「単独・直列は同一」の確認)。
+    await session.connect();
+    const r1 = await session.request(ITEM.LOCK);
+    const r2 = await session.request(ITEM.LOCK);
+    expect(r1.resultCode).toBe(0);
+    expect(r2.resultCode).toBe(0);
+    // MockSesame は lock(82) に毎回 response を返すので 2 回独立して成功する。
+    expect(dev.lastCommand.item).toBe(ITEM.LOCK);
   });
 });

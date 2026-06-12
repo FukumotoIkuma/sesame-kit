@@ -166,8 +166,11 @@ export function subscribeDevicesUpdate(client: WsClient, { companyID, items, onU
  * vendor (useIotCtrl.js:12,23-25): 鍵共有・デバイス追加/削除があるとサーバが
  * `{action:"biz3TriggerLocker", op:"pubUserDeviceChange", ...}` を push し、
  * web はそれを受けて getCompanyDevices() でデバイス一覧を再取得する。
- * 購読要求フレームは存在しない (pubDeviceStateChange と違い subscribe op 無しで届く) ため、
- * 本関数はローカル購読のみを行う。再接続を跨いでも transport の subscribers は保持される。
+ * 専用の subscribe op は存在しない (useIotCtrl.js:23-25 はハンドラ登録のみ)。
+ * ただし vendor 接続は常に getCompanyDevices() 完了後に subscribeDevicesUpdate を送信済み
+ * (useManageDevice.js:51,336-346) のため、無購読接続にも pubUserDeviceChange が届くかは
+ * 実機未検証 (§9 V14 参照)。本関数はローカル購読のみを行う。
+ * 再接続を跨いでも transport の subscribers は保持される。
  *
  * @param {WsClient} client
  * @param {{onChange: (msg: any) => void}} p
@@ -248,6 +251,10 @@ export function listFirmware(client: WsClient): Promise<any[]>;
  * func 例: 'webapi_ssm_shadow_get', 'webapi_history_get', 'webapi_cmd_send'。
  * apiKeyId は別途 biz3 の dev console で発行されたもの。
  *
+ * P3-10: vendor (useDeveloper.js:46-58) は query/body を渡さない呼び出しでキー自体を省く。
+ * query は省略時キー脱落 (undefined → JSON.stringify で除去)、body も同様。
+ * 空オブジェクト {} を常時送る旧実装は 1:1 逸脱のため条件スプレッドに修正。
+ *
  * @param {WsClient} client
  * @param {{func:string, apiKeyId:string, query?:object, body?:object}} p
  */
@@ -299,7 +306,6 @@ export function webapiSendCmd(client: WsClient, { apiKeyId, deviceId, cmd, sign,
  *
  * appidentifyid は付けない (バックログ8: per-op 化)。本 transport が叩くエンドポイント
  *   POST /device/v1/sesame2/sign        (CHAPIClient.kt:95-96 guestKeysSignPost)
- *   POST /device/v1/sesame2/{device_id} (CHAPIClient.kt:77-81 register os2)
  *   POST /device/v1/sesame5/{device_id} (CHAPIClient.kt:84-88 register os3)
  * には参照に @Parameter(name="appidentifyid", location="header") が無い。
  * 全列挙表は aws-credentials.js makeApiGatewayTransport の冒頭コメント参照。

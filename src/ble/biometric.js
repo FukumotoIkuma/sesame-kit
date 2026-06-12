@@ -106,15 +106,18 @@ function shortToReverseBytesLE(value) {
 
 /**
  * hexName (16進文字列) を 2 文字ずつ byte に畳む。
- * SDK: hexName.chunked(2).map { it.toInt(16).toByte() } (CHCardCapableImpl.kt:166 ほか change 系)。
- * 奇数長は末尾 1 文字を捨てる Kotlin chunked と同挙動 (= floor(len/2) バイト)。
+ * SDK: hexName.chunked(2).map { it.toInt(16).toByte() } (CHCardCapableImpl.kt:162 ほか change 系)。
+ * Kotlin chunked(2) は奇数長末尾の 1 文字も独立チャンクとして残す ("abc" → ["ab","c"])。
+ * "c".toInt(16) = 12 (= 0x0c) となり末尾 1B が出力される。旧 JS の `i + 1 < len` は末尾を
+ * 落とす誤りだった (旧コメント「末尾を捨てる Kotlin 同挙動」は参照実装の逆 = 虚偽)。
+ * 修正: `i < len` に変え hexName.slice(i, i+2) で末尾 1 文字でも parseInt する。
  * @param {string} hexName
  * @returns {Buffer}
  */
 function hexNameToBytes(hexName) {
   const out = [];
-  for (let i = 0; i + 1 < hexName.length; i += 2) {
-    out.push(parseInt(hexName.slice(i, i + 2), 16));
+  for (let i = 0; i < hexName.length; i += 2) {
+    out.push(parseInt(hexName.slice(i, i + 2), 16) & 0xff);
   }
   return Buffer.from(out);
 }

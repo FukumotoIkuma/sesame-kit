@@ -20,7 +20,7 @@ import { badRequest, timeoutError } from "../util.js";
 import { SesameBleSession } from "./session.js";
 import { createBleTransport } from "./transport.js";
 import {
-  ITEM, MECH_STATE, historyTagBLE, autolockData,
+  ITEM, MECH_STATE, historyTagBLE,
 } from "./protocol.js";
 import { capabilitiesForModel, KIND } from "./devicemodel.js";
 import { BiometricCommands } from "./biometric.js";
@@ -73,7 +73,7 @@ export * as bot2 from "./bot2.js";
 export {
   WifiModule2, WM2_GATT, WM2_ACTION,
   scanWifiSSIDData, setWifiSSIDData, setWifiPasswordData, connectWifiData,
-  insertSesamesData, removeSesameData, networkStatusData,
+  insertSesamesData, removeSesameData,
   parseScanWifiSSID, parseWifiSSIDPublish, parseWifiPasswordPublish,
   parseNetworkStatus, parseSesameKeys, parseWM2Publish,
 } from "./wm2.js";
@@ -380,6 +380,18 @@ export class SesameBle {
     // WM2 (kind===WIFI) はセッション確立がロックと非互換 (initial=13 / 鍵=生16B / sault=token4。
     // CHWifiModule2Device.kt:279-321,521-528) のため profile "wm2" を渡す (P1-6)。
     const caps = capabilitiesForModel(model); // 型ごとの能力 (SDK CHProductModel 準拠)
+    // P3-18: MECH_STATUS(81) の解釈 kind を caps.kind から静的に導出してセッションへ渡す。
+    // SDK は具象クラスが型で 81 の意味を決める (CHHub3Device.kt:291-301 等)。
+    // - LOCK5            : 7B ロック形式 (CHSesame5MechStatus)
+    // - BOT2/BIKE2/BIKE3 : 3B Bot/Bike 形式 (CHSesameBot2MechStatus)
+    // - HUB3             : 1B ネットワーク bit flags (CHWifiModule2NetWorkStatus)
+    // - BIOMETRIC        : raw 素通し (CHSesameBiometricDeviceImpl.kt:214-217)
+    const mechStatusKind = (() => {
+      if (caps.kind === KIND.HUB3) return /** @type {"hub3"} */ ("hub3");
+      if (caps.kind === KIND.BIOMETRIC) return /** @type {"biometric"} */ ("biometric");
+      if (caps.kind === KIND.BOT2 || caps.kind === KIND.BIKE2 || caps.kind === KIND.BIKE3) return /** @type {"bot"} */ ("bot");
+      return /** @type {"lock"} */ ("lock"); // LOCK5 および未知 kind はロック形式を既定とする
+    })();
     this._session = new SesameBleSession({
       transport: this._transport,
       secretKey: registerMode ? undefined : secretKey,
@@ -394,6 +406,7 @@ export class SesameBle {
       //   - 生体・アクセス制御 (CHSesameBiometricDeviceImpl.kt:67 は CHSesameOS3 直継承で
       //     :258-277 の login override はコールバックで deviceStatus 遷移のみ)
       syncTime: !(caps.kind === KIND.HUB3 || caps.kind === KIND.WIFI || caps.kind === KIND.BIOMETRIC),
+      mechStatusKind,
     });
     this._model = model;
     this._caps = caps;
@@ -624,8 +637,8 @@ export class SesameBle {
   /**
    * WifiModule2 (WM2) の BLE プロビジョニング API。
    *
-   * scanWifiSSID / setWifiSSID / setWifiPassword / connectWifi / insertSesames / removeSesame /
-   * networkStatus と、正規化済み WM2 publish ({kind, ...}) を購読する onPublish を持つ
+   * scanWifiSSID / setWifiSSID / setWifiPassword / connectWifi / insertSesames / removeSesame と、
+   * 正規化済み WM2 publish ({kind, ...}; networkStatus は受信専用) を購読する onPublish を持つ
    * WifiModule2 を返す (実体は src/ble/wm2.js、契約は session.request / session.onPublish に乗る)。
    *
    * capabilitiesForModel(model).wifiProvisioning が true の機種 (= WM2) でのみ露出する。それ以外
@@ -901,9 +914,11 @@ export class SesameBle {
   /**
    * オートロック設定 (BLE item=11、2byte LE 秒数。0=無効)。Sesame5/6 ロックのみ。
    * **BLE 経由なら実機に反映される** (クラウドの biz3TriggerLocker では ack のみで未反映だった機能)。
+   * 成功後に lastMechSetting キャッシュの autoLockSecond も更新される (SDK と同じ局所更新)。
    * @param {number} seconds 0..65535
+   * @param {{timeoutMs?:number}} [opts]
    */
-  autolock(seconds) { this._assertOp("autolock"); return this._session.request(ITEM.AUTOLOCK, autolockData(seconds)); }
+  autolock(seconds, opts) { this._assertOp("autolock"); return this._session.autolock(seconds, opts); }
 
   /**
    * 現在の mechStatus を返す。未受信なら publish を待つ (timeout 付き)。

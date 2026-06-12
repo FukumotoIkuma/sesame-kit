@@ -170,6 +170,13 @@ export class SesameOS2Ble {
      * 履歴を 1 バッチ取得 (OP.read, item=4)。payload の解析は呼び出し側 (生バイト返し)。
      * SDK は isInternetAvailable() で 0x01/0x00 を切り替える (CHSesame2Device.kt:606-612)。
      * BLE 直接用途では既定 0x01 (取得後デバイス側で消す挙動) を送る。
+     *
+     * ★【意図的逸脱: P3-26 / R2:BLE2-17】自動履歴読み出しは非実装。
+     * SDK (CHSesame2Device.kt:543-553) は mechStatus publish 受信時に retCode != 0 または
+     * target == Short.MIN_VALUE のとき readHistoryCommand{} を自動発行してサーバ POST するが、
+     * kit では実装しない。デバイス内履歴バッファが蓄積する可能性があるため、必要に応じて
+     * このメソッドを手動で呼び出すこと (参照: CHSesame2Device.kt:543-553)。
+     *
      * @param {{ack?:boolean}} [opts] ack=false で 0x00 (消さずに読むだけ)
      * @returns {Promise<Buffer>}
      */

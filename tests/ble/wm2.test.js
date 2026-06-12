@@ -5,7 +5,7 @@ import { Buffer } from "node:buffer";
 import {
   WM2_GATT, WM2_ACTION,
   scanWifiSSIDData, setWifiSSIDData, setWifiPasswordData, connectWifiData,
-  insertSesamesData, removeSesameData, networkStatusData,
+  insertSesamesData, removeSesameData,
   parseScanWifiSSID, parseWifiSSIDPublish, parseWifiPasswordPublish,
   parseNetworkStatus, parseSesameKeys, parseWM2Publish, WifiModule2,
 } from "../../src/ble/wm2.js";
@@ -29,9 +29,8 @@ describe("WM2_GATT / WM2_ACTION", () => {
 });
 
 describe("コマンド data 生成", () => {
-  it("scanWifiSSID / networkStatus は空 data", () => {
+  it("scanWifiSSID は空 data", () => {
     expect(scanWifiSSIDData().length).toBe(0);
-    expect(networkStatusData().length).toBe(0);
   });
 
   it("setWifiSSID = SSID の UTF-8 bytes", () => {
@@ -161,17 +160,26 @@ describe("WifiModule2 ファサード (session 注入)", () => {
     await wm2.setWifiSSID("net");
     await wm2.setWifiPassword("pw");
     await wm2.connectWifi();
-    await wm2.networkStatus();
     await wm2.removeSesame("tag1");
 
     const calls = s.request.mock.calls.map((c) => c[0]);
     expect(calls).toEqual([
       WM2_ACTION.SCAN_WIFI_SSID, WM2_ACTION.UPDATE_WIFI_SSID, WM2_ACTION.UPDATE_WIFI_PASSWORD,
-      WM2_ACTION.CONNECT_WIFI, WM2_ACTION.NETWORK_STATUS, WM2_ACTION.DELETE_SESAME,
+      WM2_ACTION.CONNECT_WIFI, WM2_ACTION.DELETE_SESAME,
     ]);
     // connectWifi の data 検証
     const cwCall = s.request.mock.calls.find((c) => c[0] === WM2_ACTION.CONNECT_WIFI);
     expect(cwCall[1].toString("utf8")).toBe("apnortheast1abcd:6A22A6FE7A6E");
+  });
+
+  // P3-20: WifiModule2 は networkStatus() 送信メソッドを持たない。
+  // SDK に NETWORK_STATUS 送信経路は無い (CHWifiModule2Device.kt:502-510 受信専用)。
+  // 状態は onPublish の {kind:"networkStatus"} で受信する。
+  it("networkStatus() メソッドは存在しない (P3-20: 送信経路は SDK 非存在)", () => {
+    const s = fakeSession();
+    const wm2 = new WifiModule2({ session: s });
+    // biome-ignore lint/suspicious/noExplicitAny: intentional check for absent method
+    expect(typeof (/** @type {any} */ (wm2).networkStatus)).toBe("undefined");
   });
 
   it("publish を正規化して購読者へ中継する", () => {

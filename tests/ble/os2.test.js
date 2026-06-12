@@ -18,6 +18,7 @@ import {
 import { SesameOS2BleSession } from "../../src/ble/os2/session.js";
 import { SesameOS2Ble } from "../../src/ble/os2/index.js";
 import { SegmentAssembler } from "../../src/ble/protocol.js";
+import { makeLocalRegisterServer, deriveRegisterPriKey, ecdhSecretPre16 } from "../../src/crypto.js";
 
 // ---- device 側 (firmware) cipher の模倣 ----
 // OS2 の counter 最上位ビット (0x80_00000000) は **方向マーカ**: app→device は flag を立て、
@@ -183,6 +184,22 @@ describe("OS2 protocol — key derivation (matches SDK CMAC chains)", () => {
     const serverToken = Buffer.from("deadbeef", "hex");
     expect(registrationData(sig1, appPub, serverToken))
       .toEqual(Buffer.concat([sig1.subarray(0, 4), appPub, serverToken]));
+  });
+
+  // P3-23: CHServerAuth.kt:54 `val serverToken = ByteArray(4)` — st は 4B 固定。
+  // registration sessionToken = serverToken(4B) ++ mSesameToken(4B) = 8B 固定。
+  // cipher.js SesameOS2BleCipher はコンストラクタで 8B を要求するため、登録・ログイン両経路で一致する。
+  it("registration sessionToken は 8B (CHServerAuth.kt:54 の ByteArray(4) + mSesameToken4B)", () => {
+    // CHServerAuth.kt:54: val serverToken = ByteArray(4) — サーバが生成する st は常に 4B。
+    const serverToken4B = Buffer.alloc(4, 0xca); // 4B = CHServerAuth.kt:54 準拠
+    const { sessionToken: st } = deriveRegisterKeys(pre16, serverToken4B, mSsm);
+    // sessionToken = serverToken(4B) ++ mSsm(4B) = 8B
+    expect(st.length).toBe(8);
+    expect(st.subarray(0, 4)).toEqual(serverToken4B);
+    expect(st.subarray(4)).toEqual(mSsm);
+    // SesameOS2BleCipher コンストラクタが 8B を受け入れることを確認(矛盾解消の受け入れ基準)。
+    const key16 = Buffer.alloc(16, 0x01);
+    expect(() => new SesameOS2BleCipher(key16, st)).not.toThrow();
   });
 });
 
@@ -425,7 +442,10 @@ function makeMockDevice({ keyIndex, deviceKeyPair, mSesameToken }) {
       const sessionKey = deriveSessionKey(pre16, st);
       deviceCipher = makeDeviceCipher(sessionKey, st); // firmware 視点 (鏡像 flag)
       const lr = Buffer.alloc(28);
-      lr.writeUInt32BE(Math.floor(Date.now() / 1000), 0);
+      // 導出元: CHSesame2Device.kt:627 `systemTime = payload[0..3].toBigLong()`。
+      // toBigLong (DataExtention.kt:69-71) = reversedArray を hex parse = little-endian 読み。
+      // デバイスは LE 4B で送るので mock も LE で書く。
+      lr.writeUInt32LE(Math.floor(Date.now() / 1000), 0);
       lr[27] = 0x02; // mech_status flags = byte7 (CHSesame2.kt:37) → locked
       // response = [notifyOp=RESPONSE, item, op, result] (導出元: SesameProtocols.kt:15-19
       // SSM2ResponsePayload — cmdItCode=data[0], cmdOPCode=data[1], cmdResultCode=data[2])。
@@ -452,6 +472,166 @@ function makeMockDevice({ keyIndex, deviceKeyPair, mSesameToken }) {
     commands,
   };
 }
+
+describe("OS2 session — mechStatus 自動履歴読み出し非実装 (P3-26 / R2:BLE2-17)", () => {
+  // SDK CHSesame2Device.kt:543-553 では mechStatus publish 受信時に
+  //   retCode != 0 または target == Short.MIN_VALUE(-32768) のとき
+  //   readHistoryCommand{} を自動発行してサーバ POST する。
+  // kit では自動読み出しを実装しない。本テストはその非実装を確認する
+  // (status リスナは呼ばれるが、HISTORY read コマンドは app → device に飛ばない)。
+
+  /**
+   * login 後に mechStatus publish を送れる拡張 mock。
+   * login 応答は PLAINTEXT。mechStatus publish は login 後なので CIPHERTEXT で送る。
+   * 導出元: SesameProtocols.kt:5-8 (SSM3PublishPayload — cmdItCode=body[0], payload=body[1:])
+   *   publish frame = [PUBLISH(8), MECH_STATUS(81)] ++ mechStatus8B (mech_status_t)。
+   * sendCipher は login 完了後 (deviceCipher が確立してから) に呼ぶこと。
+   */
+  function makeMechStatusMock() {
+    let onPacket = null;
+    let deviceCipher = null;
+    const sentCommands = []; // app → device の復号コマンド ([op, item, ...]) を記録
+    const appAsm = new SegmentAssembler();
+
+    const sendPlain = (frame) => {
+      const header = (SEG.PLAINTEXT << 1) | 1;
+      onPacket(Buffer.concat([Buffer.from([header]), frame]));
+    };
+
+    const sendCipher = (frame) => {
+      // 導出元: deviceCipher.encrypt は device → app 方向 (flag落マスク)。
+      // device 側 cipher の encrypt = flag を落とす (makeDeviceCipher.encrypt 参照)。
+      const ct = deviceCipher.encrypt(frame);
+      const header = (SEG.CIPHERTEXT << 1) | 1;
+      onPacket(Buffer.concat([Buffer.from([header]), ct]));
+    };
+
+    /** login 後に mechStatus publish を cipher で送る。mechStatus8B は mech_status_t (8B)。 */
+    const pushMechStatus = (mechStatus8B) => {
+      // 導出元: CHSesame2Device.kt:543-544 (receivePayload.cmdItCode == mechStatus.value)
+      // publish frame = [PUBLISH(8), MECH_STATUS(81)] ++ mechStatus8B
+      // SesameProtocols.kt:5-8 (notifyOpCode=8, cmdItCode=81, payload=mechStatus8B)
+      sendCipher(Buffer.concat([Buffer.from([OP.PUBLISH, ITEM.MECH_STATUS]), mechStatus8B]));
+    };
+
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const ssmPublicKey = deviceKeyPair.getPublicKey().subarray(1);
+    const keyIndex = Buffer.from("0000", "hex");
+    const mSesameToken = Buffer.from("aabbccdd", "hex");
+
+    const appAsmInner = appAsm;
+    const transport = {
+      async connect(cb) {
+        onPacket = cb;
+        sendPlain(Buffer.concat([Buffer.from([OP.PUBLISH, ITEM.INITIAL]), mSesameToken]));
+      },
+      write(seg) {
+        sentCommands; // capture ref
+        const a = appAsmInner.feed(Buffer.from(seg));
+        if (!a) return;
+        let frame = a.data;
+        if (a.type === SEG.CIPHERTEXT) frame = deviceCipher.decrypt(frame);
+        const op = frame[0];
+        const item = frame[1];
+        sentCommands.push({ op, item, frame: Buffer.from(frame) });
+        if (op === OP.SYNC && item === ITEM.LOGIN) {
+          // 導出元: CHSesame2Device.kt:431-442 (login data を解析して ECDH で sessionKey を導出)。
+          const data = frame.subarray(2);
+          const appPub = data.subarray(keyIndex.length, keyIndex.length + 64);
+          const mAppToken = data.subarray(keyIndex.length + 64, keyIndex.length + 64 + 4);
+          const st = sessionToken(mAppToken, mSesameToken);
+          const ecdh = createECDH("prime256v1");
+          ecdh.setPrivateKey(deviceKeyPair.getPrivateKey());
+          const shared = ecdh.computeSecret(Buffer.concat([Buffer.from([0x04]), appPub]));
+          const pre16 = shared.subarray(0, 16);
+          deviceCipher = makeDeviceCipher(deriveSessionKey(pre16, st), st);
+          const lr = Buffer.alloc(28);
+          // 導出元: CHSesame2Device.kt:627 — systemTime LE 4B。
+          lr.writeUInt32LE(Math.floor(Date.now() / 1000), 0);
+          lr[27] = 0x02; // flags byte7 → locked
+          sendPlain(Buffer.concat([Buffer.from([OP.RESPONSE, ITEM.LOGIN, OP.SYNC, 0x00]), lr]));
+        }
+        // 暗号コマンドへの応答は返さない (pending を残す — 今回の観点外)。
+      },
+      async disconnect() {},
+    };
+
+    return { transport, ssmPublicKey, keyIndex, mSesameToken, pushMechStatus, sentCommands };
+  }
+
+  it("retCode != 0 の mechStatus publish でも HISTORY read コマンドは送出されない (P3-26)", async () => {
+    const { transport, ssmPublicKey, keyIndex, pushMechStatus, sentCommands } = makeMechStatusMock();
+    const session = new SesameOS2BleSession({
+      transport,
+      secretKey: Buffer.alloc(16, 0x11),
+      keyIndex,
+      ssmPublicKey,
+    });
+    await session.connect();
+    expect(session.isLoggedIn).toBe(true);
+
+    // retCode != 0 の mechStatus を送る。
+    // 導出元: CHSesame2Device.kt:543-548 で retCode != 0 → readHistoryCommand を自動発行。
+    // kit は自動発行しない — status リスナは呼ばれるが HISTORY read は飛ばない。
+    // mechStatus8B: batteryRaw(2B LE) + target(2B LE) + position(2B LE) + retCode(1B) + flags(1B)
+    // CHSesame2.kt:34-37: retCode = data[6], flags = data[7]
+    const mechStatus8B = Buffer.alloc(8);
+    mechStatus8B[6] = 1; // retCode = 1 (非 0: SDK は自動読み出しトリガ)
+    mechStatus8B[7] = 0x04; // flags → unlocked
+
+    let statusCalled = false;
+    session.onStatus(() => { statusCalled = true; });
+
+    pushMechStatus(mechStatus8B);
+    // イベントループを回す (onPacket は同期だが念のため)。
+    await new Promise((r) => setTimeout(r, 0));
+
+    // status リスナは呼ばれる (逸脱対象外)。
+    expect(statusCalled).toBe(true);
+    expect(session.lastStatus?.retCode).toBe(1);
+
+    // HISTORY (item=4) read コマンドが app → device に飛んでいないことを確認。
+    const historyReads = sentCommands.filter((c) => c.item === ITEM.HISTORY);
+    expect(historyReads).toHaveLength(0);
+
+    await session.disconnect();
+  });
+
+  it("target == Short.MIN_VALUE(-32768) の mechStatus publish でも HISTORY read は送出されない (P3-26)", async () => {
+    const { transport, ssmPublicKey, keyIndex, pushMechStatus, sentCommands } = makeMechStatusMock();
+    const session = new SesameOS2BleSession({
+      transport,
+      secretKey: Buffer.alloc(16, 0x22),
+      keyIndex,
+      ssmPublicKey,
+    });
+    await session.connect();
+    expect(session.isLoggedIn).toBe(true);
+
+    // target == Short.MIN_VALUE = -32768 = 0x8000 LE。
+    // 導出元: CHSesame2Device.kt:548-550 — `mechStatus.target == Short.MIN_VALUE` → readHistoryCommand。
+    // kit では自動読み出しせず status リスナ通知のみ。
+    const mechStatus8B = Buffer.alloc(8);
+    mechStatus8B.writeInt16LE(-32768, 2); // target = Short.MIN_VALUE (0x0080 LE... = 0x00,0x80)
+    mechStatus8B[6] = 0;    // retCode = 0 (target 条件のみテスト)
+    mechStatus8B[7] = 0x04; // flags → unlocked
+
+    let statusCalled = false;
+    session.onStatus(() => { statusCalled = true; });
+
+    pushMechStatus(mechStatus8B);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(statusCalled).toBe(true);
+    expect(session.lastStatus?.target).toBe(null); // -32768 → null (CHSesame2.kt:34)
+
+    const historyReads = sentCommands.filter((c) => c.item === ITEM.HISTORY);
+    expect(historyReads).toHaveLength(0);
+
+    await session.disconnect();
+  });
+});
 
 describe("OS2 session — login + command over mock transport", () => {
   it("logs in via ECDH and sends an encrypted unlock", async () => {
@@ -612,6 +792,579 @@ describe("OS2 facade — mechSetting write & DFU over mock transport", () => {
     expect(cmd[0]).toBe(OP.UPDATE);
     expect(cmd[1]).toBe(ITEM.ENABLE_DFU); // 7
     expect(cmd.subarray(2)).toEqual(Buffer.from([0x01]));
+    await ble.close();
+  });
+});
+
+// ---- _maybeSyncTime 3 経路テスト (P3-14 / P3-15) ----
+// 検証する経路:
+//   (a) register 完了: 無条件送信 (CHSesame2Device.kt:511 / CHSesameBotDevice.kt:280)
+//   (b) Bot/Bike login response: timeError > 3 のみ、abs なし・fw ガードなし
+//       (CHSesameBotDevice.kt:464 / CHSesameBikeDevice.kt:355)
+//   (c) SESAME2/3/4 login response: abs(timeError) > 3 かつ fw_version >= 1
+//       (CHSesame2Device.kt:261-264)
+
+/**
+ * timePhone 受信を記録する拡張 makeMockDevice。
+ * systemTimeSec (LE 4B) と fwVersion をオーバーライドして login 応答の
+ * timePhone 条件を制御できる。
+ * timePhoneSent: login 後に app が暗号化送信した timePhone(16) フレームを記録する配列。
+ *
+ * @param {{ keyIndex: Buffer, deviceKeyPair: import("node:crypto").ECDH,
+ *           mSesameToken: Buffer, systemTimeSec?: number, fwVersion?: number }} opts
+ */
+function makeMockDeviceTimeSpy({ keyIndex, deviceKeyPair, mSesameToken,
+                                  systemTimeSec, fwVersion = 0 }) {
+  let onPacket = null;
+  let deviceCipher = null;
+  const appAsm = new SegmentAssembler();
+  const timePhoneSent = []; // 暗号化解読した timePhone(16) フレームを記録
+
+  const sendPlain = (frame) => {
+    const header = (SEG.PLAINTEXT << 1) | 1;
+    onPacket(Buffer.concat([Buffer.from([header]), frame]));
+  };
+  const sendCipher = (frame) => {
+    const ct = deviceCipher.encrypt(frame);
+    const header = (SEG.CIPHERTEXT << 1) | 1;
+    onPacket(Buffer.concat([Buffer.from([header]), ct]));
+  };
+
+  const onAppSegment = (seg) => {
+    const a = appAsm.feed(seg);
+    if (!a) return;
+    let frame = a.data;
+    if (a.type === SEG.CIPHERTEXT) frame = deviceCipher.decrypt(frame);
+    const op = frame[0];
+    const item = frame[1];
+    if (op === OP.SYNC && item === ITEM.LOGIN) {
+      // login data = userIdx ++ appPub64 ++ mAppToken4 ++ auth4
+      const data = frame.subarray(2);
+      const appPub = data.subarray(keyIndex.length, keyIndex.length + 64);
+      const mAppToken = data.subarray(keyIndex.length + 64, keyIndex.length + 64 + 4);
+      const st = sessionToken(mAppToken, mSesameToken);
+      const ecdh = createECDH("prime256v1");
+      ecdh.setPrivateKey(deviceKeyPair.getPrivateKey());
+      const shared = ecdh.computeSecret(Buffer.concat([Buffer.from([0x04]), appPub]));
+      const pre16 = shared.subarray(0, 16);
+      const sKey = deriveSessionKey(pre16, st);
+      deviceCipher = makeDeviceCipher(sKey, st);
+      const lr = Buffer.alloc(28);
+      // 導出元: CHSesame2Device.kt:627 `systemTime = payload[0..3].toBigLong()`。
+      // toBigLong (DataExtention.kt:69-71) = reversedArray を hex parse = little-endian 読み。
+      const sysSec = systemTimeSec ?? Math.floor(Date.now() / 1000);
+      lr.writeUInt32LE(sysSec, 0);
+      lr[4] = fwVersion; // fwVersion は byte4 (CHSesame2Device.kt:627 の parseLoginResponse)
+      lr[27] = 0x02; // mech_status flags = byte7 → locked
+      sendPlain(Buffer.concat([Buffer.from([OP.RESPONSE, ITEM.LOGIN, OP.SYNC, 0x00]), lr]));
+      return;
+    }
+    // timePhone(16) を記録し、残りの暗号化コマンドにも応答する。
+    if (op === OP.UPDATE && item === ITEM.TIMEPHONE) {
+      timePhoneSent.push(Buffer.from(frame));
+    }
+    sendCipher(Buffer.from([OP.RESPONSE, item, op, 0x00]));
+  };
+
+  return {
+    timePhoneSent,
+    transport: {
+      async connect(cb) {
+        onPacket = cb;
+        sendPlain(Buffer.concat([Buffer.from([OP.PUBLISH, ITEM.INITIAL]), mSesameToken]));
+      },
+      write(seg) { onAppSegment(Buffer.from(seg)); },
+      async disconnect() {},
+    },
+  };
+}
+
+/**
+ * register 完了後の timePhone を記録する minimal register mock。
+ * makeMockRegisterDevice と同等だが timePhoneSent 配列を返す。
+ * 参照: CHSesame2Device.kt:508-513 (login publish → timePhone 無条件)。
+ *
+ * @param {{ mSesameToken: Buffer, erHex: string }} opts
+ */
+function makeMockRegisterTimeSpy({ mSesameToken, erHex }) {
+  let onPacket = null;
+  let deviceCipher = null;
+  const appAsm = new SegmentAssembler();
+  const timePhoneSent = [];
+
+  const sendPlain = (frame) => {
+    const header = (SEG.PLAINTEXT << 1) | 1;
+    onPacket(Buffer.concat([Buffer.from([header]), frame]));
+  };
+  const sendCipher = (frame) => {
+    const ct = deviceCipher.encrypt(frame);
+    const header = (SEG.CIPHERTEXT << 1) | 1;
+    onPacket(Buffer.concat([Buffer.from([header]), ct]));
+  };
+
+  // firmware 視点 cipher (os2.test.js と同じ鏡像 nonce)。
+  function makeRegCipher(key, token8) {
+    let enc = 0n; let dec = 0n;
+    return {
+      encrypt(pt) {
+        const b = Buffer.alloc(5);
+        let v = dec & 0x7fffffffffn; dec += 1n; // device→app: flag 落とす
+        for (let i = 0; i < 5; i++) { b[i] = Number(v & 0xffn); v >>= 8n; }
+        const iv = Buffer.concat([b, token8]);
+        const c = crypto.createCipheriv("aes-128-ccm", key, iv, { authTagLength: 4 });
+        c.setAAD(Buffer.from([0]), { plaintextLength: pt.length });
+        return Buffer.concat([c.update(pt), c.final(), c.getAuthTag()]);
+      },
+      decrypt(ctTag) {
+        const b = Buffer.alloc(5);
+        let v = enc | (0x80n << 32n); enc += 1n; // app→device: flag 立てる
+        for (let i = 0; i < 5; i++) { b[i] = Number(v & 0xffn); v >>= 8n; }
+        const iv = Buffer.concat([b, token8]);
+        const ct = ctTag.subarray(0, ctTag.length - 4);
+        const tag = ctTag.subarray(ctTag.length - 4);
+        const d = crypto.createDecipheriv("aes-128-ccm", key, iv, { authTagLength: 4 });
+        d.setAAD(Buffer.from([0]), { plaintextLength: ct.length });
+        d.setAuthTag(tag);
+        return Buffer.concat([d.update(ct), d.final()]);
+      },
+    };
+  }
+
+  const onAppSegment = (seg) => {
+    const a = appAsm.feed(seg);
+    if (!a) return;
+    let frame = a.data;
+    if (a.type === SEG.CIPHERTEXT && deviceCipher) frame = deviceCipher.decrypt(frame);
+    const op = frame[0];
+    const item = frame[1];
+
+    if (op === OP.READ && item === ITEM.IRER) {
+      const er = Buffer.from(erHex, "hex");
+      const payload = Buffer.concat([Buffer.alloc(16, 0xaa), er]);
+      sendPlain(Buffer.from([OP.RESPONSE, ITEM.IRER, OP.READ, 0x00, ...payload]));
+      return;
+    }
+
+    if (op === OP.CREATE && item === ITEM.REGISTRATION) {
+      // data = sig1[0:4] ++ appPubK64(64B) ++ serverToken(4B)。
+      const data = frame.subarray(2);
+      const appPubK64 = data.subarray(4, 4 + 64);
+      const serverToken = data.subarray(4 + 64);
+      // 参照: CHSesame2Device.kt:508-513。device は ER から priKey を導出し cipher を確立、
+      // login publish を送る。その後 timePhone(16) を受け取る (無条件)。
+      const regPriKey = deriveRegisterPriKey(erHex);
+      const devEcdh = createECDH("prime256v1");
+      devEcdh.setPrivateKey(regPriKey);
+      const pre16 = ecdhSecretPre16(devEcdh, appPubK64);
+      const { sessionKey, sessionToken: regST } = deriveRegisterKeys(pre16, serverToken, mSesameToken);
+      deviceCipher = makeRegCipher(sessionKey, regST);
+      // login publish (fwVersion=0, systemTime = 古い値 = 1000 epoch秒)。
+      // fw=0 にもかかわらず register 完了は timePhone を送ることを確認する (経路 a の本質)。
+      // 導出元: CHSesame2Device.kt:627 systemTime LE 読み (DataExtention.kt:69-71)。
+      const lr = Buffer.alloc(28);
+      lr.writeUInt32LE(1000, 0); // 非常に古い時刻 (時刻差 >> 3s)、fw=0
+      lr[27] = 0x02; // locked
+      sendCipher(Buffer.from([OP.PUBLISH, ITEM.LOGIN, ...lr]));
+      return;
+    }
+
+    // 登録完了後の暗号化コマンドを記録 (timePhone など)。
+    if (a.type === SEG.CIPHERTEXT && op === OP.UPDATE && item === ITEM.TIMEPHONE) {
+      timePhoneSent.push(Buffer.from(frame));
+    }
+    if (a.type === SEG.CIPHERTEXT) sendCipher(Buffer.from([OP.RESPONSE, item, op, 0x00]));
+  };
+
+  return {
+    timePhoneSent,
+    transport: {
+      async connect(cb) {
+        onPacket = cb;
+        sendPlain(Buffer.concat([Buffer.from([OP.PUBLISH, ITEM.INITIAL]), mSesameToken]));
+      },
+      write(seg) { onAppSegment(Buffer.from(seg)); },
+      async disconnect() {},
+    },
+  };
+}
+
+describe("_maybeSyncTime 3 経路テスト (P3-14 + P3-15 モック LE 修正)", () => {
+  const mSesameToken = Buffer.from("aabbccdd", "hex");
+  const erHex = "00112233445566778899aabbccddeeff";
+
+  // --- 経路 (a): register 完了 → 無条件送信 (fw=0・時刻差>>3s でも送る) ---
+  // 参照: CHSesame2Device.kt:511 / CHSesameBotDevice.kt:280
+  it("(a) register 完了時: fw=0・古い時刻でも timePhone を無条件送信する", async () => {
+    const mock = makeMockRegisterTimeSpy({ mSesameToken, erHex });
+    const session = new SesameOS2BleSession({ transport: mock.transport });
+    await session.register({
+      deviceUUID: "TEST-REG-TP",
+      registerServer: makeLocalRegisterServer(),
+    });
+    // 短時間待機して timePhone の非同期 write を確認。
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mock.timePhoneSent.length).toBe(1);
+    expect(mock.timePhoneSent[0][1]).toBe(ITEM.TIMEPHONE); // item = 16
+    await session.disconnect();
+  });
+
+  // --- 経路 (b): Bot login response — abs なし・fw ガードなし ---
+  // 参照: CHSesameBotDevice.kt:464 `if (timeError > 3)` (fw ガード無し)
+  // CHSesameBikeDevice.kt:355 (同形)
+  it("(b-1) Bot(ssmbot_1): timeError > 3 → fw=0 でも timePhone を送る", async () => {
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const keyIndex = Buffer.from("0000", "hex");
+    const mock = makeMockDeviceTimeSpy({
+      keyIndex, deviceKeyPair, mSesameToken,
+      systemTimeSec: 1000, // 非常に古い時刻 → timeError >> 3、fw=0
+      fwVersion: 0,
+    });
+    const ble = new SesameOS2Ble({
+      transport: mock.transport,
+      secretKey: Buffer.alloc(16, 0x22),
+      keyIndex,
+      ssmPublicKey: deviceKeyPair.getPublicKey().subarray(1),
+      model: "ssmbot_1",
+    });
+    await ble.connect();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mock.timePhoneSent.length).toBe(1);
+    await ble.close();
+  });
+
+  it("(b-2) Bike(bike_1): timeError > 3 → fw=0 でも timePhone を送る", async () => {
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const keyIndex = Buffer.from("0000", "hex");
+    const mock = makeMockDeviceTimeSpy({
+      keyIndex, deviceKeyPair, mSesameToken,
+      systemTimeSec: 1000, fwVersion: 0,
+    });
+    const ble = new SesameOS2Ble({
+      transport: mock.transport,
+      secretKey: Buffer.alloc(16, 0x33),
+      keyIndex,
+      ssmPublicKey: deviceKeyPair.getPublicKey().subarray(1),
+      model: "bike_1",
+    });
+    await ble.connect();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mock.timePhoneSent.length).toBe(1);
+    await ble.close();
+  });
+
+  it("(b-3) Bot(ssmbot_1): timeError <= 0 (未来の systemTime) → abs なしなので送らない", async () => {
+    // CHSesameBotDevice.kt:464 は abs を使わず `timeError > 3` なので、
+    // systemTime が未来 (timeError 負) では timePhone を送らない。
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const keyIndex = Buffer.from("0000", "hex");
+    const nowSec = Math.floor(Date.now() / 1000);
+    const mock = makeMockDeviceTimeSpy({
+      keyIndex, deviceKeyPair, mSesameToken,
+      systemTimeSec: nowSec + 100, // 未来の時刻 → timeError = -100 (負)
+      fwVersion: 0,
+    });
+    const ble = new SesameOS2Ble({
+      transport: mock.transport,
+      secretKey: Buffer.alloc(16, 0x44),
+      keyIndex,
+      ssmPublicKey: deviceKeyPair.getPublicKey().subarray(1),
+      model: "ssmbot_1",
+    });
+    await ble.connect();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mock.timePhoneSent.length).toBe(0); // abs なし → 未来なら送らない
+    await ble.close();
+  });
+
+  // --- 経路 (c): SESAME2/3/4 login response — abs(timeError) > 3 かつ fw >= 1 ---
+  // 参照: CHSesame2Device.kt:261-264
+  it("(c-1) sesame_3: abs(timeError) > 3 かつ fw=1 → timePhone を送る", async () => {
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const keyIndex = Buffer.from("0000", "hex");
+    const mock = makeMockDeviceTimeSpy({
+      keyIndex, deviceKeyPair, mSesameToken,
+      systemTimeSec: 1000, fwVersion: 1,
+    });
+    const ble = new SesameOS2Ble({
+      transport: mock.transport,
+      secretKey: Buffer.alloc(16, 0x55),
+      keyIndex,
+      ssmPublicKey: deviceKeyPair.getPublicKey().subarray(1),
+      model: "sesame_3",
+    });
+    await ble.connect();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mock.timePhoneSent.length).toBe(1);
+    await ble.close();
+  });
+
+  it("(c-2) sesame_3: abs(timeError) > 3 でも fw=0 → timePhone を送らない", async () => {
+    // CHSesame2Device.kt:262: `if (loginResponse.fw_version >= 1)` のガード。
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const keyIndex = Buffer.from("0000", "hex");
+    const mock = makeMockDeviceTimeSpy({
+      keyIndex, deviceKeyPair, mSesameToken,
+      systemTimeSec: 1000, fwVersion: 0,
+    });
+    const ble = new SesameOS2Ble({
+      transport: mock.transport,
+      secretKey: Buffer.alloc(16, 0x66),
+      keyIndex,
+      ssmPublicKey: deviceKeyPair.getPublicKey().subarray(1),
+      model: "sesame_3",
+    });
+    await ble.connect();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mock.timePhoneSent.length).toBe(0); // fw=0 → 送らない
+    await ble.close();
+  });
+
+  it("(c-3) sesame_3: 時刻一致 (timeError <= 3) → fw=1 でも送らない", async () => {
+    // P3-15 モック LE 修正の本来の検証: 正しいエンディアンなら「時刻一致→送らない」が踏める。
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const keyIndex = Buffer.from("0000", "hex");
+    const nowSec = Math.floor(Date.now() / 1000);
+    const mock = makeMockDeviceTimeSpy({
+      keyIndex, deviceKeyPair, mSesameToken,
+      systemTimeSec: nowSec, // 現在時刻と一致 → abs(timeError) = 0 ≤ 3
+      fwVersion: 1,
+    });
+    const ble = new SesameOS2Ble({
+      transport: mock.transport,
+      secretKey: Buffer.alloc(16, 0x77),
+      keyIndex,
+      ssmPublicKey: deviceKeyPair.getPublicKey().subarray(1),
+      model: "sesame_3",
+    });
+    await ble.connect();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mock.timePhoneSent.length).toBe(0); // 時刻一致 → 送らない (P3-15 で BE→LE 修正で初めて機能)
+    await ble.close();
+  });
+});
+
+// ---- P3-25: fw_version 符号 (readInt8) と getAutolock 桁上限 ----
+// 参照: CHSesame2Device.kt:628 (`var fw_version = loginPayload[4]` — Kotlin Byte = 符号付き -128..127)
+//       CHSesame2Device.kt:262 (`if (loginResponse.fw_version >= 1)` — 符号付き比較)
+//       CHSesame2Device.kt:159 (`java.lang.Long.parseLong(reversed.toHexString, 16)` — 最大 8B)
+
+describe("P3-25: parseLoginResponse — fwVersion を readInt8 で符号付き読み (CHSesame2Device.kt:628,262)", () => {
+  it("fw_version byte=0x80 → fwVersion=-128 (Kotlin Byte は符号付き)", () => {
+    // 0x80 をデバイスが送った場合、Kotlin では `loginPayload[4]` = -128 (負の Byte)。
+    // CHSesame2Device.kt:628: `var fw_version = loginPayload[4]` — Kotlin Byte は JVM signed byte。
+    const buf = Buffer.alloc(28);
+    buf.writeUInt32LE(1600000000, 0);
+    buf[4] = 0x80; // 旧実装: payload[4] = 128 (符号なし), 修正後: readInt8(4) = -128
+    const lr = parseLoginResponse(buf);
+    expect(lr.fwVersion).toBe(-128); // 符号付き読み
+  });
+
+  it("fw_version byte=0x7F → fwVersion=127 (正の最大値は変わらない)", () => {
+    // 0x7F = 127: Kotlin でも JS でも同じ値 (符号境界の手前)。
+    const buf = Buffer.alloc(28);
+    buf[4] = 0x7f;
+    const lr = parseLoginResponse(buf);
+    expect(lr.fwVersion).toBe(127);
+  });
+
+  it("fw_version byte=0x01 → fwVersion=1 (>= 1 ガード通過)", () => {
+    // CHSesame2Device.kt:262 のガードが成立する通常ケース。
+    const buf = Buffer.alloc(28);
+    buf[4] = 0x01;
+    const lr = parseLoginResponse(buf);
+    expect(lr.fwVersion).toBe(1);
+    expect(lr.fwVersion >= 1).toBe(true);
+  });
+
+  it("fw_version byte=0x80 (=-128) → >= 1 ガード不成立 (timePhone 送信抑止と一致)", () => {
+    // CHSesame2Device.kt:262: fw_version >= 1 が false → timePhone 送信しない。
+    // 符号付きで -128 は 1 未満のため正しくガード不成立になる。
+    const buf = Buffer.alloc(28);
+    buf[4] = 0x80;
+    const lr = parseLoginResponse(buf);
+    expect(lr.fwVersion >= 1).toBe(false); // -128 >= 1 は false
+  });
+});
+
+describe("P3-25: _maybeSyncTime — fw_version=0x80 (符号付き -128) → timePhone 送らない", () => {
+  const mSesameToken = Buffer.from("11223344", "hex");
+
+  it("(c-4) sesame_3: fw_version=0x80 (signed -128) → abs(timeError) > 3 でも timePhone 送らない", async () => {
+    // CHSesame2Device.kt:262: `if (loginResponse.fw_version >= 1)` — 0x80 は Kotlin Byte で -128。
+    // 旧実装 (payload[4] = 符号なし 128) では 128 >= 1 が true で誤って送信していた。
+    // 修正後 (readInt8(4) = -128) では -128 >= 1 が false で正しく抑止される。
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const keyIndex = Buffer.from("0000", "hex");
+    const mock = makeMockDeviceTimeSpy({
+      keyIndex, deviceKeyPair, mSesameToken,
+      systemTimeSec: 1000, // abs(timeError) >> 3: 時刻誤差は十分大
+      fwVersion: 0x80,     // 0x80 = unsigned 128, signed -128 → >= 1 は false
+    });
+    const ble = new SesameOS2Ble({
+      transport: mock.transport,
+      secretKey: Buffer.alloc(16, 0x88),
+      keyIndex,
+      ssmPublicKey: deviceKeyPair.getPublicKey().subarray(1),
+      model: "sesame_3",
+    });
+    await ble.connect();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mock.timePhoneSent.length).toBe(0); // fw=0x80 (signed -128) → 送らない
+    await ble.close();
+  });
+});
+
+describe("P3-25: getAutolock — payload 長 > 6B の明示処理 (CHSesame2Device.kt:159)", () => {
+  // CHSesame2Device.kt:159:
+  //   `java.lang.Long.parseLong(res.payload.reversedArray().toHexString(), 16).toInt()`
+  // = LE バイト列を Java Long (64bit) として解釈。readUIntLE は最大 6B のため 7-8B で throw していた。
+
+  /**
+   * getAutolock の応答 payload を返す mock facade を作る。
+   * autolock READ には [RESPONSE, ITEM.AUTOLOCK, OP.READ, 0x00, ...autolockPayload] を返す。
+   *
+   * 導出元 (応答フレーム形式):
+   *   CHSesame2Device.kt:157-161 getAutolockSetting callback — res.payload を LE として読む
+   */
+  async function autolockFacade(autolockPayload) {
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const ssmPublicKey = deviceKeyPair.getPublicKey().subarray(1);
+    const secretKey = Buffer.alloc(16, 0x77);
+    const keyIndex = Buffer.from("0000", "hex");
+    const mSesameToken = Buffer.from("aabbccdd", "hex");
+
+    let onPacket = null;
+    let deviceCipher = null;
+    const appAsm = new SegmentAssembler();
+
+    const sendPlain = (frame) => {
+      const header = (SEG.PLAINTEXT << 1) | 1;
+      onPacket(Buffer.concat([Buffer.from([header]), frame]));
+    };
+    const sendCipher = (frame) => {
+      const ct = deviceCipher.encrypt(frame);
+      const header = (SEG.CIPHERTEXT << 1) | 1;
+      onPacket(Buffer.concat([Buffer.from([header]), ct]));
+    };
+
+    const onAppSegment = (seg) => {
+      const a = appAsm.feed(seg);
+      if (!a) return;
+      let frame = a.data;
+      if (a.type === SEG.CIPHERTEXT) frame = deviceCipher.decrypt(frame);
+      const op = frame[0];
+      const item = frame[1];
+      if (op === OP.SYNC && item === ITEM.LOGIN) {
+        // login ハンドシェイク (makeMockDevice と同様)
+        // 導出元: CHSesame2Device.kt:627 SSM2LoginResponsePayload
+        const data = frame.subarray(2);
+        const appPub = data.subarray(keyIndex.length, keyIndex.length + 64);
+        const mAppToken = data.subarray(keyIndex.length + 64, keyIndex.length + 64 + 4);
+        const st = sessionToken(mAppToken, mSesameToken);
+        const ecdh = createECDH("prime256v1");
+        ecdh.setPrivateKey(deviceKeyPair.getPrivateKey());
+        const shared = ecdh.computeSecret(Buffer.concat([Buffer.from([0x04]), appPub]));
+        const pre16 = shared.subarray(0, 16);
+        const sKey = deriveSessionKey(pre16, st);
+        deviceCipher = makeDeviceCipher(sKey, st);
+        const lr = Buffer.alloc(28);
+        lr.writeUInt32LE(Math.floor(Date.now() / 1000), 0);
+        lr[27] = 0x02; // locked
+        sendPlain(Buffer.concat([Buffer.from([OP.RESPONSE, ITEM.LOGIN, OP.SYNC, 0x00]), lr]));
+        return;
+      }
+      // autolock READ に autolockPayload を含む応答を返す
+      if (op === OP.READ && item === ITEM.AUTOLOCK) {
+        sendCipher(Buffer.concat([
+          Buffer.from([OP.RESPONSE, ITEM.AUTOLOCK, OP.READ, 0x00]),
+          autolockPayload,
+        ]));
+        return;
+      }
+      sendCipher(Buffer.from([OP.RESPONSE, item, op, 0x00]));
+    };
+
+    const transport = {
+      async connect(cb) {
+        onPacket = cb;
+        sendPlain(Buffer.concat([Buffer.from([OP.PUBLISH, ITEM.INITIAL]), mSesameToken]));
+      },
+      write(seg) { onAppSegment(Buffer.from(seg)); },
+      async disconnect() {},
+    };
+
+    const ble = new SesameOS2Ble({ transport, secretKey, keyIndex, ssmPublicKey, model: "sesame_3" });
+    await ble.connect();
+    return ble;
+  }
+
+  it("payload 4B (通常ケース ≤ 6B): 300 秒を正しく返す (CHSesame2Device.kt:159)", async () => {
+    // 通常の autolock 応答は 4B LE (秒数 u32)。
+    const p = Buffer.alloc(4);
+    p.writeUInt32LE(300, 0); // 300 秒
+    const ble = await autolockFacade(p);
+    expect(await ble.getAutolock()).toBe(300);
+    await ble.close();
+  });
+
+  it("payload 2B (短いケース): 60 秒を正しく返す", async () => {
+    const p = Buffer.from([0x3c, 0x00]); // LE: 60 秒
+    const ble = await autolockFacade(p);
+    expect(await ble.getAutolock()).toBe(60);
+    await ble.close();
+  });
+
+  it("payload 0B: 0 を返す", async () => {
+    const ble = await autolockFacade(Buffer.alloc(0));
+    expect(await ble.getAutolock()).toBe(0);
+    await ble.close();
+  });
+
+  it("payload 8B 上位 2B=0: 有効下位 6B を readUIntLE で読む (Long.parseLong 対応)", async () => {
+    // 7-8B は旧実装で readUIntLE(0, N) が RangeError。
+    // 上位ゼロなら下位 6B に読み替え Long.parseLong と等価。
+    // CHSesame2Device.kt:159 では Long.parseLong が 8B まで対応。
+    const p = Buffer.alloc(8);
+    p.writeUInt32LE(86400, 0); // 1 日 = 86400 秒、上位 4B=0
+    const ble = await autolockFacade(p);
+    expect(await ble.getAutolock()).toBe(86400);
+    await ble.close();
+  });
+
+  it("payload 7B 上位 1B=0: 有効下位 6B を readUIntLE で読む", async () => {
+    const p = Buffer.alloc(7);
+    p.writeUInt32LE(99999, 0); // 上位 3B=0
+    const ble = await autolockFacade(p);
+    expect(await ble.getAutolock()).toBe(99999);
+    await ble.close();
+  });
+
+  it("payload 8B byte[4]=1 (上位 byte[6,7]=0): readUIntLE(0,6) パスで 4294967296 を返す", async () => {
+    // LE で 0x00_00_01_00_00_00_00_00 = byte[4]=1, 残=0
+    // = 0x01_00_00_00_00 = 4294967296 (2^32)
+    // byte[6]=0, byte[7]=0 なので high===0n → readUIntLE(0,6) パス。
+    const p = Buffer.alloc(8);
+    p[4] = 0x01;
+    const ble = await autolockFacade(p);
+    expect(await ble.getAutolock()).toBe(4294967296);
+    await ble.close();
+  });
+
+  it("payload 8B byte[7]=1 (最上位バイト非ゼロ): BigInt パスで正しい値を返す", async () => {
+    // byte[7] (LE 最上位バイト) = 1 → high !== 0n → BigInt 全体変換パス。
+    // 値: 0x01_00_00_00_00_00_00_00 = 72057594037927936
+    const p = Buffer.alloc(8);
+    p[7] = 0x01;
+    const ble = await autolockFacade(p);
+    expect(await ble.getAutolock()).toBe(72057594037927936);
     await ble.close();
   });
 });

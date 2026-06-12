@@ -1484,8 +1484,16 @@
   ],
   "access.updateCardOwner": [
     {
+      "name": "item",
+      "required": false,
+      "tsType": "object",
+      "schema": {
+        "type": "object"
+      }
+    },
+    {
       "name": "cardID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"
@@ -1493,7 +1501,7 @@
     },
     {
       "name": "ownerSubUUID",
-      "required": true,
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"

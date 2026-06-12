@@ -36,7 +36,7 @@
 
 import { generateUUID } from "./crypto.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
-import { assertSuccess, rejected, timeoutError } from "./util.js";
+import { assertSuccess, rejected, timeoutError, badRequest } from "./util.js";
 import { t } from "./i18n.js";
 
 /**
@@ -120,20 +120,82 @@ export async function searchRemoteList(client, p) {
   return { list: d.data ?? [], pagination: d.pagination ?? null };
 }
 
+// ---------- プリセット上限チェック ----------
+
+/**
+ * プリセットリモコンをあと 1 個追加できるかどうか判定する。
+ *
+ * vendor 実装 1:1 (references_web/src/api/useRemoteCtrl.js:226-255 canAddMoreRemote):
+ *   - type が 0xfe00 (自己学習) なら無制限 → true
+ *   - stateInfo.remoteList 内で type in {0x8000, 0x2000, 0xe000, 0xc000} の件数が 3 未満なら true
+ *
+ * vendor は counts >= 3 のときスナックバーを表示して false を返す。kit では UI が無いため
+ * false を返すのみとし、呼び出し元 (addIRRemoteServer) が badRequest をスローする。
+ *
+ * @param {number} newType 追加しようとするリモコンの type
+ * @param {Array<{type?: number|string}>} remoteList stateInfo.remoteList (対象 Hub3 デバイスの配列)
+ * @returns {boolean} 追加可能なら true
+ */
+export function canAddMoreRemote(newType, remoteList) {
+  // 自己学習リモコンは無制限 (references_web/src/api/useRemoteCtrl.js:228-231)
+  if (newType === 0xfe00) return true;
+  // プリセット 4 種 (エアコン=0xc000/テレビ=0x2000/照明=0xe000/扇風機=0x8000) の既存件数を数える
+  // 出典: references_web/src/api/useRemoteCtrl.js:239-243
+  let counts = 0;
+  for (const remote of remoteList) {
+    const t = Number(remote.type);
+    if (t === 0x8000 || t === 0x2000 || t === 0xe000 || t === 0xc000) {
+      counts++;
+    }
+  }
+  return counts < 3;
+}
+
 // ---------- remote CRUD ----------
 
 /**
- * リモコンを追加 (Hub3 1 台あたり 3 個上限がサーバ側にある)。
- * `remote` の形は biz3 がそのまま remoteDevice オブジェクトを渡しているので、
- * 呼び出し側で {hub3DeviceId, type, name, irOperation, ...} を入れる。
+ * リモコンを追加。
+ *
+ * vendor 形 (导出元: references_web/src/pages/.../ir/learn/index.js:261-270,
+ *              remote-air/index.js:512-521, remote-non-air/index.js:264-273):
+ *   remote = {
+ *     uuid       — クライアント発番 UUID (必須; 省略時はここで generateUUID() を補完)。
+ *     model      — リモコンのモデル文字列。
+ *     state      — 最後に発射したコマンド HEX (初回は '')。
+ *     alias      — 表示名 (vendor の localRemoteAlias)。
+ *     code       — preset コード文字列。
+ *     type       — リモコン種別 int (0xC000/0x2000/0xE000/0x8000/0xFE00 等)。
+ *     deviceUUID — Hub3 の deviceId (= hub3DeviceId)。**必須。欠落時は badRequest。**
+ *     keys       — キー配列 (初回は [])。
+ *   }
+ *
+ * ⚠️ 旧ドキュメントの {hub3DeviceId, name, irOperation} はいずれも存在しない。
+ *    vendor は uuid/alias/state/deviceUUID/keys を自前で付加してから送信しており、
+ *    「search/match 出力をそのまま渡せる」は誤り。本関数でその組み立てを行う。
+ *
+ * 上限メモ: vendor クライアント側で type 4 種(0x8000/0x2000/0xE000/0xC000)を
+ * stateInfo.remoteList で数え 3 個以上なら拒否する (canAddMoreRemote — P3-2 実装済み)。
+ * サーバ側 enforcement のコードは参照に無い(「サーバ側にある」は出典なし — P3-2 訂正)。
+ * 出典: references_web/src/api/useRemoteCtrl.js:226-255 (canAddMoreRemote),
+ *       同 :525-531 (addIRRemote が送信前にこのガードを通す)。
+ *
  * @param {WsClient} client
- * @param {{remote: object, companyID: string}} p
+ * @param {{remote: object & {uuid?: string, deviceUUID?: unknown}, companyID: string}} p
  */
 export async function addIRRemote(client, { remote, companyID }) {
-  const frame = { action: ACTION, op: "addIRRemote", remote, companyID };
+  // deviceUUID (= hub3DeviceId) 欠落検査。参照では呼び出し元が常に渡す前提で
+  // ガード無しだが、kit は組み立て後に送信するため欠落を明示拒否する。
+  if (!remote.deviceUUID) throw badRequest("domain.ir.addIRRemoteDeviceUUIDRequired");
+  // uuid 未指定時はクライアント発番で補完する。
+  // 导出元: references_web/src/pages/.../ir/learn/index.js:262 / remote-air/index.js:513
+  //         / remote-non-air/index.js:265 — いずれも biz3utils.generateUUID() で発番。
+  const remoteWithUuid = remote.uuid
+    ? remote
+    : { ...remote, uuid: generateUUID() };
+  const frame = { action: ACTION, op: "addIRRemote", remote: remoteWithUuid, companyID };
   const resp = await client.request(frame, DEFAULT_TIMEOUT_MS);
   assertSuccess(resp, "addIRRemote", { strict: true });
-  return resp.data || resp;
+  return resp.data ?? null;
 }
 
 /**
@@ -392,13 +454,15 @@ export async function subscribeIRMode(client, { deviceId, companyID }) {
  * @param {{irData:string, irType:number, brandName?:string, companyID:string}} p
  */
 export async function matchRemote(client, { irData, irType, brandName, companyID }) {
+  // P3-10: vendor (useRemoteCtrl.js:785-797) は brandName を常に値ありで渡す。
+  // brandName 未指定時は空文字でなくキー自体を省く (1:1 逸脱の解消)。
   const frame = {
     action: ACTION,
     op: "matchRemote",
     irData,
     irWaveLength: irData.length / 2,
     irType,
-    brandName: brandName || "",
+    ...(brandName !== undefined && { brandName }),
     companyID,
   };
   const resp = await client.request(frame, DEFAULT_TIMEOUT_MS);

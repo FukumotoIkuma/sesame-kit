@@ -62,8 +62,6 @@ export function insertSesamesData(sesameKey?: Partial<ChildSesameKey>): Buffer;
  * @returns {Buffer}
  */
 export function removeSesameData(sesameKeyTag: string): Buffer;
-/** networkStatus 取得コマンドの data (無し)。状態は publish (NETWORK_STATUS) で届く。 */
-export function networkStatusData(): Buffer<ArrayBuffer>;
 /**
  * SCAN_WIFI_SSID publish payload を解析 (CHWifiModule2Device.kt:486-490)。
  *   ssidRssi = bytesToShort(payload[0], payload[1])  — 先頭 2B を short に
@@ -211,20 +209,6 @@ export class WifiModule2 {
         companyId?: string;
         deviceUUID?: string;
     }): Promise<{
-        resultCode: number;
-        payload: Buffer;
-    }>;
-    /**
-     * WM2 に現在の network 状態を要求する (NETWORK_STATUS=6 を空 data で送信)。
-     *
-     * 注 (BLEP-07): SDK に NETWORK_STATUS の **送信 (要求)** 経路は存在しない —
-     *   CHWifiModule2Device.kt は NETWORK_STATUS を publish 受信 (kt:502-510) でしか扱わず、
-     *   CHWifiModule2 公開 API (CHWifiModule2.kt:30-39) にも対応メソッドが無い。要求コマンドと
-     *   して空 data を送る本メソッドは kit 独自の発明であり、デバイスが応答する保証はない。
-     * @experimental 実機未検証。受信だけ必要なら onPublish の {kind:"networkStatus"} を購読すればよい
-     *   (デバイスは状態変化時に自発 publish する)。
-     */
-    networkStatus(): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;

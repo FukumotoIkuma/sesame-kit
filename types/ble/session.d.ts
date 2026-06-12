@@ -25,7 +25,8 @@ export class BleResultError extends Error {
 export class SesameBleSession {
     /**
      * @param {{transport:BleTransport, secretKey?:string|Buffer, debug?:boolean,
-     *          defaultTimeoutMs?:number, profile?:("lock"|"wm2"), syncTime?:boolean}} opts
+     *          defaultTimeoutMs?:number, profile?:("lock"|"wm2"), syncTime?:boolean,
+     *          mechStatusKind?:("lock"|"bot"|"hub3"|"biometric")}} opts
      *   secretKey は **登録済みデバイスへのログイン時のみ必須**。工場出荷 (未登録) デバイスを
      *   register() で登録する場合は secretKey を渡さずに構築する (initial 受信で login を試みず
      *   ReadyToRegister 状態へ遷移する。CHSesameOS3.kt:468-491 isRegistered=false 相当)。
@@ -44,14 +45,25 @@ export class SesameBleSession {
      *     login 応答はコールバックで deviceStatus 遷移のみ)。WM2 も同様 (CHWifiModule2Device.kt:314-321。
      *     こちらは profile="wm2" で構造的に対象外)。ファサード (index.js) は kind が HUB3/WIFI の
      *     とき false を渡す。
+     *
+     *   mechStatusKind (既定 "lock"): MECH_STATUS(81) の解釈方法を kind で静的に決定する (P3-18)。
+     *     SDK は具象クラスが 81 の解釈を型で決める — Hub3=CHWifiModule2NetWorkStatus / OS3 ロック系=7B /
+     *     Bot/Bike=3B / 生体=raw 素通し (CHHub3Device.kt:291-301 / CHSesameBiometricDeviceImpl.kt:214-217)。
+     *     ファサード (index.js SesameBle) が caps.kind から導出して渡す。
+     *     - "lock"     : parseMechStatus (7B ロック形式、SESAME5/6 系)
+     *     - "bot"      : parseMechStatus (3B Bot/Bike 形式)
+     *     - "hub3"     : parseNetworkStatus (1B bit flags、CHHub3Device.kt:291-301)
+     *     - "biometric": parseBiometricMechStatus (raw 素通し、CHSesameBiometricDeviceImpl.kt:214-217)
+     *     長さ不一致は推測せず明示エラーログ (フォールバック連鎖は排除)。
      */
-    constructor({ transport, secretKey, debug, defaultTimeoutMs, profile, syncTime }: {
+    constructor({ transport, secretKey, debug, defaultTimeoutMs, profile, syncTime, mechStatusKind }: {
         transport: BleTransport;
         secretKey?: string | Buffer;
         debug?: boolean;
         defaultTimeoutMs?: number;
         profile?: ("lock" | "wm2");
         syncTime?: boolean;
+        mechStatusKind?: ("lock" | "bot" | "hub3" | "biometric");
     });
     /** 最後に受信した mechStatus (parseMechStatus の結果)。未受信なら null。 */
     get lastStatus(): any;
@@ -140,6 +152,29 @@ export class SesameBleSession {
     disconnect(): Promise<void>;
     /**
      * 暗号化コマンドを送り、response(7)+item を待って返す。
+     *
+     * **【P3-27 意図的乖離】同一 itemCode の同時 request に関する SDK との意味論差**
+     *
+     * SDK (`CHSesameOS3.kt:349-372`) の `sendCommand()` は同一 itemCode が in-flight の間は
+     * ワイヤへの再送を抑止する:
+     *   1. `cmdCallBack[itemCode]` に既存エントリがある場合 → callback を差し替え、
+     *      ワイヤには**送らず return**する (重複送信なし)。
+     *   2. 前回コールから 2000ms 超経過していれば callback ごと破棄して扱いを「新規」に戻す。
+     * 結果: 同一 itemCode を連打すると SDK はフレームを 1 本しかワイヤに流さない
+     * (後続の call は先行 response を待って、先行がなければ最後の callback だけが呼ばれる)。
+     *
+     * kit の本実装は `_pending[itemCode]` FIFO キューに積むと同時に**毎回 _sendCipher() する**。
+     * 同一 itemCode を並行して呼ぶと、呼んだ回数分のフレームがワイヤに流れ、
+     * 各 Promise はデバイスから来た response を FIFO 順に 1:1 で消費して resolve/reject される。
+     * 単独呼び出し・直列呼び出しでは SDK と同一の観測可能な挙動になる。
+     *
+     * **乖離の影響**: lock 連打など同一 itemCode の並行呼び出し時、SDK は 1 フレームのみ送るが
+     * kit は N フレーム送る。デバイス側が busy を返すと N-1 個が BleResultError(busy) になる。
+     * これは fail-loud であり静かに壊れるわけではないが、SDK とは観測可能な差がある。
+     *
+     * **方針(P3-27)**: 注記実装で意図的乖離として固定する。直列化が必要になった時点で
+     * `_pending[itemCode].length > 0` ガードを追加する (P4-1 の契約面が確定するまで保留)。
+     *
      * @param {number} itemCode
      * @param {Buffer} [data]
      * @param {{timeoutMs?:number}} [opts]
@@ -161,6 +196,23 @@ export class SesameBleSession {
      * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
     configureLockPosition(lockTarget: number, unlockTarget: number, opts?: {
+        timeoutMs?: number;
+    }): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /**
+     * autolock — オートロック秒数を設定する (CHSesame5Device.kt:96-105 と 1:1)。
+     *   item = autolock(11)、data = autolockData(seconds) (2B LE)。0=無効。
+     * SDK は成功時に mechSetting?.autoLockSecond = delay.toShort() でキャッシュを局所更新する
+     * (CHSesame5Device.kt:102)。本実装も成功 (resultCode==0) のとき _lastMechSetting.autoLockSecond
+     * を更新する。キャッシュが未初期化の場合は lock/unlock=0 で新規作成
+     * (configureLockPosition と同流儀)。
+     * @param {number} seconds 0..65535 (0 = 無効)
+     * @param {{timeoutMs?:number}} [opts]
+     * @returns {Promise<{resultCode:number, payload:Buffer}>}
+     */
+    autolock(seconds: number, opts?: {
         timeoutMs?: number;
     }): Promise<{
         resultCode: number;

@@ -275,3 +275,41 @@ describe("P3-5: subscribeUserDeviceChange", () => {
     expect(() => { for (const fn of subs) fn({}); }).not.toThrow();
   });
 });
+
+describe("P3-10: invokeWebAPI のワイヤ形 — 未指定 query/body はキー省略 (useDeveloper.js:46-58)", () => {
+  // 導出元: useDeveloper.js:46-58 (references_web/src/api/useDeveloper.js)
+  // query は渡さない呼び出しでキー不在、body も同様 (JSON.stringify が undefined を除去する形と同義)。
+  const ACT_WA = "biz3InvokeWebAPIs";
+
+  it("query のみ渡した場合: query あり、body キー不在", async () => {
+    const client = makeClient({ action: ACT_WA, op: "webapi_ssm_shadow_get", data: {} });
+    await invokeWebAPI(client, { func: "webapi_ssm_shadow_get", apiKeyId: "k", query: { device_id: "d-1" } });
+    const frame = client.requests[0];
+    expect(frame.query).toEqual({ device_id: "d-1" });
+    expect("body" in frame).toBe(false);
+  });
+
+  it("body のみ渡した場合: body あり、query キー不在", async () => {
+    const client = makeClient({ action: ACT_WA, op: "webapi_cmd_send", data: {} });
+    await invokeWebAPI(client, { func: "webapi_cmd_send", apiKeyId: "k", body: { cmd: 82 } });
+    const frame = client.requests[0];
+    expect(frame.body).toEqual({ cmd: 82 });
+    expect("query" in frame).toBe(false);
+  });
+
+  it("query も body も未指定: 両キーとも不在", async () => {
+    const client = makeClient({ action: ACT_WA, op: "webapi_history_get", data: {} });
+    await invokeWebAPI(client, { func: "webapi_history_get", apiKeyId: "k" });
+    const frame = client.requests[0];
+    expect("query" in frame).toBe(false);
+    expect("body" in frame).toBe(false);
+  });
+
+  it("query も body も渡した場合: 両キーとも存在", async () => {
+    const client = makeClient({ action: ACT_WA, op: "webapi_test", data: {} });
+    await invokeWebAPI(client, { func: "webapi_test", apiKeyId: "k", query: { a: 1 }, body: { b: 2 } });
+    const frame = client.requests[0];
+    expect(frame.query).toEqual({ a: 1 });
+    expect(frame.body).toEqual({ b: 2 });
+  });
+});

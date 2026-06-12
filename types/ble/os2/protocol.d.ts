@@ -1,8 +1,13 @@
 /**
  * OS2 の sessionToken (8B) = mAppToken(4B) ++ mSesameToken(4B)。
  * (CHSesame2Device.kt:237 / CHSesameBotDevice.kt:439)
+ *
+ * mSesameToken は initial publish payload の全長をそのまま渡すこと (_handleInitial で確認済み)。
+ * 実ファームウェアは必ず 4B を送る (CHSesame2Device.kt:519 で切り詰めなく格納)。
+ * 4B 以外が来た場合はここで明示エラーを出す (session.js _handleInitial が先に reject する)。
+ *
  * @param {Buffer} mAppToken 4B (アプリ側ランダム、CHSesameOS2.kt:17 generateRandomData(4))
- * @param {Buffer} mSesameToken 4B (initial publish でデバイスが返すトークン)
+ * @param {Buffer} mSesameToken 4B (initial publish payload の全長: CHSesame2Device.kt:519 参照)
  * @returns {Buffer} 8B
  */
 export function sessionToken(mAppToken: Buffer, mSesameToken: Buffer): Buffer;
@@ -51,10 +56,13 @@ export function loginPayload(userIdx: Buffer, appPublicKey64: Buffer, mAppToken4
  * sessionKey/sessionToken で cipher を確立し (os2/cipher.js)、REGISTRATION 応答以降を暗号化する。
  * ownerKey は登録完了後に保存する device の鍵 (CHSesame2Device.kt:462-471 CHDevice の owner_key)。
  *
- * 注: registration の sessionToken は **serverToken(可変長) ++ mSesameToken(4B)** で、login の
- * sessionToken (mAppToken4 ++ mSesameToken4 = 8B) とは構造が異なる。cipher の nonce が要求する
- * 8B は「login 経路」の制約で、registration 経路の sessionToken 長は serverToken に依存する
- * (SDK では serverToken は server が返す。本実装は SDK のバイト連結をそのまま再現する)。
+ * 注: registration の sessionToken は **serverToken(4B) ++ mSesameToken(4B) = 8B 固定** である。
+ * serverToken は CHServerAuth.kt:54 の `val serverToken = ByteArray(4)` が示すとおり常に 4B。
+ * したがって sessionToken = 4B + 4B = 8B となり、login 経路の sessionToken
+ * (mAppToken4 ++ mSesameToken4 = 8B) と同じ長さになる。
+ * cipher.js の SesameOS2BleCipher コンストラクタが要求する 8B 検証は登録・ログイン両経路で満たされる。
+ * SesameOS2BleCipher.kt:7 はコンストラクタで長さ検証をしていないが、CCM nonce = counter5B ++ token
+ * の制約(nonce 上限 13B)から token ≤ 8B が必要であり、4B+4B=8B は最大値を使い切る正準形である。
  *
  * @param {Buffer} ecdhSecretPre16 16B
  * @param {Buffer} serverToken サーバが返すトークン (registerSesame1.st)
@@ -235,12 +243,28 @@ export function autolockData(seconds: number, tag?: Buffer | Uint8Array): Buffer
  * 施錠/解錠/中間は isInLockRange / isInUnlockRange の 2 ビットで判定する
  * (CHSesame2Device.kt:551 / CHSesameBikeDevice.kt:299: lock / unlock / else=moved)。
  *
+ * Bot1 固有意味論 (kind="os2bot", P3-24 / R2:BLE2-15):
+ *   - state は 2 値のみ: isInLockRange → LOCKED、else → UNLOCKED (MOVED は出ない)。
+ *     出典: CHSesameBotDevice.kt:303 / :346 —
+ *       `deviceStatus = if (isInLockRange) CHDeviceStatus.Locked else CHDeviceStatus.Unlocked`
+ *   - isStop は motorStatus 由来で上書き計算される (CHSesameBotDevice.kt:286-293 / :334-344):
+ *       motorStatus 0 (noPower) → true
+ *       motorStatus 1 (forward)  → false
+ *       motorStatus 2 (hold)     → true
+ *       motorStatus 3 (backward) → false
+ *       else                     → false
+ *     (CHSesameBot.kt:28 の flags-based isStop はクラス初期値であり、
+ *      CHSesameBotDevice.kt:286-293 の when ブロックで必ず上書きされる)
+ *
  * @param {Buffer} buf mech_status_t (8B。Kotlin は data[7] まで読む固定レイアウト)
+ * @param {{kind?: string}} [opts] オプション。kind="os2bot" で Bot1 固有意味論を適用。
  * @returns {{state:string, isInLockRange:boolean, isInUnlockRange:boolean, isBatteryCritical:boolean,
  *            target:number|null, position:number|null, targetDeg:number|null, positionDeg:number,
  *            batteryRaw:number, retCode:number, flags:number, motorStatus:number, isStop:boolean}}
  */
-export function parseMechStatus(buf: Buffer): {
+export function parseMechStatus(buf: Buffer, { kind }?: {
+    kind?: string;
+}): {
     state: string;
     isInLockRange: boolean;
     isInUnlockRange: boolean;
@@ -311,12 +335,15 @@ export function parseMechSettingBot(buf: Buffer): {
  * (CHSesame2Device.kt:268 の NoSettings 判定に対応)。
  *
  * @param {Buffer} payload login response の payload (resultCode は含まない)
+ * @param {{kind?: string}} [opts] オプション。parseMechStatus へ転送 (Bot1 固有意味論に使用。P3-24)。
  * @returns {{systemTime:number, fwVersion:number, historyCnt:number,
  *            mechSetting:ReturnType<typeof parseMechSettingSesame2>,
  *            mechSettingBot:ReturnType<typeof parseMechSettingBot>,
  *            mechSettingBytes:Buffer, isConfigured:boolean, mechStatus:object}}
  */
-export function parseLoginResponse(payload: Buffer): {
+export function parseLoginResponse(payload: Buffer, opts?: {
+    kind?: string;
+}): {
     systemTime: number;
     fwVersion: number;
     historyCnt: number;
@@ -400,6 +427,8 @@ export const ITEM: Readonly<{
     BOT2_ITEM_CODE_RUN_SCRIPT_9: 179;
     ADD_HUB3: 180;
     BOT2_ITEM_CODE_EDIT_SCRIPT: 181;
+    STP_ITEM_CODE_CARDS_ADD: 182;
+    STP_ITEM_CODE_DEVICE_STATUS: 183;
     CARD_CHANGE: 107;
     CARD_DELETE: 108;
     CARD_GET: 109;
@@ -470,7 +499,6 @@ export const ITEM: Readonly<{
     HUB3_UPDATE_WIFI_SSID: 136;
     HUB3_MATTER_PAIRING_CODE: 137;
     HUB3_ITEM_CODE_RELAY_SWITCH: 208;
-    STP_ITEM_CODE_DEVICE_STATUS: 183;
     REMOTE_NANO_SET_TRIGGER_DELAYTIME: 190;
     REMOTE_NANO_PUB_TRIGGER_DELAYTIME: 191;
     SSM_OS3_RADAR_PARAM_SET: 200;

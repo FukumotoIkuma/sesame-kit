@@ -114,6 +114,41 @@ describe("change/move/delete のバイト列", () => {
   });
 });
 
+// P3-19: hexNameToBytes 奇数長の Kotlin chunked(2) 一致テスト。
+// 参照: _sesame_sdk_ref/sesame-sdk/src/main/java/co/candyhouse/sesame/open/devices/sesameBiometric/capability/card/CHCardCapableImpl.kt:162
+//   hexName.chunked(2).map { it.toInt(16).toByte() }
+// Kotlin chunked(2) は奇数長末尾の 1 文字を独立チャンクとして保持する:
+//   "abc"   → ["ab", "c"]   → [0xab, 0x0c]
+//   "abcde" → ["ab","cd","e"] → [0xab, 0xcd, 0x0e]
+// cardChangeData(ID, hexName) は内部で hexNameToBytes(hexName) を呼ぶため
+// cardChangeData("", hexName) の tail bytes でバイト列を検証する。
+describe("hexNameToBytes: 奇数長入力で Kotlin chunked(2) と一致 (P3-19)", () => {
+  it("偶数長 'abcd' → [0xab, 0xcd] (既存挙動が壊れていないこと)", () => {
+    // cardChangeData("aabb", hexName) = [02, aa, bb, ...hexName bytes...]
+    const d = cardChangeData("aabb", "abcd");
+    expect(d.subarray(3).equals(Buffer.from([0xab, 0xcd]))).toBe(true);
+  });
+
+  it("奇数長 'abc' → [0xab, 0x0c] (Kotlin: 'abc'.chunked(2)=['ab','c'], 'c'.toInt(16)=12=0x0c)", () => {
+    // Kotlin: hexName.chunked(2).map { it.toInt(16).toByte() } (CHCardCapableImpl.kt:162)
+    // 旧 JS は末尾 1 文字を落として [0xab] のみ返していた (バグ)。
+    const d = cardChangeData("aabb", "abc");
+    expect(d.subarray(3).equals(Buffer.from([0xab, 0x0c]))).toBe(true);
+  });
+
+  it("奇数長 'abcde' → [0xab, 0xcd, 0x0e] (Kotlin: 'e'.toInt(16)=14=0x0e)", () => {
+    // Kotlin: "abcde".chunked(2) = ["ab","cd","e"] → [0xab, 0xcd, 0x0e]
+    const d = cardChangeData("aa", "abcde");
+    expect(d.subarray(2).equals(Buffer.from([0xab, 0xcd, 0x0e]))).toBe(true);
+  });
+
+  it("奇数長 1 文字 'f' → [0x0f] (Kotlin: 'f'.toInt(16)=15=0x0f)", () => {
+    // 1 文字の hexName: Kotlin chunked(2) = ["f"] → [0x0f]
+    const d = cardChangeData("aa", "f");
+    expect(d.subarray(2).equals(Buffer.from([0x0f]))).toBe(true);
+  });
+});
+
 describe("batchAddPacket", () => {
   it("[idx LE 2B][size LE 2B][chunk] で 209B 上限分割", () => {
     const data = Buffer.alloc(500, 0x7);

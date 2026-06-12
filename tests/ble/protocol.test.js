@@ -5,7 +5,7 @@ import {
   deriveSessionKey, loginPayload, ccmEncrypt, ccmDecrypt,
   splitSegments, SegmentAssembler, buildSendFrame, parseRecvFrame,
   historyTagBLE, autolockData, opSensorControlData, bleTxPowerData, parseMechStatus,
-  OP, ITEM, SEG, GATT, MECH_STATE,
+  OP, ITEM, SEG, GATT, MECH_STATE, RESULT, UNVERIFIED_RESULT_NAMES, resultName,
 } from "../../src/ble/protocol.js";
 
 const SECRET = "0123456789abcdef0123456789abcdef"; // 16B hex
@@ -214,5 +214,58 @@ describe("定数", () => {
     expect(ITEM.AUTOLOCK).toBe(11);
     expect(OP.RESPONSE).toBe(0x07);
     expect(OP.PUBLISH).toBe(0x08);
+  });
+});
+
+describe("RESULT — SesameProtocols.kt:28-30 と 1:1 (規範8 全件照合テスト / P3-16)", () => {
+  // 出典: _sesame_sdk_ref/sesame-sdk/.../ble/SesameProtocols.kt:28-30
+  //   enum SesameResultCode: success(0)..INVALID_PARAM(8) で **8 で終端**。
+  // このテストは RESULT 本体が参照 enum と過不足なく一致することを機械的に固定する。
+
+  // SesameProtocols.kt:28-30 の全メンバ (数値→名前)。
+  const EXPECTED = new Map([
+    [0, "success"],
+    [1, "invalidFormat"],
+    [2, "notSupported"],
+    [3, "resultStorageFail"],
+    [4, "invalidSig"],
+    [5, "notFound"],
+    [6, "unknown"],
+    [7, "busy"],
+    [8, "invalidParam"],
+  ]);
+
+  it("RESULT のキー集合が参照 enum と一致 (0..8 の 9 件、9 以上は含まない)", () => {
+    const resultKeys = Object.keys(RESULT).map(Number).sort((a, b) => a - b);
+    const expectedKeys = [...EXPECTED.keys()].sort((a, b) => a - b);
+    expect(resultKeys).toEqual(expectedKeys);
+  });
+
+  it("各コードの名前が参照 enum と一致", () => {
+    for (const [code, name] of EXPECTED) {
+      expect(RESULT[code]).toBe(name);
+    }
+  });
+
+  it("コード9 は RESULT に存在しない (UNVERIFIED_RESULT_NAMES に隔離済み)", () => {
+    expect(RESULT[9]).toBeUndefined();
+    // 未検証値は UNVERIFIED_RESULT_NAMES にある
+    expect(UNVERIFIED_RESULT_NAMES[9]).toBe("invalidAction");
+  });
+
+  it("resultName: 検証済みコード (0..8) は RESULT から名前を返す", () => {
+    for (const [code, name] of EXPECTED) {
+      expect(resultName(code)).toBe(name);
+    }
+  });
+
+  it("resultName: コード9 は 'unknown(9)' を返す (UNVERIFIED_RESULT_NAMES は参照しない)", () => {
+    // 意図的隔離: UNVERIFIED_RESULT_NAMES[9]='invalidAction' だが resultName は返さない。
+    expect(resultName(9)).toBe("unknown(9)");
+  });
+
+  it("resultName: その他未知コードも unknown(N) 形式", () => {
+    expect(resultName(99)).toBe("unknown(99)");
+    expect(resultName(255)).toBe("unknown(255)");
   });
 });

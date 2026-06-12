@@ -215,10 +215,24 @@ async function readJsonSource(src) {
 
 /**
  * `sesame ir remote-add --json <file|->` — リモコンオブジェクトをサーバへ登録 (SURF-05)。
- * 入力契約: `sesame ir search` / `sesame ir match` の出力 remote オブジェクト (vendor の
- * remoteDevice 形 — useRemoteCtrl.js addIRRemote が remote をそのまま frame に乗せる) を
- * **そのまま** 渡せる。最低限 {hub3DeviceId, type, name, irOperation, ...} を含めること
- * (フィールドは vendor 透過。kit 側で形を捏造しない)。
+ *
+ * 入力契約: vendor 形オブジェクト (ir.js addIRRemote 参照):
+ *   {
+ *     uuid       — クライアント発番 UUID。省略時は addIRRemote 内で自動補完。
+ *     model      — リモコンのモデル文字列。
+ *     state      — 最後に発射したコマンド HEX (初回は '')。
+ *     alias      — 表示名。
+ *     code       — preset コード文字列。
+ *     type       — リモコン種別 int (0xC000/0x2000/0xE000/0x8000/0xFE00 等)。
+ *     deviceUUID — Hub3 の deviceId (必須)。
+ *     keys       — キー配列 (初回は [])。
+ *   }
+ *
+ * 注意: `sesame ir search` / `sesame ir match` の出力は uuid/alias/state/deviceUUID/keys が
+ * 未セットのため、それらを付加してから渡すこと。
+ * 一次資料: references_web/src/pages/.../ir/learn/index.js:261-270,
+ *           remote-air/index.js:512-521, remote-non-air/index.js:264-273。
+ *
  * @param {{ json?: string }} options
  * @param {Program} program
  */
