@@ -5,201 +5,405 @@ syntax = "proto3";
 package sesame;
 
 service Sesame {
+  // stable
   rpc RpcDiscover (RpcDiscoverRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc ScheduleGetScheduleList (ScheduleGetScheduleListRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc ScheduleCancelSchedule (ScheduleCancelScheduleRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgGetEmployees (OrgGetEmployeesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgGetCurrentUserInfo (OrgGetCurrentUserInfoRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgAddEmployees (OrgAddEmployeesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgUpdateEmployee (OrgUpdateEmployeeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgRemoveEmployees (OrgRemoveEmployeesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgReorderEmployees (OrgReorderEmployeesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgQueryByCS (OrgQueryByCSRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgConfirmQueryByCS (OrgConfirmQueryByCSRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgGetEmployeeGroups (OrgGetEmployeeGroupsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgAddEmployeeGroup (OrgAddEmployeeGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgUpdateEmployeeGroup (OrgUpdateEmployeeGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgRemoveEmployeeGroups (OrgRemoveEmployeeGroupsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgGetEmployeeGroupBindDeviceGroup (OrgGetEmployeeGroupBindDeviceGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgAddEmployeeInGroup (OrgAddEmployeeInGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgRemoveEmployeeInGroup (OrgRemoveEmployeeInGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgRemoveEmployeeGroupBindDeviceGroup (OrgRemoveEmployeeGroupBindDeviceGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgGetTags (OrgGetTagsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgPostTag (OrgPostTagRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgRemoveTag (OrgRemoveTagRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgGetDeviceGroups (OrgGetDeviceGroupsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgAddDeviceGroup (OrgAddDeviceGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgUpdateDeviceGroup (OrgUpdateDeviceGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgRemoveDeviceGroups (OrgRemoveDeviceGroupsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgAddDeviceInGroup (OrgAddDeviceInGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgRemoveDeviceInGroup (OrgRemoveDeviceInGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgGetDeviceGroupBindUserGroup (OrgGetDeviceGroupBindUserGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgRemoveDeviceGroupBindUserGroup (OrgRemoveDeviceGroupBindUserGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgShareDeviceKeysToEmployees (OrgShareDeviceKeysToEmployeesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgShareDeviceGroupKeysToEmployeeGroup (OrgShareDeviceGroupKeysToEmployeeGroupRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgGetEmployeeDeviceKeys (OrgGetEmployeeDeviceKeysRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgRemoveEmployeeDeviceKey (OrgRemoveEmployeeDeviceKeyRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgUpdateGuestKeyTag (OrgUpdateGuestKeyTagRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgGenerateGuestQR (OrgGenerateGuestQRRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc OrgGetDeviceEmployeeKeys (OrgGetDeviceEmployeeKeysRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc CompanyGetCompanies (CompanyGetCompaniesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc CompanyUpdateCompanyName (CompanyUpdateCompanyNameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc CompanyAddCompany (CompanyAddCompanyRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc CompanyGetPaymentConfig (CompanyGetPaymentConfigRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc PaymentGetPaymentMethods (PaymentGetPaymentMethodsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc PaymentGetClientSecret (PaymentGetClientSecretRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc PaymentChangeDefaultPayment (PaymentChangeDefaultPaymentRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc PaymentRemovePayment (PaymentRemovePaymentRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc PaymentPayUpdateLevel (PaymentPayUpdateLevelRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc PaymentGetDevApiInfo (PaymentGetDevApiInfoRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessGetCards (AccessGetCardsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessGetPasscodes (AccessGetPasscodesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessPostCards (AccessPostCardsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessPostPasscodes (AccessPostPasscodesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessDelCards (AccessDelCardsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessDelPasscodes (AccessDelPasscodesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessClearCards (AccessClearCardsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessClearPasscodes (AccessClearPasscodesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessUpdateCardName (AccessUpdateCardNameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessUpdatePasscodeName (AccessUpdatePasscodeNameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessUpdateCardOwner (AccessUpdateCardOwnerRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IotSendIotCmd (IotSendIotCmdRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IotSendIotCmdAwait (IotSendIotCmdAwaitRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IotSetHub3LedDuty (IotSetHub3LedDutyRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IotHub3RelaySwitch (IotHub3RelaySwitchRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IotAddSesameToHub3 (IotAddSesameToHub3Request) returns (JsonRpc);
+  // experimental (unverified)
   rpc IotRemoveSesameFromHub3 (IotRemoveSesameFromHub3Request) returns (JsonRpc);
+  // experimental (unverified)
   rpc IotStartFirmwareUpdate (IotStartFirmwareUpdateRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IotClearHub3WifiSsid (IotClearHub3WifiSsidRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IotGetMatterPairingCode (IotGetMatterPairingCodeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IotOpenMatterPairingWindow (IotOpenMatterPairingWindowRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc PresetirSendIR (PresetirSendIRRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc PresetirEmitAir (PresetirEmitAirRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc PresetirEmitButton (PresetirEmitButtonRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleScriptClick (BleScriptClickRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleScriptSelectScript (BleScriptSelectScriptRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleScriptSendClickScript (BleScriptSendClickScriptRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleScriptGetCurrentScript (BleScriptGetCurrentScriptRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleScriptGetScriptNameList (BleScriptGetScriptNameListRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricCardModeSet (BleBiometricCardModeSetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricCardModeGet (BleBiometricCardModeGetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricCardGet (BleBiometricCardGetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricCardAdd (BleBiometricCardAddRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricCardDelete (BleBiometricCardDeleteRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricCardMove (BleBiometricCardMoveRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricCardChange (BleBiometricCardChangeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricCardChangeValue (BleBiometricCardChangeValueRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPasscodeModeSet (BleBiometricPasscodeModeSetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPasscodeModeGet (BleBiometricPasscodeModeGetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPasscodeGet (BleBiometricPasscodeGetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPasscodeAdd (BleBiometricPasscodeAddRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPasscodeDelete (BleBiometricPasscodeDeleteRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPasscodeMove (BleBiometricPasscodeMoveRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPasscodeChange (BleBiometricPasscodeChangeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricFaceModeSet (BleBiometricFaceModeSetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricFaceModeGet (BleBiometricFaceModeGetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricFaceListGet (BleBiometricFaceListGetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricFaceChange (BleBiometricFaceChangeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricFaceDelete (BleBiometricFaceDeleteRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPalmModeSet (BleBiometricPalmModeSetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPalmModeGet (BleBiometricPalmModeGetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPalmListGet (BleBiometricPalmListGetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricPalmDelete (BleBiometricPalmDeleteRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricInsertSesame (BleBiometricInsertSesameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricRemoveSesame (BleBiometricRemoveSesameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleBiometricSetRadarSensitivity (BleBiometricSetRadarSensitivityRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleFingerPrintFingerPrintModeSet (BleFingerPrintFingerPrintModeSetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleFingerPrintFingerPrintModeGet (BleFingerPrintFingerPrintModeGetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleFingerPrintFingerPrints (BleFingerPrintFingerPrintsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleFingerPrintFingerPrintDelete (BleFingerPrintFingerPrintDeleteRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleFingerPrintFingerPrintChange (BleFingerPrintFingerPrintChangeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleRemoteNanoSetTriggerDelayTime (BleRemoteNanoSetTriggerDelayTimeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleRemoteNanoInsertSesame (BleRemoteNanoInsertSesameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleRemoteNanoRemoveSesame (BleRemoteNanoRemoveSesameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleRemoteNanoSetRadarSensitivity (BleRemoteNanoSetRadarSensitivityRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleWifiInsertSesames (BleWifiInsertSesamesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleWifiRemoveSesame (BleWifiRemoveSesameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleWifiReset (BleWifiResetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleHub3ScanWifiSSID (BleHub3ScanWifiSSIDRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleHub3SetWifiSSID (BleHub3SetWifiSSIDRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleHub3SetWifiPassword (BleHub3SetWifiPasswordRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleHub3RemoveSesame (BleHub3RemoveSesameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleHub3NetworkType (BleHub3NetworkTypeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleHistory (BleHistoryRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleDeleteHistory (BleDeleteHistoryRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleGetVersionTag (BleGetVersionTagRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleMagnet (BleMagnetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleOpSensorControl (BleOpSensorControlRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleSendAdvProductType (BleSendAdvProductTypeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleSetBleTxPower (BleSetBleTxPowerRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleOs2Autolock (BleOs2AutolockRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleOs2DisableAutolock (BleOs2DisableAutolockRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleOs2GetAutolock (BleOs2GetAutolockRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleOs2History (BleOs2HistoryRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleOs2VersionTag (BleOs2VersionTagRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleOs2UpdateSetting (BleOs2UpdateSettingRequest) returns (JsonRpc);
+  // experimental (unverified)
+  rpc BleOs2Reset (BleOs2ResetRequest) returns (JsonRpc);
+  // experimental (unverified)
+  rpc BleOs2ConfigureLockPosition (BleOs2ConfigureLockPositionRequest) returns (JsonRpc);
+  // stable
   rpc Status (StatusRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc CloudPing (CloudPingRequest) returns (JsonRpc);
+  // stable
   rpc AccountWhoami (AccountWhoamiRequest) returns (JsonRpc);
+  // stable
   rpc LockLock (LockLockRequest) returns (JsonRpc);
+  // stable
   rpc LockUnlock (LockUnlockRequest) returns (JsonRpc);
+  // stable
   rpc LockToggle (LockToggleRequest) returns (JsonRpc);
+  // stable
   rpc LockClick (LockClickRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc LockSetAutolock (LockSetAutolockRequest) returns (JsonRpc);
+  // stable
   rpc LockStatus (LockStatusRequest) returns (JsonRpc);
+  // stable
   rpc DevicesList (DevicesListRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc DevicesUserList (DevicesUserListRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc DevicesAdd (DevicesAddRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc DevicesReorder (DevicesReorderRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc DevicesNotifyStatus (DevicesNotifyStatusRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc DevicesNotifyManage (DevicesNotifyManageRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc DevicesSwitchRecharge (DevicesSwitchRechargeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessRegisterCards (AccessRegisterCardsRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessRegisterPasscodes (AccessRegisterPasscodesRequest) returns (JsonRpc);
+  // stable
   rpc DeviceHistory (DeviceHistoryRequest) returns (JsonRpc);
+  // stable
   rpc DeviceBattery (DeviceBatteryRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc DeviceHideHistory (DeviceHideHistoryRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc DeviceHideBattery (DeviceHideBatteryRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc DeviceRename (DeviceRenameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc DeviceDelete (DeviceDeleteRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc FirmwareList (FirmwareListRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc ConfigSyncLocks (ConfigSyncLocksRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc ConfigSyncHub3s (ConfigSyncHub3sRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc ConfigSyncRemotes (ConfigSyncRemotesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc ConfigSyncRemoteKeys (ConfigSyncRemoteKeysRequest) returns (JsonRpc);
+  // experimental (unverified)
+  rpc ConfigSyncRemotesFromServer (ConfigSyncRemotesFromServerRequest) returns (JsonRpc);
+  // experimental (unverified)
+  rpc ConfigListRemoteCandidates (ConfigListRemoteCandidatesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc WebapiInvoke (WebapiInvokeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc WebapiDeviceState (WebapiDeviceStateRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc WebapiDeviceHistory (WebapiDeviceHistoryRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc WebapiSendCmd (WebapiSendCmdRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrSend (IrSendRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrListKeys (IrListKeysRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrLearn (IrLearnRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrListRemotes (IrListRemotesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrSearchRemotes (IrSearchRemotesRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrAddRemote (IrAddRemoteRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrDeleteRemote (IrDeleteRemoteRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrRenameRemote (IrRenameRemoteRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrDeleteKey (IrDeleteKeyRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrRenameKey (IrRenameKeyRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrGetMode (IrGetModeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrSetMode (IrSetModeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrMatchRemote (IrMatchRemoteRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc IrAddRemoteToMatter (IrAddRemoteToMatterRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessPostAuthenticationData (AccessPostAuthenticationDataRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessPutAuthenticationData (AccessPutAuthenticationDataRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessDeleteAuthenticationData (AccessDeleteAuthenticationDataRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc AccessUpdateAuthenticationName (AccessUpdateAuthenticationNameRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleScan (BleScanRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleInvoke (BleInvokeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleUpdateFirmware (BleUpdateFirmwareRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleReset (BleResetRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BlePosition (BlePositionRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleWifiScan (BleWifiScanRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleWifiSetSsid (BleWifiSetSsidRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleWifiSetPassword (BleWifiSetPasswordRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleWifiConnect (BleWifiConnectRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleRegister (BleRegisterRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleOs2Invoke (BleOs2InvokeRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleOs2Register (BleOs2RegisterRequest) returns (JsonRpc);
   // イベント購読 (topics を渡し event を stream で受ける)。payload は JSON 文字列。
   rpc Subscribe (SubReq) returns (stream Event);
@@ -557,12 +761,13 @@ message IotOpenMatterPairingWindowRequest {
 }
 message PresetirSendIRRequest {
   string deviceId = 1;
-  string command = 2;
-  double irType = 3;
-  string companyID = 4;
-  string irDeviceUUID = 5;
-  string operation = 6;
-  double timeoutMs = 7;
+  string hub3DeviceId = 2;
+  string command = 3;
+  double irType = 4;
+  string companyID = 5;
+  string irDeviceUUID = 6;
+  string operation = 7;
+  double timeoutMs = 8;
 }
 message PresetirEmitAirRequest {
   string deviceId = 1;
@@ -1270,6 +1475,28 @@ message BleOs2UpdateSettingRequest {
   string setting = 9;
   string tag = 10;
 }
+message BleOs2ResetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string keyIndex = 4;
+  string ssmPublicKey = 5;
+  string model = 6;
+  double scanTimeoutMs = 7;
+  bool debug = 8;
+}
+message BleOs2ConfigureLockPositionRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string keyIndex = 4;
+  string ssmPublicKey = 5;
+  string model = 6;
+  double scanTimeoutMs = 7;
+  bool debug = 8;
+  double lockDeg = 9;
+  double unlockDeg = 10;
+}
 message StatusRequest {
 }
 message CloudPingRequest {
@@ -1380,6 +1607,12 @@ message ConfigSyncRemotesRequest {
 }
 message ConfigSyncRemoteKeysRequest {
   string remote = 1;
+}
+message ConfigSyncRemotesFromServerRequest {
+  string hub3 = 1;
+  double irType = 2;
+}
+message ConfigListRemoteCandidatesRequest {
 }
 message WebapiInvokeRequest {
   string func = 1;

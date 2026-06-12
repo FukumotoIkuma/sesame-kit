@@ -45,7 +45,7 @@ export function handleMessage(raw: string, invoke: (method: string, params: unkn
  * @returns {RpcEvent}
  */
 export function makeEvent(topic: string, payload: unknown): RpcEvent;
-export const CONTRACT_VERSION: "1.2.0";
+export const CONTRACT_VERSION: "1.3.0";
 /**
  * JSON-RPC の id 型。string / number / null のいずれか。
  * @typedef {string|number|null} RpcId

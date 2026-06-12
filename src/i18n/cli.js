@@ -287,6 +287,11 @@ export default {
     "cli.descRemoteSetDefault": "set the default remote",
     "cli.descRemoteSyncKeys": "write keys fetched by getIRCodes back to config.json",
     "cli.descRemoteSyncFromDevices": "auto-import all remotes from devices (auto-detect Hub3 and irType, no args)",
+    // P4-6 (R2:SURF-32): sync-from-server — server getRemoteList 経由の代替取り込み。
+    "cli.descRemoteSyncFromServer": "import IR remotes from the server (getRemoteList) into config (hub3 and irType required)",
+    "cli.argRemoteSyncFromServerHub3": "hub3 name in config",
+    "cli.argRemoteSyncFromServerIrType": "irType integer (e.g. 49152=AC)",
+    "cli.okRemoteSyncFromServer": "OK: synced from server (hub3={hub3}, irType={irType}, added={added}, updated={updated})",
     "cli.descHub3": "edit Hub3 definitions",
     "cli.descHub3Ls": "list configured Hub3",
     "cli.descHub3Add": "pick a Hub3 from devices and add it (no manual UUID)",
@@ -696,6 +701,11 @@ export default {
     "cli.descRemoteSetDefault": "デフォルトリモコン設定",
     "cli.descRemoteSyncKeys": "getIRCodes で取得したキーを config.json に書き戻し",
     "cli.descRemoteSyncFromDevices": "devices からリモコンを全件自動取り込み (Hub3 と irType を自動判定、引数不要)",
+    // P4-6 (R2:SURF-32): sync-from-server — server getRemoteList 経由の代替取り込み。
+    "cli.descRemoteSyncFromServer": "server の IR リモコン一覧 (getRemoteList) から config に取り込む (hub3 名と irType 必須)",
+    "cli.argRemoteSyncFromServerHub3": "config 上の hub3 名",
+    "cli.argRemoteSyncFromServerIrType": "irType 整数 (例 49152=エアコン)",
+    "cli.okRemoteSyncFromServer": "OK: server から同期しました (hub3={hub3}, irType={irType}, added={added}, updated={updated})",
     "cli.descHub3": "Hub3 定義の編集",
     "cli.descHub3Ls": "設定済み Hub3 一覧",
     "cli.descHub3Add": "devices から Hub3 を選んで追加 (UUID 手打ち不要)",

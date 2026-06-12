@@ -137,6 +137,34 @@ notification sent once on every persistent connection since contract 1.2.0).
 `event.deviceListChanged` is **experimental** (provenance unverified; biz3
 `pubUserDeviceChange`). (See delivery semantics below.)
 
+## Intentionally absent from CLI/RPC: lock raw escape hatch
+
+`SesameHub3` exposes two library-only methods for sending an arbitrary `cmd`
+value directly to a lock:
+
+- `triggerLockRaw(name, cmd)` — resolves a config name, then sends any `cmd`.
+- `triggerLockDevice({ deviceUUID, secretKey, cmd })` — bypasses config, same
+  raw send.
+
+**These methods are deliberately not wired as CLI subcommands or RPC methods.**
+Reason: accepting an arbitrary integer `cmd` in a networked endpoint is an
+unguarded misfire surface — a caller typo or a replay of a stale payload could
+send an undocumented item code to production hardware. The named wrappers
+(`lock.lock` / `lock.unlock` / `lock.toggle` / `lock.click` and their
+`*Device` counterparts) cover every cmd the official app sends (82/83/88/89)
+and are the correct entry points for automation.
+
+Contrast: `iot.sendIotCmd` / `iot.sendIotCmdAwait` *are* exposed (as
+`sesame iot raw` / RPC `iot.sendIotCmd`) because the Hub3 IoT command set has
+no equivalent lock-control risk and is needed for firmware / Matter flows that
+have no typed wrapper. The lock raw path offers no comparable benefit over the
+typed wrappers.
+
+If a future use-case genuinely requires an arbitrary lock cmd (e.g. a new
+item code the vendor adds before the SDK ships a typed wrapper), add a named
+experimental method `lock.sendRaw { name|deviceUUID+secretKey, cmd }` with
+explicit range validation, rather than reusing the current raw escape hatches.
+
 ## Experimental namespaces (excluded from 1.0 guarantee)
 
 The registry exposes **135 methods** in total (contract 1.2.0); everything outside

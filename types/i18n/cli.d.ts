@@ -258,6 +258,10 @@ declare namespace _default {
         "cli.descRemoteSetDefault": string;
         "cli.descRemoteSyncKeys": string;
         "cli.descRemoteSyncFromDevices": string;
+        "cli.descRemoteSyncFromServer": string;
+        "cli.argRemoteSyncFromServerHub3": string;
+        "cli.argRemoteSyncFromServerIrType": string;
+        "cli.okRemoteSyncFromServer": string;
         "cli.descHub3": string;
         "cli.descHub3Ls": string;
         "cli.descHub3Add": string;
@@ -634,6 +638,10 @@ declare namespace _default {
         "cli.descRemoteSetDefault": string;
         "cli.descRemoteSyncKeys": string;
         "cli.descRemoteSyncFromDevices": string;
+        "cli.descRemoteSyncFromServer": string;
+        "cli.argRemoteSyncFromServerHub3": string;
+        "cli.argRemoteSyncFromServerIrType": string;
+        "cli.okRemoteSyncFromServer": string;
         "cli.descHub3": string;
         "cli.descHub3Ls": string;
         "cli.descHub3Add": string;

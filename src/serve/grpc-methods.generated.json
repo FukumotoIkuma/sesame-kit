@@ -626,6 +626,14 @@
       "tag"
     ]
   },
+  "BleOs2Reset": {
+    "method": "ble.os2.reset",
+    "jsonFields": []
+  },
+  "BleOs2ConfigureLockPosition": {
+    "method": "ble.os2.configureLockPosition",
+    "jsonFields": []
+  },
   "Status": {
     "method": "status",
     "jsonFields": []
@@ -752,6 +760,14 @@
   },
   "ConfigSyncRemoteKeys": {
     "method": "config.syncRemoteKeys",
+    "jsonFields": []
+  },
+  "ConfigSyncRemotesFromServer": {
+    "method": "config.syncRemotesFromServer",
+    "jsonFields": []
+  },
+  "ConfigListRemoteCandidates": {
+    "method": "config.listRemoteCandidates",
     "jsonFields": []
   },
   "WebapiInvoke": {

@@ -13,6 +13,7 @@ import { writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildRegistry } from "../src/serve/registry.js";
+import { stabilityOf } from "../src/serve/stability.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -77,6 +78,15 @@ export async function generateProto() {
   L.push("");
   L.push("service Sesame {");
   for (const m of methods) {
+    // P4-12: stabilityOf() で取得した tier を各 rpc 宣言直前にコメントとして出力する。
+    // protoc 消費者(コード生成ツール等)が stable/experimental を判別できるようにするため。
+    // 出典: src/serve/stability.js の stabilityOf() と STABLE_METHODS 定義。
+    const tier = stabilityOf(m.jsonrpc);
+    if (tier === "stable") {
+      L.push(`  // stable`);
+    } else {
+      L.push(`  // experimental (unverified)`);
+    }
     L.push(`  rpc ${m.pascal} (${m.pascal}Request) returns (JsonRpc);`);
   }
   L.push("  // イベント購読 (topics を渡し event を stream で受ける)。payload は JSON 文字列。");

@@ -342,6 +342,29 @@ describe("sendIR", () => {
     ).rejects.toThrow(/sendIR failed: device offline/);
   });
 
+  // P4-10: hub3DeviceId alias
+  it("hub3DeviceId は deviceId の alias として受理され、ワイヤには deviceId で送る", async () => {
+    // ir.listKeys/learn/addRemoteToMatter は hub3DeviceId を使うため、
+    // sendIR も hub3DeviceId を受理できることで呼び出し側の名前統一が可能になる。
+    const c = mockClient({ success: true });
+    await sendIR(c, { hub3DeviceId: "hub3-uuid", command: "AA", irType: IR_TYPE.AIR, companyID: "ch" });
+    const f = c.sent[0].frame;
+    // ワイヤには正準名 deviceId で送信する (useRemoteCtrl.js:467 の field 名と一致)。
+    expect(f.deviceId).toBe("hub3-uuid");
+    expect(f).not.toHaveProperty("hub3DeviceId");
+  });
+
+  it("deviceId と hub3DeviceId 両方ある場合は deviceId が優先される", async () => {
+    const c = mockClient({ success: true });
+    await sendIR(c, { deviceId: "canonical", hub3DeviceId: "alias", command: "AA", irType: IR_TYPE.AIR, companyID: "ch" });
+    expect(c.sent[0].frame.deviceId).toBe("canonical");
+  });
+
+  it("deviceId も hub3DeviceId も無い場合は throw (既存エラーと同一)", async () => {
+    const c = mockClient({ success: true });
+    await expect(sendIR(c, { command: "AA", irType: IR_TYPE.AIR, companyID: "ch" })).rejects.toThrow(/deviceId required/);
+  });
+
   it("応答をそのまま返す", async () => {
     const reply = { success: true, op: "sendIR", data: { result: "ok" } };
     const c = mockClient(reply);

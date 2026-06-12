@@ -498,7 +498,10 @@ export function buildNonAirCommandHex({ irType, code, buttonType }) {
  * frame は learnIR 等の sendIR と完全共通 (useRemoteCtrl.js:460-484)。
  *
  * フィールド名トラップ:
- *   - deviceId    : Hub3 の deviceUUID 文字列 (hub3DeviceId ではなく **deviceId**)
+ *   - deviceId    : Hub3 の deviceUUID 文字列。これが正準名。
+ *                   alias として hub3DeviceId も受理する (P4-10: ir.listKeys 等との名前統一)。
+ *                   両方指定された場合は deviceId が優先される。
+ *                   ワイヤフレームには常に **deviceId** として送信する (useRemoteCtrl.js:467)。
  *   - irDeviceUUID: 保存済みリモコンの uuid。未保存プリセットでは **空文字 ''**
  *                   (remote-air:369 / remote-non-air:155 で remote.uuid || '')
  *
@@ -507,18 +510,24 @@ export function buildNonAirCommandHex({ irType, code, buttonType }) {
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{
- *   deviceId: string,        // Hub3 deviceUUID
- *   command: string,         // HEX command (buildAir/NonAirCommandHex の戻り値)
- *   irType: number,          // remote.type 実値 (IR_TYPE)
- *   companyID: string,       // gStripe.customerInfo.companyID
- *   irDeviceUUID?: string,   // remote.uuid (未保存は '')
- *   operation?: string,      // 既定 'remoteEmit'
+ *   deviceId?: string,
+ *   hub3DeviceId?: string,
+ *   command: string,
+ *   irType: number,
+ *   companyID: string,
+ *   irDeviceUUID?: string,
+ *   operation?: string,
  *   timeoutMs?: number,
- * }} p
+ * }} p  deviceId が正準名 (ワイヤと一致)。hub3DeviceId は alias — ir.listKeys/learn/addRemoteToMatter
+ *        との名前統一のために受理する。両方ある場合は deviceId 優先。companyID は省略時 daemon が注入。
  * @returns {Promise<object>} 応答メッセージ (success / data / message)
  */
 export async function sendIR(client, p) {
-  if (!p || !p.deviceId) throw badRequest("presetir.err.deviceIdRequired");
+  // P4-10: hub3DeviceId は deviceId の alias。ir.listKeys 等が hub3DeviceId を使うため
+  // 同一概念に複数名が混在していた。deviceId が無い場合に hub3DeviceId へフォールバックする。
+  // ワイヤには常に deviceId として送る (useRemoteCtrl.js:467 参照)。
+  const deviceId = p?.deviceId ?? p?.hub3DeviceId;
+  if (!deviceId) throw badRequest("presetir.err.deviceIdRequired");
   if (!p.command) throw badRequest("presetir.err.commandRequired");
   if (p.irType == null) throw badRequest("presetir.err.irTypeRequired");
   if (!p.companyID) throw badRequest("presetir.err.companyIdRequired");
@@ -526,7 +535,7 @@ export async function sendIR(client, p) {
   const frame = {
     action: ACTION,
     op: "sendIR",
-    deviceId: p.deviceId,
+    deviceId, // 正準名で送信。alias hub3DeviceId は上で解決済み。
     command: p.command,
     operation: p.operation ?? "remoteEmit",
     irType: p.irType,

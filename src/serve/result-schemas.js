@@ -56,8 +56,19 @@ const BLE_ACK = obj({ resultCode: NUM, resultName: STR }, ["resultCode", "result
 /** @type {Readonly<Record<string, JsonSchema>>} */
 export const RESULT_SCHEMAS = Object.freeze({
   // daemon 自前 (確実)
+  // authState の 3 値は daemon.js の this.authState 定義 (コンストラクタ・_connect の遷移) から導出。
+  //   "ok"       — 接続・認証完了 (daemon.js: authState = "ok")
+  //   "degraded" — 接続失敗かつトークンあり (daemon.js: _hasStoredTokens() が true のとき)
+  //   "expired"  — 接続失敗かつトークン無し (daemon.js: _hasStoredTokens() が false のとき)
+  // subUUID は hub.subUUID で、未接続時は null になるため nullable。
   "status": obj(
-    { connected: BOOL, authState: STR, subUUID: STR, apiVersion: STR, contractVersion: STR },
+    {
+      connected: BOOL,
+      authState: { type: "string", enum: ["ok", "degraded", "expired"] },
+      subUUID: nullable(STR),
+      apiVersion: STR,
+      contractVersion: STR,
+    },
     ["connected", "authState", "apiVersion", "contractVersion"],
   ),
   "events.subscribe": obj({ subscribed: arr(STR) }, ["subscribed"]),

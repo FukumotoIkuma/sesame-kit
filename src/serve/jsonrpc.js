@@ -21,11 +21,26 @@
  *          x-stability・x-provenance / status・discover の apiVersion)。すべて後方互換な追加。
  *   1.2.0: event.ready を全永続接続 (stdio/socket/ws/SSE/gRPC Subscribe) で一律発火 /
  *          discover に x-event-topics (購読可能 topic)。後方互換な追加。
+ *   1.3.0: 以下の追加 (すべて後方互換な追加)。
+ *     - Phase1 P1-7: ble.scan を追加 (BLE デバイス探索の typed op。計 202 メソッド)。
+ *     - Phase1 P1-8: 生体一覧 5 op (finger/face/palm/guestFinger/guestFace) の結果形を
+ *       ack → { records: [...] } に変更 (@experimental。破壊的変更ではなく experimental 形変更)。
+ *     - Phase1 P1-4: devices.subscribeDevicesUpdate の戻り値 () => void →
+ *       { unsubscribe, sendFrame } に変更 (@experimental)。
+ *     - Phase3 P3-27: ble.wifi.networkStatus (発明 op) を削除 (@experimental だったため
+ *       minor バージョン内で撤去)。
+ *     - Phase4 P4-4: access.auth-data POST/PUT/DELETE/NAME の RPC 追加 (@experimental)。
+ *     - Phase4 P4-5: ble.os2.reset / ble.os2.configureLockPosition の typed RPC 追加
+ *       (@experimental)。
+ *     - Phase4 P4-6: config.syncRemotesFromServer RPC 追加 (@experimental)。
+ *     - Phase4 P4-8: events.subscribe/unsubscribe の topics param に
+ *       x-event-topics の enum schema を付与 (SDK 型が union になる。後方互換)。
+ *     - stable 13 メソッドのシグネチャは不変 (破壊的変更なし。major 据え置き正当)。
  */
 import { t } from "../i18n.js";
 import { SesameError, ERR } from "../errors.js";
 
-export const CONTRACT_VERSION = "1.2.0";
+export const CONTRACT_VERSION = "1.3.0";
 
 /**
  * JSON-RPC の id 型。string / number / null のいずれか。

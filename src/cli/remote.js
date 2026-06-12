@@ -185,6 +185,27 @@ async function cmdRemoteSyncKeys(name, _opts, program) {
 }
 
 /**
+ * P4-6 (R2:SURF-32): server の getRemoteList から config へ取り込む (syncRemotesFromDevices の代替経路)。
+ * hub3 名と irType を必須引数とする (devices 経路では自動判定だが server 経路は明示指定が必要)。
+ * @param {string} hub3
+ * @param {string} irTypeStr  コマンドライン文字列 → Number() で整数化
+ * @param {CmdOpts} _options
+ * @param {Program} program
+ */
+async function cmdRemoteSyncFromServer(hub3, irTypeStr, _options, program) {
+  const irType = Number(irTypeStr);
+  if (!Number.isFinite(irType) || irType <= 0) die(t("cli.argRemoteSyncFromServerIrType"), 2);
+  await withHub(program, async (hub, { opts }) => {
+    const result = await hub.syncRemotesFromServer(hub3, irType);
+    out(opts.json,
+      () => console.log(t("cli.okRemoteSyncFromServer", {
+        hub3, irType, added: result.added.length, updated: result.updated.length,
+      })),
+      { ok: true, hub3, irType, added: result.added, updated: result.updated });
+  });
+}
+
+/**
  * @param {CmdOpts} _options
  * @param {Program} program
  */
@@ -294,6 +315,11 @@ export function registerRemoteCommands(program) {
   remote.command("sync-from-devices")
     .description(t("cli.descRemoteSyncFromDevices"))
     .action((opts) => cmdRemoteSyncFromDevices(opts, program));
+  // P4-6 (R2:SURF-32): sync-from-server — server 経由の代替取り込み経路。
+  // hub3 と irType を必須引数とする (devices 経路と異なり自動判定が効かないため)。
+  remote.command("sync-from-server <hub3> <irType>")
+    .description(t("cli.descRemoteSyncFromServer"))
+    .action((hub3, irType, opts) => cmdRemoteSyncFromServer(hub3, irType, opts, program));
 
   const hub3 = program.command("hub3").description(t("cli.descHub3"));
   hub3.command("ls").description(t("cli.descHub3Ls"))

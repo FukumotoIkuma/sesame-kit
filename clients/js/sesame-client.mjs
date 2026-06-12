@@ -113,6 +113,8 @@ export class SesameClient {
 
   unlock(name, kw = {}) { return this.call("lock.unlock", name ? { name, ...kw } : kw); }
   lock(name, kw = {}) { return this.call("lock.lock", name ? { name, ...kw } : kw); }
+  // P4-9 (SURF-35): unlock/lock と同型の便宜メソッド。Python クライアントとの表面対称性を回復。
+  toggle(name, kw = {}) { return this.call("lock.toggle", name ? { name, ...kw } : kw); }
   status() { return this.call("status"); }
   devices() { return this.call("devices.list"); }
   close() { this._t.close(); }

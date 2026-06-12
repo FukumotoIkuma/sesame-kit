@@ -104,6 +104,12 @@ export declare class SesameClient {
   /** Lock a device (or the default device when `name` is omitted/falsy). */
   lock(name?: string | null, kw?: Record<string, any>): Promise<any>;
 
+  /**
+   * Toggle a device (or the default device when `name` is omitted/falsy).
+   * P4-9 (SURF-35): added for surface symmetry with the Python client.
+   */
+  toggle(name?: string | null, kw?: Record<string, any>): Promise<any>;
+
   /** Call `status`. */
   status(): Promise<any>;
 

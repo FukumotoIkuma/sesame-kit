@@ -25,6 +25,8 @@ function fakeHub() {
     onDeviceUpdate: (_i, fn) => { duFn = fn; return () => { duFn = null; }; },
     _emit: (m) => duFn && duFn(m),
     unlock: vi.fn(async (n) => ({ ok: true, name: n })),
+    // P4-9 (SURF-35): toggle 便宜メソッドのテスト用。unlock と同型。
+    toggle: vi.fn(async (n) => ({ ok: true, name: n })),
   };
 }
 
@@ -60,6 +62,12 @@ describe("JS 同梱クライアント e2e", () => {
     const { socketPath } = await boot();
     const c = SesameClient.unix(socketPath); clients.push(c);
     expect(await c.unlock("front")).toMatchObject({ ok: true, name: "front" });
+  });
+
+  it("P4-9: UDS: toggle() が hub に届く (unlock/lock と同型の便宜メソッド)", async () => {
+    const { socketPath } = await boot();
+    const c = SesameClient.unix(socketPath); clients.push(c);
+    expect(await c.toggle("front")).toMatchObject({ ok: true, name: "front" });
   });
 
   it("UDS: one-shot 利用は close() 忘れでもプロセスを掴み続けない", async () => {

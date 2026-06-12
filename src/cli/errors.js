@@ -12,7 +12,7 @@
 // 依存方向: cli.js / cli/*.js → このモジュール (逆は無し)。
 import { spawn } from "node:child_process";
 import { t } from "../i18n.js";
-import { SesameError } from "../errors.js";
+import { SesameError, ERR } from "../errors.js";
 
 /** 終了コード契約 (README: 0=成功 / 1=ランタイム / 2=usage)。 */
 export const EXIT = Object.freeze({ OK: 0, RUNTIME: 1, USAGE: 2 });
@@ -88,10 +88,15 @@ export function commanderErrorInfo(err) {
 
 /**
  * commander 以外の一般エラーの exit code (明示 exitCode を尊重、無ければ 1)。
+ * P4-2 (SURF-28): SesameError(BAD_REQUEST) は「呼び出し側不正」= usage エラーなので
+ * EXIT.USAGE(2) を返す。serve 経路 (toServeError: bad_params→exitCode=2) と対称にする。
  * @param {unknown} err
  * @returns {number}
  */
 export function runtimeExitCode(err) {
+  // 呼び出し側不正 (引数欠落/不明なデバイス名など) は usage エラー = 2。
+  // serve 経路の bad_params→exitCode=2 (toServeError) と終了コードを一致させる。
+  if (err instanceof SesameError && err.code === ERR.BAD_REQUEST) return EXIT.USAGE;
   const exitCode =
     err && typeof err === "object" && "exitCode" in err
       ? /** @type {{exitCode?: unknown}} */ (err).exitCode

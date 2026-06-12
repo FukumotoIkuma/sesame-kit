@@ -46,6 +46,26 @@ describe("cli/errors: 終了コード契約", () => {
     expect(runtimeExitCode(new Error("x"))).toBe(1);
     expect(runtimeExitCode(Object.assign(new Error("x"), { exitCode: 5 }))).toBe(5);
   });
+
+  // P4-2 (SURF-28): 呼び出し側不正 (SesameError BAD_REQUEST) は経路非依存で exit 2。
+  // serve 経路 (toServeError: bad_params→exitCode=2) と終了コードを対称にする。
+  it("P4-2: SesameError(BAD_REQUEST) は exit 2 (serve の bad_params と対称)", () => {
+    const err = new SesameError("不明なデバイス名", { code: ERR.BAD_REQUEST });
+    expect(runtimeExitCode(err)).toBe(EXIT.USAGE); // 2
+  });
+
+  it("P4-2: SesameError であっても BAD_REQUEST 以外は exit 1 のまま", () => {
+    for (const code of [ERR.REJECTED, ERR.TIMEOUT, ERR.NOT_CONNECTED, ERR.UNAUTHENTICATED]) {
+      const err = new SesameError("runtime failure", { code });
+      expect(runtimeExitCode(err)).toBe(EXIT.RUNTIME); // 1
+    }
+  });
+
+  it("P4-2: SesameError(BAD_REQUEST) に明示 exitCode がある場合でも USAGE(2) が優先される", () => {
+    // BAD_REQUEST の場合、明示 exitCode より SesameError の意味論が優先される。
+    const err = Object.assign(new SesameError("bad", { code: ERR.BAD_REQUEST }), { exitCode: 7 });
+    expect(runtimeExitCode(err)).toBe(EXIT.USAGE); // 2 (BAD_REQUEST チェックが先)
+  });
 });
 
 describe("cli/errors: withStaleHint", () => {

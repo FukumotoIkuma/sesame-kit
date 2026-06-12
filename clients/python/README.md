@@ -22,8 +22,9 @@ c.wait()
 
 Use this when you want a **thin, minimal-dependency, multi-transport** client
 (Unix socket / stdio / HTTP / WebSocket) or a generic `call()` escape hatch.
-Failures raise `SesameError(message, kind)` (`kind`: `not_authenticated` /
-`connection_lost` / `timeout` …).
+Failures raise `SesameRpcError(message, kind)` (`kind`: `not_authenticated` /
+`connection_lost` / `timeout` …). (Old name `SesameError` is a deprecated alias kept
+for one release — migrate to `SesameRpcError`.)
 
 ## When to use the generated SDK instead
 

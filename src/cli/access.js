@@ -567,4 +567,102 @@ export function registerAccessCommands(program, ctx) {
         }, { ok: true, deviceUUID, count: list.length, response: resp });
       }),
     );
+
+  // ===== 生体 REST 直接操作 (auth-data) =====
+  //
+  // P4-4 (R2:SURF-30): SigV4 biometrics REST の 4 メソッドを CLI から叩けるようにする。
+  // serve/registry.js:959-1003 の RPC 実装 (access.postAuthenticationData 等) と同じ
+  // client.js メソッドに配線し、serve 未起動でも CLI 単体で到達できるようにする。
+  // 全 op は @experimental (実機未検証)。
+  const authData = access.command("auth-data").description(t("access.cmd.authData"));
+
+  // sesame access auth-data post --operation <op> --device-id <id> --items <json>
+  authData
+    .command("post")
+    .description(t("access.cmd.authData.post"))
+    .option("--operation <op>", t("access.opt.authData.operation"))
+    .option("--device-id <id>", t("access.opt.authData.deviceId"))
+    .option("--items <json>", t("access.opt.authData.items"))
+    .action((subOpts) =>
+      ctx.withHub(async (hub, { opts }) => {
+        // operation/deviceID/items はすべて必須 (registry.js:961 の need() と同型)。
+        if (!subOpts.operation) { ctx.die(t("access.err.authData.operationRequired"), 2); return; }
+        if (!subOpts.deviceId) { ctx.die(t("access.err.authData.deviceIdRequired"), 2); return; }
+        if (!subOpts.items) { ctx.die(t("access.err.authData.itemsRequired"), 2); return; }
+        const items = ctx.parseJson(subOpts.items, "items");
+        if (items === undefined) return;
+        if (!Array.isArray(items)) { ctx.die(t("access.err.items.notArray"), 2); return; }
+        const resp = await hub.postAuthenticationData({ operation: subOpts.operation, deviceID: subOpts.deviceId, items });
+        ctx.out(opts.json, () => {
+          console.log(t("access.authData.post.done", { operation: subOpts.operation, deviceId: subOpts.deviceId }));
+        }, { ok: true, operation: subOpts.operation, deviceID: subOpts.deviceId, response: resp });
+      }),
+    );
+
+  // sesame access auth-data put --operation <op> --device-id <id> --items <json>
+  authData
+    .command("put")
+    .description(t("access.cmd.authData.put"))
+    .option("--operation <op>", t("access.opt.authData.operation"))
+    .option("--device-id <id>", t("access.opt.authData.deviceId"))
+    .option("--items <json>", t("access.opt.authData.items"))
+    .action((subOpts) =>
+      ctx.withHub(async (hub, { opts }) => {
+        if (!subOpts.operation) { ctx.die(t("access.err.authData.operationRequired"), 2); return; }
+        if (!subOpts.deviceId) { ctx.die(t("access.err.authData.deviceIdRequired"), 2); return; }
+        if (!subOpts.items) { ctx.die(t("access.err.authData.itemsRequired"), 2); return; }
+        const items = ctx.parseJson(subOpts.items, "items");
+        if (items === undefined) return;
+        if (!Array.isArray(items)) { ctx.die(t("access.err.items.notArray"), 2); return; }
+        const resp = await hub.putAuthenticationData({ operation: subOpts.operation, deviceID: subOpts.deviceId, items });
+        ctx.out(opts.json, () => {
+          console.log(t("access.authData.put.done", { operation: subOpts.operation, deviceId: subOpts.deviceId }));
+        }, { ok: true, operation: subOpts.operation, deviceID: subOpts.deviceId, response: resp });
+      }),
+    );
+
+  // sesame access auth-data delete --operation <op> --device-id <id> --items <json>
+  authData
+    .command("delete")
+    .description(t("access.cmd.authData.delete"))
+    .option("--operation <op>", t("access.opt.authData.operation"))
+    .option("--device-id <id>", t("access.opt.authData.deviceId"))
+    .option("--items <json>", t("access.opt.authData.items"))
+    .action((subOpts) =>
+      ctx.withHub(async (hub, { opts }) => {
+        if (!subOpts.operation) { ctx.die(t("access.err.authData.operationRequired"), 2); return; }
+        if (!subOpts.deviceId) { ctx.die(t("access.err.authData.deviceIdRequired"), 2); return; }
+        if (!subOpts.items) { ctx.die(t("access.err.authData.itemsRequired"), 2); return; }
+        const items = ctx.parseJson(subOpts.items, "items");
+        if (items === undefined) return;
+        if (!Array.isArray(items)) { ctx.die(t("access.err.items.notArray"), 2); return; }
+        const resp = await hub.deleteAuthenticationData({ operation: subOpts.operation, deviceID: subOpts.deviceId, items });
+        ctx.out(opts.json, () => {
+          console.log(t("access.authData.delete.done", { operation: subOpts.operation, deviceId: subOpts.deviceId }));
+        }, { ok: true, operation: subOpts.operation, deviceID: subOpts.deviceId, response: resp });
+      }),
+    );
+
+  // sesame access auth-data name --kind <kind> [--json <fields>]
+  // registry.js:977-1003 の access.updateAuthenticationName と同型。
+  // kind は 'card'|'face'|'fingerPrint'|'palm'|'passcode' (access.js:94)。
+  // 残りのフィールド (stpDeviceUUID/name/nameUUID/op 等) は --json <object> で渡す。
+  authData
+    .command("name")
+    .description(t("access.cmd.authData.name"))
+    .option("--kind <kind>", t("access.opt.authData.kind"))
+    .option("--json <fields>", t("access.opt.authData.nameFields"))
+    .action((subOpts) =>
+      ctx.withHub(async (hub, { opts }) => {
+        // kind は省略可 (request 直指定の場合は --json に request ごと入れる)。
+        // access.js:734 は kind が無くても request があれば動く。
+        const extra = subOpts.json ? ctx.parseJson(subOpts.json, "fields") : {};
+        if (extra === undefined) return;
+        const params = { kind: subOpts.kind, .../** @type {object} */ (extra) };
+        const resp = await hub.updateAuthenticationName(params);
+        ctx.out(opts.json, () => {
+          console.log(t("access.authData.name.done", { kind: subOpts.kind ?? "(none)" }));
+        }, { ok: true, kind: subOpts.kind ?? null, response: resp });
+      }),
+    );
 }

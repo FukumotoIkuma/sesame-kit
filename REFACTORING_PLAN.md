@@ -12,7 +12,9 @@
   - **申し送り(P5 重複統合候補)**: P2-2 の user SRP(`auth.js` の `respondToPasswordVerifier`)は Java の `BigInteger.toByteArray()` バイナリ連結方式で独立実装した。既存の device SRP(`device-srp.js` の padHex/hexHash 方式)と数式は同型(poolName/username 差のみ)なので、本来 1 実装に統合できる。実機検証(V13)で両者の正しさが確認できたら統合を検討する(現状は二重実装の技術的負債として記録)。
 - **Phase 3(P3-1〜P3-27)実施済み**(Phase 3 コミット参照)。クラウド/Biz3 のレスポンスパース忠実化、出典なしフォールバック撤去、BLE の timePhone 3 経路・mechStatus kind ディスパッチ・itemcode 182 補完(規範8 の全件照合テスト新設)・RESULT[9] 隔離・発明 op(WM2 networkStatus)削除。統括が `networkStatusData` デッドコードと index.js re-export も後始末。
   - **Phase 6 へ繰越(P3-26)**: README の Known limitations に「SDK の OS2 自動履歴読み出し(`CHSesame2Device.kt:543-553`)は kit では手動 `history()`」の逸脱注記を追記する(session.js JSDoc は実装済み。README 編集は Phase 6 に集約)。
-- Phase 4〜6: 未着手。
+- **Phase 4(P4-1〜P4-13)実施済み**(Phase 4 コミット参照)。CONTRACT_VERSION を 1.3.0 に bump(202 メソッド、stable 13 のシグネチャ不変・後方互換)し「メソッド集合ハッシュ ↔ version」連動テストで規範7 を機械強制。生体 REST 4op の CLI 公開、OS2 管理系 typed RPC(reset/configureLockPosition)、syncRemotesFromServer の RPC/CLI 対称化、BLE allowlist 逆方向テスト、status schema nullable 化、exit code 統一(bad_params→2)、thin client 表面統一、gRPC stability コメント、lock raw 非公開の明文化。
+  - **統括修正(統合バグ)**: P4-10 の hub3DeviceId alias が presetir.js の JSDoc 型と registry.js パッチで**二重登録**され、生成 proto に `hub3DeviceId` が 2 回出て e2e 13 件が落ちた。registry パッチを削除し JSDoc 型方式に一本化(NAMESPACE_OPS 自動公開の単一経路)、未使用 i18n キーも除去。**教訓**: NAMESPACE_OPS 系の param 追加は JSDoc 型のみで足りる(registry パッチ併用は二重化)。レーンエージェントは build 後生成物を見ないため、この種の生成バグは統括の全量 build+test でのみ検出できる。
+- Phase 5〜6: 未着手。
 - v1 からの繰越: §9 実機検証バックログ V1〜V10(未実施・該当 API は `@experimental` 維持)、workspace 分割(次 major、P5-14)。
 
 **この文書の読み方**: 各項目は「初見の実装者が単独で着手できる」粒度で、対象 file:line・参照 file:line・修正手順・テスト・受け入れ基準を持つ。`R2:XXX-NN` は今回監査の所見 ID(複数監査が同一問題を検出した場合は §0.3 で統合済み)。**README・docs・コード内コメントの記述は本計画の根拠にしていない**。すべて参照実装の実コードで裏取りしてある。行番号は 2026-06-12 時点の HEAD(`6c939dd`)と参照 checkout に対するもの。

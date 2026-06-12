@@ -767,6 +767,34 @@ function topLevelEntries() {
         return hub.syncRemoteKeys(params.remote ?? null);
       },
     },
+    // P4-6 (R2:SURF-32): syncRemotesFromServer — server 経由の代替 sync (通常は config.syncRemotes で足りる)。
+    // hub.syncRemotesFromServer(hub3Name, irType) に 1:1 委譲。
+    // hub3Name は config 上の名前 (デバイス UUID ではなく設定名)、irType は整数。
+    "config.syncRemotesFromServer": {
+      summary: t("serve.sum.configSyncRemotesFromServer"),
+      params: [
+        { name: "hub3", required: true, desc: t("serve.desc.configSyncRemotesFromServerHub3"), schema: S },
+        { name: "irType", required: true, desc: t("serve.desc.configSyncRemotesFromServerIrType"), schema: N },
+      ],
+      result: "{ added, updated }",
+      handler: ({ hub, params, daemon }) => {
+        requireAuth(daemon); requireConfigStore(hub, "config.syncRemotesFromServer");
+        need(params, ["hub3", "irType"]);
+        return hub.syncRemotesFromServer(params.hub3, Number(params.irType));
+      },
+    },
+    // P4-6 (R2:SURF-32): listRemoteCandidates — devices 配下リモコン候補の読み取り専用一覧。
+    // hub.listRemotesFromDevices() に委譲。対話 add の SDK 版で候補を見せる用途。
+    // config 非書込み: ConfigStore 不要 (通常の requireAuth のみ)。
+    "config.listRemoteCandidates": {
+      summary: t("serve.sum.configListRemoteCandidates"),
+      params: [],
+      result: "Array<{ hub3DeviceUUID, hub3Name, uuid, type, alias }>",
+      handler: ({ hub, daemon }) => {
+        requireAuth(daemon);
+        return hub.listRemotesFromDevices();
+      },
+    },
     "webapi.invoke": {
       summary: t("serve.sum.webapiInvoke"),
       params: [
@@ -1336,7 +1364,14 @@ function eventEntries() {
   return {
     "events.subscribe": {
       summary: t("serve.sum.eventsSubscribe", { topics: TOPICS.join("/") }),
-      params: [{ name: "topics", required: true, desc: t("serve.desc.subscribeTopics", { topics: TOPICS.join("/") }) }],
+      params: [{
+        name: "topics",
+        required: true,
+        desc: t("serve.desc.subscribeTopics", { topics: TOPICS.join("/") }),
+        // P4-8 (R2:SURF-34): SUBSCRIBABLE_TOPICS から enum を導出。生成系はこの schema を
+        // SesameEventTopic の union 型 / Literal[] に変換するため SDK の引数型が絞り込まれる。
+        schema: { type: "array", items: { type: "string", enum: [...TOPICS] } },
+      }],
       result: "{ subscribed: string[] }",
       handler: ({ params, conn, daemon }) => {
         if (conn?.ephemeral) {
@@ -1351,7 +1386,8 @@ function eventEntries() {
     },
     "events.unsubscribe": {
       summary: t("serve.sum.eventsUnsubscribe"),
-      params: [{ name: "topics", required: true }],
+      // P4-8 (R2:SURF-34): subscribe と対称に enum schema を付与。
+      params: [{ name: "topics", required: true, schema: { type: "array", items: { type: "string", enum: [...TOPICS] } } }],
       result: "{ subscribed: string[] }",
       handler: ({ params, conn, daemon }) => {
         const topics = asTopicList(params.topics);
@@ -1396,6 +1432,10 @@ export function buildRegistry() {
       });
     }
   }
+
+  // 1.2) P4-10: presetir.sendIR の hub3DeviceId alias は presetir.js sendIR の JSDoc 型
+  //   ({deviceId?, hub3DeviceId?, …}) に持たせており、NAMESPACE_OPS 自動公開がそこから
+  //   param を抽出する。ここでの追記は不要 (旧パッチは hub3DeviceId を二重登録していた)。
 
   // 1.5) BLE op を BLE_RPC_OPS / OS2_BLE_RPC_OPS から自動公開 (SURF-08 段階3)。
   //   topLevelEntries より先に set し、専用ハンドラ (ble.updateFirmware / ble.wifi.* 等) が

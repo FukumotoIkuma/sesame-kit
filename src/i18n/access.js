@@ -38,6 +38,25 @@ export default {
     "access.opt.passcodes.post.device": "deviceUUID to register to (prompts to select when omitted)",
     "access.opt.passcodes.post.json": "JSON of the list array. Element fields are unconfirmed in biz3 (presumed to match getPasscodes response items).",
 
+    // ---- auth-data (P4-4 / R2:SURF-30): biometrics REST の 4 メソッド ----
+    "access.cmd.authData": "[experimental] Biometrics REST direct operations (SigV4; post/put/delete/name)",
+    "access.cmd.authData.post": "[experimental] POST /device/v1/biometrics (postAuthenticationData)",
+    "access.cmd.authData.put": "[experimental] PUT /device/v1/biometrics (putAuthenticationData)",
+    "access.cmd.authData.delete": "[experimental] DELETE /device/v1/biometrics (deleteAuthenticationData)",
+    "access.cmd.authData.name": "[experimental] Update biometric name (updateAuthenticationName)",
+    "access.opt.authData.operation": "biometrics operation string (required for post/put/delete)",
+    "access.opt.authData.deviceId": "biometrics deviceID (required for post/put/delete)",
+    "access.opt.authData.items": "JSON array of biometric items (required for post/put/delete)",
+    "access.opt.authData.kind": "biometric kind: card|face|fingerPrint|palm|passcode",
+    "access.opt.authData.nameFields": "JSON object of extra fields (stpDeviceUUID, name, nameUUID, op, type, cardID, etc.)",
+    "access.err.authData.operationRequired": "--operation <op> is required.",
+    "access.err.authData.deviceIdRequired": "--device-id <id> is required.",
+    "access.err.authData.itemsRequired": "--items <json> is required: a JSON array.",
+    "access.authData.post.done": "OK: postAuthenticationData operation={operation} deviceID={deviceId}",
+    "access.authData.put.done": "OK: putAuthenticationData operation={operation} deviceID={deviceId}",
+    "access.authData.delete.done": "OK: deleteAuthenticationData operation={operation} deviceID={deviceId}",
+    "access.authData.name.done": "OK: updateAuthenticationName kind={kind}",
+
     // ---- src/cli/access.js: runtime output / errors / prompts ----
     "access.err.noDevices": "No devices found.",
     "access.prompt.pickDevice": "Select the target device",
@@ -128,6 +147,25 @@ export default {
     "access.cmd.passcodes.post": "暗証番号を DB に登録 (postPasscodes。⚠️ DB 同期のみ。list 要素は未確認・実機検証要)",
     "access.opt.passcodes.post.device": "登録先 deviceUUID (省略時は対話選択)",
     "access.opt.passcodes.post.json": "list 配列の JSON。要素フィールドは biz3 上では未確認 (getPasscodes 応答 item と対応と推測)。",
+
+    // ---- auth-data (P4-4 / R2:SURF-30): biometrics REST の 4 メソッド ----
+    "access.cmd.authData": "[experimental] biometrics REST 直接操作 (SigV4; post/put/delete/name)",
+    "access.cmd.authData.post": "[experimental] POST /device/v1/biometrics (postAuthenticationData)",
+    "access.cmd.authData.put": "[experimental] PUT /device/v1/biometrics (putAuthenticationData)",
+    "access.cmd.authData.delete": "[experimental] DELETE /device/v1/biometrics (deleteAuthenticationData)",
+    "access.cmd.authData.name": "[experimental] 生体名更新 (updateAuthenticationName)",
+    "access.opt.authData.operation": "biometrics operation 文字列 (post/put/delete で必須)",
+    "access.opt.authData.deviceId": "biometrics deviceID (post/put/delete で必須)",
+    "access.opt.authData.items": "生体 items の JSON 配列 (post/put/delete で必須)",
+    "access.opt.authData.kind": "生体種別: card|face|fingerPrint|palm|passcode",
+    "access.opt.authData.nameFields": "追加フィールドの JSON オブジェクト (stpDeviceUUID, name, nameUUID, op, type, cardID 等)",
+    "access.err.authData.operationRequired": "--operation <op> が必要です。",
+    "access.err.authData.deviceIdRequired": "--device-id <id> が必要です。",
+    "access.err.authData.itemsRequired": "--items <json> が必要です: JSON 配列。",
+    "access.authData.post.done": "OK: postAuthenticationData operation={operation} deviceID={deviceId}",
+    "access.authData.put.done": "OK: putAuthenticationData operation={operation} deviceID={deviceId}",
+    "access.authData.delete.done": "OK: deleteAuthenticationData operation={operation} deviceID={deviceId}",
+    "access.authData.name.done": "OK: updateAuthenticationName kind={kind}",
 
     // ---- src/cli/access.js: runtime output / errors / prompts ----
     "access.err.noDevices": "デバイスが見つかりません。",

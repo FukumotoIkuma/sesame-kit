@@ -18,6 +18,11 @@ const PY_ASSERT = `
 import sys
 import sesame_client as sc
 sock, base, token = sys.argv[1], sys.argv[2], sys.argv[3]
+# P4-9 (SURF-35): SesameRpcError が正名、SesameError が deprecated alias (同一クラス) であること。
+assert hasattr(sc, "SesameRpcError"), "SesameRpcError not exported"
+assert sc.SesameError is sc.SesameRpcError, "SesameError alias must be same class as SesameRpcError"
+e0 = sc.SesameRpcError("test", "timeout", 1)
+assert isinstance(e0, sc.SesameError), "SesameRpcError instance must satisfy isinstance(SesameError)"
 c = sc.SesameClient.unix(sock)
 st = c.status()
 assert st.get("connected") is True, ("status", st)
@@ -26,19 +31,19 @@ assert len(c.discover_names()) > 50, ("too few methods")
 assert c.unlock("front").get("ok") is True, ("unlock failed")
 h = sc.SesameClient.http(base, token)
 assert h.status().get("connected") is True, ("http status")
-# transport-level 413 も undefined/generic ではなく SesameError(kind/code) で見える
+# transport-level 413 も undefined/generic ではなく SesameRpcError(kind/code) で見える
 try:
     h.call("status", big="a" * 1100000)
     print("FAIL: large request did not raise"); sys.exit(1)
-except sc.SesameError as e:
+except sc.SesameRpcError as e:
     assert e.kind == "bad_params", ("kind", e.kind)
     assert e.code == 413, ("code", e.code)
     assert str(e), "empty error message"
-# 不正 topic の subscribe は SesameError を raise する (握り潰さない)
+# 不正 topic の subscribe は SesameRpcError を raise する (握り潰さない)
 try:
     h.subscribe(["bogus_topic"], lambda t, p: None)
     print("FAIL: subscribe did not raise"); sys.exit(1)
-except sc.SesameError:
+except sc.SesameRpcError:
     pass
 # SSE subscribe の URL に token を載せない (ヘッダ認証で漏洩防止)。urlopen を捕捉して URL を検査。
 import urllib.request as _u

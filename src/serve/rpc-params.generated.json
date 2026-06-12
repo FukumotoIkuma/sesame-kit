@@ -1907,7 +1907,15 @@
   "presetir.sendIR": [
     {
       "name": "deviceId",
-      "required": true,
+      "required": false,
+      "tsType": "string",
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "hub3DeviceId",
+      "required": false,
       "tsType": "string",
       "schema": {
         "type": "string"

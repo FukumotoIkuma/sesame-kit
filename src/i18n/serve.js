@@ -140,6 +140,12 @@ Examples:
     "serve.sum.configSyncHub3s": "[experimental] import Hub3s from the device list into the daemon config (writes config.json)",
     "serve.sum.configSyncRemotes": "[experimental] import Hub3s + IR remotes from the device list into the daemon config (writes config.json)",
     "serve.sum.configSyncRemoteKeys": "[experimental] fetch one remote's keys from the server and write them back to the daemon config",
+    // P4-6 (R2:SURF-32): syncRemotesFromServer — server 経由の代替 sync 経路 (通常は syncRemotes で足りる)。
+    "serve.sum.configSyncRemotesFromServer": "[experimental] import IR remotes from the server's getRemoteList into the daemon config (writes config.json; alt to sync-from-devices)",
+    "serve.desc.configSyncRemotesFromServerHub3": "hub3 name in config (the Hub3 these remotes belong to)",
+    "serve.desc.configSyncRemotesFromServerIrType": "irType to fetch (e.g. 49152=AC, 8192=TV)",
+    // P4-6 (R2:SURF-32): listRemoteCandidates — devices 配下リモコン候補の読み取り専用一覧 (config 非写込み)。
+    "serve.sum.configListRemoteCandidates": "[experimental] list remotes under all Hub3 from the device state (read-only, no config write; used by remote add SDK flow)",
     "serve.desc.syncPrune": "also remove config entries that no longer exist in the device list",
     "serve.desc.syncRemoteName": "remote name in config (default remote when omitted)",
     "serve.configStoreRequired": "{op} requires the daemon to own a ConfigStore (started from `sesame serve`); this daemon was built without one",
@@ -395,6 +401,12 @@ Watch events (SSE):
     "serve.sum.configSyncHub3s": "[experimental] デバイス一覧から Hub3 をデーモンの config に取り込む (config.json へ書き込み)",
     "serve.sum.configSyncRemotes": "[experimental] デバイス一覧から Hub3 + IR リモコンをデーモンの config に取り込む (config.json へ書き込み)",
     "serve.sum.configSyncRemoteKeys": "[experimental] リモコン 1 台のキー一覧を server から取得し config へ書き戻す",
+    // P4-6 (R2:SURF-32): syncRemotesFromServer — server 経由の代替 sync 経路。
+    "serve.sum.configSyncRemotesFromServer": "[experimental] server の getRemoteList から IR リモコンをデーモン config に取り込む (config.json 書き込み。sync-from-devices の代替)",
+    "serve.desc.configSyncRemotesFromServerHub3": "config 上の hub3 名 (このリモコン群が属する Hub3)",
+    "serve.desc.configSyncRemotesFromServerIrType": "取得する irType (例 49152=エアコン、8192=テレビ)",
+    // P4-6 (R2:SURF-32): listRemoteCandidates — devices 配下リモコン候補の読み取り専用一覧。
+    "serve.sum.configListRemoteCandidates": "[experimental] devices 状態から全 Hub3 配下のリモコン候補を一覧取得 (読み取り専用・config 未書込み。SDK 版の remote add で使用)",
     "serve.desc.syncPrune": "デバイス一覧に存在しなくなった config エントリも削除する",
     "serve.desc.syncRemoteName": "config 上のリモコン名 (省略時 default のリモコン)",
     "serve.configStoreRequired": "{op} はデーモンが ConfigStore を持つ構成 (`sesame serve` 起動) でのみ使えます。この daemon は ConfigStore なしで構築されています",

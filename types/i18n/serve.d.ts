@@ -111,6 +111,10 @@ declare namespace _default {
         "serve.sum.configSyncHub3s": string;
         "serve.sum.configSyncRemotes": string;
         "serve.sum.configSyncRemoteKeys": string;
+        "serve.sum.configSyncRemotesFromServer": string;
+        "serve.desc.configSyncRemotesFromServerHub3": string;
+        "serve.desc.configSyncRemotesFromServerIrType": string;
+        "serve.sum.configListRemoteCandidates": string;
         "serve.desc.syncPrune": string;
         "serve.desc.syncRemoteName": string;
         "serve.configStoreRequired": string;
@@ -143,6 +147,7 @@ declare namespace _default {
         "serve.sum.irListKeys": string;
         "serve.desc.irListKeysHub3DeviceId": string;
         "serve.desc.irListKeysIrDeviceUUID": string;
+        "serve.desc.hub3DeviceIdAlias": string;
         "serve.sum.irLearn": string;
         "serve.sum.irListRemotes": string;
         "serve.sum.irSearchRemotes": string;
@@ -315,6 +320,10 @@ declare namespace _default {
         "serve.sum.configSyncHub3s": string;
         "serve.sum.configSyncRemotes": string;
         "serve.sum.configSyncRemoteKeys": string;
+        "serve.sum.configSyncRemotesFromServer": string;
+        "serve.desc.configSyncRemotesFromServerHub3": string;
+        "serve.desc.configSyncRemotesFromServerIrType": string;
+        "serve.sum.configListRemoteCandidates": string;
         "serve.desc.syncPrune": string;
         "serve.desc.syncRemoteName": string;
         "serve.configStoreRequired": string;
@@ -347,6 +356,7 @@ declare namespace _default {
         "serve.sum.irListKeys": string;
         "serve.desc.irListKeysHub3DeviceId": string;
         "serve.desc.irListKeysIrDeviceUUID": string;
+        "serve.desc.hub3DeviceIdAlias": string;
         "serve.sum.irLearn": string;
         "serve.sum.irListRemotes": string;
         "serve.sum.irSearchRemotes": string;

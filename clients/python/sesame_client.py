@@ -16,8 +16,9 @@
     c.subscribe(["lockState"], lambda topic, payload: print("EVENT", topic, payload))
     c.wait()
 
-失敗は SesameError(message, kind) を raise (kind: not_authenticated / connection_lost / timeout /
+失敗は SesameRpcError(message, kind) を raise (kind: not_authenticated / connection_lost / timeout /
 not_implemented / bad_params / rejected / internal — serve の error.data.kind 7 種と一致)。
+(旧名 SesameError は deprecated alias として 1 リリース維持。)
 エラーメッセージは「次に何をすべきか」を含む (例: デーモン未起動なら起動コマンドを案内)。
 """
 from __future__ import annotations
@@ -57,7 +58,9 @@ def _default_token_path() -> str:
     return os.path.join(_default_config_dir(), "serve.token")
 
 
-class SesameError(RuntimeError):
+# P4-9 (SURF-35): core の SesameError (src/errors.js, code:string) との同名異義を解消するため、
+# clients/js・sdk/python と同じ SesameRpcError (kind / code:int) に改名。name はクラス名と同期する。
+class SesameRpcError(RuntimeError):
     def __init__(self, message: str, kind: Optional[str] = None, code: Optional[int] = None):
         super().__init__(message)
         self.message, self.kind, self.code = message, kind, code
@@ -67,7 +70,12 @@ class SesameError(RuntimeError):
         return f"{self.message}{extra}"
 
 
-# HTTP ステータス → SesameError.kind 写像 (出典: REFACTORING_PLAN.md P4-5/SURF-10)。
+# deprecated alias: 後方互換として 1 リリース維持し、次 minor で削除予定。
+# (旧名 SesameError と core の SesameError — src/errors.js — は同名異義だった)
+SesameError = SesameRpcError
+
+
+# HTTP ステータス → SesameRpcError.kind 写像 (出典: REFACTORING_PLAN.md P4-5/SURF-10)。
 # sdk/ts・sdk/python・clients/js と共通の正で、tests/fixtures/http-kind-map.json に固定。
 #   400/413/415→bad_params, 401/403→not_authenticated, 404→not_implemented,
 #   408/429/5xx→connection_lost (再試行可), その他→internal
@@ -84,7 +92,7 @@ def _http_kind(status: int) -> str:
     return "internal"
 
 
-def _sesame_error_from_http(code: int, reason: str, body: bytes) -> SesameError:
+def _sesame_error_from_http(code: int, reason: str, body: bytes) -> SesameRpcError:
     text = body.decode("utf-8", "replace") if body else ""
     try:
         data = json.loads(text) if text else None
@@ -93,10 +101,10 @@ def _sesame_error_from_http(code: int, reason: str, body: bytes) -> SesameError:
     err = data.get("error") if isinstance(data, dict) else None
     if isinstance(err, dict):
         err_data = err.get("data") or {}
-        return SesameError(err.get("message") or reason or "HTTP error", err_data.get("kind") or _http_kind(code), err.get("code", code))
+        return SesameRpcError(err.get("message") or reason or "HTTP error", err_data.get("kind") or _http_kind(code), err.get("code", code))
     if isinstance(err, str):
-        return SesameError(err, _http_kind(code), code)
-    return SesameError(text or f"HTTP {code}: {reason}", _http_kind(code), code)
+        return SesameRpcError(err, _http_kind(code), code)
+    return SesameRpcError(text or f"HTTP {code}: {reason}", _http_kind(code), code)
 
 
 class SesameClient:
@@ -110,8 +118,8 @@ class SesameClient:
     def unix(cls, path: Optional[str] = None) -> "SesameClient":
         path = path or _default_socket_path()
         if not hasattr(socket, "AF_UNIX"):
-            raise SesameError("Unix socket は POSIX 専用です。Windows では SesameClient.http() か .stdio() を使ってください",
-                              kind="not_implemented")
+            raise SesameRpcError("Unix socket は POSIX 専用です。Windows では SesameClient.http() か .stdio() を使ってください",
+                                 kind="not_implemented")
         return cls(_StreamTransport(_connect_unix(path)))
 
     @classmethod
@@ -134,19 +142,19 @@ class SesameClient:
         resp = self._t.request({"jsonrpc": "2.0", "method": method, "params": params})
         if "error" in resp:
             e = resp["error"]
-            raise SesameError(e.get("message", "error"), (e.get("data") or {}).get("kind"), e.get("code"))
+            raise SesameRpcError(e.get("message", "error"), (e.get("data") or {}).get("kind"), e.get("code"))
         return resp.get("result")
 
     def subscribe(self, topics, on_event: Callable[[str, Any], None]) -> None:
         """topics を購読し、各イベントで on_event(topic, payload) を呼ぶ (バックグラウンド)。
         受信し続けるにはメインスレッドを生かすこと → wait() が使える。
-        接続/認証/不正 topic エラーは握り潰さず SesameError を raise する (JS クライアントと対称)。"""
+        接続/認証/不正 topic エラーは握り潰さず SesameRpcError を raise する (JS クライアントと対称)。"""
         resp = self._t.subscribe(list(topics), on_event)
         # UDS/stdio は購読要求の応答 (dict) を返す。error があれば raise (不正 topic 等)。
         # HTTP は初回接続を同期確立し 401/400 をその場で raise 済み (resp は None)。
         if isinstance(resp, dict) and "error" in resp:
             e = resp["error"]
-            raise SesameError(e.get("message", "error"), (e.get("data") or {}).get("kind"), e.get("code"))
+            raise SesameRpcError(e.get("message", "error"), (e.get("data") or {}).get("kind"), e.get("code"))
 
     def wait(self) -> None:
         """購読を生かしたままブロックする (Ctrl-C で抜ける)。"""
@@ -196,12 +204,12 @@ def _connect_unix(path: str):
         s.connect(path)
     except (FileNotFoundError, ConnectionRefusedError):
         s.close()
-        raise SesameError(
+        raise SesameRpcError(
             f"sesame serve が起動していません (socket: {path})。別ターミナルで `sesame serve` を実行してください",
             kind="connection_lost") from None
     except OSError as e:
         s.close()
-        raise SesameError(f"socket 接続失敗: {e}", kind="connection_lost") from e
+        raise SesameRpcError(f"socket 接続失敗: {e}", kind="connection_lost") from e
     return s
 
 
@@ -246,7 +254,7 @@ class _StreamTransport:
         if not slot["ev"].wait(timeout=20):
             with self._lock:
                 self._pending.pop(mid, None)
-            raise SesameError("request timed out", kind="timeout")
+            raise SesameRpcError("request timed out", kind="timeout")
         return slot["msg"]
 
     def subscribe(self, topics, on_event):
@@ -266,7 +274,7 @@ class _StdioTransport(_StreamTransport):
             self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                           stderr=subprocess.PIPE, text=True, bufsize=1)
         except FileNotFoundError:
-            raise SesameError(
+            raise SesameRpcError(
                 f"`{cmd[0]}` が見つかりません。`npm link` (sesame-kit 内で実行) で PATH を通すか、"
                 f"cmd=['node','bin/sesame.js','serve','--stdio'] を渡してください",
                 kind="connection_lost") from None
@@ -274,7 +282,7 @@ class _StdioTransport(_StreamTransport):
         # 起動直後に死んだ場合だけ検知して分かりやすく報告する。
         if self._proc.poll() is not None:
             err = (self._proc.stderr.read() or "").strip()
-            raise SesameError(f"sesame serve が起動直後に終了しました: {err}", kind="connection_lost")
+            raise SesameRpcError(f"sesame serve が起動直後に終了しました: {err}", kind="connection_lost")
         self._wfile = self._proc.stdin
         self._rfile = self._proc.stdout
         self._pending = {}
@@ -304,10 +312,10 @@ class _HttpTransport:
 
     def _unauthorized(self):
         if not self._token:
-            return SesameError(
+            return SesameRpcError(
                 f"token が見つかりません。`sesame serve --http` で起動すると {_default_token_path()} に保存されます "
                 f"(または http(token=...) で明示指定)", kind="not_authenticated", code=401)
-        return SesameError("unauthorized (token 不一致)", kind="not_authenticated", code=401)
+        return SesameRpcError("unauthorized (token 不一致)", kind="not_authenticated", code=401)
 
     def request(self, msg: dict) -> dict:
         msg = {**msg, "id": next(self._ids)}  # id 必須 (無いと通知扱いで応答が返らない)
@@ -323,8 +331,8 @@ class _HttpTransport:
                 raise self._unauthorized() from None
             raise _sesame_error_from_http(e.code, str(e.reason), body) from None
         except urllib.error.URLError as e:
-            raise SesameError(f"接続失敗: {e.reason}。`sesame serve --http` を起動しましたか?",
-                              kind="connection_lost") from None
+            raise SesameRpcError(f"接続失敗: {e.reason}。`sesame serve --http` を起動しましたか?",
+                                 kind="connection_lost") from None
 
     def subscribe(self, topics, on_event):
         q = ",".join(topics)
@@ -341,8 +349,8 @@ class _HttpTransport:
                 raise self._unauthorized() from None
             raise _sesame_error_from_http(e.code, str(e.reason), body) from None
         except urllib.error.URLError as e:
-            raise SesameError(f"events 接続失敗: {e.reason}。`sesame serve --http` を起動しましたか?",
-                              kind="connection_lost") from None
+            raise SesameRpcError(f"events 接続失敗: {e.reason}。`sesame serve --http` を起動しましたか?",
+                                 kind="connection_lost") from None
 
         def run():
             try:

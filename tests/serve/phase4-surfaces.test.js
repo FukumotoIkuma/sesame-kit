@@ -1,4 +1,5 @@
-// Phase 4 (P4-3 / P4-4 / P4-6) で追加・変更した RPC 表面の結線テスト。
+// Phase 4 (P4-3 / P4-4 / P4-6 / P4-8) で追加・変更した RPC 表面の結線テスト。
+//   - SURF-32 (P4-6): config.syncRemotesFromServer / config.listRemoteCandidates の結線
 //   - SURF-04: access.registerPasscodes (hub.registerPasscodes 委譲) + SesameHub3.registerPasscodes
 //   - SURF-06: cloud.ping (hub.ping = biz3KeepAlive 1 往復)
 //   - SURF-07: config.syncLocks/syncHub3s/syncRemotes/syncRemoteKeys (ConfigStore 必須ガード)
@@ -8,6 +9,7 @@
 //   - SURF-20: registry summary の i18n キー解決 (未定義キーの素通し検出)
 //   - SURF-22: gen-grpc-proto の Discover 重複削除
 //   - SURF-24: ir.listKeys の hub3DeviceId/irDeviceUUID 直指定
+//   - SURF-34 (P4-8): events.subscribe/unsubscribe の topics param に enum schema を付与
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { buildRegistry, SUBSCRIBABLE_TOPICS, STATE_TOPICS } from "../../src/serve/registry.js";
 import { Daemon } from "../../src/serve/daemon.js";
@@ -333,5 +335,141 @@ describe("lock.click scriptIndex (Bot2/Bot3 台本の番号実行)", () => {
   it("scriptIndex param が discover に出る", () => {
     const e = reg.get("lock.click");
     expect(e.params.some((p) => p.name === "scriptIndex")).toBe(true);
+  });
+});
+
+describe("SURF-32 (P4-6): config.syncRemotesFromServer / config.listRemoteCandidates の結線", () => {
+  const reg = buildRegistry();
+
+  it("config.syncRemotesFromServer は hub3 + irType を hub.syncRemotesFromServer へ委譲する", async () => {
+    const calls = [];
+    const hub = {
+      configStore: {},
+      syncRemotesFromServer: async (hub3Name, irType) => {
+        calls.push([hub3Name, irType]);
+        return { added: ["ac"], updated: [] };
+      },
+    };
+    const e = reg.get("config.syncRemotesFromServer");
+    expect(e, "エントリが登録されている").toBeTruthy();
+    // hub3 / irType どちらも必須になっている
+    expect(e.params.map((p) => p.name)).toEqual(["hub3", "irType"]);
+    expect(e.params.find((p) => p.name === "hub3").required).toBe(true);
+    expect(e.params.find((p) => p.name === "irType").required).toBe(true);
+    const r = await e.handler({ hub, daemon, params: { hub3: "living_ac", irType: 49152 } });
+    expect(calls).toEqual([["living_ac", 49152]]);
+    expect(r).toEqual({ added: ["ac"], updated: [] });
+  });
+
+  it("config.syncRemotesFromServer: irType は Number() 変換して渡す", async () => {
+    const calls = [];
+    const hub = {
+      configStore: {},
+      syncRemotesFromServer: async (h, t) => { calls.push([h, t]); return { added: [], updated: [] }; },
+    };
+    const e = reg.get("config.syncRemotesFromServer");
+    // JSON-RPC 経由で文字列として届いた場合も Number に変換される
+    await e.handler({ hub, daemon, params: { hub3: "h1", irType: "8192" } });
+    expect(calls[0][1]).toBe(8192);
+    expect(typeof calls[0][1]).toBe("number");
+  });
+
+  it("config.syncRemotesFromServer: hub3 / irType 欠落は bad_params", () => {
+    // handler は同期 throw (non-async) — try/catch パターン (config.* の既存テストと同じ規約)。
+    const e = reg.get("config.syncRemotesFromServer");
+    const hub = { configStore: {} };
+    expect(() => e.handler({ hub, daemon, params: { irType: 49152 } })).toThrow();
+    expect(() => e.handler({ hub, daemon, params: { hub3: "h1" } })).toThrow();
+  });
+
+  it("config.syncRemotesFromServer: ConfigStore を持たない構成は bad_params (internal に潰さない)", async () => {
+    const hub = { configStore: null };
+    const e = reg.get("config.syncRemotesFromServer");
+    let err = null;
+    try { await e.handler({ hub, daemon, params: { hub3: "h1", irType: 49152 } }); } catch (ex) { err = ex; }
+    expect(err).toBeTruthy();
+    expect(err.kind).toBe("bad_params");
+  });
+
+  it("config.listRemoteCandidates は hub.listRemotesFromDevices() に委譲し configStore 不要", async () => {
+    const candidates = [
+      { hub3DeviceUUID: "uuid-hub3", hub3Name: "living", uuid: "uuid-remote", type: 49152, alias: "AC" },
+    ];
+    const hub = { listRemotesFromDevices: async () => candidates };
+    const e = reg.get("config.listRemoteCandidates");
+    expect(e, "エントリが登録されている").toBeTruthy();
+    expect(e.params).toEqual([]); // 引数なし
+    const r = await e.handler({ hub, daemon, params: {} });
+    expect(r).toEqual(candidates);
+  });
+
+  it("config.listRemoteCandidates: 未認証 daemon は not_authenticated", () => {
+    // requireAuth は同期 throw。
+    const e = reg.get("config.listRemoteCandidates");
+    expect(() =>
+      e.handler({ hub: { listRemotesFromDevices: async () => [] }, daemon: { authState: "expired", hub: { connected: false } }, params: {} }),
+    ).toThrow();
+  });
+
+  it("config.syncRemotesFromServer / listRemoteCandidates は experimental", () => {
+    // stabilityOf はトップレベルで import 済み (phase4-surfaces.test.js 先頭)。
+    for (const m of ["config.syncRemotesFromServer", "config.listRemoteCandidates"]) {
+      expect(stabilityOf(m), m).toBe("experimental");
+    }
+  });
+
+  it("config.syncRemotesFromServer は ConfigStore ガード対象の列挙に含まれる (bad_params 一覧テストと整合)", async () => {
+    // config.syncLocks/syncHub3s/syncRemotes/syncRemoteKeys と同じく ConfigStore 必須である確認。
+    // (上の ConfigStore テストで単体検証済み。ここでは全 config.* ガード対象の完全性を列挙で保護する)
+    const guardedMethods = [
+      "config.syncLocks", "config.syncHub3s", "config.syncRemotes",
+      "config.syncRemoteKeys", "config.syncRemotesFromServer",
+    ];
+    const hub = { configStore: null };
+    for (const m of guardedMethods) {
+      const e = reg.get(m);
+      expect(e, `${m} が登録されている`).toBeTruthy();
+      let err = null;
+      try { await e.handler({ hub, daemon, params: { hub3: "h", irType: 0, remote: null, prune: false } }); } catch (ex) { err = ex; }
+      expect(err?.kind, `${m} の kind`).toBe("bad_params");
+    }
+  });
+});
+
+describe("SURF-34 (P4-8): events.subscribe/unsubscribe の topics enum schema", () => {
+  const reg = buildRegistry();
+
+  // SUBSCRIBABLE_TOPICS の全値が enum に含まれること、かつ enum と SUBSCRIBABLE_TOPICS が一致すること。
+  // これにより SDK 生成系が SesameEventTopic union 型 / Literal[] を導出できる。
+  it("events.subscribe の topics param に enum schema が付き、SUBSCRIBABLE_TOPICS と一致する", () => {
+    const e = reg.get("events.subscribe");
+    const topicsParam = e.params.find((p) => p.name === "topics");
+    expect(topicsParam, "topics param が存在する").toBeTruthy();
+    expect(topicsParam.schema, "schema が付いている").toBeTruthy();
+    expect(topicsParam.schema.type).toBe("array");
+    expect(topicsParam.schema.items).toBeTruthy();
+    expect(topicsParam.schema.items.type).toBe("string");
+    // enum が SUBSCRIBABLE_TOPICS と同値であることを全件照合 (規範8)。
+    const enumValues = topicsParam.schema.items.enum;
+    expect(enumValues).toEqual([...SUBSCRIBABLE_TOPICS]);
+  });
+
+  it("events.unsubscribe の topics param に enum schema が付き、SUBSCRIBABLE_TOPICS と一致する", () => {
+    const e = reg.get("events.unsubscribe");
+    const topicsParam = e.params.find((p) => p.name === "topics");
+    expect(topicsParam, "topics param が存在する").toBeTruthy();
+    expect(topicsParam.schema, "schema が付いている").toBeTruthy();
+    expect(topicsParam.schema.type).toBe("array");
+    expect(topicsParam.schema.items).toBeTruthy();
+    expect(topicsParam.schema.items.type).toBe("string");
+    // enum が SUBSCRIBABLE_TOPICS と同値であることを全件照合 (規範8)。
+    const enumValues = topicsParam.schema.items.enum;
+    expect(enumValues).toEqual([...SUBSCRIBABLE_TOPICS]);
+  });
+
+  it("subscribe / unsubscribe の enum は互いに一致する (対称性)", () => {
+    const sub = reg.get("events.subscribe").params.find((p) => p.name === "topics").schema.items.enum;
+    const unsub = reg.get("events.unsubscribe").params.find((p) => p.name === "topics").schema.items.enum;
+    expect(sub).toEqual(unsub);
   });
 });

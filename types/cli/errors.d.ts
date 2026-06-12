@@ -31,6 +31,8 @@ export function commanderErrorInfo(err: CommanderLikeError): {
 };
 /**
  * commander 以外の一般エラーの exit code (明示 exitCode を尊重、無ければ 1)。
+ * P4-2 (SURF-28): SesameError(BAD_REQUEST) は「呼び出し側不正」= usage エラーなので
+ * EXIT.USAGE(2) を返す。serve 経路 (toServeError: bad_params→exitCode=2) と対称にする。
  * @param {unknown} err
  * @returns {number}
  */

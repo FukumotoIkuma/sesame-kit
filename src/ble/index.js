@@ -201,35 +201,57 @@ const OS3_TOPLEVEL_RPC_OPS = {
 /**
  * OS2 トップレベル op (SesameOS2Ble) の RPC 公開仕様。OS2 は autolock の read/update が
  * 別メソッド。制御 verb は cloud lock.* と重複するため載せない。
+ *
+ * 【status 除外方針 (P4-5 / R2:SURF-31)】
+ * OS2_BLE_RPC_ALLOWLIST に "status" は掲載されているが、OS2_TOPLEVEL_RPC_OPS には载せない。
+ * 理由: status() は mechStatus publish の受信待ち (タイムアウト付き Promise) であり、
+ * 結果は生体状態そのもの (parseMechStatus の構造体オブジェクト) を返す読み取り系。
+ * 1 往復 RPC としての型付きスキーマを定義するには OS2 の mechStatus フィールド定義
+ * (CHSesame2MechStatus の locked/unlocked/isInRange 等) を result スキーマに落とす必要があるが、
+ * それは P4-7 相当の result スキーマ整備タスクに委ねる (現状は raw op として ble.os2.invoke
+ * 経由でアクセス可能)。「status 読みは RPC から除外」ではなく「typed spec の記述を保留」。
+ * OS3 も同様に OS3_TOPLEVEL_RPC_OPS に status を載せていない (BLE_RPC_ALLOWLIST には掲載)。
  * @type {BleRpcOpSpec}
  */
 const OS2_TOPLEVEL_RPC_OPS = {
   // autolock(seconds, tag): OP.update item=11、2B LE 秒数 ++ 履歴タグ。送信系 (ack)。
-  // tag は履歴に残す任意 Buffer (省略可)。src/ble/os2/index.js:191 / CHSesame2Device.kt:141
+  // tag は履歴に残す任意 Buffer (省略可)。SesameOS2Ble.autolock() / CHSesame2Device.kt:141
   "autolock": { params: [
     { name: "seconds", type: "number", required: true, desc: "auto-lock delay seconds (0..65535, 0 = disable)" },
     { name: "tag", type: "object", required: false, desc: "optional history tag bytes (Buffer)" },
   ], result: "ack" },
   // disableAutolock(tag): autolock(0, tag) のショートカット。送信系。
-  // src/ble/os2/index.js:194 / CHSesame2Device.kt:150-152
+  // SesameOS2Ble.disableAutolock() / CHSesame2Device.kt:150-152
   "disableAutolock": { params: [{ name: "tag", type: "object", required: false, desc: "optional history tag bytes (Buffer)" }], result: "ack", summary: "disable auto-lock (= autolock(0)) (OS2)" },
   // getAutolock(): OP.read item=11、Promise<number> (現在の秒数)。読み取り系。
-  // src/ble/os2/index.js:200 / CHSesame2Device.kt:157-160
+  // SesameOS2Ble.getAutolock() / CHSesame2Device.kt:157-160
   "getAutolock": { params: [], result: "raw", summary: "read the current auto-lock seconds (OS2)" },
   // history({ack}): OP.read item=4、Promise<Buffer> (履歴 1 バッチ生バイト)。読み取り系。
   // ack=true (既定) は取得後デバイス側で消す挙動。opts はオプションオブジェクト 1 引数。
-  // src/ble/os2/index.js:236 history({ack=true}) / CHSesame2Device.kt:606-612
+  // SesameOS2Ble.history() / CHSesame2Device.kt:606-612
   "history": { params: [{ name: "opts", type: "object", required: false, desc: "{ ack?: boolean } — ack=false reads without deleting on-device (default true)" }], result: "raw", summary: "read one BLE history batch (OS2, raw bytes)" },
   // versionTag(): OP.read item=5、Promise<string>。読み取り系。
-  // src/ble/os2/index.js:211 / CHSesame2Device.kt:131-133
+  // SesameOS2Ble.versionTag() / CHSesame2Device.kt:131-133
   "versionTag": { params: [], result: "raw", summary: "read firmware version tag string (OS2)" },
   // updateSetting(setting, tag): OP.update item=80 mechSetting。Bot1 の mech_setting を更新する送信系。
   // setting は 7 フィールドの Bot1 設定オブジェクト (必須)、tag は履歴タグ (省略可)。Bot1 専用。
-  // src/ble/os2/index.js:267 updateSetting(setting, tag) / CHSesameBotDevice.kt:418-430
+  // SesameOS2Ble.updateSetting() / CHSesameBotDevice.kt:418-430
   "updateSetting": { params: [
     { name: "setting", type: "object", required: true, desc: "Bot1 mech setting object {userPrefDir, lockSec, unlockSec, clickLockSec, clickHoldSec, clickUnlockSec, buttonMode}" },
     { name: "tag", type: "object", required: false, desc: "optional history tag bytes (Buffer)" },
   ], result: "ack" },
+  // reset(): OP.delete item=registration(1)。工場出荷状態へリセット。送信系 (ack)。
+  // OS3 の ble.reset (専用 RPC) と対称の op。cloud に該当機能なし → 除外根拠なし (P4-5)。
+  // SesameOS2Ble.reset() / CHSesame2Device.kt:570-578
+  "reset": { params: [], result: "ack", summary: "factory reset the OS2 device (CHSesame2Device.kt:570-578)" },
+  // configureLockPosition(lockDeg, unlockDeg): OP.update item=80 mechSetting。
+  // 施錠/解錠角を度数で設定。内部で tick (deg * 1024 / 360) と ±150 range に変換する。
+  // OS3 の ble.position (専用 RPC) と対称の op。cloud に該当機能なし → 除外根拠なし (P4-5)。
+  // SesameOS2Ble.configureLockPosition() / CHSesame2Device.kt:556-568
+  "configureLockPosition": { params: [
+    { name: "lockDeg", type: "number", required: true, desc: "lock angle in degrees" },
+    { name: "unlockDeg", type: "number", required: true, desc: "unlock angle in degrees" },
+  ], result: "ack", summary: "set lock/unlock positions in degrees (OS2, CHSesame2Device.kt:556-568)" },
 };
 
 /**
