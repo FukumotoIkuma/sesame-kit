@@ -2,22 +2,13 @@
 // 1 接続 = 持続 Connection。events.subscribe で event 通知がそのまま流れる。
 // 接続時に loopback token (?token= / Authorization: Bearer) を要求。
 
-// @ts-expect-error: `ws` パッケージは型定義 (@types/ws) を同梱せず宣言ファイルも無いため、
-// import は any になる。下流の利用箇所は本ファイル内で個別に型付けして any 伝播を抑える。
+// 型は devDependencies の @types/ws が提供する (REFACTORING_PLAN P5-7/ARCH-15:
+// 旧 @ts-expect-error + 自前 WsSocket 最小 typedef を正式型へ置き換え)。
 import { WebSocketServer } from "ws";
 import { tokenMatches, extractToken } from "./token.js";
 import { t } from "../../i18n.js";
 
 const MAX_BUFFERED = 4 * 1024 * 1024; // 4MB を超えて溜まった遅い購読者は切る (背圧)
-
-/**
- * `ws` の WebSocket の、本ファイルが触る面だけの最小ローカル型 (パッケージが型を同梱しないため)。
- * @typedef {object} WsSocket
- * @property {number} bufferedAmount
- * @property {(data: string) => void} send
- * @property {(code?: number, reason?: string) => void} close
- * @property {(event: string, cb: (...args: any[]) => void) => void} on
- */
 
 /**
  * @param {import("../daemon.js").Daemon} daemon
@@ -32,7 +23,7 @@ export async function startWsFraming(daemon, { bind = "127.0.0.1", port, token }
   const verifyClient = (info) => tokenMatches(extractToken(info.req), token);
   const wss = new WebSocketServer({ host: bind, port, verifyClient });
 
-  /** @param {WsSocket} ws @param {import("node:http").IncomingMessage} req */
+  /** @param {import("ws").WebSocket} ws @param {import("node:http").IncomingMessage} req */
   const onConnection = (ws, req) => {
     // verifyClient で認証済みだが、防御的に再確認 (verifyClient 無効化時の保険)。
     if (!tokenMatches(extractToken(req), token)) {
@@ -61,9 +52,16 @@ export async function startWsFraming(daemon, { bind = "127.0.0.1", port, token }
     wss.once("listening", () => resolve());
   }));
 
+  // TCP listen (host+port) の address() は listening 後は AddressInfo を返す
+  // (string になるのは UDS/pipe listen のみ、null は listen 前)。@types/ws 導入 (P5-7) に
+  // 伴い union を明示ナローする。万一の契約破れは「黙って port=NaN」ではなく明示エラーに倒す。
+  const addr = wss.address();
+  if (addr === null || typeof addr === "string") {
+    throw new Error(`ws framing: unexpected non-TCP address from listening server: ${String(addr)}`);
+  }
   return {
-    port: wss.address().port,
-    url: `ws://${bind}:${wss.address().port}`,
+    port: addr.port,
+    url: `ws://${bind}:${addr.port}`,
     // 購読中クライアントを terminate してから close (しないと wss.close は接続が残る限りハング)。
     stop: () => /** @type {Promise<void>} */ (new Promise((resolve) => {
       for (const c of wss.clients) { try { c.terminate(); } catch { /* ignore */ } }

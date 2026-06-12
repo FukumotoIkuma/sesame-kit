@@ -4,13 +4,14 @@
 import { describe, it, expect } from "vitest";
 import { Buffer } from "node:buffer";
 import crypto, { createECDH } from "node:crypto";
-import { aesCmac } from "node-aes-cmac";
+// AES-CMAC は内製実装 (src/aes-cmac.js, RFC 4493)。旧 node-aes-cmac は P5-2 で除去。
+import { aesCmac } from "../../src/aes-cmac.js";
 
 import { SesameOS2BleCipher, __test__ as cipherTest } from "../../src/ble/os2/cipher.js";
 import {
   OP, ITEM, SEG, buildSendFrame, parseRecvFrame, sessionToken, deriveSessionKey,
   sessionAuth, loginPayload, deriveRegisterKeys, registrationData, parseMechStatus,
-  parseLoginResponse, autolockData, historyTag, MECH_STATE, timePhoneData,
+  parseLoginResponse, autolockData, MECH_STATE, timePhoneData,
   createHistag, lockPositionConfiguration, lockPositionData, botMechSettingData,
   botUpdateSettingData, enableDfuData,
 } from "../../src/ble/os2/protocol.js";
@@ -83,8 +84,8 @@ describe("OS2 cipher", () => {
     expect(c1.length).toBe(m1.length + cipherTest.OS2_CCM_TAG_LEN); // tag 4B
     expect(device.decrypt(c1)).toEqual(m1);
 
-    // device → app
-    const r1 = Buffer.from([OP.RESPONSE, OP.ASYNC, ITEM.UNLOCK, 0x00]);
+    // device → app (response は [notifyOp, item, op, result] 順。SesameProtocols.kt:15-19)
+    const r1 = Buffer.from([OP.RESPONSE, ITEM.UNLOCK, OP.ASYNC, 0x00]);
     expect(app.decrypt(device.encrypt(r1))).toEqual(r1);
 
     expect(app.encryptCounter).toBe(1n);
@@ -108,14 +109,27 @@ describe("OS2 protocol — frames", () => {
     expect(f).toEqual(Buffer.from([OP.SYNC, ITEM.LOGIN, 0xaa]));
   });
 
-  it("parseRecvFrame: response has [op,item,result] header, publish has [item] header", () => {
-    const resp = parseRecvFrame(Buffer.from([OP.RESPONSE, OP.ASYNC, ITEM.UNLOCK, 0x00, 0x01, 0x02]));
-    expect(resp).toMatchObject({ type: "response", itemCode: ITEM.UNLOCK, resultCode: 0 });
+  it("parseRecvFrame: response has [item,op,result] header, publish has [item] header", () => {
+    // SSM2ResponsePayload は cmdItCode=data[0], cmdOPCode=data[1], cmdResultCode=data[2]
+    // (導出元: SesameProtocols.kt:15-19。itemCode が先、opCode が後)。
+    const resp = parseRecvFrame(Buffer.from([OP.RESPONSE, ITEM.UNLOCK, OP.ASYNC, 0x00, 0x01, 0x02]));
+    expect(resp).toMatchObject({ type: "response", itemCode: ITEM.UNLOCK, cmdOpCode: OP.ASYNC, resultCode: 0 });
     expect(resp.payload).toEqual(Buffer.from([0x01, 0x02]));
 
+    // SSM3PublishPayload は cmdItCode=data[0] (SesameProtocols.kt:5-8)。
     const pub = parseRecvFrame(Buffer.from([OP.PUBLISH, ITEM.MECH_STATUS, 0x11, 0x22]));
     expect(pub).toMatchObject({ type: "publish", itemCode: ITEM.MECH_STATUS });
     expect(pub.payload).toEqual(Buffer.from([0x11, 0x22]));
+  });
+
+  it("parseRecvFrame acceptance: [7,2,5,0] = login response / [7,82,6,0] = lock(82) response", () => {
+    // 実機相当バイト列 (SesameProtocols.kt:15-19): notifyOp=7(RESPONSE), item=2(LOGIN),
+    // op=5(SYNC), result=0(success) → itemCode=LOGIN でルーティングされる。
+    const login = parseRecvFrame(Buffer.from([7, 2, 5, 0]));
+    expect(login).toMatchObject({ type: "response", itemCode: ITEM.LOGIN, cmdOpCode: OP.SYNC, resultCode: 0 });
+    // notifyOp=7, item=82(LOCK), op=6(ASYNC), result=0 → itemCode=LOCK(82)。
+    const lock = parseRecvFrame(Buffer.from([7, 82, 6, 0]));
+    expect(lock).toMatchObject({ type: "response", itemCode: ITEM.LOCK, cmdOpCode: OP.ASYNC, resultCode: 0 });
   });
 
   it("ITEM has OS2 local codes IRER=15, TIMEPHONE=16", () => {
@@ -136,7 +150,7 @@ describe("OS2 protocol — key derivation (matches SDK CMAC chains)", () => {
   it("deriveSessionKey = CMAC(pre16, sessionToken8)", () => {
     const st = sessionToken(mApp, mSsm);
     const got = deriveSessionKey(pre16, st);
-    const ref = aesCmac(pre16, st, { returnAsBuffer: true });
+    const ref = aesCmac(pre16, st);
     expect(got).toEqual(Buffer.isBuffer(ref) ? ref : Buffer.from(ref, "hex"));
   });
 
@@ -146,7 +160,7 @@ describe("OS2 protocol — key derivation (matches SDK CMAC chains)", () => {
     const appPub = Buffer.alloc(64, 0x42);
     const st = sessionToken(mApp, mSsm);
     const auth = sessionAuth(secret, userIdx, appPub, st);
-    const ref = aesCmac(secret, Buffer.concat([userIdx, appPub, st]), { returnAsBuffer: true });
+    const ref = aesCmac(secret, Buffer.concat([userIdx, appPub, st]));
     expect(auth).toEqual(Buffer.isBuffer(ref) ? ref : Buffer.from(ref, "hex"));
 
     const lp = loginPayload(userIdx, appPub, mApp, auth);
@@ -157,10 +171,10 @@ describe("OS2 protocol — key derivation (matches SDK CMAC chains)", () => {
     const serverToken = Buffer.from("cafebabe", "hex");
     const { registerKey, ownerKey, sessionKey, sessionToken: st } = deriveRegisterKeys(pre16, serverToken, mSsm);
     expect(st).toEqual(Buffer.concat([serverToken, mSsm]));
-    const rk = Buffer.from(aesCmac(pre16, st, { returnAsBuffer: true }));
+    const rk = Buffer.from(aesCmac(pre16, st));
     expect(registerKey).toEqual(rk);
-    expect(ownerKey).toEqual(Buffer.from(aesCmac(rk, Buffer.from("owner_key"), { returnAsBuffer: true })));
-    expect(sessionKey).toEqual(Buffer.from(aesCmac(rk, st, { returnAsBuffer: true })));
+    expect(ownerKey).toEqual(Buffer.from(aesCmac(rk, Buffer.from("owner_key"))));
+    expect(sessionKey).toEqual(Buffer.from(aesCmac(rk, st)));
   });
 
   it("registrationData = sig1[0:4] ++ appPub64 ++ serverToken", () => {
@@ -173,44 +187,117 @@ describe("OS2 protocol — key derivation (matches SDK CMAC chains)", () => {
 });
 
 describe("OS2 protocol — data builders & parsers", () => {
-  it("autolockData: 2B LE seconds ++ historyTag", () => {
-    expect(autolockData(30)).toEqual(Buffer.from([30, 0]));
-    expect(autolockData(0)).toEqual(Buffer.from([0, 0]));
-    expect(autolockData(300, Buffer.from([0xab]))).toEqual(Buffer.from([0x2c, 0x01, 0xab]));
+  it("autolockData: 2B LE seconds ++ createHistag = 24B (CHSesame2Device.kt:141)", () => {
+    // data = delay.toShort().toReverseBytes() ++ createHistag(historytag) = 2B + 22B = 24B。
+    expect(autolockData(30)).toEqual(Buffer.concat([Buffer.from([30, 0]), Buffer.alloc(22)]));
+    expect(autolockData(30).length).toBe(24);
+    expect(autolockData(0)).toEqual(Buffer.concat([Buffer.from([0, 0]), Buffer.alloc(22)]));
+    expect(autolockData(300, Buffer.from([0xab])))
+      .toEqual(Buffer.concat([Buffer.from([0x2c, 0x01]), createHistag(Buffer.from([0xab]))]));
     expect(() => autolockData(70000)).toThrow();
   });
 
-  it("historyTag passes bytes through, empty when omitted", () => {
-    expect(historyTag()).toEqual(Buffer.alloc(0));
-    expect(historyTag(Buffer.from([1, 2]))).toEqual(Buffer.from([1, 2]));
-  });
-
-  it("parseMechStatus: lock/unlock/moved via flag bits, target -32768 = null", () => {
-    // flags bit1 (=2) → locked
-    const locked = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x01, 0x00, 0x02, 0x02, 0x00]));
+  it("parseMechStatus: retCode=buf[6], flags=buf[7] (CHSesame2.kt:34-40), target -32768 = null", () => {
+    // ベクタ導出元: open/devices/CHSesame2.kt:34-40
+    //   retCode = data[6], flags = data[7], isInLockRange = flags and 2,
+    //   isInUnlockRange = flags and 4, isBatteryCritical = flags and 32。
+    // flags(byte7) bit1 (=2) → locked
+    const locked = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x01, 0x00, 0x02, 0x00, 0x02]));
     expect(locked.state).toBe(MECH_STATE.LOCKED);
     expect(locked.isInLockRange).toBe(true);
-    // flags bit2 (=4) → unlocked
-    const unlocked = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x01, 0x00, 0x02, 0x04, 0x00]));
+    expect(locked.retCode).toBe(0);
+    // flags(byte7) bit2 (=4) → unlocked
+    const unlocked = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x01, 0x00, 0x02, 0x00, 0x04]));
     expect(unlocked.state).toBe(MECH_STATE.UNLOCKED);
-    // no range flag → moved
-    const moved = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x80, 0x00, 0x02, 0x00, 0x00]));
+    // range フラグ無し → moved。byte6 は retCode (履歴トリガ、CHSesame2Device.kt:545)。
+    const moved = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x80, 0x00, 0x02, 0x05, 0x00]));
     expect(moved.state).toBe(MECH_STATE.MOVED);
     expect(moved.target).toBe(null); // 0x8000 LE = -32768
+    expect(moved.retCode).toBe(5);   // retCode は byte6 (flags=byte7=0 と取り違えない)
+    // flags bit5 (=32) → isBatteryCritical (CHSesame2.kt:40)
+    const lowBat = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x01, 0x00, 0x02, 0x00, 0x22]));
+    expect(lowBat.isBatteryCritical).toBe(true);
+    expect(lowBat.state).toBe(MECH_STATE.LOCKED); // 0x22 = 32 | 2
+    // 8B 未満は明示エラー (Kotlin は data[7] まで読む固定レイアウト)。
+    expect(() => parseMechStatus(Buffer.alloc(7))).toThrow(/8 bytes/);
   });
 
-  it("parseLoginResponse: systemTime BE, fw/historyCnt, 12B setting, 8B status", () => {
+  it("parseMechStatus: Bot 固有 motorStatus=buf[4] / isStop=(flags&1)==0 (CHSesameBot.kt:22-29)", () => {
+    // CHSesameBotMechStatus: motorStatus = data[4] (noPower=0/forward=1/hold=2/backward=3、
+    // CHSesameBotDevice.kt:286-293)、flags = data[7]、isStop = (flags and 1 == 0) (CHSesameBot.kt:28)。
+    const moving = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x00, 0x01, 0x00, 0x00, 0x03]));
+    expect(moving.motorStatus).toBe(1); // forward
+    expect(moving.isStop).toBe(false);  // flags bit0=1 → 動作中
+    const stopped = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x00, 0x02, 0x00, 0x00, 0x02]));
+    expect(stopped.motorStatus).toBe(2); // hold
+    expect(stopped.isStop).toBe(true);   // flags bit0=0 → 停止
+  });
+
+  it("parseMechStatus: positionDeg/targetDeg = raw*360/1024 を併記 (CHSesame2.kt:32-33、BLE2-08)", () => {
+    // raw: target=256 (90°), position=512 (180°)。SDK は度数を公開し raw は持たないが、
+    // kit は wire 検証用に raw を維持し *Deg を併記する。
+    const buf = Buffer.alloc(8);
+    buf.writeInt16LE(256, 2);  // target raw
+    buf.writeInt16LE(512, 4);  // position raw
+    const s = parseMechStatus(buf);
+    expect(s.target).toBe(256);
+    expect(s.position).toBe(512);
+    expect(s.targetDeg).toBe(90);
+    expect(s.positionDeg).toBe(180);
+    // 負角は Kotlin Int 除算 (0 方向切り捨て) と一致: -512 raw → -180°
+    const neg = Buffer.alloc(8);
+    neg.writeInt16LE(-512, 4);
+    expect(parseMechStatus(neg).positionDeg).toBe(-180);
+    // 端数: 300 raw → 300*360/1024 = 105.46… → 105 (truncate)
+    const frac = Buffer.alloc(8);
+    frac.writeInt16LE(300, 4);
+    expect(parseMechStatus(frac).positionDeg).toBe(105);
+    // target=-32768 (未設定) は raw/deg とも null
+    const unset = Buffer.alloc(8);
+    unset.writeInt16LE(-32768, 2);
+    expect(parseMechStatus(unset).target).toBeNull();
+    expect(parseMechStatus(unset).targetDeg).toBeNull();
+  });
+
+  it("parseLoginResponse: systemTime LE (toBigLong), fw/historyCnt, 12B setting, 8B status", () => {
     const buf = Buffer.alloc(28);
-    buf.writeUInt32BE(1600000000, 0); // systemTime
+    // 導出元: SSM2LoginResponsePayload (CHSesame2Device.kt:627) の systemTime は
+    // sliceArray(0..3).toBigLong()。toBigLong (DataExtention.kt:69-71) = reversedArray を
+    // hex parse = **little-endian** 読み。デバイス送信は LE 4B なので mock も LE で書く
+    // (旧テストは writeUInt32BE で誤エンディアンを保護していた)。
+    buf.writeUInt32LE(1600000000, 0); // systemTime
     buf[4] = 3;  // fw
     buf[6] = 7;  // historyCnt
-    buf[20 + 6] = 0x02; // status flags → locked
+    // mech_setting_t (payload[8..19]): lock=0x0100(256raw=90deg), unlock=0x0000 → isConfigured=true
+    buf.writeInt16LE(256, 8);
+    buf.writeInt16LE(0, 10);
+    buf[20 + 7] = 0x02; // mech_status flags は byte7 (CHSesame2.kt:37) → locked
     const lr = parseLoginResponse(buf);
     expect(lr.systemTime).toBe(1600000000);
     expect(lr.fwVersion).toBe(3);
     expect(lr.historyCnt).toBe(7);
-    expect(lr.mechSetting.length).toBe(12);
+    // BLE2-07: mechSetting は CHSesame2MechSettings 解析済み (度数 = raw*360/1024、CHSesame2.kt:24-28)。
+    expect(lr.mechSettingBytes.length).toBe(12);
+    expect(lr.mechSetting).toMatchObject({
+      lockPosition: 90, unlockPosition: 0, isConfigured: true,
+      lockPositionRaw: 256, unlockPositionRaw: 0,
+    });
+    expect(lr.isConfigured).toBe(true);
+    // Bot 形 (CHSesameBikeDevice.kt:520): mech_setting_t[0..6] が 7 フィールド (Kotlin Byte)。
+    expect(lr.mechSettingBot).toEqual({
+      userPrefDir: 0, lockSec: 1, unlockSec: 0, clickLockSec: 0,
+      clickHoldSec: 0, clickUnlockSec: 0, buttonMode: 0,
+    });
     expect(lr.mechStatus.state).toBe(MECH_STATE.LOCKED);
+  });
+
+  it("parseLoginResponse: lock==unlock 角は isConfigured=false (NoSettings、CHSesame2Device.kt:268)", () => {
+    const buf = Buffer.alloc(28);
+    buf.writeUInt32LE(1600000000, 0);
+    // lock=unlock=0 → 未キャリブレーション。
+    const lr = parseLoginResponse(buf);
+    expect(lr.mechSetting.isConfigured).toBe(false);
+    expect(lr.isConfigured).toBe(false);
   });
 
   it("timePhoneData divides ms by 1000 then LE 4B (SDK fa89b85f vector)", () => {
@@ -339,13 +426,16 @@ function makeMockDevice({ keyIndex, deviceKeyPair, mSesameToken }) {
       deviceCipher = makeDeviceCipher(sessionKey, st); // firmware 視点 (鏡像 flag)
       const lr = Buffer.alloc(28);
       lr.writeUInt32BE(Math.floor(Date.now() / 1000), 0);
-      lr[26] = 0x02; // mech_status flags → locked
-      sendPlain(Buffer.concat([Buffer.from([OP.RESPONSE, OP.SYNC, ITEM.LOGIN, 0x00]), lr]));
+      lr[27] = 0x02; // mech_status flags = byte7 (CHSesame2.kt:37) → locked
+      // response = [notifyOp=RESPONSE, item, op, result] (導出元: SesameProtocols.kt:15-19
+      // SSM2ResponsePayload — cmdItCode=data[0], cmdOPCode=data[1], cmdResultCode=data[2])。
+      sendPlain(Buffer.concat([Buffer.from([OP.RESPONSE, ITEM.LOGIN, OP.SYNC, 0x00]), lr]));
       return;
     }
-    // 暗号化コマンドへの応答 (例: unlock)。response = [RESPONSE, op, item, result=0]
+    // 暗号化コマンドへの応答 (例: unlock)。response = [RESPONSE, item, op, result=0]
+    // (導出元: SesameProtocols.kt:15-19。itemCode が先)。
     commands.push(Buffer.from(frame));
-    sendCipher(Buffer.from([OP.RESPONSE, op, item, 0x00]));
+    sendCipher(Buffer.from([OP.RESPONSE, item, op, 0x00]));
   };
 
   return {
@@ -381,9 +471,96 @@ describe("OS2 session — login + command over mock transport", () => {
     expect(session.isLoggedIn).toBe(true);
     expect(session.lastStatus.state).toBe(MECH_STATE.LOCKED);
 
-    const r = await session.request(OP.ASYNC, ITEM.UNLOCK, historyTag(Buffer.from([1, 2, 3])));
+    const r = await session.request(OP.ASYNC, ITEM.UNLOCK, createHistag(Buffer.from([1, 2, 3])));
     expect(r.resultCode).toBe(0);
     await session.disconnect();
+  });
+
+  it("[7,82,6,0] 相当の response で pending(LOCK=82) が解決される (acceptance)", async () => {
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const ssmPublicKey = deviceKeyPair.getPublicKey().subarray(1);
+    const secretKey = Buffer.alloc(16, 0x55);
+    const keyIndex = Buffer.from("0000", "hex");
+    const mSesameToken = Buffer.from("01020304", "hex");
+    const { transport } = makeMockDevice({ keyIndex, deviceKeyPair, mSesameToken });
+    const session = new SesameOS2BleSession({ transport, secretKey, keyIndex, ssmPublicKey });
+    await session.connect();
+    // mock は [RESPONSE(7), item(82), op(6), 0] を返す → itemCode=82 の pending が解決する。
+    const r = await session.request(OP.ASYNC, ITEM.LOCK, createHistag());
+    expect(r.resultCode).toBe(0);
+    await session.disconnect();
+  });
+});
+
+describe("OS2 facade — lock/unlock/click/toggle/autolock data (createHistag 22B 統一)", () => {
+  // 全 OS2 制御コマンドの data は createHistag の 22B 固定 (CHSesame2Device.kt:141,185,201 /
+  // CHSesameBotDevice.kt:370,387,408 / CHSesameBikeDevice.kt:311)。
+  async function connectedFacade() {
+    const deviceKeyPair = createECDH("prime256v1");
+    deviceKeyPair.generateKeys();
+    const ssmPublicKey = deviceKeyPair.getPublicKey().subarray(1);
+    const secretKey = Buffer.alloc(16, 0x66);
+    const keyIndex = Buffer.from("0000", "hex");
+    const mSesameToken = Buffer.from("0a0b0c0d", "hex");
+    const mock = makeMockDevice({ keyIndex, deviceKeyPair, mSesameToken });
+    const ble = new SesameOS2Ble({
+      transport: mock.transport, secretKey, keyIndex, ssmPublicKey, model: "sesame_3",
+    });
+    await ble.connect();
+    return { ble, mock };
+  }
+
+  it("lock: data = createHistag(tag) 22B (CHSesame2Device.kt:185)", async () => {
+    const { ble, mock } = await connectedFacade();
+    await ble.lock(Buffer.from([0x01, 0x02]));
+    const cmd = mock.commands.at(-1);
+    expect(cmd[0]).toBe(OP.ASYNC);
+    expect(cmd[1]).toBe(ITEM.LOCK);
+    expect(cmd.subarray(2).length).toBe(22);
+    expect(cmd.subarray(2)).toEqual(createHistag(Buffer.from([0x01, 0x02])));
+    await ble.close();
+  });
+
+  it("lock: タグ省略でも全 0 の 22B を送る (createHistag(null))", async () => {
+    const { ble, mock } = await connectedFacade();
+    await ble.lock();
+    const cmd = mock.commands.at(-1);
+    expect(cmd.subarray(2)).toEqual(Buffer.alloc(22));
+    await ble.close();
+  });
+
+  it("unlock / click: data = createHistag(tag) 22B (CHSesame2Device.kt:201 / CHSesameBotDevice.kt:408)", async () => {
+    const { ble, mock } = await connectedFacade();
+    await ble.unlock(Buffer.from([0xaa]));
+    expect(mock.commands.at(-1)[1]).toBe(ITEM.UNLOCK);
+    expect(mock.commands.at(-1).subarray(2)).toEqual(createHistag(Buffer.from([0xaa])));
+    await ble.click();
+    expect(mock.commands.at(-1)[1]).toBe(ITEM.CLICK);
+    expect(mock.commands.at(-1).subarray(2)).toEqual(Buffer.alloc(22));
+    await ble.close();
+  });
+
+  it("toggle: locked → unlock を createHistag 22B で送る (CHSesame2Device.kt:165-178)", async () => {
+    const { ble, mock } = await connectedFacade();
+    // login response の mech_status が locked (mock 由来) → unlock 側に分岐。
+    expect(ble.lastStatus.state).toBe(MECH_STATE.LOCKED);
+    await ble.toggle(Buffer.from([0x07]));
+    const cmd = mock.commands.at(-1);
+    expect(cmd[1]).toBe(ITEM.UNLOCK);
+    expect(cmd.subarray(2)).toEqual(createHistag(Buffer.from([0x07])));
+    await ble.close();
+  });
+
+  it("autolock: data = 2B LE 秒数 ++ createHistag = 24B (CHSesame2Device.kt:141)", async () => {
+    const { ble, mock } = await connectedFacade();
+    await ble.autolock(30, Buffer.from([0x09]));
+    const cmd = mock.commands.at(-1);
+    expect(cmd[0]).toBe(OP.UPDATE);
+    expect(cmd[1]).toBe(ITEM.AUTOLOCK);
+    expect(cmd.subarray(2).length).toBe(24);
+    expect(cmd.subarray(2)).toEqual(Buffer.concat([Buffer.from([30, 0]), createHistag(Buffer.from([0x09]))]));
+    await ble.close();
   });
 });
 

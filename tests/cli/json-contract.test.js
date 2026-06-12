@@ -101,6 +101,45 @@ describe("CLI --json 出力契約", () => {
     expect(JSON.parse(ls.stdout).locks).toEqual({});
   }, 15000);
 
+  it("バックログ4: locks add は --ssm-public-key/--key-index を保存し、形式不正は exit 2", () => {
+    runCli(["init"]);
+    const ssmPub = "ab".repeat(64);
+    const ok = runCli([
+      "locks", "add", "--json",
+      "--name", "os2",
+      "--uuid", "AABBCCDD-1111-2222-3333-444455556666",
+      "--secret", "00112233445566778899aabbccddeeff",
+      "--ssm-public-key", ssmPub,
+      "--key-index", "0001",
+    ]);
+    expect(ok.code).toBe(0);
+    expect(JSON.parse(ok.stdout)).toMatchObject({ ok: true, lock: "os2", ssmPublicKey: ssmPub, keyIndex: "0001" });
+    const ls = runCli(["locks", "ls", "--json"]);
+    expect(JSON.parse(ls.stdout).locks.os2).toMatchObject({ ssmPublicKey: ssmPub, keyIndex: "0001" });
+
+    // 形式不正 (128 hex / 4 hex 以外) は usage エラー (exit 2) で保存しない
+    const badPub = runCli([
+      "locks", "add", "--json",
+      "--name", "bad",
+      "--uuid", "AABBCCDD-1111-2222-3333-444455556666",
+      "--secret", "00112233445566778899aabbccddeeff",
+      "--ssm-public-key", "zz".repeat(64),
+    ]);
+    expect(badPub.code).toBe(2);
+    expect(JSON.parse(badPub.stderr).error).toMatch(/ssm-public-key/i);
+    const badIdx = runCli([
+      "locks", "add", "--json",
+      "--name", "bad",
+      "--uuid", "AABBCCDD-1111-2222-3333-444455556666",
+      "--secret", "00112233445566778899aabbccddeeff",
+      "--key-index", "00",
+    ]);
+    expect(badIdx.code).toBe(2);
+    expect(JSON.parse(badIdx.stderr).error).toMatch(/key-index/i);
+    const ls2 = runCli(["locks", "ls", "--json"]);
+    expect(JSON.parse(ls2.stdout).locks.bad).toBeUndefined();
+  }, 30000); // node を 6 回同期 spawn するため余裕を持たせる
+
   it("locks add は非対話で必須フラグ欠落なら固まらず JSON エラーで落ちる", () => {
     runCli(["init"]);
     const r = runCli(["locks", "add", "--json"]); // フラグ無し・stdin 空
@@ -149,5 +188,32 @@ describe("CLI --json 出力契約", () => {
     expect(r.stderr.toLowerCase()).toContain("error");
     // JSON 封筒ではない (人間向け)
     expect(() => JSON.parse(r.stderr)).toThrow();
+  });
+
+  // ---- Phase 4 (SURF-05/24) で追加した CLI 入口の usage 契約 ----
+
+  it("ir remote-add は --json 無しなら exit 2 (接続前に弾く)", () => {
+    const r = runCli(["ir", "remote-add"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("--json");
+  });
+
+  it("ir remote-add-matter は必須オプション欠落で exit 2 (不足一覧を出す)", () => {
+    const r = runCli(["ir", "remote-add-matter"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("--hub3-device-id");
+    expect(r.stderr).toContain("--ir-device-uuid");
+  });
+
+  it("list の直指定は --hub3-device-id / --ir-device-uuid の片方だけなら exit 2", () => {
+    const r = runCli(["list", "--hub3-device-id", "H"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("--ir-device-uuid");
+  });
+
+  it("iot raw は --topic 欠落で exit 2 (接続前に弾く)", () => {
+    const r = runCli(["iot", "raw", "--payload", "00"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("--topic");
   });
 });

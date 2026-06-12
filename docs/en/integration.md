@@ -4,7 +4,7 @@
 
 > [日本語](../ja/integration.md) · [Docs index](./index.md)
 
-`sesame serve` is a long-running JSON-RPC 2.0 daemon. It signs in once, keeps the cloud connection alive, runs operations repeatedly, and pushes events. Cloud/Biz3 features are exposed as typed RPC methods; registered BLE operations are exposed through `ble.invoke` / `ble.os2.invoke`.
+`sesame serve` is a long-running JSON-RPC 2.0 daemon. It signs in once, keeps the cloud connection alive, runs operations repeatedly, and pushes events. Cloud/Biz3 features are exposed as typed RPC methods. BLE operations are also exposed as typed methods — each facade op appears as `ble.<op>` / `ble.os2.<op>` (e.g. `ble.script.click`, `ble.biometric.cardAdd`, `ble.hub3.setWifiSSID`) with named parameters in the generated SDKs (all `experimental`, not yet confirmed against real hardware). The generic `ble.invoke` / `ble.os2.invoke` string-dispatch remains as an escape hatch.
 
 ## 1. Sign in and start the daemon
 
@@ -67,7 +67,7 @@ ir.send                      [remote] key
 org.getEmployees             companyID
 access.registerCards         deviceUUID cards   # [experimental] bulk-register read IC cards (cloud DB)
 …
-82 methods.
+135 methods.
 ```
 
 Read the line for the method you want. Each line is `method  <required> [optional]`. For example, `device.history  deviceUUID [pageSize]` means **`deviceUUID` is required and `pageSize` is optional**.
@@ -109,7 +109,7 @@ For exact parameter types (e.g. for code generation), `sesame rpc --json rpc.dis
 
 Thin clients wrap the above so you write `c.unlock("front")` instead of building JSON by hand. They are optional — section 2 already works without them.
 
-> **`sdk/` vs `clients/`** — the clients below are the **hand-written, low-level** layer (`clients/js`, `clients/python`): minimal-dependency, multi-transport (Unix socket / stdio / HTTP / WebSocket / gRPC), with a generic `call()`. For most users the **generated, typed** SDK ([`sdk/ts`](../../sdk/ts/README.md) / [`sdk/python`](../../sdk/python/README.md)) — one typed method per RPC, generated from `schema/openrpc.json` and tracking the OpenRPC contract over HTTP — is the better default. See the ["which should I use?" guide](../../README.md#which-should-i-use--sdk-vs-clients).
+> **`sdk/` vs `clients/`** — the clients below are the **hand-written, low-level** layer (`clients/js`, `clients/python`): minimal-dependency, multi-transport (JS: Unix socket / HTTP / WebSocket; Python: Unix socket / stdio / HTTP — neither covers gRPC, for which you generate protoc stubs from `src/serve/sesame.proto`), with a generic `call()`. For most users the **generated, typed** SDK ([`sdk/ts`](../../sdk/ts/README.md) / [`sdk/python`](../../sdk/python/README.md)) — one typed method per RPC, generated from `schema/openrpc.json` and tracking the OpenRPC contract over HTTP — is the better default. See the ["which should I use?" guide](../../README.md#which-should-i-use--sdk-vs-clients).
 
 **Node** — after `npm install sesame-kit`:
 
@@ -178,7 +178,7 @@ Scalar/array params are protobuf-typed; dynamic params are a JSON-string field; 
 {"jsonrpc":"2.0","method":"event.lockState","params":{ /* state */ }}
 ```
 
-Topics: `lockState`, `deviceUpdate`. Over HTTP use `GET /events?topics=…` (SSE); over gRPC use the `Subscribe` stream. `POST /rpc` and gRPC `Invoke` are request/response only and reject `events.*`.
+Topics: `lockState`, `deviceUpdate`, and the experimental `deviceListChanged` (key sharing / device add-remove; biz3 `pubUserDeviceChange`). The subscribable list is machine-readable as `x-event-topics` in `rpc.discover`. Over HTTP use `GET /events?topics=…` (SSE); over gRPC use the `Subscribe` stream. `POST /rpc` and gRPC `Invoke` are request/response only and reject `events.*`.
 
 ## Errors
 

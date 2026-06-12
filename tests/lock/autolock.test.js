@@ -14,12 +14,17 @@ const SUB = "11111111222233334444555566667777";
 const ACK_KEY = "biz3TriggerLocker:";
 const OK_ACK = { action: "biz3TriggerLocker", code: 200, data: {}, success: true };
 
-/** subscribe/emit/send を備えた最小 mock。 */
+/**
+ * subscribe/emit/send/request を備えた最小 mock。
+ * request/emit は transport.js:243-259 / 507-521 (FIFO 登録 → send、受信は FIFO 1 件解決 →
+ * subscriber 配信) から導出 (P3-6 で ack 待ちが client.request ベースになったため)。
+ */
 function makeMockClient(status = "open") {
   const handlers = new Map();
+  const pending = new Map(); // key -> [{resolve, to}]
   let nextId = 0;
   const sent = [];
-  return {
+  const client = {
     sent,
     getStatus: () => status,
     subscribe(key, fn) {
@@ -29,8 +34,36 @@ function makeMockClient(status = "open") {
       return () => { const m = handlers.get(key); if (m) m.delete(id); };
     },
     send(m) { sent.push(m); },
-    emit(key, msg) { const m = handlers.get(key); if (!m) return; for (const fn of [...m.values()]) fn(msg); },
+    request(payload, timeoutMs = 10_000) {
+      const key = `${payload.action}:${payload.op || ""}`;
+      return new Promise((resolve, reject) => {
+        const entry = { resolve: null, to: null };
+        entry.to = setTimeout(() => {
+          const q = pending.get(key);
+          if (q) { const i = q.indexOf(entry); if (i >= 0) q.splice(i, 1); }
+          const e = new Error(`request timeout: ${key}`);
+          e.code = "TRANSPORT_TIMEOUT"; // transport.js timeoutErr 相当
+          reject(e);
+        }, timeoutMs);
+        entry.resolve = (msg) => { clearTimeout(entry.to); resolve(msg); };
+        if (!pending.has(key)) pending.set(key, []);
+        pending.get(key).push(entry);
+        client.send(payload);
+      });
+    },
+    emit(key, msg) {
+      const q = pending.get(key);
+      if (q && q.length > 0) {
+        const entry = q.shift();
+        if (q.length === 0) pending.delete(key);
+        entry.resolve(msg);
+      }
+      const m = handlers.get(key);
+      if (!m) return;
+      for (const fn of [...m.values()]) fn(msg);
+    },
   };
+  return client;
 }
 
 describe("triggerItemCommand", () => {

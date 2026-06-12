@@ -25,42 +25,34 @@ export class BleResultError extends Error {
 export class SesameBleSession {
     /**
      * @param {{transport:BleTransport, secretKey?:string|Buffer, debug?:boolean,
-     *          defaultTimeoutMs?:number}} opts
+     *          defaultTimeoutMs?:number, profile?:("lock"|"wm2"), syncTime?:boolean}} opts
      *   secretKey は **登録済みデバイスへのログイン時のみ必須**。工場出荷 (未登録) デバイスを
      *   register() で登録する場合は secretKey を渡さずに構築する (initial 受信で login を試みず
      *   ReadyToRegister 状態へ遷移する。CHSesameOS3.kt:468-491 isRegistered=false 相当)。
+     *
+     *   profile はセッション確立のワイヤ形状 (protocol.js SESSION_PROFILES):
+     *     - "lock" (既定): CHSesameOS3 基底のロック系 (SESAME5/Hub3/Bot2/Bike2/3/biometric)。
+     *     - "wm2": WifiModule2。CHWifiModule2Device.kt は initial(13)/login/register を
+     *       オーバーライドしており非互換 (kt:279-321,521-528)。鍵 = secretKey/pre16 **生 16B**、
+     *       login payload = CMAC 16B 全量、register data = pubK64 のみ、CCM sault = token4 (12B nonce)。
+     *       @experimental WM2 profile は SDK Kotlin の静的読みからの移植で **実機未検証**
+     *       (参照: CHWifiModule2Device.kt:279-321 / SesameOS3BleCipher.kt:8-32)。
+     *
+     *   syncTime (既定 true): login 成功後の time(8) 自動同期を行うか (BLE3-03)。
+     *     CHSesameOS3LockBase.kt:126-138 handleLoginResponse の時刻同期は **ロック系のみ** の挙動で、
+     *     Hub3 は login を override して handleLoginResponse を呼ばない (CHHub3Device.kt:167-178 —
+     *     login 応答はコールバックで deviceStatus 遷移のみ)。WM2 も同様 (CHWifiModule2Device.kt:314-321。
+     *     こちらは profile="wm2" で構造的に対象外)。ファサード (index.js) は kind が HUB3/WIFI の
+     *     とき false を渡す。
      */
-    constructor({ transport, secretKey, debug, defaultTimeoutMs }: {
+    constructor({ transport, secretKey, debug, defaultTimeoutMs, profile, syncTime }: {
         transport: BleTransport;
         secretKey?: string | Buffer;
         debug?: boolean;
         defaultTimeoutMs?: number;
+        profile?: ("lock" | "wm2");
+        syncTime?: boolean;
     });
-    /** @type {Buffer|null} */
-    /** @type {Buffer|null} */
-    /** @type {import("./session.js").Waiter|null} */
-    /** @type {import("./session.js").Waiter|null} */
-    /** @type {Map<number, Array<{resolve:(v:{resultCode:number, payload:Buffer})=>void, reject:(e:Error)=>void, timer:any}>>} item → FIFO */
-    /** @type {Set<(status:any)=>void>} */
-    /** @type {Set<(pub:{opCode:number, itemCode:number, body:Buffer})=>void>} */
-    /** @type {any} */
-    /** @type {{lockPosition:number, unlockPosition:number, autoLockSecond:number}|null} */
-    /** @type {{opsLockSecond:number}|null} */
-    /** @type {import("./session.js").Waiter|null} */
-    /** @type {((tokenHex:string)=>Promise<string>)|null} */
-    /** @param {...any} a */
-    _log(...a: any[]): void;
-    /**
-     * connect()/register() 再入ガード。既に login 済み、または connect/register ハンドシェイク
-     * (login/ready/register いずれかの待機者) が進行中なら true。
-     *
-     * セッションは 1 回限りの使い捨て (transport の GATT 接続とカウンタ状態を 1 接続に束縛する)。
-     * 二重 connect()/register() は _loginWaiter/_readyWaiter/_registerWaiter を上書きして前の
-     * 待機者をリーク(永久ハング)させ、また再入時に古い this._token / this._key を流用して
-     * カウンタ整合が壊れる。ファサード (use/registerOnce) は 1 回限りなので通常は到達しないが、
-     * SesameBleSession を直接使う誤用を安全側で弾く (黙って壊れた状態に進めない)。
-     */
-    _isBusy(): boolean;
     /** 最後に受信した mechStatus (parseMechStatus の結果)。未受信なら null。 */
     get lastStatus(): any;
     /** 最後に受信した mechSetting (parseMechSetting の結果)。未受信なら null。 */
@@ -120,6 +112,8 @@ export class SesameBleSession {
      *   6. sessionKey = deriveSessionKeyFromEcdh(pre16, token4) (CHHub3Device.kt:202-203)。
      *      sault = 0x00 ++ token4 は CCM nonce 側 (ccmEncrypt/ccmDecrypt) が消費する。
      *      enc/decCount=0 で cipher を確立し、以降のコマンドは暗号化される。
+     *      wm2 profile は鍵 = pre16 生 16B / sault = token4 / register data = pubK64 のみ
+     *      (CHWifiModule2Device.kt:279-312。詳細はコンストラクタ JSDoc と protocol.js SESSION_PROFILES)。
      *   7. {deviceUUID, secretKey, productType, serverSecret(=token hex)} を返す
      *      (CHHub3Device.kt:196-208。serverSecret は mSesameToken.toHexString())。
      *
@@ -143,30 +137,6 @@ export class SesameBleSession {
         productType: (string | number | undefined);
         serverSecret: string;
     }>;
-    /**
-     * 単一待機者 (_loginWaiter/_readyWaiter/_registerWaiter) を reject + timer clear して
-     * フィールドを null に戻す。disconnect() で 3 つを対称に解放するためのヘルパ
-     * (取りこぼし防止: 待機者を追加したらここに 1 行足すだけで済む)。
-     * @param {"_loginWaiter"|"_readyWaiter"|"_registerWaiter"} field
-     * @param {Error} err
-     */
-    _rejectWaiter(field: "_loginWaiter" | "_readyWaiter" | "_registerWaiter", err: Error): void;
-    /**
-     * pending request と 3 待機者 (login/ready/register) を全て reject + timer clear し、
-     * セッション状態フラグを倒す。能動 disconnect() と、transport からの非同期切断通知
-     * (_handleTransportDisconnect) の両方が共有する内部解放処理 (transport.disconnect() は呼ばない)。
-     * @param {Error} err pending/待機者へ渡す reject 理由
-     */
-    _failAllPending(err: Error): void;
-    /**
-     * transport から「リンクが切れた」と通知されたときのハンドラ (transport.connect の onDisconnect)。
-     * SDK CHSesameOS3.kt:228-263 onConnectionStateChange の STATE_DISCONNECTED 分岐
-     * (connectR.remove / cmdCallBack.clear) に相当。pending/待機者を即 reject して **timeout 宙づりを
-     * 防ぐ** (fail-fast)。能動 disconnect() と異なり transport.disconnect() は呼ばない (既に切断済み・
-     * 自分が起点ではないため)。何度呼ばれても安全 (待機者が無ければ no-op)。
-     * @param {any} reason 切断理由 (noble の reason 文字列等)
-     */
-    _handleTransportDisconnect(reason: any): void;
     disconnect(): Promise<void>;
     /**
      * 暗号化コマンドを送り、response(7)+item を待って返す。
@@ -273,8 +243,17 @@ export class SesameBleSession {
         payload: Buffer;
     }>;
     /**
-     * versionTag (ファームウェアバージョン文字列) を取得する。
-     *   item = versionTag(5)、data = 空、payload = UTF-8 文字列 (CHSesameOS3.kt:398-418)。
+     * versionTag (ファームウェアバージョン文字列) を取得する。itemCode は profile で分かれる:
+     *   - lock profile: item = versionTag(5)、data = 空、payload = UTF-8 文字列
+     *     (CHSesameOS3.kt:398-418)。
+     *   - wm2 profile : item = **WM2ActionCode.VERSION_TAG(127)**、data = 空、payload = UTF-8 文字列
+     *     (CHWifiModule2Device.kt:423-435 — getVersionTag() は SesameOS3Payload(VERSION_TAG.value,
+     *     byteArrayOf()) を送り、成功時 String(res.payload) を返す)。WM2 の action code 空間では
+     *     5 = CONNECT_WIFI なので、旧挙動 (常に 5 を送る) は WM2 では versionTag ではなく
+     *     Wi-Fi 接続開始を誤発火していた。応答パースは両 profile とも payload の UTF-8 文字列で同一。
+     *     SDK の unlogined ガード (kt:424-426) は request() の notLoggedIn reject で等価に担保される。
+     * @experimental wm2 profile の versionTag(127) 経路は SDK Kotlin の静的読みからの移植で
+     *   実機未検証 (参照: CHWifiModule2Device.kt:423-435,540)。
      * @param {{timeoutMs?:number}} [opts]
      * @returns {Promise<string>} versionTag 文字列
      */
@@ -305,68 +284,6 @@ export class SesameBleSession {
         resultCode: number;
         payload: Buffer;
     }>;
-    /**
-     * 1 セグメントを transport へ書く。write が (リトライ尽きて) reject したときの後始末は
-     * transport→onDisconnect→_handleTransportDisconnect が pending を fail-fast する経路で行うので、
-     * ここでは未処理 Promise 拒否 (unhandledRejection) を避けるためだけに握りつぶす
-     * (元から fire-and-forget。送信失敗は応答 timeout / 切断通知のどちらかで必ず表面化する)。
-     * @param {Buffer} seg
-     */
-    _writeSeg(seg: Buffer): void;
-    /** 暗号化なしで item+data を送る (login 等のハンドシェイク用低レベル)。 @param {Buffer} frame */
-    _sendPlain(frame: Buffer): void;
-    /** CCM 暗号化して送る (encCount++)。 @param {Buffer} frame */
-    _sendCipher(frame: Buffer): void;
-    /**
-     * @param {number} itemCode
-     * @param {{resolve:(v:{resultCode:number, payload:Buffer})=>void, reject:(e:Error)=>void, timer:any}} entry
-     */
-    _dequeue(itemCode: number, entry: {
-        resolve: (v: {
-            resultCode: number;
-            payload: Buffer;
-        }) => void;
-        reject: (e: Error) => void;
-        timer: any;
-    }): void;
-    /** @param {Buffer} packet */
-    _onPacket(packet: Buffer): void;
-    /** @param {Buffer} token */
-    _handleInitial(token: Buffer): void;
-    /**
-     * サーバ認証 login の非同期本体。signLogin(tokenHex) でサーバ署名済み session token (hex) を
-     * 取得し、それを session 鍵 (16B) として平文 login を送る (CHSesameOS3.kt:474-484)。
-     * signLogin が投げた場合は login 待機者を reject (connect() の await が解放される)。
-     */
-    _loginViaServer(): Promise<void>;
-    /** @param {number} resultCode @param {Buffer} payload */
-    _handleRegistrationResponse(resultCode: number, payload: Buffer): void;
-    /**
-     * REGISTRATION 応答 payload から device の生公開鍵 64B を取り出す (機種で構造が異なるため
-     * 応答長で分岐)。SS5 形 (77B) のときは先頭 13B の mechStatus(7B)/mechSetting(6B) を parse して
-     * キャッシュ (_lastStatus/_lastMechSetting) に載せてから末尾 64B を返す。
-     *
-     *   - 64B → payload 全体が device pubkey (Hub3 等。CHHub3Device.kt:197)。
-     *   - 77B → payload[0..6]=mechStatus, [7..12]=mechSetting, [13..76]=devicePubKey
-     *           (CHSesame5Device.kt:200-202 handleRegisterResponse と 1:1)。
-     *
-     * 注: SS5 形の 13B 先頭 parse・mechStatus/mechSetting 同梱は SDK の Kotlin を移植したもので、
-     *   実機 SESAME 5 応答での検証は未了 (README の Known limitations と整合)。
-     * @param {Buffer} payload REGISTRATION 応答 payload
-     * @returns {Buffer} device の生公開鍵 64B (X‖Y)
-     */
-    _extractRegisterDevicePubK(payload: Buffer): Buffer;
-    /** @param {number} resultCode @param {Buffer} payload */
-    _handleLoginResponse(resultCode: number, payload: Buffer): void;
-    /**
-     * login 直後の時刻同期。デバイス時刻と端末時刻の差が >3 秒なら time(8) を暗号化送出する。
-     * SDK の handleLoginResponse (CHSesameOS3LockBase.kt:126-138) と同じ判定・送出。
-     * time(8) は応答を待たず投げっぱなし (fire-and-forget)。エラーは握りつぶす (login を妨げない)。
-     * @param {Buffer} payload login response の payload (resultCode を除いた本体)
-     */
-    _maybeSyncTime(payload: Buffer): void;
-    /** @param {number} itemCode @param {number} resultCode @param {Buffer} payload */
-    _resolvePending(itemCode: number, resultCode: number, payload: Buffer): void;
 }
 /**
  * BLE 無線 I/O アダプタ (transport.js のアダプタが満たす契約)。

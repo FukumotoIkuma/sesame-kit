@@ -17,25 +17,16 @@
 //   - 同 (action, op) の並行 request を FIFO で正しく解決
 //     (biz3 の useCallbacks は同一 op の全 callback に同じ response を流すバグがあるが、
 //      こちらは FIFO で意味的に正しい)
+//   - 再接続 queue は同一 action のメッセージを 1 通に圧縮**しない** (意図的逸脱:
+//     WebSocketManager.ts:373-381 は queue 内の同一 action を上書きするが、action は
+//     同じでも op/payload が異なる request を握り潰すため、こちらは全件保持し
+//     QUEUE_ENTRY_MAX_AGE_MS の鮮度切りだけ行う)
 
-// `ws` は型定義 (@types/ws) を同梱せず、本リポジトリにも追加していないため
-// implicit any になる。ランタイム挙動には影響しないので import だけ抑制し、
-// 実際に使う socket メソッドは下の WsLike typedef で型付けする。
-// @ts-expect-error -- ws ships no type declarations and @types/ws is not installed
+// 型は devDependencies の @types/ws が提供する (REFACTORING_PLAN P5-7/ARCH-15:
+// 旧 @ts-expect-error + 自前 WsLike 最小 typedef を正式型へ置き換え)。
 import WebSocket from "ws";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
 import { t } from "./i18n.js";
-
-/**
- * transport が利用する WebSocket socket の最小インターフェース。
- * `ws` の WebSocket インスタンスがこれを満たす (型定義非同梱のため自前定義)。
- * @typedef {object} WsLike
- * @property {(data: string) => void} send
- * @property {() => void} close
- * @property {(event?: string) => void} removeAllListeners
- * @property {(event: string, listener: (...args: any[]) => void) => void} on
- * @property {(event: string, listener: (...args: any[]) => void) => void} once
- */
 
 /**
  * WS 接続状態。
@@ -100,6 +91,32 @@ function asErrMsg(e) {
   return m.replace(/\n|\r/g, "");
 }
 
+// debug ログに乗せる payload から資格情報フィールドを伏せる (debug 限定だが、apiKeyId /
+// token / 鍵素材が平文でログに残らないようにする — clear-text-logging 対策)。
+const SENSITIVE_LOG_KEYS = new Set([
+  "apiKeyId", "token", "idToken", "accessToken", "refreshToken",
+  "secretKey", "sk", "password", "devicePassword", "sign", "history", "secret",
+]);
+
+/**
+ * payload を JSON 文字列化する際に資格情報フィールドを "***" に伏せ、CR/LF も除去する。
+ * @param {unknown} payload
+ * @returns {string}
+ */
+function redactPayloadForLog(payload) {
+  try {
+    // 走査と直列化を JSON.stringify に委ね、replacer は「値を返すだけ」にする。
+    // 手書き再帰で out[k]=… と動的キー代入すると、payload 由来のキー (__proto__ 等) で
+    // out の prototype を汚染し得る (remote-property-injection)。replacer 方式なら
+    // 動的書き込みのシンク自体が無く、伏字も同時に行える。
+    return JSON.stringify(payload, (key, value) =>
+      (SENSITIVE_LOG_KEYS.has(key) ? "***" : value),
+    ).replace(/\n|\r/g, "");
+  } catch {
+    return "[unserializable payload]"; // 循環参照等
+  }
+}
+
 /**
  * Hub3WsClient のコンストラクタ設定。
  * @typedef {object} Hub3WsClientConfig
@@ -130,7 +147,7 @@ export class Hub3WsClient {
     this.onReopen = cfg.onReopen || null;
     this._everConnected = false;
 
-    /** @type {WsLike | null} */
+    /** @type {WebSocket | null} */
     this.ws = null;
     /** @type {WsStatus} */
     this.status = STATUS.DISCONNECTED;
@@ -338,7 +355,6 @@ export class Hub3WsClient {
       this.ws = null;
     }
 
-    /** @type {WsLike} */
     const ws = new WebSocket(url);
     this.ws = ws;
 
@@ -431,7 +447,7 @@ export class Hub3WsClient {
     if (this.ws && this.status === STATUS.CONNECTING) return;
 
     const delay = Math.min(
-      MIN_RECONNECT_DELAY_MS * Math.pow(RECONNECT_BACKOFF_BASE, this.retryCount),
+      MIN_RECONNECT_DELAY_MS * RECONNECT_BACKOFF_BASE ** this.retryCount,
       MAX_RECONNECT_DELAY_MS,
     );
     this.log(`reconnect scheduled (attempt ${this.retryCount + 1}, delay=${Math.floor(delay)}ms)`);
@@ -495,7 +511,7 @@ export class Hub3WsClient {
       this.log("non-JSON message:", text.slice(0, 200).replace(/\n|\r/g, ""));
       return;
     }
-    this.log("recv:", (text.length > 200 ? text.slice(0, 200) + "..." : text).replace(/\n|\r/g, ""));
+    this.log("recv:", redactPayloadForLog(msg).slice(0, 200)); // サーバ応答も資格情報を伏せる
     this.lastActiveTime = Date.now();
 
     // keepalive ack: success フィールド有無問わず pong timer をクリア (Review H-1:
@@ -564,7 +580,7 @@ export class Hub3WsClient {
   /** @param {WsFrame} payload */
   _sendOrQueue(payload) {
     if (this.ws && this.status === STATUS.OPEN) {
-      this.log("send:", JSON.stringify(payload).replace(/\n|\r/g, "")); // payload は呼び出し側入力
+      this.log("send:", redactPayloadForLog(payload)); // payload は呼び出し側入力 (資格情報は伏せる)
       try {
         this.ws.send(JSON.stringify(payload));
       } catch (e) {
@@ -572,7 +588,7 @@ export class Hub3WsClient {
         this.messageQueue.push({ payload, enqueuedAt: Date.now() });
       }
     } else {
-      this.log("queued (not open):", JSON.stringify(payload).replace(/\n|\r/g, ""));
+      this.log("queued (not open):", redactPayloadForLog(payload));
       this.messageQueue.push({ payload, enqueuedAt: Date.now() });
     }
   }
@@ -591,7 +607,7 @@ export class Hub3WsClient {
       const entry = this.messageQueue.shift();
       if (!entry) break;
       try {
-        this.log("flush:", JSON.stringify(entry.payload).replace(/\n|\r/g, ""));
+        this.log("flush:", redactPayloadForLog(entry.payload));
         this.ws.send(JSON.stringify(entry.payload));
       } catch (e) {
         this.log("flush failed, re-queueing:", asErrMsg(e));
@@ -627,7 +643,7 @@ export class Hub3WsClient {
     try {
       // ws が null の場合は元実装同様に TypeError を発生させ、下の catch で握って return する
       // (heartbeat を送れない接続では pongTimer を張らない、という挙動を保つ)。
-      const ws = /** @type {WsLike} */ (this.ws);
+      const ws = /** @type {WebSocket} */ (this.ws);
       ws.send(JSON.stringify({ action: KEEPALIVE_ACTION }));
     } catch (e) {
       this.log("keepalive send err:", asErrMsg(e));

@@ -23,6 +23,9 @@
 
 import { Buffer } from "node:buffer";
 import { ITEM_CODES, STP_ITEM_CODES } from "../itemcodes.js";
+import { capabilitiesForModel } from "./devicemodel.js";
+// hex 変換の検証は crypto.js の hexToBuf/bufToHex に一本化 (REFACTORING_PLAN P5-4 / ARCH-08)。
+import { hexToBuf, bufToHex } from "../crypto.js";
 
 const ITEM = ITEM_CODES;
 const STP_ITEM = STP_ITEM_CODES;
@@ -40,14 +43,17 @@ const TYPE_CLOUD_BASE = 0x00;      // CARD_TYPE_CLOUD_BASE / KB_TYPE_CLOUD
 
 /**
  * hex 文字列 → Buffer (奇数長 / 非 hex は throw)。SDK hexStringToByteArray 相当。
+ * 検証ロジックは crypto.js:hexToBuf に委譲し、エラー文言だけ従来の biometric 形式を維持
+ * (挙動互換, P5-4)。
  * @param {string} hex
  * @returns {Buffer}
  */
 function hexToBytes(hex) {
-  if (typeof hex !== "string" || hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) {
+  try {
+    return hexToBuf(/** @type {string} */ (hex));
+  } catch {
     throw new Error(`biometric: invalid hex string: ${hex}`);
   }
-  return Buffer.from(hex, "hex");
 }
 
 /** UUID 文字列/hex 文字列からハイフンを除去した 16B UUID を得る。
@@ -63,12 +69,12 @@ function uuidToBytes(id) {
 }
 
 /**
- * Buffer → hex 文字列 (小文字)。SDK toHexString 相当。
+ * Buffer → hex 文字列 (小文字)。SDK toHexString 相当。crypto.js:bufToHex の薄い別名 (P5-4)。
  * @param {Buffer|Uint8Array} buf
  * @returns {string}
  */
 function bytesToHex(buf) {
-  return Buffer.from(buf).toString("hex");
+  return bufToHex(buf);
 }
 
 /**
@@ -649,6 +655,14 @@ export function batchAddPacket(data, dataIndex) {
  * @param {BiometricPublishPacket} pkt    publish パケット (session.onPublish の引数)
  * @param {BiometricDelegate} delegate  下記コールバックの一部または全部を持つオブジェクト
  * @param {unknown} [device]     コールバックへ素通しする識別子 (省略可)
+ * @param {{isRemote?:(boolean|null), isOpenSensor?:boolean}} [opts] 機種文脈 (P3-15 の model 伝搬):
+ *   - isRemote: Remote/Remote Nano 系か。SDK は TRIGGER_DELAYTIME(191) publish を
+ *     device.isRemote() のときだけ delegate へ流す (CHRemoteNanoEventHandler.kt:15-21。BLEP-09)。
+ *     false を渡すと 191 は「処理済み・dispatch 無し」(SDK の handled=true と同義)。
+ *     省略 (null) 時は機種不明として従来どおり dispatch する (後方互換。ファサード経由では
+ *     BiometricCommands が model から確定値を渡す)。
+ *   - isOpenSensor: OpenSensor 系か。PUB_KEY_SESAME(102) の空きスロット判定が >1 になる
+ *     (CHSesameBiometricDeviceImpl.kt:225-231。BLEP-11)。既定 false。
  * @returns {boolean} 生体 capability として処理したら true
  *
  * delegate コールバック (SDK CH*Delegate.kt 1:1):
@@ -663,13 +677,12 @@ export function batchAddPacket(data, dataIndex) {
  *                  (CHSesameBiometricDeviceImpl.kt:214-217 handleMechStatus + CHDeviceStatusDelegate.onMechStatus)
  *   pubKey:      onSesameKeysReceived({keys,slotFull,emptySlotCount})
  *                  (kt:219-255 handlePubKeySesame + ObservableMutableMap.setSlotFull)。
- *                  ※ slotFull は既定 (非 OpenSensor) 判定。OpenSensor 判定が要る場合は
- *                    呼び出し側で parsePubKeySesame(payload,{isOpenSensor:true}) を直接使う。
+ *                  ※ slotFull の OpenSensor 判定 (>1) は opts.isOpenSensor で切り替わる (BLEP-11)。
  *   battery:     onBatteryVoltageReceived(payloadHex)  (kt:185-187 reportBatteryData(payload.toHexString()))
  *   support:     onSupportChanged(false)               (kt:189-192 setSupport(false))
  *   bleTxPower:  onBleTxPowerReceive(txPower)           (kt:194-197 bleTxPower=payload[0]、符号付き 1B)
  */
-export function handleBiometricPublish(pkt, delegate, device) {
+export function handleBiometricPublish(pkt, delegate, device, { isRemote = null, isOpenSensor = false } = {}) {
   if (!pkt || !delegate) return false;
   const { itemCode } = pkt;
   const payload = Buffer.from(pkt.body ?? pkt.payload ?? Buffer.alloc(0));
@@ -805,9 +818,12 @@ export function handleBiometricPublish(pkt, delegate, device) {
     // ---- remoteNano (trigger delay) ----
     case ITEM.REMOTE_NANO_PUB_TRIGGER_DELAYTIME: {
       // CHRemoteNanoEventHandler.kt:15-21: payload を CHRemoteNanoTriggerSettings.fromData で
-      // parse し onTriggerDelaySecondReceived へ。SDK は device.isRemote() ガードを掛けるが、
-      // kit は device 文脈を持たない (呼び出し側が device トークンを渡すだけ) ため、ここでは
-      // itemCode 一致で常に dispatch する (機種判定はファサード/呼び出し側の責務)。
+      // parse し、**device.isRemote() のときだけ** onTriggerDelaySecondReceived へ流す
+      // (isRemote() は remote と remote_nano の両機種で真 — どちらも BiometricDeviceType.REMOTE
+      // で生成される。CHDeivceProtocols.kt:112,118)。handled は機種に関わらず true (kt:21)。
+      // opts.isRemote === false (= 機種確定で非 Remote) なら dispatch を黙殺する (BLEP-09)。
+      // 機種不明 (null) は従来互換で dispatch する (ファサードは model から確定値を渡す)。
+      if (isRemote === false) return true;
       const setting = parseRemoteNanoTrigger(payload);
       call(delegate.onTriggerDelaySecondReceived, setting);
       return true;
@@ -830,9 +846,10 @@ export function handleBiometricPublish(pkt, delegate, device) {
     // ---- 子鍵束 (HUB3/WM2 が保持する子 Sesame 鍵の push) ----
     case ITEM.PUB_KEY_SESAME:
       // CHSesameBiometricDeviceImpl.kt:171-174,219-255 handlePubKeySesame。
-      // slotFull は既定 (非 OpenSensor) 判定。OpenSensor 機の正確な判定は呼び出し側が
-      // parsePubKeySesame(payload,{isOpenSensor:true}) を直接呼ぶこと (delegate は model 文脈を持たない)。
-      call(delegate.onSesameKeysReceived, parsePubKeySesame(payload));
+      // 空きスロット判定は opts.isOpenSensor で確定する (OpenSensor/OpenSensor2 は hub3 用に
+      // 1 スロット予約するため「全ゼロチャンク >1」で空きあり。kt:225-231。BLEP-11)。
+      // ファサード経由では BiometricCommands が model から確定値を渡す。既定 false (非 OpenSensor)。
+      call(delegate.onSesameKeysReceived, parsePubKeySesame(payload, { isOpenSensor }));
       return true;
 
     // ---- 電池電圧 publish ----
@@ -879,12 +896,25 @@ export class BiometricCommands {
   /**
    * @param {BiometricSession} session SesameBleSession 互換 (request(itemCode,data)→Promise<{resultCode,payload}> と
    *                         onPublish(fn)→unsubscribe を持つこと)。
+   * @param {{model?:(string|null)}} [opts] model: デバイス model 文字列 (例 "remote_nano")。
+   *   渡すと publish ディスパッチに機種文脈が伝搬する (P3-15 の model 伝搬):
+   *     - isRemote: TRIGGER_DELAYTIME(191) を remote/remote_nano 以外で黙殺 (BLEP-09、
+   *       CHRemoteNanoEventHandler.kt:15-21)
+   *     - isOpenSensor: PUB_KEY_SESAME の空きスロット判定を >1 に (BLEP-11、
+   *       CHSesameBiometricDeviceImpl.kt:225-231)
+   *   省略時は機種不明として従来挙動 (191 dispatch あり / 非 OpenSensor 判定)。
    */
-  constructor(session) {
+  constructor(session, { model = null } = {}) {
     if (!session || typeof session.request !== "function") {
       throw new Error("biometric: session with request() is required");
     }
     this._session = session;
+    this._model = model;
+    const caps = model ? capabilitiesForModel(model) : null;
+    /** @type {boolean|null} 機種不明 (model 省略) は null = 従来互換で dispatch。 */
+    this._isRemote = caps ? caps.isRemote : null;
+    /** @type {boolean} */
+    this._isOpenSensor = caps ? caps.isOpenSensor : false;
   }
 
   /**
@@ -896,23 +926,29 @@ export class BiometricCommands {
   _req(itemCode, data) { return this._session.request(itemCode, data); }
 
   // ---- card ----
+  // 送信系 (ModeSet/Get 以外) は request の ack ({resultCode,payload}) を **そのまま返す**。
+  // これにより SURF-08 の `ble.biometric.<op>` 生成ハンドラが bleCommandAck(r) で
+  // {resultCode,resultName} を組める (旧実装は await で ack を捨てていたため "ack" 契約に乗らず、
+  // 生成ハンドラが undefined.resultCode で落ちていた)。ModeGet 系は parse 結果 (raw) を返す。
   /**
    * 登録モード設定。応答後にデバイスが CARD_FIRST/NOTIFY/LAST を push する。
    * @param {number} mode
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
    */
-  async cardModeSet(mode) { await this._req(ITEM.CARD_MODE_SET, cardModeSetData(mode)); }
+  cardModeSet(mode) { return this._req(ITEM.CARD_MODE_SET, cardModeSetData(mode)); }
   async cardModeGet() { const r = await this._req(ITEM.CARD_MODE_GET, cardModeGetData()); return r.payload[0]; }
-  async cardGet() { await this._req(ITEM.CARD_GET, cardGetData()); }
-  /** @param {Buffer} id @param {string} hexName */
-  async cardAdd(id, hexName) { await this._req(ITEM.CARD_ADD, cardAddData(id, hexName)); }
-  /** @param {string} cardID */
-  async cardDelete(cardID) { await this._req(ITEM.CARD_DELETE, cardDeleteData(cardID)); }
-  /** @param {string} cardId @param {string} touchProUUID */
-  async cardMove(cardId, touchProUUID) { await this._req(ITEM.CARD_MOVE, cardMoveData(cardId, touchProUUID)); }
-  /** @param {string} ID @param {string} hexName */
-  async cardChange(ID, hexName) { await this._req(ITEM.CARD_CHANGE, cardChangeData(ID, hexName)); }
-  /** @param {string} ID @param {string} newID */
-  async cardChangeValue(ID, newID) { await this._req(ITEM.CARD_CHANGE_VALUE, cardChangeValueData(ID, newID)); }
+  /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  cardGet() { return this._req(ITEM.CARD_GET, cardGetData()); }
+  /** @param {Buffer} id @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  cardAdd(id, hexName) { return this._req(ITEM.CARD_ADD, cardAddData(id, hexName)); }
+  /** @param {string} cardID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  cardDelete(cardID) { return this._req(ITEM.CARD_DELETE, cardDeleteData(cardID)); }
+  /** @param {string} cardId @param {string} touchProUUID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  cardMove(cardId, touchProUUID) { return this._req(ITEM.CARD_MOVE, cardMoveData(cardId, touchProUUID)); }
+  /** @param {string} ID @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  cardChange(ID, hexName) { return this._req(ITEM.CARD_CHANGE, cardChangeData(ID, hexName)); }
+  /** @param {string} ID @param {string} newID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  cardChangeValue(ID, newID) { return this._req(ITEM.CARD_CHANGE_VALUE, cardChangeValueData(ID, newID)); }
   /**
    * card の一括登録 (STP 分割転送)。STP_ITEM_CODE_CARDS_ADD で送る。
    * @param {Buffer} id @param {(current:number,total:number)=>void} [progress]
@@ -920,28 +956,30 @@ export class BiometricCommands {
   cardBatchAdd(id, progress) { return this._batchAdd(STP_ITEM.STP_ITEM_CODE_CARDS_ADD, Buffer.from(id), progress); }
 
   // ---- fingerPrint ----
-  /** @param {number} mode */
-  async fingerPrintModeSet(mode) { await this._req(ITEM.FINGERPRINT_MODE_SET, fingerPrintModeSetData(mode)); }
+  /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  fingerPrintModeSet(mode) { return this._req(ITEM.FINGERPRINT_MODE_SET, fingerPrintModeSetData(mode)); }
   async fingerPrintModeGet() { const r = await this._req(ITEM.FINGERPRINT_MODE_GET, fingerPrintModeGetData()); return r.payload[0]; }
-  async fingerPrints() { await this._req(ITEM.FINGERPRINT_GET, fingerPrintGetData()); }
-  /** @param {string} fingerPrintID */
-  async fingerPrintDelete(fingerPrintID) { await this._req(ITEM.FINGERPRINT_DELETE, fingerPrintDeleteData(fingerPrintID)); }
-  /** @param {string} ID @param {string} hexName */
-  async fingerPrintChange(ID, hexName) { await this._req(ITEM.FINGERPRINT_CHANGE, fingerPrintChangeData(ID, hexName)); }
+  /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  fingerPrints() { return this._req(ITEM.FINGERPRINT_GET, fingerPrintGetData()); }
+  /** @param {string} fingerPrintID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  fingerPrintDelete(fingerPrintID) { return this._req(ITEM.FINGERPRINT_DELETE, fingerPrintDeleteData(fingerPrintID)); }
+  /** @param {string} ID @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  fingerPrintChange(ID, hexName) { return this._req(ITEM.FINGERPRINT_CHANGE, fingerPrintChangeData(ID, hexName)); }
 
   // ---- passcode ----
-  /** @param {number} mode */
-  async passcodeModeSet(mode) { await this._req(ITEM.PASSCODE_MODE_SET, passcodeModeSetData(mode)); }
+  /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  passcodeModeSet(mode) { return this._req(ITEM.PASSCODE_MODE_SET, passcodeModeSetData(mode)); }
   async passcodeModeGet() { const r = await this._req(ITEM.PASSCODE_MODE_GET, passcodeModeGetData()); return r.payload[0]; }
-  async passcodeGet() { await this._req(ITEM.PASSCODE_GET, passcodeGetData()); }
-  /** @param {Buffer} id @param {string} hexName */
-  async passcodeAdd(id, hexName) { await this._req(ITEM.PASSCODE_ADD, passcodeAddData(id, hexName)); }
-  /** @param {string} keyBoardPassCodeID */
-  async passcodeDelete(keyBoardPassCodeID) { await this._req(ITEM.PASSCODE_DELETE, passcodeDeleteData(keyBoardPassCodeID)); }
-  /** @param {string} cardId @param {string} touchProUUID */
-  async passcodeMove(cardId, touchProUUID) { await this._req(ITEM.PASSCODE_MOVE, passcodeMoveData(cardId, touchProUUID)); }
-  /** @param {string} ID @param {string} hexName */
-  async passcodeChange(ID, hexName) { await this._req(ITEM.PASSCODE_CHANGE, passcodeChangeData(ID, hexName)); }
+  /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  passcodeGet() { return this._req(ITEM.PASSCODE_GET, passcodeGetData()); }
+  /** @param {Buffer} id @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  passcodeAdd(id, hexName) { return this._req(ITEM.PASSCODE_ADD, passcodeAddData(id, hexName)); }
+  /** @param {string} keyBoardPassCodeID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  passcodeDelete(keyBoardPassCodeID) { return this._req(ITEM.PASSCODE_DELETE, passcodeDeleteData(keyBoardPassCodeID)); }
+  /** @param {string} cardId @param {string} touchProUUID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  passcodeMove(cardId, touchProUUID) { return this._req(ITEM.PASSCODE_MOVE, passcodeMoveData(cardId, touchProUUID)); }
+  /** @param {string} ID @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  passcodeChange(ID, hexName) { return this._req(ITEM.PASSCODE_CHANGE, passcodeChangeData(ID, hexName)); }
   /**
    * passcode の一括登録 (STP 分割転送)。STP_ITEM_CODE_PASSCODES_ADD で送る。
    * @param {Buffer} data @param {(current:number,total:number)=>void} [progress]
@@ -949,30 +987,32 @@ export class BiometricCommands {
   passcodeBatchAdd(data, progress) { return this._batchAdd(STP_ITEM.STP_ITEM_CODE_PASSCODES_ADD, Buffer.from(data), progress); }
 
   // ---- face ----
-  /** @param {number} mode */
-  async faceModeSet(mode) { await this._req(ITEM.FACE_MODE_SET, faceModeSetData(mode)); }
+  /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  faceModeSet(mode) { return this._req(ITEM.FACE_MODE_SET, faceModeSetData(mode)); }
   async faceModeGet() {
     const r = await this._req(ITEM.FACE_MODE_GET, faceModeGetData());
     if (!r.payload || r.payload.length === 0) throw new Error(`biometric: faceModeGet data error: ${bytesToHex(r.payload ?? Buffer.alloc(0))}`);
     return r.payload[0];
   }
-  async faceListGet() { await this._req(ITEM.FACE_GET, faceGetData()); }
-  /** @param {string} ID @param {string} name */
-  async faceChange(ID, name) { await this._req(ITEM.FACE_CHANGE, faceChangeData(ID, name)); }
-  /** @param {string} faceID */
-  async faceDelete(faceID) { await this._req(ITEM.FACE_DELETE, faceDeleteData(faceID)); }
+  /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  faceListGet() { return this._req(ITEM.FACE_GET, faceGetData()); }
+  /** @param {string} ID @param {string} name @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  faceChange(ID, name) { return this._req(ITEM.FACE_CHANGE, faceChangeData(ID, name)); }
+  /** @param {string} faceID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  faceDelete(faceID) { return this._req(ITEM.FACE_DELETE, faceDeleteData(faceID)); }
 
   // ---- palm ----
-  /** @param {number} mode */
-  async palmModeSet(mode) { await this._req(ITEM.PALM_MODE_SET, palmModeSetData(mode)); }
+  /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  palmModeSet(mode) { return this._req(ITEM.PALM_MODE_SET, palmModeSetData(mode)); }
   async palmModeGet() {
     const r = await this._req(ITEM.PALM_MODE_GET, palmModeGetData());
     if (!r.payload || r.payload.length === 0) throw new Error(`biometric: palmModeGet data error: ${bytesToHex(r.payload ?? Buffer.alloc(0))}`);
     return r.payload[0];
   }
-  async palmListGet() { await this._req(ITEM.PALM_GET, palmGetData()); }
-  /** @param {string} palmID */
-  async palmDelete(palmID) { await this._req(ITEM.PALM_DELETE, palmDeleteData(palmID)); }
+  /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  palmListGet() { return this._req(ITEM.PALM_GET, palmGetData()); }
+  /** @param {string} palmID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+  palmDelete(palmID) { return this._req(ITEM.PALM_DELETE, palmDeleteData(palmID)); }
 
   // ---- remoteNano (trigger delay) ----
   /**
@@ -980,8 +1020,11 @@ export class BiometricCommands {
    * itemCode 190 + [time(UByte 1B)]。応答後にデバイスが TRIGGER_DELAYTIME(191) を push しうる
    * (publish は registerDelegate の onTriggerDelaySecondReceived で受ける)。
    * @param {number} time 0..255 (秒)
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
    */
-  async setTriggerDelay(time) { await this._req(ITEM.REMOTE_NANO_SET_TRIGGER_DELAYTIME, remoteNanoTriggerDelayData(time)); }
+  // async を保つことで UByte 範囲外の検証エラーを **同期 throw でなく rejected promise** にする
+  // (呼び出し側の await ... .rejects 契約を維持。本体は ack をそのまま返し "ack" 契約に乗る)。
+  async setTriggerDelay(time) { return this._req(ITEM.REMOTE_NANO_SET_TRIGGER_DELAYTIME, remoteNanoTriggerDelayData(time)); }
 
   // ---- face radar sensitivity ----
   /**
@@ -989,8 +1032,9 @@ export class BiometricCommands {
    * itemCode 200 + payload を無加工で送る。payload 構造は SDK 側でも不透明 (生バイト)。
    * 受信 (RADAR_PARAM_PUBLISH=201) は registerDelegate の onRadarReceive で生 payload を受ける。
    * @param {Buffer} payload レーダーパラメータの生バイト列
+   * @returns {Promise<{resultCode:number, payload:Buffer}>}
    */
-  async setRadarSensitivity(payload) { await this._req(ITEM.SSM_OS3_RADAR_PARAM_SET, radarSensitivityData(payload)); }
+  setRadarSensitivity(payload) { return this._req(ITEM.SSM_OS3_RADAR_PARAM_SET, radarSensitivityData(payload)); }
 
   /**
    * 子 Sesame の鍵を connector デバイスへ追加する (CHDeviceConnectCapableImpl.insertSesame と 1:1)。
@@ -1040,13 +1084,16 @@ export class BiometricCommands {
 
   /**
    * publish 受信を delegate に結線する (session.onPublish へ handleBiometricPublish を登録)。
+   * コンストラクタへ渡した model から確定した機種文脈 (isRemote / isOpenSensor) を
+   * handleBiometricPublish へ伝搬する (BLEP-09 / BLEP-11)。
    * @param {BiometricDelegate} delegate handleBiometricPublish の delegate
    * @param {unknown} [device] コールバックへ素通しする識別子
    * @returns {() => void} unsubscribe (session.onPublish が無ければ no-op)
    */
   registerDelegate(delegate, device) {
     if (typeof this._session.onPublish !== "function") return () => {};
-    return this._session.onPublish((/** @type {BiometricPublishPacket} */ pkt) => { handleBiometricPublish(pkt, delegate, device); });
+    const opts = { isRemote: this._isRemote, isOpenSensor: this._isOpenSensor };
+    return this._session.onPublish((/** @type {BiometricPublishPacket} */ pkt) => { handleBiometricPublish(pkt, delegate, device, opts); });
   }
 
   /**
@@ -1090,7 +1137,24 @@ export class BiometricCommands {
  * (*_LAST) で sink へ渡す delegate を生成する。戻り値は BiometricCommands.registerDelegate /
  * handleBiometricPublish にそのまま渡せる delegate オブジェクト。
  *
- * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値)。
+ * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値) に、
+ * 取れる場合は **ファームウェア採番の nameUUID** を加えた 4 値 (P3-11)。
+ *
+ * nameUUID の出典トレース:
+ *   - BLE NOTIFY/ack payload の「名前」位置 ([type 1B][idLen 1B][id idLen B][nameLen 1B][name nameLen B]、
+ *     CHSesameBiometricParseData.kt:10-17 CHSesameTouchCard) に、ファームはタップ登録時に
+ *     **自前で採番した 16B UUID** を載せる。biz3 web は同じ位置のフィールドを `nameUUID` として
+ *     読み (references_web/src/utils/biz3utils.js:365-391 parseHexStrToCardInfo: id の後の
+ *     [nameUUIDLen 1B][nameUUID 16B]。passcode は :393-420 parseHexStrToPasscodeInfo で id 枠 16B
+ *     固定の後に同形)、タップ登録の ack ではこの値を updateCardName へそのまま渡して DB と
+ *     ファームの nameUUID を一致させる (references_web/src/pages/biz/cards/index.js:104-136)。
+ *   - よって BLE 側では parseTouchCard の cardName (hex) が名前位置のフィールドであり、
+ *     それが 16B (= 32 hex) のとき「ファーム採番の nameUUID」とみなして record.nameUUID に載せる。
+ *     16B でない場合 (ユーザーが短い表示名へ rename 済み等) は省略する (取れない種別では省略可)。
+ *   - 値は parseTouchFace と同じ方針で **ハイフン無し hex (小文字)** のまま返す。web の表示は
+ *     insertUUIDIsolationCharacter (biz3utils.js:236-238) でハイフン整形しているだけで、識別子と
+ *     しての値は hex と同値 (ハイフン整形は消費側 access.js の責務)。
+ *
  * sink には kind ('card'|'passcode') と集約配列を渡すだけで、DB へどう載せるか
  * (access.toPostCardList → access.postCards 等) は呼び出し側が決める。
  *
@@ -1099,6 +1163,9 @@ export class BiometricCommands {
  * @property {string} cardID
  * @property {string} cardName
  * @property {number} cardType
+ * @property {string} [nameUUID] ファームウェア採番の nameUUID (32hex 小文字・ハイフン無し)。
+ *   NOTIFY の名前フィールドが 16B のときのみ存在 (P3-11。access.js 側が postCards/updateCardName
+ *   の同期に消費する)。
  *
  * @typedef {Object} EnrollBatch
  * @property {'card'|'passcode'} kind
@@ -1127,6 +1194,16 @@ export function createEnrollCollector({ onEnrolled, card = true, passcode = true
   const start = (kind) => { buf[kind] = []; };
   /** @param {'card'|'passcode'} kind @param {EnrollRecord} rec */
   const push = (kind, rec) => { buf[kind].push(rec); };
+  /**
+   * NOTIFY の名前フィールド (parseTouchCard の cardName, hex) からファーム採番の nameUUID を導く。
+   * 16B (= 32 hex) のときのみ nameUUID とみなす (ファームのタップ登録採番は 16B UUID 固定 —
+   * references_web/src/utils/biz3utils.js:378-385 nameUUIDLen=16 / cards/index.js:104-136)。
+   * @param {string} cardName parseTouchCard の cardName (hex)
+   * @returns {{nameUUID?: string}} 16B でなければ空オブジェクト (record へ spread して省略)
+   */
+  const nameUUIDOf = (cardName) => (
+    /^[0-9a-f]{32}$/.test(cardName) ? { nameUUID: cardName } : {}
+  );
   /** @param {'card'|'passcode'} kind */
   const end = (kind) => {
     const records = buf[kind];
@@ -1144,12 +1221,12 @@ export function createEnrollCollector({ onEnrolled, card = true, passcode = true
   const delegate = {};
   if (card) {
     delegate.onCardReceiveStart = cap(() => start("card"));
-    delegate.onCardReceive = cap((cardID, cardName, cardType) => push("card", { cardID, cardName, cardType }));
+    delegate.onCardReceive = cap((cardID, cardName, cardType) => push("card", { cardID, cardName, cardType, ...nameUUIDOf(cardName) }));
     delegate.onCardReceiveEnd = cap(() => end("card"));
   }
   if (passcode) {
     delegate.onKeyBoardReceiveStart = cap(() => start("passcode"));
-    delegate.onKeyBoardReceive = cap((cardID, cardName, cardType) => push("passcode", { cardID, cardName, cardType }));
+    delegate.onKeyBoardReceive = cap((cardID, cardName, cardType) => push("passcode", { cardID, cardName, cardType, ...nameUUIDOf(cardName) }));
     delegate.onKeyBoardReceiveEnd = cap(() => end("passcode"));
   }
   return delegate;
@@ -1165,3 +1242,118 @@ function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 // STP コードは itemcodes.js の STP_ITEM_CODES へ昇格済み。後方互換のため本モジュールからも
 // STP_ITEM 名で再公開する (中身は同一オブジェクト)。
 export { STP_ITEM_CODES as STP_ITEM };
+
+// =====================================================================
+//  SURF-08 段階3: RPC 公開仕様 (biometric / fingerPrint / remoteNano サブファサード)
+//
+//  registry がこれらを読み `ble.biometric.<op>` / `ble.fingerPrint.<op>` /
+//  `ble.remoteNano.<op>` を型付き RPC/SDK メソッドへ自動展開する (bot2.js SCRIPT_RPC_OPS と同型)。
+//
+//  ★ params の **順序 = ファサードメソッド (上の BiometricCommands) の位置引数の順序**。
+//    順序がずれると registry が named→位置引数へ写像した際にワイヤのバイト列が壊れる (最重要)。
+//  ★ result: 送信系 (request の ack {resultCode,payload} を返すメソッド) は "ack"、
+//    ModeGet 系 (payload[0] = mode byte を返す) は "raw"。
+//  ★ op パスの第1セグメントは allowlist (BLE_RPC_ALLOWLIST: "biometric"/"fingerPrint"/
+//    "remoteNano") に掲載済み。第2セグメントは getter が返すビューのメソッド名。
+//
+//  除外したメソッド (RPC 化に不向き / 非対応):
+//    - registerDelegate / onEnroll: publish 購読のコールバック登録系。RPC では引数の関数を
+//      ワイヤに乗せられず、戻り値 unsubscribe も跨プロセスで扱えない (純ローカル)。
+//      publish 受信は registry の event/notification 経路が別途担うため op 化しない。
+//    - cardBatchAdd / passcodeBatchAdd: 第2引数が progress コールバック ((cur,total)=>void) で
+//      RPC では渡せず、本体は 4 秒 sleep を挟む長時間 STP 分割転送 (1 RPC の往復契約に乗らない)。
+//      一括登録は ble.invoke escape hatch 経由で行う。
+//    - palmChange: SDK に送信実装が無い (PALM_CHANGE は受信専用。registry.js BIO_VIEW_METHODS の
+//      注記参照) ためファサードにメソッドが存在せず op 化対象外。
+// =====================================================================
+
+/**
+ * `biometric` サブファサード (Touch / Touch Pro / Face / Palm の card/passcode/face/palm 登録 +
+ * connector 共通面) の RPC 公開仕様。
+ *
+ * 各 op の出典 (位置引数の意味・順序の裏取り):
+ *   card:     CHCardCapableImpl.kt:38-174 (cardModeGet/Set:38,49 / cardAdd:83 / cardDelete:60 /
+ *             cardMove:72 / cardChange:158 / cardChangeValue:169)
+ *   passcode: CHPassCodeCapableImpl.kt:27-130 (keyBoardPassCode* — modeGet/Set:27,33 / add:39 /
+ *             delete:113 / move:119 / change:130)
+ *   face:     CHFaceCapableImpl.kt:22-51 (faceModeSet:22 / faceModeGet:29 / faceListGet:39 /
+ *             faceChange:45 / faceDelete:51)
+ *   palm:     CHPalmCapableImpl.kt:19-42 (palmModeSet:19 / palmModeGet:26 / palmListGet:36 / palmDelete:42)
+ *   connect:  CHDeviceConnectCapableImpl.kt:23-95 (insertSesame:23 / removeSesame:52 / setRadarSensitivity:89)
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const BIOMETRIC_RPC_OPS = {
+  // ---- card (CHCardCapableImpl.kt) ----
+  "biometric.cardModeSet": { params: [{ name: "mode", type: "number", required: true, desc: "card enroll mode byte (kicks off CARD_FIRST/NOTIFY/LAST push)" }], result: "ack" },
+  "biometric.cardModeGet": { params: [], result: "raw" },
+  "biometric.cardGet": { params: [], result: "ack" },
+  "biometric.cardAdd": { params: [{ name: "id", type: "object", required: true, desc: "card UID raw bytes ({type:'Buffer',data:[]} or {$buffer})" }, { name: "hexName", type: "string", required: true, desc: "card name (UTF-8 string)" }], result: "ack" },
+  "biometric.cardDelete": { params: [{ name: "cardID", type: "string", required: true, desc: "card id (hex) to delete" }], result: "ack" },
+  "biometric.cardMove": { params: [{ name: "cardId", type: "string", required: true, desc: "card id (hex) to move" }, { name: "touchProUUID", type: "string", required: true, desc: "destination Touch Pro UUID (UTF-8)" }], result: "ack" },
+  "biometric.cardChange": { params: [{ name: "ID", type: "string", required: true, desc: "card id (hex)" }, { name: "hexName", type: "string", required: true, desc: "new name (hex, folded 2 chars/byte)" }], result: "ack" },
+  "biometric.cardChangeValue": { params: [{ name: "ID", type: "string", required: true, desc: "card id (hex)" }, { name: "newID", type: "string", required: true, desc: "new card id value (UTF-8)" }], result: "ack" },
+
+  // ---- passcode (CHPassCodeCapableImpl.kt) ----
+  "biometric.passcodeModeSet": { params: [{ name: "mode", type: "number", required: true, desc: "passcode enroll mode byte" }], result: "ack" },
+  "biometric.passcodeModeGet": { params: [], result: "raw" },
+  "biometric.passcodeGet": { params: [], result: "ack" },
+  "biometric.passcodeAdd": { params: [{ name: "id", type: "object", required: true, desc: "passcode id raw bytes ({type:'Buffer',data:[]} or {$buffer})" }, { name: "hexName", type: "string", required: true, desc: "passcode name (UTF-8 string)" }], result: "ack" },
+  "biometric.passcodeDelete": { params: [{ name: "keyBoardPassCodeID", type: "string", required: true, desc: "passcode id (hex) to delete" }], result: "ack" },
+  "biometric.passcodeMove": { params: [{ name: "cardId", type: "string", required: true, desc: "passcode id (hex) to move" }, { name: "touchProUUID", type: "string", required: true, desc: "destination Touch Pro UUID (UTF-8)" }], result: "ack" },
+  "biometric.passcodeChange": { params: [{ name: "ID", type: "string", required: true, desc: "passcode id (hex)" }, { name: "hexName", type: "string", required: true, desc: "new name (hex, folded 2 chars/byte)" }], result: "ack" },
+
+  // ---- face (CHFaceCapableImpl.kt) ----
+  "biometric.faceModeSet": { params: [{ name: "mode", type: "number", required: true, desc: "face enroll mode byte" }], result: "ack" },
+  "biometric.faceModeGet": { params: [], result: "raw" },
+  "biometric.faceListGet": { params: [], result: "ack" },
+  "biometric.faceChange": { params: [{ name: "ID", type: "string", required: true, desc: "face id (hex)" }, { name: "name", type: "string", required: true, desc: "new name (hex, folded 2 chars/byte)" }], result: "ack" },
+  "biometric.faceDelete": { params: [{ name: "faceID", type: "string", required: true, desc: "face id (hex single byte) to delete" }], result: "ack" },
+
+  // ---- palm (CHPalmCapableImpl.kt) ----
+  "biometric.palmModeSet": { params: [{ name: "mode", type: "number", required: true, desc: "palm enroll mode byte" }], result: "ack" },
+  "biometric.palmModeGet": { params: [], result: "raw" },
+  "biometric.palmListGet": { params: [], result: "ack" },
+  "biometric.palmDelete": { params: [{ name: "palmID", type: "string", required: true, desc: "palm id (hex single byte) to delete" }], result: "ack" },
+
+  // ---- connector common (CHDeviceConnectCapableImpl.kt) ----
+  "biometric.insertSesame": { params: [{ name: "sesame", type: "object", required: true, desc: "{deviceUUID, secretKey, sesame2PublicKey?} child Sesame key to add" }], result: "ack" },
+  "biometric.removeSesame": { params: [{ name: "tag", type: "string", required: true, desc: "child Sesame UUID to remove" }, { name: "opts", type: "object", required: false, desc: "{keyType?} 0x04=OS2 / 0x05=OS3 (default 0x05)" }], result: "ack" },
+  "biometric.setRadarSensitivity": { params: [{ name: "payload", type: "object", required: true, desc: "raw radar parameter bytes ({type:'Buffer',data:[]} or {$buffer})" }], result: "ack" },
+};
+
+/**
+ * `fingerPrint` サブファサード (SESAME Bike3 の指紋登録、CHFingerPrintCapable) の RPC 公開仕様。
+ * Bike3 は card/passcode/face/palm を持たず指紋のみ。registerDelegate は除外 (publish 購読の
+ * ローカルコールバック登録)。
+ *
+ * 出典: CHFingerPrintCapableImpl.kt:20-64 (fingerPrintModeGet:20 / fingerPrintModeSet:31 /
+ *   fingerPrintDelete:42 / fingerPrints:53 / fingerPrintsChange:64)。
+ * ※ ファサード公開名は `fingerPrintChange` (SDK の fingerPrintsChange に対応、index.js fingerPrint ゲッタ)。
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const FINGERPRINT_RPC_OPS = {
+  "fingerPrint.fingerPrintModeSet": { params: [{ name: "mode", type: "number", required: true, desc: "fingerprint enroll mode byte" }], result: "ack" },
+  "fingerPrint.fingerPrintModeGet": { params: [], result: "raw" },
+  "fingerPrint.fingerPrints": { params: [], result: "ack" },
+  "fingerPrint.fingerPrintDelete": { params: [{ name: "fingerPrintID", type: "string", required: true, desc: "fingerprint id (hex) to delete" }], result: "ack" },
+  "fingerPrint.fingerPrintChange": { params: [{ name: "ID", type: "string", required: true, desc: "fingerprint id (hex)" }, { name: "hexName", type: "string", required: true, desc: "new name (hex, folded 2 chars/byte)" }], result: "ack" },
+};
+
+/**
+ * `remoteNano` サブファサード (Remote / Remote Nano 専用面、connector 共通面 + trigger delay) の
+ * RPC 公開仕様。registerDelegate は除外 (publish 購読のローカルコールバック登録)。
+ *
+ * ★ 公開名 `setTriggerDelayTime` は SDK CHRemoteNanoCapable.kt:8 と 1:1 (index.js remoteNano ゲッタが
+ *   BiometricCommands.setTriggerDelay へ委譲)。読み出しコマンドは SDK に無い (現在値は
+ *   TRIGGER_DELAYTIME(191) publish が運び registerDelegate で受ける) ため getTriggerDelay 等は無い。
+ *
+ * 出典: CHRemoteNanoCapableImpl.kt:19-28 (setTriggerDelayTime) /
+ *   CHDeviceConnectCapableImpl.kt:23-95 (insertSesame:23 / removeSesame:52 / setRadarSensitivity:89)。
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const REMOTE_NANO_RPC_OPS = {
+  "remoteNano.setTriggerDelayTime": { params: [{ name: "time", type: "number", required: true, desc: "trigger delay seconds (UByte 0..255)" }], result: "ack" },
+  "remoteNano.insertSesame": { params: [{ name: "sesame", type: "object", required: true, desc: "{deviceUUID, secretKey, sesame2PublicKey?} child Sesame key to add" }], result: "ack" },
+  "remoteNano.removeSesame": { params: [{ name: "tag", type: "string", required: true, desc: "child Sesame UUID to remove" }, { name: "opts", type: "object", required: false, desc: "{keyType?} 0x04=OS2 / 0x05=OS3 (default 0x05)" }], result: "ack" },
+  "remoteNano.setRadarSensitivity": { params: [{ name: "payload", type: "object", required: true, desc: "raw radar parameter bytes ({type:'Buffer',data:[]} or {$buffer})" }], result: "ack" },
+};

@@ -1,39 +1,30 @@
 // Cognito 認証。
 //
-// Ported from biz3 (CANDY-HOUSE/biz3, MIT):
-//   - vendor reference: references_web/src/api/useAuthState.js (AWS Amplify Auth.signIn / Auth.signUp ベース)
-//   - vendor reference: references_web/src/aws-exports.js (region / UserPool / Client ID)
+// 規範 (REFACTORING_PLAN.md §0.1): ログイン/トークン管理は Android アプリ
+// (AWSMobileClient 2.77.0 + CUSTOM_AUTH) のトレースとする。web (useAuthState.js) は使用禁止。
+//   - 一次参照: AWSMobileClient 2.77.0 の CognitoUser.java / ChallengeContinuation.java /
+//     CognitoIdentityProviderClientConfig.java (/tmp/aws-sdk-android/ に取得済み)
+//   - アプリ側: _sesame_sdk_ref/app/.../account/LoginMailFG.kt (signUp 先行 + "dummypwk")
 //
-// Amplify はブラウザ前提 (localStorage / IndexedDB) のため Node では使えず、
-// @aws-sdk/client-cognito-identity-provider 直叩きに置換している。
-// 振る舞いは biz3 と同じ:
+// AWS Mobile SDK は Android 前提のため Node では使えず、Cognito API を素 fetch
+// (src/cognito-http.js, AWS JSON 1.1) で直叩きする。
+// 振る舞いはアプリと同じ:
 //   - User Pool: ap-northeast-1_bY2byhlCa (biz / consumer 共有)
-//   - CUSTOM_AUTH passwordless: USERNAME → CUSTOM_CHALLENGE (email にコード) → コード回答
-//   - 新規ユーザーは dummy password "Aa123456" で SignUp してから sign-in (useAuthState.js:109-122)
-//
-// biz3 との機能的相違:
-//   1. Client ID を biz3 の `21u50hboia4s5q0sbk6pbdfmss` から、公式
-//      iOS/Android/chat.candyhouse.co と同じ Consumer Client
-//      `6ialca0p8u0lsgvbmvsljfm305` に差し替え (アプリと同じトークン寿命)。
-//   2. ログイン後に ConfirmDevice でデバイスを確定する (loginVerify / confirmDevice)。
-//      デバイストラッキング有効 Pool では、これを省くと未確認の DEVICE_KEY で
-//      REFRESH_TOKEN_AUTH が `Invalid Refresh Token` になり、idToken 失効後の初回
-//      refresh で必ず落ちる。公式アプリ (Amplify) は自動で ConfirmDevice している。
+//   - signUp 先行 (UsernameExistsException 容認) → CUSTOM_AUTH passwordless:
+//     USERNAME → CUSTOM_CHALLENGE (email にコード) → コード回答 (LoginMailFG.kt:106-127)
+//   - ログイン後に ConfirmDevice でデバイスを確定する (loginVerify / confirmDevice)。
+//     デバイストラッキング有効 Pool では、これを省くと未確認の DEVICE_KEY で
+//     REFRESH_TOKEN_AUTH が `Invalid Refresh Token` になり、idToken 失効後の初回
+//     refresh で必ず落ちる。AWSMobileClient は handleChallenge 内で自動 ConfirmDevice
+//     している (CognitoUser.java:3130-3140)。
+//   - Client ID は公式 iOS/Android/chat.candyhouse.co と同じ Consumer Client
+//     `6ialca0p8u0lsgvbmvsljfm305` (アプリと同じトークン寿命)。
 //
 // 状態は TokenStore (load/save/clear + loadPending/savePending/clearPending) に永続化を委譲。
 // CLI からは FileTokenStore、ライブラリ消費者は独自実装を渡せる。
 
-import {
-  CognitoIdentityProviderClient,
-  ConfirmDeviceCommand,
-  ForgetDeviceCommand,
-  InitiateAuthCommand,
-  RespondToAuthChallengeCommand,
-  RevokeTokenCommand,
-  SignUpCommand,
-  UpdateDeviceStatusCommand,
-} from "@aws-sdk/client-cognito-identity-provider";
 import { hostname } from "node:os";
+import { cognitoCall } from "./cognito-http.js";
 import {
   cognitoTimestamp,
   deviceAuthSecrets,
@@ -53,10 +44,10 @@ const USER_POOL_ID = "ap-northeast-1_bY2byhlCa";
 export const CONSUMER_CLIENT_ID = "6ialca0p8u0lsgvbmvsljfm305";
 // デフォルトは consumer (公式アプリと同じ寿命)
 const DEFAULT_CLIENT_ID = CONSUMER_CLIENT_ID;
-// 公式が新規 sign-up 時に使う ダミーパスワード (Cognito policy 通過用)
-const DUMMY_PASSWORD = "Aa123456";
-
-const cognito = new CognitoIdentityProviderClient({ region: COGNITO_REGION });
+// 新規 sign-up 時のダミーパスワード (Cognito policy 通過用)。
+// web=Aa123456 (references_web/src/api/useAuthState.js:110) / app=dummypwk
+// (_sesame_sdk_ref/app/.../LoginMailFG.kt:110)。本 kit は app をトレースする (§0.1)。
+const DUMMY_PASSWORD = "dummypwk";
 
 /**
  * catch 節の unknown を `{ name?, message? }` として安全に読むためのナロー化。
@@ -158,13 +149,15 @@ function assertAppLoginTokens(tokens, source, { requireAud = false, requireConfi
 
 /**
  * 失効していない idToken を返す。必要なら refresh する。
- * 失効まで `marginSec` 以下なら早期 refresh する (デフォルト 60秒)。
+ * 失効まで `marginSec` 以下なら早期 refresh する (デフォルト 120秒 =
+ * AWSMobileClient 2.77.0 の REFRESH_THRESHOLD_DEFAULT、
+ * CognitoIdentityProviderClientConfig.java:40)。
  *
  * @param {import("./tokens.js").TokenStore} store
  * @param {{ marginSec?: number }} [opts]
  * @returns {Promise<string>}
  */
-export async function getValidIdToken(store, { marginSec = 60 } = {}) {
+export async function getValidIdToken(store, { marginSec = 120 } = {}) {
   const t = store.load();
   if (!t) {
     throw new SesameError(tr("auth.noTokens"), { code: ERR.UNAUTHENTICATED });
@@ -187,17 +180,21 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
 
   let resp;
   try {
-    resp = await cognito.send(
-      new InitiateAuthCommand({
-        AuthFlow: "REFRESH_TOKEN_AUTH",
-        ClientId: clientId,
-        AuthParameters: authParameters,
-      }),
-    );
+    resp = await cognitoCall("InitiateAuth", {
+      AuthFlow: "REFRESH_TOKEN_AUTH",
+      ClientId: clientId,
+      AuthParameters: authParameters,
+    });
   } catch (e) {
     // refresh token 失効 (公式アプリで再ログイン等) は再ログインで復帰する認証エラー。
+    // 参照 SDK は refresh が NotAuthorized / UserNotFound で落ちたら clearCachedTokens()
+    // する (CognitoUser.java:1306-1311)。同じく保存済みトークンを破棄して、失効トークンで
+    // 以後のリクエストが落ち続けるのを防ぐ。pending verify 状態 (loginStatePath) は
+    // 進行中の再ログインを壊さないよう残す (clearPending しない)。
     // 構造化して上位 (CLI 等) が message 文字列マッチ無しで分岐できるようにする。
-    if (asErr(e).name === "NotAuthorizedException") {
+    const name = asErr(e).name;
+    if (name === "NotAuthorizedException" || name === "UserNotFoundException") {
+      store.clear();
       throw new SesameError(String(asErr(e).message || e), { code: ERR.UNAUTHENTICATED, cause: e });
     }
     throw e;
@@ -210,25 +207,27 @@ export async function getValidIdToken(store, { marginSec = 60 } = {}) {
 
   t.idToken = r.IdToken;
   if (r.AccessToken)  t.accessToken  = r.AccessToken;
-  if (r.RefreshToken) t.refreshToken = r.RefreshToken; // rotation 対応
-  // refresh で稀にデバイスキーがローテートされる。来たら再 ConfirmDevice しないと
-  // 未確認デバイス状態になり、次回 refresh が Invalid Refresh Token で落ちる。
-  if (r.NewDeviceMetadata?.DeviceKey) {
-    const device = await confirmDevice(r);
-    if (device) {
-      t.deviceKey = device.deviceKey;
-      t.deviceGroupKey = device.deviceGroupKey;
-      t.devicePassword = device.devicePassword;
-    }
-  }
+  // 参照 SDK は refresh 後も旧 refresh token を維持する (CognitoUser.java:2873-2874) が、
+  // ここは refresh token rotation (AWS 新機能) への前方互換として、応答に新 token が
+  // 来たら意図的に取り込む (意図的逸脱)。
+  if (r.RefreshToken) t.refreshToken = r.RefreshToken;
   t.lastRefresh = new Date().toISOString();
   store.save(t);
   return t.idToken;
 }
 
 /**
- * Step 1: CUSTOM_AUTH を開始。Cognito が email に確認コードを送る。
- * 新規ユーザーの場合は SignUp してから retry。
+ * Step 1: アプリと同じ「signUp 先行 → CUSTOM_AUTH 開始」(LoginMailFG.kt:106-127 の 1:1)。
+ * Cognito が email に確認コードを送る。
+ *
+ * フロー (アプリ忠実):
+ *   1. SignUp (Password="dummypwk", UserAttributes=[{Name:"email"}]) を常に先に実行。
+ *      既存ユーザーの UsernameExistsException は容認して signIn へ進む
+ *      (LoginMailFG.kt:114-118)。
+ *   2. InitiateAuth (CUSTOM_AUTH, AuthParameters={USERNAME})。
+ *      DEVICE_KEY は initiate には入れない — 参照 SDK の initiateCustomAuthRequest は
+ *      DEVICE_KEY を同梱しない (CognitoUser.java:3473-3507)。DEVICE_KEY は全チャレンジ
+ *      回答側に注入される (CognitoUser.java:2919-2922 / ChallengeContinuation.java:160-167)。
  *
  * @param {import("./tokens.js").TokenStore} store
  * @param {string} username
@@ -238,41 +237,26 @@ export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT
   if (clientId !== CONSUMER_CLIENT_ID) {
     throw new SesameError(`Unsupported Cognito clientId ${clientId}. Use the SESAME consumer app client via \`sesame login <email>\`.`, { code: ERR.UNAUTHENTICATED });
   }
-  // 同じユーザーの記憶済みデバイスがあれば DEVICE_KEY を渡す (公式アプリ=Amplify と同じ)。
-  // Cognito はこれを見てコード回答後に DEVICE_SRP_AUTH を要求できる。
-  const existing = store.load?.();
-  /** @type {Record<string, string>} */
-  const authParameters = { USERNAME: username };
-  if (existing?.username === username && existing?.deviceKey) {
-    authParameters.DEVICE_KEY = existing.deviceKey;
-  }
-  const initiate = () =>
-    cognito.send(
-      new InitiateAuthCommand({
-        AuthFlow: "CUSTOM_AUTH",
-        ClientId: clientId,
-        AuthParameters: authParameters,
-      }),
-    );
 
-  let resp;
+  // アプリは常に signUp を先に実行し、既存ユーザーの UsernameExistsException だけを
+  // 握って signIn に進む。それ以外の signUp エラーはユーザーに見せて中断する
+  // (LoginMailFG.kt:106-127)。
   try {
-    resp = await initiate();
+    await cognitoCall("SignUp", {
+      ClientId: clientId,
+      Username: username,
+      Password: DUMMY_PASSWORD,
+      UserAttributes: [{ Name: "email", Value: username }], // LoginMailFG.kt:106-107
+    });
   } catch (e) {
-    if (asErr(e).name === "UserNotFoundException") {
-      // 公式アプリと同じ自動 sign-up
-      await cognito.send(
-        new SignUpCommand({
-          ClientId: clientId,
-          Username: username,
-          Password: DUMMY_PASSWORD,
-        }),
-      );
-      resp = await initiate();
-    } else {
-      throw e;
-    }
+    if (asErr(e).name !== "UsernameExistsException") throw e;
   }
+
+  const resp = await cognitoCall("InitiateAuth", {
+    AuthFlow: "CUSTOM_AUTH",
+    ClientId: clientId,
+    AuthParameters: { USERNAME: username },
+  });
 
   if (resp.ChallengeName !== "CUSTOM_CHALLENGE") {
     throw new Error(`Unexpected challenge: ${resp.ChallengeName} (expected CUSTOM_CHALLENGE)`);
@@ -298,17 +282,27 @@ export async function loginVerify(store, code) {
   if (!s) {
     throw new Error(tr("auth.noPending"));
   }
-  const resp = await cognito.send(
-    new RespondToAuthChallengeCommand({
-      ClientId: s.clientId,
-      ChallengeName: "CUSTOM_CHALLENGE",
-      Session: s.session,
-      ChallengeResponses: {
-        USERNAME: s.username,
-        ANSWER: code,
-      },
-    }),
-  );
+  // 参照 SDK は全チャレンジ回答に保存済み DEVICE_KEY を注入する
+  // (CognitoUser.java:2919-2922 respondToChallenge / ChallengeContinuation.java:160-167)。
+  // Cognito はこれを見て、記憶済みデバイスなら次に DEVICE_SRP_AUTH を要求できる。
+  // (Java は username 単位の CognitoDeviceHelper キャッシュ。ここでは同一 username の
+  //  保存済みトークンが持つ deviceKey が相当する。)
+  /** @type {Partial<import("./tokens.js").StoredTokens>} */
+  const existing = store.load?.() || {};
+  /** @type {Record<string, string>} */
+  const challengeResponses = {
+    USERNAME: s.username,
+    ANSWER: code,
+  };
+  if (existing.username === s.username && existing.deviceKey) {
+    challengeResponses.DEVICE_KEY = existing.deviceKey;
+  }
+  const resp = await cognitoCall("RespondToAuthChallenge", {
+    ClientId: s.clientId,
+    ChallengeName: "CUSTOM_CHALLENGE",
+    Session: s.session,
+    ChallengeResponses: challengeResponses,
+  });
 
   let r = resp.AuthenticationResult;
   let device;
@@ -316,20 +310,39 @@ export async function loginVerify(store, code) {
   if (r) {
     // デバイストラッキングが有効な Pool では NewDeviceMetadata が返る。ConfirmDevice で
     // デバイスを確定しないと REFRESH_TOKEN_AUTH が `Invalid Refresh Token` で落ちる
-    // (公式アプリ=Amplify は自動で ConfirmDevice する)。ここで同じ確定を行う。
+    // (参照 SDK は handleChallenge 内で自動 ConfirmDevice する: CognitoUser.java:3130-3140)。
     device = await confirmDevice(r);
   } else if (resp.ChallengeName === "DEVICE_SRP_AUTH") {
-    // 記憶済みデバイスの SRP 認証 (公式アプリ=Amplify と同じ device password チャレンジ)。
+    // 記憶済みデバイスの SRP 認証 (参照 SDK の runDeviceAuth と同じ device password チャレンジ)。
     /** @type {Partial<import("./tokens.js").StoredTokens>} */
     const ex = store.load?.() || {};
-    r = await deviceSrpAuth({
-      clientId: s.clientId,
-      username: resp.ChallengeParameters?.USERNAME || s.username,
-      deviceKey: ex.deviceKey,
-      deviceGroupKey: ex.deviceGroupKey,
-      devicePassword: ex.devicePassword,
-      session: resp.Session,
-    });
+    try {
+      r = await deviceSrpAuth({
+        clientId: s.clientId,
+        username: resp.ChallengeParameters?.USERNAME || s.username,
+        deviceKey: ex.deviceKey,
+        deviceGroupKey: ex.deviceGroupKey,
+        devicePassword: ex.devicePassword,
+        session: resp.Session,
+      });
+    } catch (e) {
+      if (asErr(e).name === "NotAuthorizedException") {
+        // 参照 SDK はデバイス認証が NotAuthorized になると clearCachedDevice して
+        // 認証フローを最初からやり直す (CognitoUser.java:3384-3396)。同じく失効した
+        // device 3 点 (deviceKey/deviceGroupKey/devicePassword) を破棄し、デバイス無しの
+        // CUSTOM_AUTH を最初から再試行する。これをしないと「失効 → 再ログイン → 古い
+        // device で再失敗」が無限ループする。
+        const stored = store.load?.();
+        if (stored) {
+          store.save({ ...stored, deviceKey: null, deviceGroupKey: null, devicePassword: null });
+        }
+        // デバイス無し CUSTOM_AUTH の再開始。新しい確認コードが email に届くので、
+        // ユーザーは新コードで verify をやり直す (pending は新 Session に更新済み)。
+        await loginInitiate(store, s.username, { clientId: s.clientId });
+        throw new SesameError(tr("auth.staleDeviceRetry"), { code: ERR.UNAUTHENTICATED, cause: e });
+      }
+      throw e;
+    }
     // DEVICE_SRP では NewDeviceMetadata は来ない。確定済みの既存デバイス情報を維持する。
     device = ex.deviceKey && ex.deviceGroupKey
       ? { deviceKey: ex.deviceKey, deviceGroupKey: ex.deviceGroupKey, devicePassword: ex.devicePassword }
@@ -368,10 +381,14 @@ export async function loginVerify(store, code) {
 }
 
 /**
- * NewDeviceMetadata を持つ認証結果に対し ConfirmDevice (+ 必要なら remembered 化) を行う。
+ * NewDeviceMetadata を持つ認証結果に対し ConfirmDevice を行う。
  * デバイストラッキング無効の Pool では NewDeviceMetadata が無いので no-op。
  *
- * @param {import("@aws-sdk/client-cognito-identity-provider").AuthenticationResultType} authResult Cognito AuthenticationResult
+ * 参照 SDK は ConfirmDevice のみで、UserConfirmationNecessary でも UpdateDeviceStatus
+ * ("remembered" 化) は行わない (CognitoUser.java:3140-3151 は newDevice を callback に
+ * 渡すだけ)。旧実装の remembered 化分岐は参照に無い独自防御だったため削除した。
+ *
+ * @param {import("./cognito-http.js").CognitoAuthResult} authResult Cognito AuthenticationResult
  * @returns {Promise<{deviceKey:string, deviceGroupKey:string, devicePassword:string}|null>}
  *   確定したデバイス情報。デバイストラッキング無効 (NewDeviceMetadata 無し) なら null。
  */
@@ -390,27 +407,12 @@ async function confirmDevice(authResult) {
     meta.DeviceKey,
   );
 
-  const resp = await cognito.send(
-    new ConfirmDeviceCommand({
-      AccessToken: authResult.AccessToken,
-      DeviceKey: meta.DeviceKey,
-      DeviceName: hostname() || "sesame-cli",
-      DeviceSecretVerifierConfig: { PasswordVerifier: passwordVerifier, Salt: salt },
-    }),
-  );
-
-  // User Opt-In Pool では確定だけでは remembered にならないため明示的に remembered 化する
-  // (公式アプリの "このデバイスを記憶する" 相当)。これをしないと refresh が device に
-  // 紐づかず失効する。
-  if (resp.UserConfirmationNecessary) {
-    await cognito.send(
-      new UpdateDeviceStatusCommand({
-        AccessToken: authResult.AccessToken,
-        DeviceKey: meta.DeviceKey,
-        DeviceRememberedStatus: "remembered",
-      }),
-    );
-  }
+  await cognitoCall("ConfirmDevice", {
+    AccessToken: authResult.AccessToken,
+    DeviceKey: meta.DeviceKey,
+    DeviceName: hostname() || "sesame-cli",
+    DeviceSecretVerifierConfig: { PasswordVerifier: passwordVerifier, Salt: salt },
+  });
 
   return { deviceKey: meta.DeviceKey, deviceGroupKey: meta.DeviceGroupKey, devicePassword };
 }
@@ -426,7 +428,7 @@ async function confirmDevice(authResult) {
  * @param {string|null|undefined} args.deviceGroupKey
  * @param {string|null|undefined} args.devicePassword
  * @param {string|undefined} args.session
- * @returns {Promise<import("@aws-sdk/client-cognito-identity-provider").AuthenticationResultType>} Cognito AuthenticationResult
+ * @returns {Promise<import("./cognito-http.js").CognitoAuthResult>} Cognito AuthenticationResult
  */
 async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, devicePassword, session }) {
   if (!deviceKey || !deviceGroupKey || !devicePassword) {
@@ -436,14 +438,14 @@ async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, de
   const { a, A } = generateEphemeralA();
 
   // 1) SRP_A を送り、サーバから SRP_B / SALT / SECRET_BLOCK を受け取る。
-  const srp = await cognito.send(
-    new RespondToAuthChallengeCommand({
-      ClientId: clientId,
-      ChallengeName: "DEVICE_SRP_AUTH",
-      ...(session ? { Session: session } : {}),
-      ChallengeResponses: { USERNAME: username, DEVICE_KEY: deviceKey, SRP_A: A.toString(16) },
-    }),
-  );
+  //    DEVICE_KEY を回答に含めるのは参照どおり (CognitoUser.java:2919-2922 が全チャレンジ
+  //    回答に注入する DEVICE_KEY と同じ配置)。
+  const srp = await cognitoCall("RespondToAuthChallenge", {
+    ClientId: clientId,
+    ChallengeName: "DEVICE_SRP_AUTH",
+    ...(session ? { Session: session } : {}),
+    ChallengeResponses: { USERNAME: username, DEVICE_KEY: deviceKey, SRP_A: A.toString(16) },
+  });
   if (srp.ChallengeName !== "DEVICE_PASSWORD_VERIFIER") {
     throw new Error(`DEVICE_SRP_AUTH: unexpected challenge ${srp.ChallengeName}`);
   }
@@ -468,20 +470,18 @@ async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, de
     timestamp,
   });
 
-  const verify = await cognito.send(
-    new RespondToAuthChallengeCommand({
-      ClientId: clientId,
-      ChallengeName: "DEVICE_PASSWORD_VERIFIER",
-      Session: srp.Session,
-      ChallengeResponses: {
-        USERNAME: cp.USERNAME || username,
-        DEVICE_KEY: deviceKey,
-        PASSWORD_CLAIM_SECRET_BLOCK: cp.SECRET_BLOCK,
-        PASSWORD_CLAIM_SIGNATURE: signature,
-        TIMESTAMP: timestamp,
-      },
-    }),
-  );
+  const verify = await cognitoCall("RespondToAuthChallenge", {
+    ClientId: clientId,
+    ChallengeName: "DEVICE_PASSWORD_VERIFIER",
+    Session: srp.Session,
+    ChallengeResponses: {
+      USERNAME: cp.USERNAME || username,
+      DEVICE_KEY: deviceKey,
+      PASSWORD_CLAIM_SECRET_BLOCK: cp.SECRET_BLOCK,
+      PASSWORD_CLAIM_SIGNATURE: signature,
+      TIMESTAMP: timestamp,
+    },
+  });
   if (!verify.AuthenticationResult?.IdToken) {
     throw new Error(`DEVICE_PASSWORD_VERIFIER failed: ${JSON.stringify(verify)}`);
   }
@@ -489,7 +489,8 @@ async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, de
 }
 
 /**
- * ログアウト。公式アプリ相当にサーバ側もクリーンにする:
+ * ログアウト。公式アプリは**ローカル signOut のみ**で、以下のサーバ側クリーンアップは
+ * 本 kit の意図的な強化 (公式挙動の再現ではない):
  *   1. ForgetDevice — このデバイスの remembered 登録を解除 (ConfirmDevice の対。これが無いと
  *      login のたびに remembered device がアカウントに溜まり続ける)。
  *   2. RevokeToken  — この refresh token を失効 (ローカル削除だけでは生き残るため)。
@@ -514,7 +515,7 @@ export async function logout(store) {
       } catch { /* refresh token 失効済みなら ForgetDevice は諦める */ }
       if (accessToken) {
         try {
-          await cognito.send(new ForgetDeviceCommand({ AccessToken: accessToken, DeviceKey: t.deviceKey }));
+          await cognitoCall("ForgetDevice", { AccessToken: accessToken, DeviceKey: t.deviceKey });
           result.forgotDevice = true;
         } catch { /* best-effort */ }
       }
@@ -524,7 +525,7 @@ export async function logout(store) {
     const refreshToken = store.load()?.refreshToken || t.refreshToken;
     if (refreshToken) {
       try {
-        await cognito.send(new RevokeTokenCommand({ Token: refreshToken, ClientId: clientId }));
+        await cognitoCall("RevokeToken", { Token: refreshToken, ClientId: clientId });
         result.revokedToken = true;
       } catch { /* best-effort */ }
     }

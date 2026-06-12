@@ -7,7 +7,8 @@
 // 原典 (CANDY-HOUSE SesameSDK):
 //   co/candyhouse/sesame/ble/os2/CHServerAuth.kt:41-65 — getRegisterKey()
 //     priKey = CMAC("Sesame2_key_pair", e) ‖ CMAC(CMAC("Sesame2_key_pair", e), e)
-//     pubKey = priKey の P-256 公開鍵 (SDK priKeyToPubKey は drop(27) = 04 prefix 込み 65B)
+//     pubKey = priKey の P-256 公開鍵 (SDK priKeyToPubKey は SPKI 91B の drop(27) =
+//              **64B, X‖Y, prefix 無し**。CHServerAuth.kt:138。27B = ヘッダ 26B + 0x04 の 1B)
 //     secret = ECDH(priKey, serverKey)[0..15]
 //     serverToken = 4B 乱数; sessionToken = serverToken ‖ b64decode(n)
 //     msg = b64decode(ak) ‖ sessionToken; sig1 = CMAC(secret, msg)[0..3]
@@ -27,13 +28,14 @@
 //   - 固定 (ak,n,e,serverToken) 注入で sig1/st/pubkey がゴールデンベクタと一致 (回帰固定)
 //   - sig1/pubkey を本テスト内で **生プリミティブから独立再計算** し getRegisterKey と一致
 //     (= 内部整合の確認。SDK バイト列との一致は別途要 E2E 検証、上記限界を参照)
-//   - pubkey が 65B uncompressed point (04 ‖ X ‖ Y) であること (SDK drop(27) と一致)
+//   - pubkey が 64B raw point (X ‖ Y, prefix 無し) であること (SDK drop(27) = 91-27 = 64B と一致)
 //   - serverToken 省略時は 4B 乱数 (毎回変わり sig1/st も変わる)
 //   - 入力バリデーション
 
 import { describe, it, expect } from "vitest";
 import { createECDH } from "node:crypto";
-import { aesCmac } from "node-aes-cmac";
+// AES-CMAC は内製実装 (src/aes-cmac.js, RFC 4493)。旧 node-aes-cmac は P5-2 で除去。
+import { aesCmac } from "../../src/aes-cmac.js";
 import { Buffer } from "node:buffer";
 import {
   deriveRegisterPriKey,
@@ -70,7 +72,9 @@ function refRegisterKey(ak, n, eHex, serverToken) {
   const priKey = refPriKey(eHex);
   const ecdh = createECDH("prime256v1");
   ecdh.setPrivateKey(priKey);
-  const pubKey = ecdh.getPublicKey(); // 65B 04‖X‖Y
+  // SDK priKeyToPubKey = SPKI 91B の drop(27) = 64B (X‖Y, prefix 無し)。CHServerAuth.kt:138。
+  // Node getPublicKey() は 04 prefix 付き 65B なので subarray(1) が等価。
+  const pubKey = ecdh.getPublicKey().subarray(1); // 64B X‖Y
   const secret = ecdh.computeSecret(Buffer.from(SERVER_AUTH_PUBKEY, "hex")).subarray(0, 16);
   const sessionToken = Buffer.concat([serverToken, Buffer.from(n, "base64")]);
   const msg = Buffer.concat([Buffer.from(ak, "base64"), sessionToken]);
@@ -132,7 +136,9 @@ describe("getRegisterKey (CHServerAuth.kt:41-65)", () => {
     expect(out).toEqual({
       sig1: "1xo/Zw==",
       st: "3q2+7w==",
-      pubkey: "BMFEqsp46TnSQlfgeb+faJf+YlK/iC8h/lVngQorsLYz0l0Limww6OEUrXaFXSwZLI+bPgCWYAm6VG7HwmTkfKM=",
+      // 64B (X‖Y, prefix 無し) の base64。SDK priKeyToPubKey の drop(27) = 91-27 = 64B
+      // (CHServerAuth.kt:138)。sig1/st は pubkey 形式に依存しないので旧 golden から不変。
+      pubkey: "wUSqynjpOdJCV+B5v59ol/5iUr+ILyH+VWeBCiuwtjPSXQuKbDDo4RStdoVdLBksj5s+AJZgCbpUbsfCZOR8ow==",
     });
   });
 
@@ -142,11 +148,16 @@ describe("getRegisterKey (CHServerAuth.kt:41-65)", () => {
     expect(out).toEqual(ref);
   });
 
-  it("pubkey は 65B uncompressed point (04 ‖ X ‖ Y) = SDK drop(27)", () => {
+  it("pubkey は 64B raw point (X ‖ Y, prefix 無し) = SDK drop(27) (CHServerAuth.kt:138)", () => {
     const out = getRegisterKey({ ak: AK_B64, n: N_B64, e: E_HEX }, { serverToken: SERVER_TOKEN });
     const pub = Buffer.from(out.pubkey, "base64");
-    expect(pub.length).toBe(65);
-    expect(pub[0]).toBe(0x04);
+    // SPKI 91B − drop(27) = 64B。27B には uncompressed prefix 0x04 が含まれる
+    // (EccKey.kt fixheader "3059…03420004" と同じ区切り) ため 04 は **含まれない**。
+    expect(pub.length).toBe(64);
+    // 同じ priKey から Node が返す 65B の subarray(1) と一致 (= X‖Y そのもの)。
+    const ecdh = createECDH("prime256v1");
+    ecdh.setPrivateKey(refPriKey(E_HEX));
+    expect(pub.equals(ecdh.getPublicKey().subarray(1))).toBe(true);
   });
 
   it("st は注入した serverToken の base64", () => {

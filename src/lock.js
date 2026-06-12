@@ -14,6 +14,7 @@
 import { Buffer } from "node:buffer";
 import { cmacTime, uuidToHistoryBase64, CMD } from "./crypto.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
+import { TRANSPORT_ERR } from "./transport.js";
 import { t } from "./i18n.js";
 import { SesameError, ERR } from "./errors.js";
 
@@ -30,7 +31,7 @@ import { SesameError, ERR } from "./errors.js";
 const TRIGGER_ACTION = ACTION_TYPES.BIZ3_TRIGGER_LOCKER; // "biz3TriggerLocker" (vendor 由来)
 // 同期 ack のキー: サーバは {action:"biz3TriggerLocker", code:200, data:{}, success:true} を
 // op 無しで返す → transport の dispatch キーは `biz3TriggerLocker:` (op 空)。
-const ACK_KEY = `${TRIGGER_ACTION}:`;
+// P3-6 以降は client.request() がこのキーで FIFO 相関する (dispatchTrigger 参照)。
 // 状態 push (来る環境なら): {action:"biz3TriggerLocker", op:"pubDeviceStateChange", data:{deviceUUID,...}}
 const STATE_EVENT_KEY = `${TRIGGER_ACTION}:pubDeviceStateChange`;
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -40,9 +41,19 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  *
  * 実機観測 (2026, /production): biz3TriggerLocker は送信に対し
  *   `{action:"biz3TriggerLocker", code:200, data:{}, success:true}` を**即時 ack** で返す。
- * 旧実装は `pubDeviceStateChange` push を待っていたが、このアカウント/デバイスでは push が
- * 来ず timeout 誤判定していた (コマンド自体はサーバ受理済みなのに失敗扱い)。よって ack で解決し、
- * pubDeviceStateChange は来た場合のみ補助的に解決トリガにする (デバイス差異への保険)。
+ *
+ * ack 相関 (P3-6): ack フレームには相関キーが無いため、subscribe (fan-out) で待つと並行
+ * 2 コマンドが同じ最初の ack で両方解決して応答を取り違える。transport の `request()`
+ * (transport.js:243-259 — key=`biz3TriggerLocker:` の **FIFO** 相関) を使い、送信順 =
+ * 解決順を transport 層に保証させる。
+ *
+ * pubDeviceStateChange 補助解決の注記 (P3-4 で再検証):
+ * 旧コメントは「このアカウント/デバイスでは push が来ず timeout」と観測を記していたが、
+ * 根本原因は push 自体の有無ではなく **`subscribeDevicesUpdate` frame を送っていない接続には
+ * サーバが pubDeviceStateChange を push しない** こと (useManageDevice.js:48-51,322-350 —
+ * 購読 frame を送った接続にのみ push される)。lock 系は購読 frame を送らないので push が
+ * 来ないのが正常で、ack が正しい完了シグナル。push は (別経路で購読済みの接続で) 届いた
+ * 場合のみ補助的に解決トリガとして使う。
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{cmd:number, sign:string, history:string, deviceId:string, timeoutMs?:number}} f
@@ -58,38 +69,43 @@ function dispatchTrigger(client, { cmd, sign, history, deviceId, timeoutMs = DEF
 
   return new Promise((resolve, reject) => {
     let done = false;
-    const cleanup = () => { clearTimeout(to); unsubAck(); unsubState(); };
+    const cleanup = () => { unsubState(); };
     /** @param {any} msg */
     const succeed = (msg) => { if (done) return; done = true; cleanup(); resolve(msg); };
     /** @param {Error} err */
     const fail = (err) => { if (done) return; done = true; cleanup(); reject(err); };
 
-    const to = setTimeout(
-      () => fail(new SesameError(t("domain.lock.timeout", { cmd, device: target }), { code: ERR.TIMEOUT, retryable: true })),
-      timeoutMs,
-    );
-
-    // (主) 同期 ack。success:false は明示的失敗、それ以外 (code:200/success:true) は成功。
-    const unsubAck = client.subscribe(ACK_KEY, (msg) => {
-      if (msg && msg.success === false) {
-        fail(new SesameError(
-          t("domain.lock.failed", { cmd, code: msg.code ?? "?", message: msg.message || "" }).trim(),
-          { code: ERR.REJECTED, retryable: false, data: { upstreamCode: msg.code ?? null } },
-        ));
-        return;
-      }
-      succeed(msg);
-    });
-
     // (副) 状態 push。pubDeviceStateChange の本体は data.deviceUUID (vendor 確認:
     // useIotCtrl.js:20-21)。一致のときのみ解決 (来ない環境では無視される)。単一フィールドのみ。
+    // request より先に張る (送信前に購読が揃っている契約を維持)。
     const unsubState = client.subscribe(STATE_EVENT_KEY, (msg) => {
       const incoming = normalizeUuid(msg?.data?.deviceUUID);
       if (incoming && incoming !== target) return;
       succeed(msg);
     });
 
-    client.send({ action: TRIGGER_ACTION, cmd, sign, history, device_id: deviceId });
+    // (主) 同期 ack を FIFO 相関で待つ (request が送信も行う。key=`biz3TriggerLocker:`)。
+    // timeout は request 内のタイマーに一本化 (transport の timeout エラーを lock の文言へ写像)。
+    client.request({ action: TRIGGER_ACTION, cmd, sign, history, device_id: deviceId }, timeoutMs)
+      .then((/** @type {any} */ msg) => {
+        if (msg && msg.success === false) {
+          fail(new SesameError(
+            t("domain.lock.failed", { cmd, code: msg.code ?? "?", message: msg.message || "" }).trim(),
+            { code: ERR.REJECTED, retryable: false, data: { upstreamCode: msg.code ?? null } },
+          ));
+          return;
+        }
+        succeed(msg);
+      })
+      .catch((/** @type {any} */ err) => {
+        // state push で解決済みなら request 側の timeout は無視する (補助解決の方が先に来た)。
+        if (done) return;
+        if (err && err.code === TRANSPORT_ERR.TIMEOUT) {
+          fail(new SesameError(t("domain.lock.timeout", { cmd, device: target }), { code: ERR.TIMEOUT, retryable: true }));
+          return;
+        }
+        fail(err instanceof Error ? err : new Error(String(err)));
+      });
   });
 }
 
@@ -133,6 +149,28 @@ export function lockUnlock(client, p) { return triggerLock(client, { ...p, cmd: 
 export function lockToggle(client, p) { return triggerLock(client, { ...p, cmd: CMD.TOGGLE }); }
 /** SESAME Bot のボタンクリック (cmd=89)。 @param {WsClient} client @param {LockParams} p */
 export function botClick(client, p) { return triggerLock(client, { ...p, cmd: CMD.CLICK }); }
+
+/**
+ * SESAME Bot2/Bot3 の **台本 (スクリプト) を番号指定で実行**する (cloud 経由)。
+ *
+ * 参照 `CHSesameBot2Device.kt:73-97` の `click(index)` は itemCode を
+ * `BOT2_ITEM_CODE_RUN_SCRIPT_0(170) + index` に切り替え、BLE 不可時は **同じ itemCode** を
+ * `CHAPIClientBiz.cmdSesame` でクラウドへ送る (kt:84-89)。本関数はその cloud 側 1:1 で、
+ * `cmd = 170 + scriptIndex` を biz3TriggerLocker に乗せる。台本は 0..9 の最大 10 本
+ * (RUN_SCRIPT_0..9, SesameProtocols.kt:47)。
+ *
+ * 注: `cmd=89 (CLICK)` の `botClick` は「選択中の台本」を実行する別経路。番号指定はこちら。
+ *
+ * @param {WsClient} client
+ * @param {LockParams & {scriptIndex:number}} p
+ * @returns {Promise<any>}
+ */
+export function botClickScript(client, { scriptIndex, ...p }) {
+  if (!Number.isInteger(scriptIndex) || scriptIndex < 0 || scriptIndex > 9) {
+    throw new SesameError(t("domain.lock.scriptIndexRange", { index: String(scriptIndex) }), { code: ERR.BAD_REQUEST });
+  }
+  return triggerLock(client, { ...p, cmd: CMD.BOT2_ITEM_CODE_RUN_SCRIPT_0 + scriptIndex });
+}
 
 /**
  * 任意の SESAME ItemCode をクラウド経由 (biz3TriggerLocker) で送る汎用レール。

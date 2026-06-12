@@ -3,25 +3,36 @@
 // 移植元 (1:1):
 //   _sesame_sdk_ref/sesame-sdk/.../ble/os3/CHWifiModule2Device.kt
 //
-// WM2 は SESAME 5 系ロックと **同じ SesameOS3 BLE スタック** (CCM 暗号セグメント・[item][data]
-// 送信フレーム・[op][item][body] 受信フレーム・SegmentAssembler) の上で動く。違いは 2 点だけ:
+// WM2 は SESAME 5 系ロックと同じ低レベル輸送 (20B セグメント分割・[item][data] 送信フレーム・
+// [op][item][body] 受信フレーム・SegmentAssembler) の上で動くが、**セッション確立はロックと
+// 非互換** である点に注意。違いは次の 3 系統:
 //   (1) GATT サービス/特性 UUID が WM2 専用 (CHWifiModule2Device.kt:533-537 Wm2Chracs)。
 //       fd81 系の SESAME ロックとは別サービスなので、transport 層で WM2 用 UUID を使う必要がある。
 //   (2) cmdItCode が SesameItemCode ではなく **WM2ActionCode** (src/itemcodes.js:WM2_ACTION_CODES)。
 //       数値空間が SesameItemCode と重複する (例 3=UPDATE_WIFI_SSID ≠ USER) ため別 enum で扱う。
+//   (3) **login/register/initial/暗号が CHSesameOS3 基底からオーバーライドされている**
+//       (CHWifiModule2Device.kt:279-321, 521-528)。差分:
+//         - initial publish の itemCode = WM2ActionCode.INITIAL = **13** (ロックは 14)
+//         - login: cipher 鍵 = secretKey **生 16B** / payload = [LOGIN_WM2(2)] ++
+//           CMAC(secretKey, token4) **16B 全量** (ロックは鍵 = CMAC、payload 先頭 4B)
+//         - register: data = pubK64 のみ (timestamp 無し) / 応答 payload[0..63] を ECDH /
+//           cipher 鍵 = ecdhSecret_pre16 **生** (ロックは pubK64++ts4、鍵 = CMAC(pre16, token4))
+//         - CCM sault = mSesameToken (4B) → nonce 12B (ロックは 0x00++token → 13B、
+//           SesameOS3BleCipher.kt:8-32)
+//       この差分は session.js の profile "wm2" (protocol.js SESSION_PROFILES) が実装する。
+//       SesameBle ファサードは kind===WIFI のとき自動で profile "wm2" を渡す (index.js)。
 //
 // この層は protocol.js / session.js の純関数を再利用し、WM2 固有の「コマンド data 生成」と
-// 「publish/応答 payload 解析」だけを担う (無線 I/O は transport の責務、暗号・分割は protocol.js)。
+// 「publish/応答 payload 解析」だけを担う (無線 I/O は transport の責務、暗号・分割は protocol.js、
+// セッション確立は session.js profile "wm2")。
 //
-// 注: 鍵導出・nonce/カウンタ・login/register ハンドシェイクは SESAME ロックと完全に共通
-// (CHWifiModule2Device は CHSesameOS3 を継承し、register=ECDH→ecdhSecretPre16、
-//  login=CMAC(secretKey, token4) を基底からそのまま使う)。よって session.js (register/connect/
-//  request) をそのまま利用でき、ここで再実装しない。本モジュールが足すのは WM2 固有の
-//  action code を request() に乗せるための data builder と publish parser である。
+// @experimental WM2 BLE 経路 (profile "wm2" のハンドシェイクを含む) は SDK Kotlin の静的読みからの
+//   移植で **実機未検証** (参照: CHWifiModule2Device.kt:279-321,521-528 / SesameOS3BleCipher.kt:8-32)。
 
 import { Buffer } from "node:buffer";
 import { t } from "../i18n.js";
 import { WM2_ACTION_CODES } from "../itemcodes.js";
+import { parseNetworkStatus } from "./protocol.js";
 
 // ---------- GATT (CHWifiModule2Device.kt:533-537 Wm2Chracs) ----------
 
@@ -244,39 +255,11 @@ export function parseWifiPasswordPublish(payload) {
   return buf.toString("utf8");
 }
 
-/**
- * NETWORK_STATUS publish payload[0] のビットフラグを解析 (CHWifiModule2Device.kt:502-510)。
- *   isAp           = (payload[0] and 2)  > 0   bit1
- *   isNet          = (payload[0] and 4)  > 0   bit2
- *   isIot          = (payload[0] and 8)  > 0   bit3
- *   isAPCheck      = (payload[0] and 16) > 0   bit4
- *   isAPConnecting = (payload[0] and 32) > 0   bit5
- *   isNETConnecting= (payload[0] and 64) > 0   bit6
- *   isIOTConnecting= payload[0] < 0            (Kotlin signed Byte の最上位 bit7)
- *
- * 注: Kotlin の payload[0] は **signed Byte**。最上位 bit (0x80) が立つと負値になり、
- *   isIOTConnecting = (payload[0] < 0) はそのまま bit7 判定と等価。JS では payload[0] は
- *   0..255 の unsigned なので bit7 を (b & 0x80) で判定する (= 等価)。
- *
- * @param {Buffer} payload (>=1B)
- * @returns {{isAp:boolean, isNet:boolean, isIot:boolean, isAPCheck:boolean,
- *            isAPConnecting:boolean, isNETConnecting:boolean, isIOTConnecting:boolean, raw:number}}
- */
-export function parseNetworkStatus(payload) {
-  const buf = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
-  if (buf.length < 1) throw new Error(t("ble.wm2NetworkStatusEmpty"));
-  const b = buf[0];
-  return {
-    isAp: (b & 2) > 0,             // bit1
-    isNet: (b & 4) > 0,            // bit2
-    isIot: (b & 8) > 0,            // bit3
-    isAPCheck: (b & 16) > 0,       // bit4
-    isAPConnecting: (b & 32) > 0,  // bit5
-    isNETConnecting: (b & 64) > 0, // bit6
-    isIOTConnecting: (b & 0x80) > 0, // bit7 (Kotlin signed byte < 0 と等価)
-    raw: b,
-  };
-}
+// NETWORK_STATUS publish payload[0] のビットフラグ解析 (CHWifiModule2Device.kt:502-510)。
+// 同一 bit layout を Hub3 の mechStatus(81) publish も使う (CHHub3Device.kt:291-301) ため、
+// 実体は protocol.js (parseNetworkStatus) へ共有化した (P3-16)。後方互換のためここから再公開する
+// (import はファイル先頭、再公開は下記)。
+export { parseNetworkStatus };
 
 /**
  * SESAME_KEYS publish payload を 23B チャンクに分割し、子 Sesame の {ssm id → ロック状態} を返す
@@ -432,7 +415,16 @@ export class WifiModule2 {
     );
   }
 
-  /** WM2 に現在の network 状態を要求 (状態は onPublish の {kind:"networkStatus"} で届く)。 */
+  /**
+   * WM2 に現在の network 状態を要求する (NETWORK_STATUS=6 を空 data で送信)。
+   *
+   * 注 (BLEP-07): SDK に NETWORK_STATUS の **送信 (要求)** 経路は存在しない —
+   *   CHWifiModule2Device.kt は NETWORK_STATUS を publish 受信 (kt:502-510) でしか扱わず、
+   *   CHWifiModule2 公開 API (CHWifiModule2.kt:30-39) にも対応メソッドが無い。要求コマンドと
+   *   して空 data を送る本メソッドは kit 独自の発明であり、デバイスが応答する保証はない。
+   * @experimental 実機未検証。受信だけ必要なら onPublish の {kind:"networkStatus"} を購読すればよい
+   *   (デバイスは状態変化時に自発 publish する)。
+   */
   networkStatus() {
     return this._session.request(WM2_ACTION.NETWORK_STATUS, networkStatusData());
   }
@@ -485,3 +477,46 @@ export class WifiModule2 {
     return res;
   }
 }
+
+// --- SURF-08 段階3: WM2 (WifiModule2) サブファサードの RPC 公開仕様 ---
+//
+// registry がこれを読み `ble.wifi.<op>` を型付き RPC/SDK メソッドへ自動展開する
+// (bot2.js SCRIPT_RPC_OPS と同形式)。op パス第 1 セグメント = "wifi" は BLE_RPC_ALLOWLIST の
+// "wifi" と一致 (index.js の `wifi({companyId})` メソッド経由)。params の **順序 =
+// WifiModule2 メソッドの位置引数順**。result: "ack"=コマンド ack ({resultCode,resultName}) /
+// "raw"=パース結果をそのまま返す。
+//
+// ★ invokePath は中間セグメント "wifi" を `value.call(target)` (= 引数なし呼び出し) で解決するため、
+//   生成版では ble.wifi() が companyId なしで呼ばれる (= 既定 companyId)。companyId を要する
+//   connectWifi は専用ハンドラ (ble.wifi.connect。wifiViewOf が WM2_API_GATEWAY_CLIENT_ID を注入)
+//   に委ね、ここからは **除外** する。
+//
+// ★ 専用ハンドラと重複する 4 op は **含めない** (推奨):
+//     scanWifiSSID  → 専用 ble.wifi.scan       (collectWifiScan で publish を収集して SSID 一覧化)
+//     setWifiSSID   → 専用 ble.wifi.setSsid
+//     setWifiPassword → 専用 ble.wifi.setPassword
+//     connectWifi   → 専用 ble.wifi.connect     (companyId 解決 + Hub3/WM2 判別)
+//   生成版 (ble.wifi.scanWifiSSID 等) は専用版とは別名なので override されず **共存** してしまい、
+//   同一機能の RPC が 2 つ並んで利用者を混乱させる (専用版は companyId 注入や publish 収集の
+//   特殊ロジックを持ち、こちらが正)。よって専用ハンドラのある op はここに載せない。
+//
+// ここに載せるのは「専用ハンドラの無い残りの WM2 op」:
+//   insertSesames / removeSesame / networkStatus / reset。
+/** @type {import("./index.js").BleRpcOpSpec} */
+export const WM2_RPC_OPS = {
+  // 子 Sesame 鍵を WM2 に登録 (ADD_SESAME=8)。位置引数 0 = sesameKey
+  // ({deviceUUID, secretKey, sesame2PublicKey?, deviceModel?})。CHWifiModule2Device.kt:380-401。
+  "wifi.insertSesames": { params: [{ name: "sesameKey", type: "object", required: true, desc: "child Sesame key {deviceUUID, secretKey, sesame2PublicKey?, deviceModel?}" }], result: "ack", summary: "register a child Sesame key on the WM2" },
+  // 子 Sesame 鍵を WM2 から削除 (DELETE_SESAME=7)。位置引数 0 = sesameKeyTag (大文字 UTF-8 で送出)。
+  // CHWifiModule2Device.kt:411-417。
+  "wifi.removeSesame": { params: [{ name: "sesameKeyTag", type: "string", required: true, desc: "child Sesame key tag (UUID string) to remove" }], result: "ack", summary: "remove a child Sesame key from the WM2" },
+  // network 状態を要求 (NETWORK_STATUS=6 を空 data で送信)。位置引数なし。
+  // ★ unverified / not in SDK: SDK に NETWORK_STATUS の送信(要求)経路は存在せず (kt は受信のみ、
+  //   CHWifiModule2.kt:30-39 に対応 API 無し)、空 data 要求は kit 独自の発明でデバイス応答は未保証。
+  //   受信だけ必要なら onPublish の {kind:"networkStatus"} を購読する (デバイスが自発 publish)。
+  "wifi.networkStatus": { params: [], result: "ack", summary: "request WM2 network status (experimental)" },
+  // WM2 を工場出荷状態へリセット (RESET_WM2=18)。位置引数 0 = opts ({timeoutMs?})。RPC では opts を
+  // 公開せず引数なしで既定動作 (成功時 session 破棄)。CHWifiModule2Device.kt:437-448。
+  // (ble.resetWifiModule2 は OS3 トップレベルの別経路。こちらは wifi サブファサード直の reset。)
+  "wifi.reset": { params: [], result: "ack", summary: "factory-reset the WM2 (drops the session on success)" },
+};

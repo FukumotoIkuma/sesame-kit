@@ -4,7 +4,7 @@
 
 > [English](../en/integration.md) · [ドキュメント目次](./index.md)
 
-`sesame serve` は常駐する JSON-RPC 2.0 デーモンです。一度サインインするとクラウド接続を維持し続け、操作の実行とイベントの配信を繰り返します。クラウド / Biz3 機能は型付き RPC として公開し、登録済み BLE 操作は `ble.invoke` / `ble.os2.invoke` から呼べます。
+`sesame serve` は常駐する JSON-RPC 2.0 デーモンです。一度サインインするとクラウド接続を維持し続け、操作の実行とイベントの配信を繰り返します。クラウド / Biz3 機能は型付き RPC として公開します。BLE 操作も型付きメソッドとして公開され、各 facade op が `ble.<op>` / `ble.os2.<op>`(例: `ble.script.click`・`ble.biometric.cardAdd`・`ble.hub3.setWifiSSID`)として名前付きパラメータで生成 SDK に現れます(すべて `experimental`・実機未確認)。汎用の `ble.invoke` / `ble.os2.invoke` 文字列ディスパッチは脱出口として併存します。
 
 ## 1. サインインしてデーモンを起動
 
@@ -67,7 +67,7 @@ ir.send                      [remote] key
 org.getEmployees             companyID
 access.registerCards         deviceUUID cards   # [experimental] 読み取った IC カードを一括登録 (クラウド DB)
 …
-82 methods.
+135 methods.
 ```
 
 この一覧から、使いたいメソッドの行を読みます。各行は `メソッド名  <必須> [任意]` の形です。例えば `device.history  deviceUUID [pageSize]` は、**`deviceUUID` が必須・`pageSize` が任意**という意味です。
@@ -109,7 +109,7 @@ sesame rpc device.history --params '{"deviceUUID":"AB12CD34...","pageSize":10}'
 
 薄いクライアントが上記をラップし、JSON を手で組み立てる代わりに `c.unlock("front")` と書けます。任意であり、セクション 2 はこれらなしでも動作します。
 
-> **`sdk/` と `clients/`** — 以下のクライアントは**手書きの低レベル**層（`clients/js`・`clients/python`）です: 依存最小・多経路対応（Unix socket / stdio / HTTP / WebSocket / gRPC）・汎用 `call()` 付き。多くのユーザには、**生成された型付き**の SDK（[`sdk/ts`](../../sdk/ts/README.md) / [`sdk/python`](../../sdk/python/README.md)）— RPC ごとに型付きメソッドが 1 つ、`schema/openrpc.json` から生成され OpenRPC 契約を HTTP 上で追従 — の方が既定として適します。[README の「どちらを使う?」セクション](../../README.ja.md)を参照してください。
+> **`sdk/` と `clients/`** — 以下のクライアントは**手書きの低レベル**層（`clients/js`・`clients/python`）です: 依存最小・多経路対応（JS: Unix socket / HTTP / WebSocket、Python: Unix socket / stdio / HTTP — gRPC はどちらも非対応で、`src/serve/sesame.proto` から protoc stub を生成して使います）・汎用 `call()` 付き。多くのユーザには、**生成された型付き**の SDK（[`sdk/ts`](../../sdk/ts/README.md) / [`sdk/python`](../../sdk/python/README.md)）— RPC ごとに型付きメソッドが 1 つ、`schema/openrpc.json` から生成され OpenRPC 契約を HTTP 上で追従 — の方が既定として適します。[README の「どちらを使う?」セクション](../../README.ja.md)を参照してください。
 
 **Node** — `npm install sesame-kit` の後：
 
@@ -178,7 +178,7 @@ gRPC は型付きです。`src/serve/sesame.proto` には op ごとに型付き�
 {"jsonrpc":"2.0","method":"event.lockState","params":{ /* state */ }}
 ```
 
-トピック：`lockState`、`deviceUpdate`。HTTP では `GET /events?topics=…`（SSE）を、gRPC では `Subscribe` ストリームを使います。`POST /rpc` と gRPC の `Invoke` はリクエスト/レスポンス専用で、`events.*` を拒否します。
+トピック：`lockState`、`deviceUpdate`、experimental の `deviceListChanged`（鍵共有 / デバイス追加・削除。biz3 `pubUserDeviceChange`）。購読可能な一覧は `rpc.discover` の `x-event-topics` で機械可読に取れます。HTTP では `GET /events?topics=…`（SSE）を、gRPC では `Subscribe` ストリームを使います。`POST /rpc` と gRPC の `Invoke` はリクエスト/レスポンス専用で、`events.*` を拒否します。
 
 ## エラー
 

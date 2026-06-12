@@ -93,6 +93,7 @@ declare namespace _default {
         "org.role.rm.desc": string;
         "org.role.rm.opt": string;
         "org.role.rm.need": string;
+        "org.role.rm.hint": string;
         "org.role.rm.ok": string;
         "org.deviceGroup.ls.desc": string;
         "org.deviceGroup.ls.none": string;
@@ -138,6 +139,8 @@ declare namespace _default {
         "org.keys.rm.desc": string;
         "org.keys.rm.opt": string;
         "org.keys.rm.need": string;
+        "org.keys.rm.deviceNotFound": string;
+        "org.keys.rm.noSecretKey": string;
         "org.keys.rm.ok": string;
         "org.keys.updateGuestTag.desc": string;
         "org.keys.updateGuestTag.opt": string;
@@ -257,6 +260,7 @@ declare namespace _default {
         "org.role.rm.desc": string;
         "org.role.rm.opt": string;
         "org.role.rm.need": string;
+        "org.role.rm.hint": string;
         "org.role.rm.ok": string;
         "org.deviceGroup.ls.desc": string;
         "org.deviceGroup.ls.none": string;
@@ -302,6 +306,8 @@ declare namespace _default {
         "org.keys.rm.desc": string;
         "org.keys.rm.opt": string;
         "org.keys.rm.need": string;
+        "org.keys.rm.deviceNotFound": string;
+        "org.keys.rm.noSecretKey": string;
         "org.keys.rm.ok": string;
         "org.keys.updateGuestTag.desc": string;
         "org.keys.updateGuestTag.opt": string;

@@ -1,25 +1,39 @@
 /**
+ * getRemoteList / searchRemoteList の戻り値。
+ * vendor (useRemoteCtrl.js:43-57) の応答 `message.data` は {data:[...], pagination:{...}} の
+ * ラッパーで、一覧本体は `message.data.data`、ページング情報は `message.data.pagination`
+ * (currentPage / pageSize / hasMore 等。次ページは currentPage+1, hasMore で打ち切り —
+ *  loadMoreRemotes, useRemoteCtrl.js:431-441)。
+ * @typedef {{ list: any[], pagination: {currentPage?:number, pageSize?:number, hasMore?:boolean} | null }} RemoteListPage
+ */
+/**
  * 登録済みリモコン一覧を取得 (ページング)。
+ * 次ページは戻り値 pagination の currentPage+1 を page に渡す (hasMore が false なら終端 —
+ * vendor loadMoreRemotes, useRemoteCtrl.js:431-441)。
  * @param {WsClient} client
  * @param {{type:number, companyID:string, page?:number, pageSize?:number}} p
  *   type は **実 remote.type** (自己学習=0xFE00, UI メニューの 0xFEFF ではない / 上記トラップ参照)
+ * @returns {Promise<RemoteListPage>}
  */
 export function getRemoteList(client: WsClient, p: {
     type: number;
     companyID: string;
     page?: number;
     pageSize?: number;
-}): Promise<{}>;
+}): Promise<RemoteListPage>;
 /**
- * プリセットリモコン (メーカー DB) 検索。最大 1000 件返却。
+ * プリセットリモコン (メーカー DB) 検索。最大 1000 件返却
+ * (vendor は page=1/pageSize=1000 固定で frame にページング引数を露出しない —
+ *  useRemoteCtrl.js:406-414)。
  * @param {WsClient} client
  * @param {{type:number, companyID:string, searchTerm:string}} p
+ * @returns {Promise<RemoteListPage>}
  */
 export function searchRemoteList(client: WsClient, p: {
     type: number;
     companyID: string;
     searchTerm: string;
-}): Promise<{}>;
+}): Promise<RemoteListPage>;
 /**
  * リモコンを追加 (Hub3 1 台あたり 3 個上限がサーバ側にある)。
  * `remote` の形は biz3 がそのまま remoteDevice オブジェクトを渡しているので、
@@ -50,6 +64,49 @@ export function updateRemoteAlias(client: WsClient, { hub3DeviceId, uuid, alias,
     hub3DeviceId: string;
     uuid: string;
     alias: string;
+    companyID: string;
+}): Promise<import("./transport.js").WsMessage>;
+/**
+ * リモコンの保存 state (最後に発射した command HEX) をサーバへ永続化する (P3-2)。
+ *
+ * vendor (useRemoteCtrl.js:493-514 updateRemoteState):
+ *   frame = { action, op:'updateRemoteState', deviceId: hub3DeviceId, uuid: remoteId,
+ *             state, companyID }
+ * フィールド名トラップ: Hub3 は **deviceId**、リモコンは **uuid** (alias 系と同じ命名)。
+ * state はエアコン等の「最後に送った command HEX 文字列」 (remote-air/index.js:371-377 が
+ * sendIR 成功後に cmd をそのまま渡す)。次回はこの state から復元する
+ * (remote-air/index.js:108-113 → presetir.restoreAirState)。
+ *
+ * @param {WsClient} client
+ * @param {{hub3DeviceId: string, uuid: string, state: string, companyID: string}} p
+ */
+export function updateRemoteState(client: WsClient, { hub3DeviceId, uuid, state, companyID }: {
+    hub3DeviceId: string;
+    uuid: string;
+    state: string;
+    companyID: string;
+}): Promise<import("./transport.js").WsMessage>;
+/**
+ * リモコンを Matter デバイスとして Hub3 に登録する (P3-3)。
+ *
+ * vendor (useRemoteCtrl.js:933-955 addRemoteToMatter) のフィールド 1:1:
+ *   frame = { action, op:'addRemoteToMatter', hub3DeviceId, irDeviceType: irRemote.type,
+ *             cmdOn, cmdOff, irDeviceUUID: irRemote.uuid, irDeviceName: irRemote.alias, companyID }
+ * Matter ペアリング窓 (iot.js:466-490) の開放後に呼ぶことで、リモコンが Matter の
+ * On/Off デバイスとして見えるようになる (cmdOn/cmdOff は発射 command HEX)。
+ *
+ * @experimental 実機未検証 (参照: useRemoteCtrl.js:933-955)。
+ * @param {WsClient} client
+ * @param {{hub3DeviceId: string, irDeviceType: number, cmdOn: string, cmdOff: string,
+ *          irDeviceUUID: string, irDeviceName: string, companyID: string}} p
+ */
+export function addRemoteToMatter(client: WsClient, { hub3DeviceId, irDeviceType, cmdOn, cmdOff, irDeviceUUID, irDeviceName, companyID }: {
+    hub3DeviceId: string;
+    irDeviceType: number;
+    cmdOn: string;
+    cmdOff: string;
+    irDeviceUUID: string;
+    irDeviceName: string;
     companyID: string;
 }): Promise<import("./transport.js").WsMessage>;
 /**
@@ -180,6 +237,21 @@ export function learnIRKey(client: WsClient, p: {
     captured: any;
     saved: any;
 }>;
+/**
+ * getRemoteList / searchRemoteList の戻り値。
+ * vendor (useRemoteCtrl.js:43-57) の応答 `message.data` は {data:[...], pagination:{...}} の
+ * ラッパーで、一覧本体は `message.data.data`、ページング情報は `message.data.pagination`
+ * (currentPage / pageSize / hasMore 等。次ページは currentPage+1, hasMore で打ち切り —
+ *  loadMoreRemotes, useRemoteCtrl.js:431-441)。
+ */
+export type RemoteListPage = {
+    list: any[];
+    pagination: {
+        currentPage?: number;
+        pageSize?: number;
+        hasMore?: boolean;
+    } | null;
+};
 /**
  * 下位 WS トランスポート (transport.js の Hub3WsClient)。
  */

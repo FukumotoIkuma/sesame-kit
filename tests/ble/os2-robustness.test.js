@@ -41,8 +41,10 @@ class DisconnectableOS2Mock {
     if (a.type === SEG.PLAINTEXT && a.data[0] === OP.SYNC && a.data[1] === ITEM.LOGIN) {
       const lr = Buffer.alloc(28);
       lr.writeUInt32BE(Math.floor(Date.now() / 1000), 0);
-      lr[26] = 0x02; // mech_status flags → locked
-      this._sendPlain(Buffer.concat([Buffer.from([OP.RESPONSE, OP.SYNC, ITEM.LOGIN, 0x00]), lr]));
+      lr[27] = 0x02; // mech_status flags = byte7 (CHSesame2.kt:37) → locked
+      // response = [RESPONSE, item, op, result] (導出元: SesameProtocols.kt:15-19
+      // SSM2ResponsePayload — cmdItCode=data[0], cmdOPCode=data[1], cmdResultCode=data[2])。
+      this._sendPlain(Buffer.concat([Buffer.from([OP.RESPONSE, ITEM.LOGIN, OP.SYNC, 0x00]), lr]));
     }
   }
 

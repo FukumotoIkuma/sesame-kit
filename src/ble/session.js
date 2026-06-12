@@ -11,10 +11,15 @@
 //   request(item, data) → frame を CCM 暗号化 (encCount++) → セグメント送信
 //     → response(7)+item を待って {resultCode, payload} で解決
 //   publish(8)+mechStatus(81) は onStatus リスナへ。
+//
+// 上記は profile "lock" (既定) のフロー。WifiModule2 は initial(13)・login/register/暗号鍵・sault が
+// ロックと非互換のため profile "wm2" で構築する (protocol.js SESSION_PROFILES、
+// CHWifiModule2Device.kt:279-321,521-528。@experimental 実機未検証)。
 
 import { Buffer } from "node:buffer";
 import { createECDH } from "node:crypto";
 import { t } from "../i18n.js";
+import { WM2_ACTION_CODES } from "../itemcodes.js";
 import { ecdhSecretPre16 } from "../crypto.js";
 import { registerSesame5 } from "../devices.js";
 import {
@@ -24,6 +29,7 @@ import {
   opSensorControlData, bleTxPowerData,
   timeSyncData, parseDeviceTimeSeconds, needsTimeSync,
   historyReadData, historyDeleteData, OP, ITEM, SEG, resultName,
+  SESSION_PROFILES, assertProfile,
 } from "./protocol.js";
 import { parseBiometricMechStatus } from "./biometric.js";
 
@@ -78,12 +84,27 @@ export class BleResultError extends Error {
 export class SesameBleSession {
   /**
    * @param {{transport:BleTransport, secretKey?:string|Buffer, debug?:boolean,
-   *          defaultTimeoutMs?:number}} opts
+   *          defaultTimeoutMs?:number, profile?:("lock"|"wm2"), syncTime?:boolean}} opts
    *   secretKey は **登録済みデバイスへのログイン時のみ必須**。工場出荷 (未登録) デバイスを
    *   register() で登録する場合は secretKey を渡さずに構築する (initial 受信で login を試みず
    *   ReadyToRegister 状態へ遷移する。CHSesameOS3.kt:468-491 isRegistered=false 相当)。
+   *
+   *   profile はセッション確立のワイヤ形状 (protocol.js SESSION_PROFILES):
+   *     - "lock" (既定): CHSesameOS3 基底のロック系 (SESAME5/Hub3/Bot2/Bike2/3/biometric)。
+   *     - "wm2": WifiModule2。CHWifiModule2Device.kt は initial(13)/login/register を
+   *       オーバーライドしており非互換 (kt:279-321,521-528)。鍵 = secretKey/pre16 **生 16B**、
+   *       login payload = CMAC 16B 全量、register data = pubK64 のみ、CCM sault = token4 (12B nonce)。
+   *       @experimental WM2 profile は SDK Kotlin の静的読みからの移植で **実機未検証**
+   *       (参照: CHWifiModule2Device.kt:279-321 / SesameOS3BleCipher.kt:8-32)。
+   *
+   *   syncTime (既定 true): login 成功後の time(8) 自動同期を行うか (BLE3-03)。
+   *     CHSesameOS3LockBase.kt:126-138 handleLoginResponse の時刻同期は **ロック系のみ** の挙動で、
+   *     Hub3 は login を override して handleLoginResponse を呼ばない (CHHub3Device.kt:167-178 —
+   *     login 応答はコールバックで deviceStatus 遷移のみ)。WM2 も同様 (CHWifiModule2Device.kt:314-321。
+   *     こちらは profile="wm2" で構造的に対象外)。ファサード (index.js) は kind が HUB3/WIFI の
+   *     とき false を渡す。
    */
-  constructor({ transport, secretKey, debug = false, defaultTimeoutMs = DEFAULT_TIMEOUT_MS }) {
+  constructor({ transport, secretKey, debug = false, defaultTimeoutMs = DEFAULT_TIMEOUT_MS, profile = "lock", syncTime = true }) {
     if (!transport) throw new Error(t("ble.transportRequired"));
     // secretKey 無し = 工場出荷デバイスの register() 用。connect()/login は secretKey を要求する。
     this._transport = transport;
@@ -92,6 +113,12 @@ export class SesameBleSession {
       : (Buffer.isBuffer(secretKey) ? secretKey : Buffer.from(secretKey, "hex"));
     this._debug = debug;
     this._defaultTimeoutMs = defaultTimeoutMs;
+    /** @type {"lock"|"wm2"} セッション確立プロファイル (protocol.js SESSION_PROFILES)。 */
+    this._profile = assertProfile(profile);
+    /** @type {boolean} login 後の time(8) 自動同期 (BLE3-03。Hub3/WM2 は false)。 */
+    this._syncTime = !!syncTime;
+    // initial publish の itemCode はプロファイル依存: lock=14 / wm2=13 (CHWifiModule2Device.kt:521,540)。
+    this._initialItemCode = SESSION_PROFILES[this._profile].initialItemCode;
 
     this._asm = new SegmentAssembler();
     /** @type {Buffer|null} */
@@ -216,6 +243,8 @@ export class SesameBleSession {
    *   6. sessionKey = deriveSessionKeyFromEcdh(pre16, token4) (CHHub3Device.kt:202-203)。
    *      sault = 0x00 ++ token4 は CCM nonce 側 (ccmEncrypt/ccmDecrypt) が消費する。
    *      enc/decCount=0 で cipher を確立し、以降のコマンドは暗号化される。
+   *      wm2 profile は鍵 = pre16 生 16B / sault = token4 / register data = pubK64 のみ
+   *      (CHWifiModule2Device.kt:279-312。詳細はコンストラクタ JSDoc と protocol.js SESSION_PROFILES)。
    *   7. {deviceUUID, secretKey, productType, serverSecret(=token hex)} を返す
    *      (CHHub3Device.kt:196-208。serverSecret は mSesameToken.toHexString())。
    *
@@ -286,12 +315,18 @@ export class SesameBleSession {
       }, REGISTER_TIMEOUT_MS);
       this._registerWaiter = { resolve, reject, timer };
     });
-    this._sendPlain(buildSendFrame(ITEM.REGISTRATION, registrationData(pubK64, nowMs ?? Date.now())));
+    // wm2 profile の REGISTRATION data は pubK64 のみ (timestamp 無し、CHWifiModule2Device.kt:290)。
+    // lock は pubK64 ++ timestamp4 (CHHub3Device.kt:191-194)。分岐は registrationData が担う。
+    this._sendPlain(buildSendFrame(ITEM.REGISTRATION, registrationData(pubK64, nowMs ?? Date.now(), this._profile)));
     const regPayload = await regPromise; // REGISTRATION 応答 payload (機種で長さが異なる)
 
-    // 機種で応答 payload の構造が分かれる (応答長で分岐):
+    // 機種で応答 payload の構造が分かれる (プロファイル + 応答長で分岐):
+    //   - wm2: payload[0..63] が device の生公開鍵 (CHWifiModule2Device.kt:295
+    //     EccKey.ecdh(res.payload.sliceArray(0..63)))。
     //   - 64B (Hub3 等): payload 全体が device の生公開鍵 (CHHub3Device.kt:197 で payload を
     //     そのまま ECDH に渡す)。
+    //   - 67B (Bot2/Bot3/Bike2/Bike3): payload[0..2]=mechStatus(3B)、payload[3..66]=devicePubKey(64B)
+    //     (CHSesameBot2Device.kt:216-218 / CHSesameBike2Device.kt:110-113 の catch 分岐)。
     //   - 77B (SESAME 5 実機): CHSesame5Device.kt:200-202 handleRegisterResponse 準拠で
     //       payload[0..6]  = mechStatus  (7B, CHSesame5MechStatus)
     //       payload[7..12] = mechSetting (6B, CHSesame5MechSettings)
@@ -299,16 +334,21 @@ export class SesameBleSession {
     //     先頭 13B を parse してキャッシュ (_lastStatus/_lastMechSetting) へ載せ、末尾 64B を
     //     device pubkey として ECDH に渡す。
     // SDK の Hub3 経路は mechStatus/mechSetting を register 応答からは取らない (publish で別途
-    // 受ける) ため 64B のみ。SS5 は登録応答に同梱するため 77B。
+    // 受ける) ため 64B のみ。SS5 は登録応答に同梱するため 77B、Bot/Bike は 3B mechStatus 同梱で 67B。
     const devicePubK = this._extractRegisterDevicePubK(regPayload);
 
     // 5. ECDH 共有秘密の先頭 16B → secretKey(=wm2Key) = pre16 の hex (CHHub3Device.kt:197-200)。
     const pre16 = ecdhSecretPre16(keyPair, devicePubK);
     const secretKey = pre16.toString("hex");
 
-    // 6. sessionKey = CMAC(pre16, token4)。enc/decCount=0 で cipher 確立 (CHHub3Device.kt:202-203)。
-    //    sault = 0x00 ++ token4 は CCM nonce 側で消費 (ccmNonce)。
-    this._key = deriveSessionKeyFromEcdh(pre16, token);
+    // 6. cipher 鍵 (enc/decCount=0 で確立) はプロファイルで分かれる:
+    //    - lock: sessionKey = CMAC(pre16, token4)、sault = 0x00 ++ token4 (CHHub3Device.kt:202-203)。
+    //    - wm2 : 鍵 = ecdhSecret_pre16 **生 16B**、sault = token4 (CHWifiModule2Device.kt:295-297:
+    //      cipher = SesameOS3BleCipher("customDeviceName", ecdhSecret_pre16, mSesameToken!!))。
+    //    sault は CCM nonce 側 (ccmEncrypt/ccmDecrypt の profile 引数) で消費。
+    this._key = this._profile === "wm2"
+      ? Buffer.from(pre16) // 後段の pre16.fill(0) から守るためコピー
+      : deriveSessionKeyFromEcdh(pre16, token);
     this._encCount = 0;
     this._decCount = 0;
     this._loggedIn = true;       // 以降のコマンドは暗号化セッションで送れる
@@ -499,13 +539,23 @@ export class SesameBleSession {
   }
 
   /**
-   * versionTag (ファームウェアバージョン文字列) を取得する。
-   *   item = versionTag(5)、data = 空、payload = UTF-8 文字列 (CHSesameOS3.kt:398-418)。
+   * versionTag (ファームウェアバージョン文字列) を取得する。itemCode は profile で分かれる:
+   *   - lock profile: item = versionTag(5)、data = 空、payload = UTF-8 文字列
+   *     (CHSesameOS3.kt:398-418)。
+   *   - wm2 profile : item = **WM2ActionCode.VERSION_TAG(127)**、data = 空、payload = UTF-8 文字列
+   *     (CHWifiModule2Device.kt:423-435 — getVersionTag() は SesameOS3Payload(VERSION_TAG.value,
+   *     byteArrayOf()) を送り、成功時 String(res.payload) を返す)。WM2 の action code 空間では
+   *     5 = CONNECT_WIFI なので、旧挙動 (常に 5 を送る) は WM2 では versionTag ではなく
+   *     Wi-Fi 接続開始を誤発火していた。応答パースは両 profile とも payload の UTF-8 文字列で同一。
+   *     SDK の unlogined ガード (kt:424-426) は request() の notLoggedIn reject で等価に担保される。
+   * @experimental wm2 profile の versionTag(127) 経路は SDK Kotlin の静的読みからの移植で
+   *   実機未検証 (参照: CHWifiModule2Device.kt:423-435,540)。
    * @param {{timeoutMs?:number}} [opts]
    * @returns {Promise<string>} versionTag 文字列
    */
   async getVersionTag(opts = {}) {
-    const res = await this.request(ITEM.VERSION_TAG, Buffer.alloc(0), opts);
+    const itemCode = this._profile === "wm2" ? WM2_ACTION_CODES.VERSION_TAG : ITEM.VERSION_TAG;
+    const res = await this.request(itemCode, Buffer.alloc(0), opts);
     return res.payload.toString("utf8");
   }
 
@@ -555,10 +605,10 @@ export class SesameBleSession {
     for (const seg of splitSegments(frame, SEG.PLAINTEXT)) this._writeSeg(seg);
   }
 
-  /** CCM 暗号化して送る (encCount++)。 @param {Buffer} frame */
+  /** CCM 暗号化して送る (encCount++)。sault はプロファイル依存 (lock: 0x00++token / wm2: token)。 @param {Buffer} frame */
   _sendCipher(frame) {
     // login/register 後のみ呼ばれ _key/_token は非 null (型のみ非 null 化)。
-    const ct = ccmEncrypt(/** @type {Buffer} */ (this._key), this._encCount, /** @type {Buffer} */ (this._token), frame);
+    const ct = ccmEncrypt(/** @type {Buffer} */ (this._key), this._encCount, /** @type {Buffer} */ (this._token), frame, this._profile);
     this._encCount += 1;
     for (const seg of splitSegments(ct, SEG.CIPHERTEXT)) this._writeSeg(seg);
   }
@@ -596,7 +646,8 @@ export class SesameBleSession {
       this._decCount += 1;
       try {
         // 暗号フレーム受信は login/register 後のみ → _key/_token は非 null (型のみ非 null 化)。
-        frame = ccmDecrypt(/** @type {Buffer} */ (this._key), usedCount, /** @type {Buffer} */ (this._token), assembled.data);
+        // sault はプロファイル依存 (lock: 0x00++token / wm2: token、SesameOS3BleCipher.kt:23)。
+        frame = ccmDecrypt(/** @type {Buffer} */ (this._key), usedCount, /** @type {Buffer} */ (this._token), assembled.data, this._profile);
       } catch (e) {
         // この 1 フレームだけ捨てる。counter は既に進めたので後続は復号継続できる。
         this._log("decrypt failed (corruption / dropped frame); skipping this frame", /** @type {{message?:string}} */ (e)?.message);
@@ -613,7 +664,9 @@ export class SesameBleSession {
     this._log("recv", { opCode, itemCode, len: body.length });
 
     if (opCode === OP.PUBLISH) {
-      if (itemCode === ITEM.INITIAL) { this._handleInitial(body); return; }
+      // initial の itemCode はプロファイル依存: lock=INITIAL(14) / wm2=WM2ActionCode.INITIAL(13)
+      // (CHWifiModule2Device.kt:521-528。自実装が 14 のみ処理すると WM2 はトークンを受け取れない)。
+      if (itemCode === this._initialItemCode) { this._handleInitial(body); return; }
       if (itemCode === ITEM.MECH_STATUS) {
         // ロック (Sesame5/6=7B, Bot/Bike=3B) は parseMechStatus で position/target/flags を読む。
         // 生体・アクセス制御デバイス (Touch/Face/Palm) の mechStatus はロックのバイト構造を持たず
@@ -650,7 +703,19 @@ export class SesameBleSession {
 
   /** @param {Buffer} token */
   _handleInitial(token) {
+    // initial token は **4B 固定** (BLE3-05)。根拠: CCM nonce = count(8B LE) ++ sault で、
+    // lock profile の sault = 0x00 ++ token4 (5B) → nonce 13B / wm2 profile の sault = token4 →
+    // nonce 12B が暗号契約 (SesameOS3BleCipher.kt:8-19,23 / CHWifiModule2Device.kt:297,317、
+    // protocol.js ccmSault も 4B を要求)。4B 超を黙って先頭 4B に切り詰めるとデバイス側の
+    // sault と不一致になり全フレームが復号不能になるため、明示エラーで待機者を解放する。
     if (!token || token.length < 4) { this._log("initial token too short"); return; }
+    if (token.length > 4) {
+      const err = new Error(t("ble.initialTokenMustBe4", { len: token.length }));
+      this._log("initial token too long (refusing to truncate)", token.length);
+      this._rejectWaiter("_loginWaiter", err);
+      this._rejectWaiter("_readyWaiter", err);
+      return;
+    }
     this._token = Buffer.from(token.subarray(0, 4));
     this._encCount = 0;
     this._decCount = 0;
@@ -667,6 +732,25 @@ export class SesameBleSession {
       }
       return;
     }
+    // WM2 profile の login (CHWifiModule2Device.kt:314-321 override fun login):
+    //   loginTag = AesCmac(secretKey 生 16B).computeMac(mSesameToken) — CMAC は計算するが
+    //   それは **payload (16B 全量)** であって cipher 鍵ではない。
+    //   cipher = SesameOS3BleCipher(name, secretKey 生 16B, mSesameToken) — 鍵 = secretKey 生、
+    //   sault = token4 (0x00 を挟まない。nonce 12B は ccmEncrypt/ccmDecrypt の profile 引数が担う)。
+    if (this._profile === "wm2") {
+      if (this._signLogin) {
+        // CHWifiModule2Device に isNeedAuthFromServer 経路は無い (login(token: String?) override は
+        // token を使わない)。黙って無視せず明示エラー (op を捏造しない)。
+        this._rejectWaiter("_loginWaiter", new Error(t("ble.wm2NoServerAuth")));
+        return;
+      }
+      const loginTag = deriveSessionKey(this._secretKey, this._token); // CMAC(secretKey, token4) 16B
+      this._key = Buffer.from(this._secretKey); // cipher 鍵 = secretKey 生 16B (kt:317)
+      this._log("initial token received (wm2), sending login");
+      this._sendPlain(loginPayload(loginTag, "wm2")); // [LOGIN_WM2(2)] ++ CMAC 16B 全量 (kt:318)
+      return;
+    }
+
     // サーバ認証 login (isNeedAuthFromServer): token を signLogin に渡して
     // サーバ署名済み session token を取得し、それを session 鍵として login する
     // (CHSesameOS3.kt:473-487 signGuestKey→login(it.data))。signLogin は非同期なので
@@ -715,26 +799,50 @@ export class SesameBleSession {
   }
 
   /**
-   * REGISTRATION 応答 payload から device の生公開鍵 64B を取り出す (機種で構造が異なるため
-   * 応答長で分岐)。SS5 形 (77B) のときは先頭 13B の mechStatus(7B)/mechSetting(6B) を parse して
-   * キャッシュ (_lastStatus/_lastMechSetting) に載せてから末尾 64B を返す。
+   * REGISTRATION 応答 payload から device の生公開鍵 64B を取り出す (プロファイルと応答長で分岐)。
+   * mechStatus/mechSetting 同梱形のときは先頭を parse してキャッシュ
+   * (_lastStatus/_lastMechSetting) に載せてから pubkey 部を返す。
    *
+   *   - wm2 profile → payload[0..63] が device pubkey (64B 以上を要求し先頭 64B を採る。
+   *           CHWifiModule2Device.kt:295 EccKey.ecdh(res.payload.sliceArray(0..63)))。
    *   - 64B → payload 全体が device pubkey (Hub3 等。CHHub3Device.kt:197)。
+   *   - 67B → payload[0..2]=mechStatus(3B, CHSesameBot2MechStatus/CHSesameBike2MechStatus),
+   *           [3..66]=devicePubKey(64B)
+   *           (CHSesameBot2Device.kt:216-219 / CHSesameBike2Device.kt:110-113 の catch 分岐と 1:1。
+   *            Bot2/Bot3/Bike2/Bike3 は 77B の try が ArrayIndexOutOfBounds で落ち catch 側が走る)。
    *   - 77B → payload[0..6]=mechStatus, [7..12]=mechSetting, [13..76]=devicePubKey
    *           (CHSesame5Device.kt:200-202 handleRegisterResponse と 1:1)。
    *
-   * 注: SS5 形の 13B 先頭 parse・mechStatus/mechSetting 同梱は SDK の Kotlin を移植したもので、
-   *   実機 SESAME 5 応答での検証は未了 (README の Known limitations と整合)。
+   * 注: SS5 形 (77B)・Bot/Bike 形 (67B)・wm2 形は SDK の Kotlin を移植したもので、
+   *   実機応答での検証は未了 (README の Known limitations と整合)。
    * @param {Buffer} payload REGISTRATION 応答 payload
    * @returns {Buffer} device の生公開鍵 64B (X‖Y)
    */
   _extractRegisterDevicePubK(payload) {
-    if (!Buffer.isBuffer(payload) || (payload.length !== 64 && payload.length !== 77)) {
+    // wm2: 応答の先頭 64B が pubkey (sliceArray(0..63))。64B 未満は Kotlin 同様エラー。
+    if (this._profile === "wm2") {
+      if (!Buffer.isBuffer(payload) || payload.length < 64) {
+        throw new Error(t("ble.registerDevicePubKeyLen", {
+          len: Buffer.isBuffer(payload) ? payload.length : "non-buffer",
+        }));
+      }
+      return Buffer.from(payload.subarray(0, 64));
+    }
+    if (!Buffer.isBuffer(payload) || (payload.length !== 64 && payload.length !== 67 && payload.length !== 77)) {
       throw new Error(t("ble.registerDevicePubKeyLen", {
         len: Buffer.isBuffer(payload) ? payload.length : "non-buffer",
       }));
     }
     if (payload.length === 64) return payload; // Hub3: payload 全体が pubkey
+
+    if (payload.length === 67) {
+      // 67B = Bot2/Bot3/Bike2/Bike3: mechStatus(3B) ++ devicePubKey(64B)。
+      // mechStatus = CHSesameBot2MechStatus(payload.sliceArray(0..2)) (CHSesameBot2Device.kt:216 /
+      // CHSesameBike2Device.kt:110)。3B は parseMechStatus が parseMechStatusBot へ振り分ける。
+      // parse 失敗は登録自体を妨げないよう握りつぶす (77B 形と同じ流儀)。
+      try { this._lastStatus = parseMechStatus(payload.subarray(0, 3)); } catch { /* ignore */ }
+      return Buffer.from(payload.subarray(3, 67));
+    }
 
     // 77B = SS5: mechStatus(7B) ++ mechSetting(6B) ++ devicePubKey(64B)。
     // 先頭 13B を既存 parse 関数で読み、login 経路と同じキャッシュ (_lastStatus/_lastMechSetting)
@@ -755,7 +863,11 @@ export class SesameBleSession {
       // 時刻同期 (CHSesameOS3LockBase.kt:126-138): login 応答 payload[0..3] のデバイス時刻 (秒) と
       // 端末時刻の差が 3 秒を超えていたら time(8) を CIPHERTEXT 送出する。login() の resolve は
       // 同期送信を待たず即時に行う (SDK も同期送信は fire-and-forget で応答を待たない)。
-      this._maybeSyncTime(payload);
+      // wm2 profile は対象外: CHWifiModule2Device.kt:318-320 の login コールバックはログのみで、
+      // 時刻同期は CHSesameOS3LockBase (ロック系) 固有の処理。
+      // syncTime=false (BLE3-03): Hub3 も login を override して handleLoginResponse を呼ばない
+      // (CHHub3Device.kt:167-178) ため、ファサードは HUB3 kind で false を渡す。
+      if (this._profile === "lock" && this._syncTime) this._maybeSyncTime(payload);
       w.resolve();
     }
     else w.reject(new BleResultError("login", resultCode));

@@ -16,16 +16,37 @@ export function generateUUID(): string;
  *   3. AES-CMAC(secretKey, message) → 16B MAC
  *   4. hex 化して先頭 8 文字 (= 4B) を返す
  *
- * `node-aes-cmac` は RFC 4493 標準実装。RFC 4493 §4 の Test Vector 2
- * (key=2b7e1516..., msg=6bc1bee2..., expected=070a16b4...) で動作検証済み
- * (tests/crypto/cmacTime.test.js:217 "RFC 4493 Test Vector 2 を aesCmac 単体で検証"
- * が当該ベクタを assert。biz3 Cmac.js も同じ RFC 4493 標準を Web Crypto 上で自前
+ * AES-CMAC は内製の src/aes-cmac.js (RFC 4493 準拠)。RFC 4493 §4 の全 Test Vector
+ * (Example 1-4) を tests/crypto/aes-cmac.test.js で固定し、Test Vector 2
+ * (key=2b7e1516..., msg=6bc1bee2..., expected=070a16b4...) は tests/crypto/cmacTime.test.js
+ * でも検証している (biz3 Cmac.js も同じ RFC 4493 標準を Web Crypto 上で自前
  * 実装しているため出力は一致する)。
  *
  * @param {string} hexKey 16B (32hex) の secretKey
  * @returns {string} 4B hex (8 文字)
  */
 export function cmacTime(hexKey: string): string;
+/**
+ * hex 文字列 → Buffer (奇数長 / 非 hex 文字は明示エラー)。
+ *
+ * ★一本化の動機 (REFACTORING_PLAN P5-4 / ARCH-08): hex 変換が biometric/iot/transport/cli に
+ *   4+ 実装され、検証強度がバラバラだった (Buffer.from(hex,"hex") や parseInt は不正入力を
+ *   黙って切り詰め/0 化する)。検証付き変換をここに集約し、各所はエラー文言 (i18n) だけ
+ *   ローカルに保ちつつ内部検証を本関数へ委譲する。
+ *
+ * @param {string} hex 偶数長の hex 文字列 ("" は 0B Buffer)
+ * @param {{bytes?: number}} [opts] bytes 指定でデコード後のバイト長も検証する
+ * @returns {Buffer}
+ */
+export function hexToBuf(hex: string, { bytes }?: {
+    bytes?: number;
+}): Buffer;
+/**
+ * Buffer/Uint8Array → 小文字 hex 文字列 (SDK の toHexString 相当)。
+ * @param {Buffer|Uint8Array} buf
+ * @returns {string}
+ */
+export function bufToHex(buf: Buffer | Uint8Array): string;
 /**
  * UUID (32hex with hyphens) → 18B base64 (prefix '000c' 付き)。
  * biz3 utils.uuidBuffer() と同じ。`biz3TriggerLocker` の `history` フィールドに乗せる。
@@ -129,7 +150,8 @@ export function deriveRegisterPriKey(e: string | Buffer): Buffer;
  *
  * 手順:
  *   priKey       = deriveRegisterPriKey(e)                       (32B)
- *   pubKey       = priKey から P-256 公開鍵 (04 ‖ X ‖ Y, 65B)    (SDK drop(27) と一致)
+ *   pubKey       = priKey から P-256 公開鍵 (X ‖ Y, **64B**, prefix 無し)
+ *                  (SDK priKeyToPubKey の drop(27) = SPKI 91B − 27B。CHServerAuth.kt:138)
  *   secret       = ECDH(priKey, serverKey)[0..15]                (16B)
  *   serverToken  = 4B 乱数 (テスト用に注入可)
  *   sessionToken = serverToken ‖ b64decode(n)
@@ -143,7 +165,7 @@ export function deriveRegisterPriKey(e: string | Buffer): Buffer;
  * @param {{serverToken?:Buffer}} [opts] serverToken を注入してゴールデンベクタを再現可能にする。
  *   省略時は 4B 乱数。
  * @returns {{sig1:string, st:string, pubkey:string}} すべて base64 文字列。
- *   sig1 = 4B sig, st = 4B serverToken, pubkey = 65B 登録用公開鍵 (04 prefix 込み)。
+ *   sig1 = 4B sig, st = 4B serverToken, pubkey = **64B** 登録用公開鍵 (X‖Y, prefix 無し)。
  */
 export function getRegisterKey(data: {
     ak: string;

@@ -12,10 +12,11 @@
 //   - name-based : config の locks/default.lock を名前解決 (`unlock("front")`)
 //   - direct     : config を介さず deviceUUID + secretKey を直接渡す (`unlockDevice({...})`)
 
-import { lockLock, lockUnlock, lockToggle, botClick, triggerLock, setAutolock } from "./lock.js";
+import { lockLock, lockUnlock, lockToggle, botClick, botClickScript, triggerLock, setAutolock } from "./lock.js";
 import { CMD } from "./crypto.js";
 import { t } from "./i18n.js";
 import { SesameError, ERR } from "./errors.js";
+import { resolveByName, LOCK_RESOLVE_ERRORS } from "./resolve.js";
 
 export class LockManager {
   /**
@@ -45,19 +46,14 @@ export class LockManager {
   /**
    * lock 設定を name から解決。name 省略時は default.lock、
    * 無ければ locks が 1 つだけならそれ。
+   * 解決ロジックは resolveByName (src/resolve.js) に一本化 (P5-4)。失敗は SesameError(BAD_REQUEST)。
    * @param {string|null} [name]
    * @returns {{name: string, lock: import("./config.js").LockView}}
    */
   resolveLock(name) {
     const cfg = this._getConfig();
-    const locks = cfg.locks || {};
-    const names = Object.keys(locks);
-    const chosen = name || cfg.default?.lock || (names.length === 1 ? names[0] : null);
-    if (!chosen) {
-      throw new SesameError(t("domain.client.noLockNoDefault", { names: names.join(", ") || "(none)" }), { code: ERR.BAD_REQUEST });
-    }
-    const lock = locks[chosen];
-    if (!lock) throw new SesameError(t("domain.client.unknownLock", { name: chosen, names: names.join(", ") || "(none)" }), { code: ERR.BAD_REQUEST });
+    const { name: chosen, entry: lock } =
+      resolveByName(cfg.locks, name, cfg.default?.lock, LOCK_RESOLVE_ERRORS);
     return { name: chosen, lock };
   }
 
@@ -108,6 +104,16 @@ export class LockManager {
   }
 
   /**
+   * Bot2/Bot3 の台本を番号指定で実行 (name-based, cloud 経由, cmd=170+index)。
+   * @param {string|null} name ロック名 (null で default.lock)
+   * @param {number} scriptIndex 0..9
+   */
+  async botClickScript(name, scriptIndex) {
+    this._ensureConnected();
+    return botClickScript(this._ws(), { ...this._lockParams(name), scriptIndex });
+  }
+
+  /**
    * オートロック設定 (name-based)。解錠 N 秒後に自動施錠。`seconds=0` で無効。
    * @param {string|null} name ロック名 (null で default.lock)
    * @param {number} seconds 0..65535 (0=無効)
@@ -140,4 +146,14 @@ export class LockManager {
   toggleDevice(p)   { return this.triggerDevice({ ...p, cmd: CMD.TOGGLE }); }
   /** 直接 Bot クリック (cmd=89)。 @param {{deviceUUID:string, secretKey:string, timeoutMs?:number}} p */
   botClickDevice(p) { return this.triggerDevice({ ...p, cmd: CMD.CLICK }); }
+  /**
+   * 直接 Bot2/Bot3 台本を番号指定で実行 (cmd=170+index)。
+   * @param {{deviceUUID:string, secretKey:string, scriptIndex:number, timeoutMs?:number}} p
+   */
+  botClickScriptDevice({ scriptIndex, ...p }) {
+    if (!Number.isInteger(scriptIndex) || scriptIndex < 0 || scriptIndex > 9) {
+      throw new SesameError(t("domain.lock.scriptIndexRange", { index: String(scriptIndex) }), { code: ERR.BAD_REQUEST });
+    }
+    return this.triggerDevice({ ...p, cmd: CMD.BOT2_ITEM_CODE_RUN_SCRIPT_0 + scriptIndex });
+  }
 }

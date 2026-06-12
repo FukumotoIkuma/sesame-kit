@@ -14,30 +14,15 @@ export class LockManager {
         ensureConnected: () => void;
     });
     /**
-     * 接続済み WS を返す。各 lock 操作は直前に `_ensureConnected()` を呼ぶため、
-     * この時点で WS は非 null。型レベルで非 null を確定させるだけのアクセサ (実行時挙動なし)。
-     * @returns {import("./transport.js").Hub3WsClient}
-     */
-    _ws(): import("./transport.js").Hub3WsClient;
-    /**
      * lock 設定を name から解決。name 省略時は default.lock、
      * 無ければ locks が 1 つだけならそれ。
+     * 解決ロジックは resolveByName (src/resolve.js) に一本化 (P5-4)。失敗は SesameError(BAD_REQUEST)。
      * @param {string|null} [name]
      * @returns {{name: string, lock: import("./config.js").LockView}}
      */
     resolveLock(name?: string | null): {
         name: string;
         lock: import("./config.js").LockView;
-    };
-    /**
-     * name 解決 + 必須フィールド検査 → triggerLock 用 params。
-     * @param {string|null} [name]
-     * @returns {{deviceId: string, secretKey: string, subUUID: string}}
-     */
-    _lockParams(name?: string | null): {
-        deviceId: string;
-        secretKey: string;
-        subUUID: string;
     };
     /** ロック施錠 (name-based, cmd=82)。 @param {string|null} [name] */
     lock(name?: string | null): Promise<any>;
@@ -49,6 +34,12 @@ export class LockManager {
     botClick(name?: string | null): Promise<any>;
     /** 任意 cmd 直指定 (上級用)。 @param {string|null} name @param {number} cmd */
     triggerRaw(name: string | null, cmd: number): Promise<any>;
+    /**
+     * Bot2/Bot3 の台本を番号指定で実行 (name-based, cloud 経由, cmd=170+index)。
+     * @param {string|null} name ロック名 (null で default.lock)
+     * @param {number} scriptIndex 0..9
+     */
+    botClickScript(name: string | null, scriptIndex: number): Promise<any>;
     /**
      * オートロック設定 (name-based)。解錠 N 秒後に自動施錠。`seconds=0` で無効。
      * @param {string|null} name ロック名 (null で default.lock)
@@ -92,6 +83,16 @@ export class LockManager {
     botClickDevice(p: {
         deviceUUID: string;
         secretKey: string;
+        timeoutMs?: number;
+    }): Promise<any>;
+    /**
+     * 直接 Bot2/Bot3 台本を番号指定で実行 (cmd=170+index)。
+     * @param {{deviceUUID:string, secretKey:string, scriptIndex:number, timeoutMs?:number}} p
+     */
+    botClickScriptDevice({ scriptIndex, ...p }: {
+        deviceUUID: string;
+        secretKey: string;
+        scriptIndex: number;
         timeoutMs?: number;
     }): Promise<any>;
 }

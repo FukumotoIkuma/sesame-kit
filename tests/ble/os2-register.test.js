@@ -21,15 +21,22 @@
 import { describe, it, expect } from "vitest";
 import { Buffer } from "node:buffer";
 import crypto, { createECDH } from "node:crypto";
+// AES-CMAC は内製実装 (src/aes-cmac.js, RFC 4493)。旧 node-aes-cmac は P5-2 で除去。
+import { aesCmac } from "../../src/aes-cmac.js";
 
 import {
   OP, ITEM, SEG, SegmentAssembler, deriveRegisterKeys,
 } from "../../src/ble/os2/protocol.js";
-import { SesameOS2BleSession } from "../../src/ble/os2/session.js";
+import { SesameOS2BleSession, BleResultError } from "../../src/ble/os2/session.js";
 import { SesameOS2Ble } from "../../src/ble/os2/index.js";
 import {
   deriveRegisterPriKey, ecdhSecretPre16, makeLocalRegisterServer,
 } from "../../src/crypto.js";
+
+// CMAC の戻りを Buffer に正規化 (device 側の独立再計算用)。
+function cmacBuf(key, msg) {
+  return aesCmac(key, msg); // 内製 aesCmac は常に Buffer を返す
+}
 
 // firmware 視点 cipher (os2.test.js と同じ鏡像 nonce: device→app は flag を落とす)。
 function deviceNonce(counter, token8, flag) {
@@ -68,7 +75,7 @@ function makeMockRegisterDevice({ mSesameToken, erHex }) {
   let onPacket = null;
   let deviceCipher = null;
   const appAsm = new SegmentAssembler();
-  const seen = { irerRead: false, registration: null, ecdhPre16: null, sessionToken: null };
+  const seen = { irerRead: false, registration: null, ecdhPre16: null, sessionToken: null, ownerKey: null };
 
   const sendPlain = (frame) => {
     const header = (SEG.PLAINTEXT << 1) | 1;
@@ -92,7 +99,9 @@ function makeMockRegisterDevice({ mSesameToken, erHex }) {
       // payload = 16B (drop 対象) ++ ER。ER は erHex。
       const er = Buffer.from(erHex, "hex");
       const payload = Buffer.concat([Buffer.alloc(16, 0xaa), er]);
-      sendPlain(Buffer.from([OP.RESPONSE, OP.READ, ITEM.IRER, 0x00, ...payload]));
+      // response = [RESPONSE, item, op, result, ...payload] (導出元: SesameProtocols.kt:15-19
+      // SSM2ResponsePayload — cmdItCode=data[0], cmdOPCode=data[1], cmdResultCode=data[2])。
+      sendPlain(Buffer.from([OP.RESPONSE, ITEM.IRER, OP.READ, 0x00, ...payload]));
       return;
     }
 
@@ -111,14 +120,16 @@ function makeMockRegisterDevice({ mSesameToken, erHex }) {
       // app 公開鍵と ECDH → pre16 (app 側 ecdhSecretPre16(appKey, pubkey) と一致するはず)。
       const pre16 = ecdhSecretPre16(devEcdh, appPubK64);
       seen.ecdhPre16 = Buffer.from(pre16);
-      const { sessionKey, sessionToken } = deriveRegisterKeys(pre16, serverToken, mSesameToken);
+      const { ownerKey, sessionKey, sessionToken } = deriveRegisterKeys(pre16, serverToken, mSesameToken);
+      // device 側も ownerKey を保持する (登録完了後の login で CMAC 鍵になる。CHSesame2Device.kt:453,462-469)。
+      seen.ownerKey = Buffer.from(ownerKey);
       seen.sessionToken = Buffer.from(sessionToken);
       deviceCipher = makeDeviceCipher(sessionKey, sessionToken);
 
       // login publish (cipher) で登録完了を通知 (CHSesame2Device.kt:508-517)。
       const lr = Buffer.alloc(28);
       lr.writeUInt32BE(Math.floor(Date.now() / 1000), 0);
-      lr[26] = 0x02; // mech_status flags → locked
+      lr[27] = 0x02; // mech_status flags = byte7 (CHSesame2.kt:37) → locked
       sendCipher(Buffer.from([OP.PUBLISH, ITEM.LOGIN, ...lr]));
       return;
     }
@@ -126,6 +137,81 @@ function makeMockRegisterDevice({ mSesameToken, erHex }) {
 
   return {
     seen,
+    transport: {
+      async connect(cb) {
+        onPacket = cb;
+        sendPlain(Buffer.concat([Buffer.from([OP.PUBLISH, ITEM.INITIAL]), mSesameToken]));
+      },
+      write(seg) { onAppSegment(Buffer.from(seg)); },
+      async disconnect() {},
+    },
+  };
+}
+
+// 登録済み OS2 デバイスを模す login 用 mock (register→login 連続シナリオの後半)。
+// device は登録時に保存した secretKey(=ownerKey) と、ER 由来の登録鍵ペア (sesame2PublicKey の
+// 対になる秘密鍵) を持ち、Kotlin の login 検証手順 (CHSesame2Device.kt:233-252) を独立再計算する:
+//   sessionToken = mAppToken4 ++ mSesameToken4
+//   sessionAuth  = CMAC(secretKey=ownerKey, userIdx ++ appPub64 ++ sessionToken) の先頭 4B 一致
+//   sessionKey   = CMAC(ECDH(regPriKey, appPub64)[0:16], sessionToken)
+function makeMockLoginDevice({ deviceSecretKey, regPriKey, mSesameToken }) {
+  let onPacket = null;
+  let deviceCipher = null;
+  const appAsm = new SegmentAssembler();
+  const commands = [];
+
+  const sendPlain = (frame) => {
+    const header = (SEG.PLAINTEXT << 1) | 1;
+    onPacket(Buffer.concat([Buffer.from([header]), frame]));
+  };
+  const sendCipher = (frame) => {
+    const ct = deviceCipher.encrypt(frame);
+    const header = (SEG.CIPHERTEXT << 1) | 1;
+    onPacket(Buffer.concat([Buffer.from([header]), ct]));
+  };
+
+  const onAppSegment = (seg) => {
+    const a = appAsm.feed(seg);
+    if (!a) return;
+    let frame = a.data;
+    if (a.type === SEG.CIPHERTEXT) frame = deviceCipher.decrypt(frame);
+    const op = frame[0];
+    const item = frame[1];
+
+    if (op === OP.SYNC && item === ITEM.LOGIN) {
+      // loginPayload = userIdx(2B) ++ appPub64 ++ mAppToken4 ++ sessionAuth[0:4] (CHSesame2Device.kt:252)。
+      const data = frame.subarray(2);
+      const userIdx = data.subarray(0, 2);          // keyIndex "0000" = 2B
+      const appPub = data.subarray(2, 2 + 64);
+      const mAppToken = data.subarray(66, 70);
+      const auth4 = data.subarray(70, 74);
+      const st = Buffer.concat([mAppToken, mSesameToken]); // CHSesame2Device.kt:237
+      // device 側検証: sessionAuth = CMAC(secretKey, userIdx ++ appPub ++ st) (CHSesame2Device.kt:238-243)。
+      const expect4 = cmacBuf(deviceSecretKey, Buffer.concat([userIdx, appPub, st])).subarray(0, 4);
+      if (!expect4.equals(auth4)) {
+        // invalidSig(4) (SesameProtocols.kt:29 SesameResultCode)。
+        sendPlain(Buffer.from([OP.RESPONSE, ITEM.LOGIN, OP.SYNC, 0x04]));
+        return;
+      }
+      // sessionKey = CMAC(ECDH pre16, sessionToken) (CHSesame2Device.kt:246-251)。
+      const devEcdh = createECDH("prime256v1");
+      devEcdh.setPrivateKey(regPriKey);
+      const pre16 = devEcdh.computeSecret(Buffer.concat([Buffer.from([0x04]), appPub])).subarray(0, 16);
+      deviceCipher = makeDeviceCipher(cmacBuf(pre16, st), st);
+      const lr = Buffer.alloc(28);
+      lr.writeUInt32BE(Math.floor(Date.now() / 1000), 0);
+      lr[27] = 0x02; // mech_status flags = byte7 (CHSesame2.kt:37) → locked
+      // response = [RESPONSE, item, op, result] (SesameProtocols.kt:15-19)。
+      sendPlain(Buffer.concat([Buffer.from([OP.RESPONSE, ITEM.LOGIN, OP.SYNC, 0x00]), lr]));
+      return;
+    }
+    // 暗号化コマンド応答 (SesameProtocols.kt:15-19 の itemCode 先頭順)。
+    commands.push(Buffer.from(frame));
+    sendCipher(Buffer.from([OP.RESPONSE, item, op, 0x00]));
+  };
+
+  return {
+    commands,
     transport: {
       async connect(cb) {
         onPacket = cb;
@@ -149,10 +235,13 @@ describe("OS2 register — server-auth (getRegisterKey 配線) over mock transpo
     const registerServer = makeLocalRegisterServer(); // getRegisterKey ベースのローカルアダプタ
     const res = await session.register({ deviceUUID: "OS2-REG-1", productType: "sesame_3", registerServer });
 
-    // 戻り値の形 (CHSesame2Device.kt:462-471)。
+    // 戻り値の形 (CHSesame2Device.kt:462-469: CHDevice(..., keyIndex="0000",
+    // secretKey=ownerKey.toHexString(), sesame2PublicKey))。
     expect(res.deviceUUID).toBe("OS2-REG-1");
-    expect(res.secretKey).toMatch(/^[0-9a-f]{32}$/);  // pre16 hex (16B)
-    expect(res.ownerKey).toMatch(/^[0-9a-f]{32}$/);
+    expect(res.secretKey).toMatch(/^[0-9a-f]{32}$/);  // ownerKey hex (16B)
+    expect(res.keyIndex).toBe("0000");                // CHSesame2Device.kt:465
+    expect(res.ownerKey).toBe(res.secretKey);         // secretKey = ownerKey (BLE2-04)
+    expect(res.ecdhSecret).toMatch(/^[0-9a-f]{32}$/); // ECDH pre16 hex (中間値)
     expect(res.sesamePublicKey).toMatch(/^[0-9a-f]+$/);
     expect(res.serverSecret).toBe(mSesameToken.toString("hex"));
     expect(session.isLoggedIn).toBe(true);
@@ -161,8 +250,11 @@ describe("OS2 register — server-auth (getRegisterKey 配線) over mock transpo
     expect(mock.seen.irerRead).toBe(true);
     expect(mock.seen.registration).not.toBeNull();
 
-    // app↔device の ECDH pre16 (= secretKey) が一致する (鍵配線の核心)。
-    expect(res.secretKey).toBe(mock.seen.ecdhPre16.toString("hex"));
+    // app↔device の ECDH pre16 が一致し (鍵配線の核心)、secretKey は pre16 ではなく
+    // device 側が独立導出した ownerKey と一致する (CHSesame2Device.kt:453)。
+    expect(res.ecdhSecret).toBe(mock.seen.ecdhPre16.toString("hex"));
+    expect(res.secretKey).toBe(mock.seen.ownerKey.toString("hex"));
+    expect(res.secretKey).not.toBe(res.ecdhSecret);
   });
 
   it("REGISTRATION payload の pubkey は getRegisterKey の pubkey (= ER 由来) と一致する", async () => {
@@ -173,11 +265,67 @@ describe("OS2 register — server-auth (getRegisterKey 配線) over mock transpo
     });
 
     // app が ECDH した相手 (sesamePublicKey) は、ER から導いた登録鍵の公開鍵。
+    // getRegisterKey の pubkey は SDK priKeyToPubKey の drop(27) = **64B (X‖Y, prefix 無し)**
+    // (CHServerAuth.kt:138。SPKI 91B − 27B。EccKey.ecdh の fixheader が 04 を補う)。
     const regPriKey = deriveRegisterPriKey(erHex);
     const devEcdh = createECDH("prime256v1");
     devEcdh.setPrivateKey(regPriKey);
-    const expectedPub65 = devEcdh.getPublicKey(); // 04 ‖ X ‖ Y (getRegisterKey の pubkey と同形)
-    expect(res.sesamePublicKey).toBe(expectedPub65.toString("hex"));
+    const expectedPub64 = devEcdh.getPublicKey().subarray(1); // X ‖ Y 64B = drop(27)
+    expect(res.sesamePublicKey).toBe(expectedPub64.toString("hex"));
+    expect(Buffer.from(res.sesamePublicKey, "hex").length).toBe(64);
+  });
+
+  it("register → login 連続: 戻り値 {secretKey, keyIndex, sesamePublicKey} をそのまま login に使える (acceptance)", async () => {
+    // 前半: register (工場出荷 mock)。
+    const mock = makeMockRegisterDevice({ mSesameToken, erHex });
+    const session = new SesameOS2BleSession({ transport: mock.transport });
+    const res = await session.register({ deviceUUID: "OS2-REG-LOGIN", registerServer: makeLocalRegisterServer() });
+    await session.disconnect();
+
+    // 後半: device は登録時に保存した ownerKey と ER 由来の登録鍵で login に応じる
+    // (CHSesame2Device.kt:233-252 の検証手順を device 側で独立再計算)。
+    const loginMock = makeMockLoginDevice({
+      deviceSecretKey: mock.seen.ownerKey,          // device が保存した secretKey = ownerKey
+      regPriKey: deriveRegisterPriKey(erHex),       // sesame2PublicKey の対になる秘密鍵
+      mSesameToken,
+    });
+    const ble = new SesameOS2Ble({
+      transport: loginMock.transport,
+      secretKey: res.secretKey,           // ← register 戻り値をそのまま使う
+      keyIndex: res.keyIndex,             // "0000"
+      ssmPublicKey: res.sesamePublicKey,  // 64B hex
+    });
+    await ble.connect();
+    expect(ble.isConnected).toBe(true);
+    // 暗号化コマンドも往復する = sessionKey (ECDH 経由) も一致している。
+    const r = await ble.lock();
+    expect(r.resultCode).toBe(0);
+    expect(loginMock.commands.at(-1)[1]).toBe(ITEM.LOCK);
+    await ble.close();
+  });
+
+  it("旧契約の誤用 (ecdhSecret=pre16 を secretKey に使う) は device 側 invalidSig で拒否される", async () => {
+    // BLE2-04 の根本原因の再現: 旧 register は pre16 を secretKey として返しており、
+    // それを login に渡すと CMAC(pre16,…) ≠ CMAC(ownerKey,…) で実機は invalidSig を返す。
+    const mock = makeMockRegisterDevice({ mSesameToken, erHex });
+    const session = new SesameOS2BleSession({ transport: mock.transport });
+    const res = await session.register({ deviceUUID: "OS2-REG-BAD", registerServer: makeLocalRegisterServer() });
+    await session.disconnect();
+
+    const loginMock = makeMockLoginDevice({
+      deviceSecretKey: mock.seen.ownerKey,
+      regPriKey: deriveRegisterPriKey(erHex),
+      mSesameToken,
+    });
+    const ble = new SesameOS2Ble({
+      transport: loginMock.transport,
+      secretKey: res.ecdhSecret, // ← 誤用: pre16 を渡す
+      keyIndex: res.keyIndex,
+      ssmPublicKey: res.sesamePublicKey,
+    });
+    const err = await ble.connect().then(() => null, (e) => e);
+    expect(err).toBeInstanceOf(BleResultError);
+    expect(err.resultName).toBe("invalidSig");
   });
 
   it("ファサード localServerAuth:true で registerServer を自動生成して register できる", async () => {
@@ -187,7 +335,9 @@ describe("OS2 register — server-auth (getRegisterKey 配線) over mock transpo
     });
     const res = await ble.register({ deviceUUID: "OS2-REG-3" });
     expect(res.secretKey).toMatch(/^[0-9a-f]{32}$/);
-    expect(res.secretKey).toBe(mock.seen.ecdhPre16.toString("hex"));
+    // secretKey = ownerKey (CHSesame2Device.kt:466)。pre16 は ecdhSecret として別フィールド。
+    expect(res.secretKey).toBe(mock.seen.ownerKey.toString("hex"));
+    expect(res.ecdhSecret).toBe(mock.seen.ecdhPre16.toString("hex"));
     await ble.close();
   });
 

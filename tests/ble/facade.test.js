@@ -39,7 +39,11 @@ class MockSesame {
       return;
     }
     this.lastCommand = { item, data: Buffer.from(frame.subarray(1)) };
-    this._emitCipher(Buffer.from([OP.RESPONSE, item, 0x00]));
+    // versionTag(5) 応答の payload = バージョン文字列の UTF-8 bytes (送信側導出:
+    // CHSesameOS3.kt:398-418 — String(res.payload) で解釈される値をそのまま載せる)。
+    const extra = (this.versionTagAscii && item === ITEM.VERSION_TAG)
+      ? Buffer.from(this.versionTagAscii, "utf8") : Buffer.alloc(0);
+    this._emitCipher(Buffer.concat([Buffer.from([OP.RESPONSE, item, 0x00]), extra]));
   }
   disconnect() { this.disconnected = true; return Promise.resolve(); }
   _emitPlain(f) { for (const s of splitSegments(f, SEG.PLAINTEXT)) this.onPacket(s); }
@@ -48,6 +52,52 @@ class MockSesame {
 
 const LOCKED = Buffer.from([0x70, 0x17, 0, 0, 0, 0, 0b010]);
 const UNLOCKED = Buffer.from([0x70, 0x17, 0, 0, 0, 0, 0b100]);
+
+/**
+ * WM2 profile の鏡像 mock。導出元: CHWifiModule2Device.kt:314-321 (login override) /
+ * :521-528 (INITIAL=13) / :539-541 (WM2ActionCode) / SesameOS3BleCipher.kt:8-32 (sault=token4)。
+ * ロックと違い initial itemCode=13、cipher 鍵 = secretKey **生 16B**、CCM sault = token4 (nonce 12B)。
+ * バイト列の固定ベクタ検証は wm2-session.test.js が担い、ここはファサード配線 (profile "wm2" が
+ * kind===WIFI で自動選択され handshake が成立すること) の検証に使う。
+ */
+class MockWM2 {
+  constructor() {
+    this.secret = Buffer.from(SECRET, "hex");
+    this.token = Buffer.from([9, 9, 9, 9]);
+    this.asm = new SegmentAssembler();
+    this.encCount = 0; this.decCount = 0;
+    this.onPacket = null; this.lastCommand = null; this.disconnected = false;
+  }
+  connect(onPacket) {
+    this.onPacket = onPacket;
+    // initial publish は WM2ActionCode.INITIAL = 13 (CHWifiModule2Device.kt:521,540)
+    this._emitPlain(Buffer.concat([Buffer.from([OP.PUBLISH, 13]), this.token]));
+    return Promise.resolve();
+  }
+  write(seg) {
+    const a = this.asm.feed(Buffer.from(seg));
+    if (!a) return;
+    let frame;
+    if (a.type === SEG.CIPHERTEXT) { frame = ccmDecrypt(this.secret, this.decCount, this.token, a.data, "wm2"); this.decCount++; }
+    else frame = a.data;
+    const item = frame[0];
+    // login = [LOGIN_WM2(2)] ++ CMAC(secretKey, token) 16B 全量 = 17B 平文 (kt:316-318)
+    if (a.type === SEG.PLAINTEXT && item === 2) {
+      if (frame.length !== 17) throw new Error(`wm2 login frame must be 17B, got ${frame.length}`);
+      this._emitCipher(Buffer.from([OP.RESPONSE, 2, 0]));
+      return;
+    }
+    this.lastCommand = { item, data: Buffer.from(frame.subarray(1)) };
+    // WM2 VERSION_TAG(127) 応答の payload = バージョン文字列の UTF-8 bytes (送信側導出:
+    // CHWifiModule2Device.kt:423-435 — val versionTag = String(res.payload))。
+    const extra = (this.versionTagAscii && item === 127)
+      ? Buffer.from(this.versionTagAscii, "utf8") : Buffer.alloc(0);
+    this._emitCipher(Buffer.concat([Buffer.from([OP.RESPONSE, item, 0x00]), extra]));
+  }
+  disconnect() { this.disconnected = true; return Promise.resolve(); }
+  _emitPlain(f) { for (const s of splitSegments(f, SEG.PLAINTEXT)) this.onPacket(s); }
+  _emitCipher(f) { const ct = ccmEncrypt(this.secret, this.encCount, this.token, f, "wm2"); this.encCount++; for (const s of splitSegments(ct, SEG.CIPHERTEXT)) this.onPacket(s); }
+}
 
 describe("SesameBle facade", () => {
   it("connect → unlock → autolock → close", async () => {
@@ -157,16 +207,17 @@ describe("SesameBle facade", () => {
   });
 
   it("setBleTxPower は Hub3/WM2/OS2 では型エラー (OS3 lock + biometric のみ)", async () => {
+    // wm_2 は profile "wm2" (initial=13/生鍵/sault=token4) で handshake するため専用 mock を使う (P1-6)。
     for (const model of ["hub_3", "wm_2", "sesame_2", "bot_2", "bike_2"]) {
-      const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: model === "wm_2" ? new MockWM2() : new MockSesame() });
       await ble.connect();
       expect(() => ble.setBleTxPower(0), model).toThrow();
       await ble.close();
     }
   });
 
-  it("reset は RESET(104) を空ペイロードで送り全 OS3 機種で使える", async () => {
-    for (const model of ["sesame_5", "bot_2", "bike_2", "bike_3", "ssm_touch", "hub_3", "wm_2"]) {
+  it("reset は RESET(104) を空ペイロードで送り WM2 以外の全 OS3 機種で使える", async () => {
+    for (const model of ["sesame_5", "bot_2", "bike_2", "bike_3", "ssm_touch", "hub_3"]) {
       const dev = new MockSesame();
       const ble = new SesameBle({ secretKey: SECRET, model, transport: dev });
       await ble.connect();
@@ -177,6 +228,45 @@ describe("SesameBle facade", () => {
       // 成功時に session 破棄 = transport.disconnect 呼び出し
       expect(dev.disconnected, model).toBe(true);
     }
+  });
+
+  it("reset は wm_2 では RESET_WM2(18) へ自動ルーティングする (CHWifiModule2Device.kt:437-448)", async () => {
+    // Kotlin の WM2 は reset() を RESET_WM2(18) にオーバーライドし、成功時に dropKey (= 切断) する。
+    // ファサード reset() は wifiProvisioning のとき WifiModule2.reset() (wm2.js) へ委譲する
+    // (追加バックログ 1)。wm_2 は profile "wm2" の handshake (P1-6) なので専用 mock を使う。
+    const dev = new MockWM2();
+    const ble = new SesameBle({ secretKey: SECRET, model: "wm_2", transport: dev });
+    await ble.connect();
+    const r = await ble.reset();
+    expect(r.resultCode).toBe(0);
+    expect(dev.lastCommand.item).toBe(18); // WM2ActionCode.RESET_WM2 (kt:540)
+    expect(dev.lastCommand.data.length).toBe(0); // byteArrayOf() (kt:443)
+    // 成功時 dropKey 相当 = session 破棄 (transport.disconnect 呼び出し)
+    expect(dev.disconnected).toBe(true);
+  });
+
+  it("getVersionTag は lock 系で versionTag(5) を、wm_2 で WM2 VERSION_TAG(127) を送る", async () => {
+    // lock profile: CHSesameOS3.kt:398-418 — item=5, payload=UTF-8 文字列。
+    const lockDev = new MockSesame();
+    lockDev.versionTagAscii = "3.0-4-abcdef"; // 応答 payload に載せる固定ベクタ
+    const lock = new SesameBle({ secretKey: SECRET, model: "sesame_5", transport: lockDev });
+    await lock.connect();
+    expect(await lock.getVersionTag()).toBe("3.0-4-abcdef");
+    expect(lockDev.lastCommand.item).toBe(ITEM.VERSION_TAG); // 5
+    expect(lockDev.lastCommand.data.length).toBe(0);
+    await lock.close();
+
+    // wm2 profile: CHWifiModule2Device.kt:423-435 — item=WM2ActionCode.VERSION_TAG(127)、
+    // data=byteArrayOf()、応答 payload は String(res.payload)。WM2 の action code 空間では
+    // 5=CONNECT_WIFI なので 5 を送る旧挙動は Wi-Fi 接続開始の誤発火だった (追加バックログ 2)。
+    const wm2Dev = new MockWM2();
+    wm2Dev.versionTagAscii = "wm2-1.0-cafe";
+    const wm2 = new SesameBle({ secretKey: SECRET, model: "wm_2", transport: wm2Dev });
+    await wm2.connect();
+    expect(await wm2.getVersionTag()).toBe("wm2-1.0-cafe");
+    expect(wm2Dev.lastCommand.item).toBe(127); // WM2ActionCode.VERSION_TAG (kt:540)
+    expect(wm2Dev.lastCommand.data.length).toBe(0);
+    await wm2.close();
   });
 
   it("reset は OS2 機種では型エラー (別系統の reset)", async () => {
@@ -361,5 +451,92 @@ describe("SesameBle facade", () => {
     expect(dev.lastCommand.data.length).toBe(0);
     expect(r.resultCode).toBe(0);
     await ble.close();
+  });
+});
+
+describe("SesameBle facade — biometric の機種別 capability ゲート (P3-15)", () => {
+  it("ssm_touch: card+fingerprint のみ (passcode/face/palm 系メソッドは見えない — DeviceProfiles.SESAME_TOUCH)", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, model: "ssm_touch", transport: dev });
+    const bio = ble.biometric;
+    // 集合内 (CHSesameBiometricDevice.kt:45 = {CARD, FINGERPRINT})
+    expect(typeof bio.cardModeSet).toBe("function");
+    expect(typeof bio.cardBatchAdd).toBe("function");
+    expect(typeof bio.fingerPrintModeSet).toBe("function");
+    // 集合外: passcode/face/palm は持たない
+    expect(bio.passcodeModeSet).toBeUndefined();
+    expect(bio.passcodeAdd).toBeUndefined();
+    expect(bio.passcodeBatchAdd).toBeUndefined();
+    expect(bio.faceModeSet).toBeUndefined();
+    expect(bio.palmModeSet).toBeUndefined();
+    // 共通 API (CHSesameConnector / delegate 結線) は常に載る
+    expect(typeof bio.insertSesame).toBe("function");
+    expect(typeof bio.removeSesame).toBe("function");
+    expect(typeof bio.registerDelegate).toBe("function");
+    expect(typeof bio.onEnroll).toBe("function");
+    // 遅延キャッシュ (同一インスタンス)
+    expect(ble.biometric).toBe(ble.biometric);
+    // 実際に card コマンドが送れる (connect 後)
+    await ble.connect();
+    await bio.cardModeSet(1);
+    expect(dev.lastCommand.item).toBe(ITEM.CARD_MODE_SET);
+    await ble.close();
+  });
+
+  it("ssm_touch_pro: passcode 系が見える (DeviceProfiles.SESAME_TOUCH_PRO)", () => {
+    const ble = new SesameBle({ secretKey: SECRET, model: "ssm_touch_pro", transport: new MockSesame() });
+    const bio = ble.biometric;
+    expect(typeof bio.passcodeModeSet).toBe("function");
+    expect(typeof bio.cardModeSet).toBe("function");
+    expect(typeof bio.fingerPrintModeSet).toBe("function");
+    // face/palm は無い
+    expect(bio.faceModeSet).toBeUndefined();
+    expect(bio.palmModeSet).toBeUndefined();
+  });
+
+  it("sesame_face_ai: palm+face のみ (card/fingerprint/passcode は見えない — DeviceProfiles.SESAME_FACE_AI)", () => {
+    const ble = new SesameBle({ secretKey: SECRET, model: "sesame_face_ai", transport: new MockSesame() });
+    const bio = ble.biometric;
+    expect(typeof bio.faceModeSet).toBe("function");
+    expect(typeof bio.palmModeSet).toBe("function");
+    expect(bio.cardModeSet).toBeUndefined();
+    expect(bio.cardAdd).toBeUndefined();
+    expect(bio.fingerPrintModeSet).toBeUndefined();
+    expect(bio.passcodeModeSet).toBeUndefined();
+  });
+
+  it("sesame_face_Pro: 全 capability (DeviceProfiles.SESAME_FACE_PRO)", () => {
+    const ble = new SesameBle({ secretKey: SECRET, model: "sesame_face_Pro", transport: new MockSesame() });
+    const bio = ble.biometric;
+    for (const m of ["cardModeSet", "fingerPrintModeSet", "passcodeModeSet", "faceModeSet", "palmModeSet"]) {
+      expect(typeof bio[m]).toBe("function");
+    }
+  });
+
+  it("空集合機種 (open_sensor_1/open_sensor_2/remote/remote_nano) は biometric ゲッタが throw", () => {
+    // CHDeivceProtocols.kt:81,112,118,172: deviceFactory(..., setOf()) — enroll API を一切持たない。
+    for (const model of ["open_sensor_1", "open_sensor_2", "remote", "remote_nano"]) {
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+      expect(() => ble.biometric).toThrow(/capability/);
+    }
+  });
+
+  it("BLE3-03: Hub3/biometric は login 後の time(8) 自動同期を送らない (CHHub3Device.kt:167-178 / CHSesameBiometricDeviceImpl.kt:258-277)", async () => {
+    // lock (既定 model): mock の login 応答 systemTime=0 (遠過去) → time(8) が飛ぶ。
+    const lockDev = new MockSesame();
+    const lock = new SesameBle({ secretKey: SECRET, transport: lockDev });
+    await lock.connect();
+    expect(lockDev.lastCommand?.item).toBe(ITEM.TIME);
+    await lock.close();
+    // Hub3/biometric: login override は handleLoginResponse (時刻同期) を呼ばないため
+    // 同条件でも何も送られない (CHSesameBiometricDeviceImpl は CHSesameOS3 直継承)。
+    for (const model of ["hub_3", "ssm_touch"]) {
+      const dev = new MockSesame();
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: dev });
+      await ble.connect();
+      expect(ble.isConnected).toBe(true);
+      expect(dev.lastCommand).toBeNull();
+      await ble.close();
+    }
   });
 });

@@ -121,14 +121,21 @@ generating clients off it). **v (provenance + upstream gate)** runs alongside:
 provenance lands with ii-a (it feeds `x-stability`); the upstream canary can
 follow iii.
 
-## Pre-1.0 cleanups to fold in (from the audit)
+## Pre-1.0 cleanups to fold in (from the audit) — all addressed
 
-- `event.ready`: advertised in `rpc.discover` but never emitted — emit or drop.
-- `iot.subscribeIotResponse` / `iot.removeSesameFromHub3`: missing extracted
-  params → `discover` shows only `(params)`.
-- Stale `CONTRACT_VERSION` doc-comment ("79 method" vs 81 exposed).
-- `serve` exposes no BLE today (all RPC = cloud WS). Local BLE-backed control is a
-  future, separate surface — relevant to the "works offline / local-first" moat.
+- ~~`event.ready`: advertised in `rpc.discover` but never emitted~~ → emitted on
+  every persistent connection since contract 1.2.0 (see work item above).
+- ~~`iot.subscribeIotResponse` / `iot.removeSesameFromHub3`: missing extracted
+  params~~ → `iot.subscribeIotResponse` is no longer an exposed RPC method;
+  `iot.removeSesameFromHub3` self-describes its params in `rpc.discover`.
+- ~~Stale `CONTRACT_VERSION` doc-comment ("79 method" vs 81 exposed)~~ →
+  `src/serve/jsonrpc.js` keeps a per-version changelog; the registry exposes
+  135 methods at contract 1.2.0.
+- ~~`serve` exposes no BLE today (all RPC = cloud WS)~~ → registered BLE operations
+  are now exposed (`ble.invoke` / `ble.os2.invoke` generic facades + typed
+  `ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` /
+  `ble.wifi.*` / `ble.os2.register`), backed by the daemon host's Bluetooth
+  adapter; all experimental pending hardware verification.
 
 ## Open questions (not yet decided)
 

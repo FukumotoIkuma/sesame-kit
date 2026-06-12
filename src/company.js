@@ -69,7 +69,9 @@ export async function getCompanies(client, { timeoutMs = DEFAULT_TIMEOUT_MS } = 
  *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{companyID:string, name:string, timeoutMs?:number}} params
- * @returns {Promise<{companyID:string, name:string}>} 更新後の {companyID, name}
+ * @returns {Promise<{companyID:string, name:string}|undefined>} 応答 data (更新後の {companyID, name})。
+ *   サーバが data を返さなければ undefined (BIZ-10: 入力値での補完 = 応答の捏造はしない。
+ *   biz3 も message.data をそのまま読むだけで補完しない)。
  */
 export async function updateCompanyName(client, { companyID, name, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!companyID) throw badRequest("company.err.companyIDRequired");
@@ -81,7 +83,7 @@ export async function updateCompanyName(client, { companyID, name, timeoutMs = D
   assertSuccess(resp, "updateCompanyName");
   // data は {companyID, name} (useStripeInfo.js:170)。
   // resp.data は WsMessage 上 unknown。上流形状を JSDoc cast で明示する (実機検証済の構造)。
-  return /** @type {{companyID:string, name:string}|undefined} */ (resp.data) ?? { companyID, name };
+  return /** @type {{companyID:string, name:string}|undefined} */ (resp.data);
 }
 
 /**

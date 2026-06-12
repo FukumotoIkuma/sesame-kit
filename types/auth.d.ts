@@ -8,7 +8,9 @@
 export function jwtSub(token: string): string | null;
 /**
  * 失効していない idToken を返す。必要なら refresh する。
- * 失効まで `marginSec` 以下なら早期 refresh する (デフォルト 60秒)。
+ * 失効まで `marginSec` 以下なら早期 refresh する (デフォルト 120秒 =
+ * AWSMobileClient 2.77.0 の REFRESH_THRESHOLD_DEFAULT、
+ * CognitoIdentityProviderClientConfig.java:40)。
  *
  * @param {import("./tokens.js").TokenStore} store
  * @param {{ marginSec?: number }} [opts]
@@ -18,8 +20,17 @@ export function getValidIdToken(store: import("./tokens.js").TokenStore, { margi
     marginSec?: number;
 }): Promise<string>;
 /**
- * Step 1: CUSTOM_AUTH を開始。Cognito が email に確認コードを送る。
- * 新規ユーザーの場合は SignUp してから retry。
+ * Step 1: アプリと同じ「signUp 先行 → CUSTOM_AUTH 開始」(LoginMailFG.kt:106-127 の 1:1)。
+ * Cognito が email に確認コードを送る。
+ *
+ * フロー (アプリ忠実):
+ *   1. SignUp (Password="dummypwk", UserAttributes=[{Name:"email"}]) を常に先に実行。
+ *      既存ユーザーの UsernameExistsException は容認して signIn へ進む
+ *      (LoginMailFG.kt:114-118)。
+ *   2. InitiateAuth (CUSTOM_AUTH, AuthParameters={USERNAME})。
+ *      DEVICE_KEY は initiate には入れない — 参照 SDK の initiateCustomAuthRequest は
+ *      DEVICE_KEY を同梱しない (CognitoUser.java:3473-3507)。DEVICE_KEY は全チャレンジ
+ *      回答側に注入される (CognitoUser.java:2919-2922 / ChallengeContinuation.java:160-167)。
  *
  * @param {import("./tokens.js").TokenStore} store
  * @param {string} username
@@ -28,7 +39,7 @@ export function getValidIdToken(store: import("./tokens.js").TokenStore, { margi
 export function loginInitiate(store: import("./tokens.js").TokenStore, username: string, { clientId }?: {
     clientId?: string;
 }): Promise<{
-    challenge: "CUSTOM_CHALLENGE";
+    challenge: string;
     params: Record<string, string> | undefined;
 }>;
 /**
@@ -40,7 +51,8 @@ export function loginInitiate(store: import("./tokens.js").TokenStore, username:
  */
 export function loginVerify(store: import("./tokens.js").TokenStore, code: string): Promise<import("./tokens.js").StoredTokens>;
 /**
- * ログアウト。公式アプリ相当にサーバ側もクリーンにする:
+ * ログアウト。公式アプリは**ローカル signOut のみ**で、以下のサーバ側クリーンアップは
+ * 本 kit の意図的な強化 (公式挙動の再現ではない):
  *   1. ForgetDevice — このデバイスの remembered 登録を解除 (ConfirmDevice の対。これが無いと
  *      login のたびに remembered device がアカウントに溜まり続ける)。
  *   2. RevokeToken  — この refresh token を失効 (ローカル削除だけでは生き残るため)。

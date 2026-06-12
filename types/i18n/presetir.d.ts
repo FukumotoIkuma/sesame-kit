@@ -5,6 +5,7 @@ declare namespace _default {
         "presetir.cmd.button.desc": string;
         "presetir.cmd.send.desc": string;
         "presetir.opt.device": string;
+        "presetir.opt.remote": string;
         "presetir.opt.code": string;
         "presetir.opt.power": string;
         "presetir.opt.temp": string;
@@ -25,6 +26,7 @@ declare namespace _default {
         "presetir.err.deviceRequiredNonInteractive": string;
         "presetir.err.noHub3Found": string;
         "presetir.err.codeRequired": string;
+        "presetir.err.remoteNoCode": string;
         "presetir.err.irtypeRequired": string;
         "presetir.err.buttonRequired": string;
         "presetir.err.commandOptRequired": string;
@@ -39,6 +41,7 @@ declare namespace _default {
         "presetir.cmd.button.desc": string;
         "presetir.cmd.send.desc": string;
         "presetir.opt.device": string;
+        "presetir.opt.remote": string;
         "presetir.opt.code": string;
         "presetir.opt.power": string;
         "presetir.opt.temp": string;
@@ -59,6 +62,7 @@ declare namespace _default {
         "presetir.err.deviceRequiredNonInteractive": string;
         "presetir.err.noHub3Found": string;
         "presetir.err.codeRequired": string;
+        "presetir.err.remoteNoCode": string;
         "presetir.err.irtypeRequired": string;
         "presetir.err.buttonRequired": string;
         "presetir.err.commandOptRequired": string;

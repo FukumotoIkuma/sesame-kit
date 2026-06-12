@@ -1,12 +1,34 @@
 /**
  * 個人ユーザのデバイス一覧。companyID 不要。
+ *
+ * partialOnTimeout (BIZ-14 / バックログ6, オプトイン): true なら timeout 時に reject せず、
+ * その時点までの蓄積を `{partial:true, list}` で resolve する (参照 UI は page push のたびに
+ * 表示へ反映するため、完了前でも部分蓄積が残る — useManageDevice.js:38-55 の setDevices /
+ * useManageEmployee.js:70-88 と同パターン)。指定時は完走しても `{partial:false, list}` の
+ * 同 shape で返る (既定の配列戻りと shape が変わる点に注意)。既定 (false) は従来どおり reject。
+ *
+ * @overload
  * @param {WsClient} client
- * @param {{timeoutMs?: number}} [opts]
+ * @param {{timeoutMs?: number, partialOnTimeout: true}} opts
+ * @returns {Promise<{partial:boolean, list:any[]}>}
+ */
+export function getUserDevices(client: WsClient, opts: {
+    timeoutMs?: number;
+    partialOnTimeout: true;
+}): Promise<{
+    partial: boolean;
+    list: any[];
+}>;
+/**
+ * @overload
+ * @param {WsClient} client
+ * @param {{timeoutMs?: number, partialOnTimeout?: false}} [opts]
  * @returns {Promise<any[]>}
  */
-export function getUserDevices(client: WsClient, { timeoutMs }?: {
+export function getUserDevices(client: WsClient, opts?: {
     timeoutMs?: number;
-}): Promise<any[]>;
+    partialOnTimeout?: false;
+} | undefined): Promise<any[]>;
 /**
  * 単機の現在状態 (ロック開閉、電池等)。biz3 では isFromApp=true 限定だが CLI でも投げてみる価値あり。
  *
@@ -45,6 +67,74 @@ export function deleteDevices(client: WsClient, { companyID, items }: {
     }>;
 }): Promise<import("./transport.js").WsMessage>;
 /**
+ * デバイスを company に追加する (biz3ManageDevice/add)。
+ * **デバイスを「増やす」唯一の経路** (del だけある現状は非対称だった — P3-1)。
+ * items は QR 由来のデバイスキーオブジェクト配列 (vendor は addSesameDevicesToBiz3 が
+ * そのまま items に乗せる — useManageDevice.js:256-268)。
+ *
+ * 失敗応答の伝搬: サーバはデバイス数上限で `{success:false, message:"Limit Exceeded"}` を
+ * 返す (useManageDevice.js:28-30)。assertSuccess(strict) がその message を含む
+ * SesameError(rejected) で throw するため、呼び出し側にそのまま伝搬する。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, items: object[]}} p
+ */
+export function addDevices(client: WsClient, { companyID, items }: {
+    companyID: string;
+    items: object[];
+}): Promise<import("./transport.js").WsMessage>;
+/**
+ * デバイスの並び順を更新する (biz3ManageDevice/reorderDevices)。
+ * vendor (useManageDevice.js:270-285) は items の各要素に `rank = 0 - index` を
+ * 振ってから送る (先頭ほど大きい = 降順負値)。本関数も同じ採番を行う。
+ * 応答 data は並び替え後のデバイス一覧 (useManageDevice.js:80-81 setCompanyDevices(message.data))。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, items: object[]}} p items は並べたい順のデバイスオブジェクト配列
+ * @returns {Promise<any>} 並び替え後のデバイス一覧 (resp.data)
+ */
+export function reorderDevices(client: WsClient, { companyID, items }: {
+    companyID: string;
+    items: object[];
+}): Promise<any>;
+/**
+ * デバイスごとの push 通知設定一覧を取得する (biz3ManageDevice/notifyList)。
+ * pushToken はモバイル push トークン (vendor は FCM 等の端末トークンを渡す)。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, pushToken: string, items: object[]}} p
+ * @returns {Promise<any>} 通知設定一覧 (resp.data)
+ */
+export function getNotifyStatus(client: WsClient, { companyID, pushToken, items }: {
+    companyID: string;
+    pushToken: string;
+    items: object[];
+}): Promise<any>;
+/**
+ * 単機の push 通知 ON/OFF を切り替える (biz3ManageDevice/notifyManage)。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, pushToken: string, deviceUUID: string, enablePush: number|boolean}} p
+ *   enablePush: vendor はそのまま乗せる (useManageDevice.js:304-318)。boolean は 1/0 へ正規化。
+ */
+export function switchNotify(client: WsClient, { companyID, pushToken, deviceUUID, enablePush }: {
+    companyID: string;
+    pushToken: string;
+    deviceUUID: string;
+    enablePush: number | boolean;
+}): Promise<import("./transport.js").WsMessage>;
+/**
+ * 充電池モード (リチウム充電池使用フラグ) を切り替える (biz3ManageDevice/switchRecharge)。
+ * vendor フレームに companyID は**乗らない** (useManageDevice.js:360-372)。
+ *
+ * @param {WsClient} client
+ * @param {{deviceUUID: string, isRechargeBattery: boolean|number}} p
+ */
+export function switchRechargeableBattery(client: WsClient, { deviceUUID, isRechargeBattery }: {
+    deviceUUID: string;
+    isRechargeBattery: boolean | number;
+}): Promise<import("./transport.js").WsMessage>;
+/**
  * デバイス state push を購読。subscribeDevicesUpdate (biz3ManageDevice) を投げて購読要求し、
  * 実際の state push は **`biz3TriggerLocker:pubDeviceStateChange`** で届く。
  *
@@ -68,6 +158,22 @@ export function subscribeDevicesUpdate(client: WsClient, { companyID, items, onU
     onUpdate: (msg: any) => void;
 }): () => void;
 /**
+ * デバイス一覧の増減 push (`pubUserDeviceChange`) を購読する (P3-5)。
+ *
+ * vendor (useIotCtrl.js:12,23-25): 鍵共有・デバイス追加/削除があるとサーバが
+ * `{action:"biz3TriggerLocker", op:"pubUserDeviceChange", ...}` を push し、
+ * web はそれを受けて getCompanyDevices() でデバイス一覧を再取得する。
+ * 購読要求フレームは存在しない (pubDeviceStateChange と違い subscribe op 無しで届く) ため、
+ * 本関数はローカル購読のみを行う。再接続を跨いでも transport の subscribers は保持される。
+ *
+ * @param {WsClient} client
+ * @param {{onChange: (msg: any) => void}} p
+ * @returns {() => void} unsubscribe
+ */
+export function subscribeUserDeviceChange(client: WsClient, { onChange }: {
+    onChange: (msg: any) => void;
+}): () => void;
+/**
  * ロックの開閉履歴を取得。`list` はデバイス指定の配列。
  * @param {WsClient} client
  * @param {{companyID:string, list:any[], pageSize?:number|null}} p
@@ -77,6 +183,25 @@ export function getDeviceHistory(client: WsClient, { companyID, list, pageSize }
     list: any[];
     pageSize?: number | null;
 }): Promise<unknown>;
+/**
+ * 単機の開閉履歴を全ページ自動取得する (P3-7、vendor fetchAllHistory 相当)。
+ *
+ * vendor (DeviceHistory.js:37-74 downloadDeviceHistory/fetchAllHistory):
+ *   - lastKey = 直前ページ末尾レコードの timestamp (初回は null)
+ *   - 1 ページ取得して `res.length === pageSize` なら次ページ継続、満たなければ終端
+ *   - pageSize は 100 固定 (DeviceHistory.js:56)
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, deviceUUID: string, pageSize?: number, maxPages?: number}} p
+ *   maxPages: 安全弁 (vendor には無い意図的逸脱 §0.1-2 — CLI/RPC で無限ループを防ぐ。既定 1000)。
+ * @returns {Promise<any[]>} 全ページを結合した履歴配列
+ */
+export function getAllDeviceHistory(client: WsClient, { companyID, deviceUUID, pageSize, maxPages }: {
+    companyID: string;
+    deviceUUID: string;
+    pageSize?: number;
+    maxPages?: number;
+}): Promise<any[]>;
 /**
  * 開閉履歴の1エントリを非表示化 (論理削除)。
  * biz3 useManageGroup.js makeInvisibleHistory: フラット {action, deviceUUID, timestamp, op}。
@@ -165,17 +290,46 @@ export function webapiSendCmd(client: WsClient, { apiKeyId, deviceId, cmd, sign,
     history: unknown;
 }): Promise<unknown>;
 /**
- * デフォルト REST transport を作る。原典は API Gateway (AWSCredentialsProvider) だが、
- * 本 kit は既存の Cognito idToken (getValidIdToken) を再利用し Authorization に乗せる。
+ * デフォルト REST transport を作る。
+ * 公式アプリと同じ「SigV4 (Cognito Identity Pool 一時 credentials) + x-api-key」を付ける
+ * (ApiClientConfigBuilder.kt:34-46, BaseApp.kt:95-102。冒頭ブロック注記参照)。
  *
- * ★ホストは UNVERIFIED (上記ブロック注記参照)。`baseUrl` を必ず注入すること。
+ * appidentifyid は付けない (バックログ8: per-op 化)。本 transport が叩くエンドポイント
+ *   POST /device/v1/sesame2/sign        (CHAPIClient.kt:95-96 guestKeysSignPost)
+ *   POST /device/v1/sesame2/{device_id} (CHAPIClient.kt:77-81 register os2)
+ *   POST /device/v1/sesame5/{device_id} (CHAPIClient.kt:84-88 register os3)
+ * には参照に @Parameter(name="appidentifyid", location="header") が無い。
+ * 全列挙表は aws-credentials.js makeApiGatewayTransport の冒頭コメント参照。
+ * 旧実装は appIdentifyId を常時解決・付与していたが参照より広かったため撤去した。
+ * appIdentifyId / config / configStore オプションは後方互換のため受理するが **無視する**。
  *
- * @param {{baseUrl?:string, tokenStore?:import("./tokens.js").TokenStore, fetchImpl?:typeof globalThis.fetch}} [opts]
+ * 認可の入力は次のどちらか:
+ *   - tokenStore — 既存ログイン (`sesame login`) の idToken を Identity Pool に連携して
+ *     一時 credentials を取得する (BaseApp.kt:99 の AWSMobileClient.getInstance() 相当)。
+ *   - credentialsProvider — 取得済み provider を直接注入 (テスト / 上級用)。
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
+ *
+ * @param {{baseUrl?:string,
+ *          tokenStore?:import("./tokens.js").TokenStore,
+ *          credentialsProvider?:import("./aws-credentials.js").CredentialsProviderLike,
+ *          appIdentifyId?:string|null,
+ *          config?:import("./aws-credentials.js").AppIdConfigLike|null,
+ *          configStore?:import("./aws-credentials.js").AppIdConfigStoreLike|null,
+ *          apiKey?:string,
+ *          fetchImpl?:typeof globalThis.fetch}} [opts]
+ *   appIdentifyId / config / configStore は旧 API 互換のため受理するが無視する
+ *   (参照のこれらのエンドポイントに appidentifyid ヘッダは無い)。
  * @returns {RegisterTransport}
  */
-export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl }?: {
+export function makeRegisterTransport({ baseUrl, tokenStore, credentialsProvider, apiKey, fetchImpl, }?: {
     baseUrl?: string;
     tokenStore?: import("./tokens.js").TokenStore;
+    credentialsProvider?: import("./aws-credentials.js").CredentialsProviderLike;
+    appIdentifyId?: string | null;
+    config?: import("./aws-credentials.js").AppIdConfigLike | null;
+    configStore?: import("./aws-credentials.js").AppIdConfigStoreLike | null;
+    apiKey?: string;
     fetchImpl?: typeof globalThis.fetch;
 }): RegisterTransport;
 /**
@@ -183,26 +337,37 @@ export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl }?: {
  *
  * register / guest-key signing の REST API は BLE 経路からも使われるが、Cognito の
  * idToken/refreshToken ライフサイクルは `sesame login` が確立した TokenStore に集約する。
- * ここを通すことで CLI/RPC が別ログインや生 Bearer token を持たず、Consumer Client +
+ * ここを通すことで CLI/RPC が別ログインや生 credentials を持たず、Consumer Client +
  * ConfirmDevice による refreshToken 維持をそのまま再利用する。
  *
- * baseUrl は明示値を最優先し、無ければ config.registerBaseUrl を使う。どちらも無い場合、
- * required=false では undefined を返して BLE-only 登録を維持し、required=true では明示エラー。
+ * baseUrl は明示値 > config.registerBaseUrl > DEFAULT_REGISTER_BASE_URL の順。既定ホストが
+ * app.properties:2-3 で確定したため、baseUrl 未設定でも常に transport を返す
+ * (旧「baseUrl 必須 throw / undefined 返し」は撤廃。`required` は後方互換のため受理するが無視)。
+ * appIdentifyId / configStore も後方互換のため受理するが無視する (バックログ8:
+ * sign/register 系エンドポイントに appidentifyid ヘッダは無い — makeRegisterTransport 注記)。
  *
- * @param {{baseUrl?:string|null, config?:{registerBaseUrl?:string|null}|null,
- *          tokenStore?:import("./tokens.js").TokenStore, fetchImpl?:typeof globalThis.fetch,
+ * @param {{baseUrl?:string|null,
+ *          config?:({registerBaseUrl?:string|null} & import("./aws-credentials.js").AppIdConfigLike)|null,
+ *          configStore?:import("./aws-credentials.js").AppIdConfigStoreLike|null,
+ *          tokenStore?:import("./tokens.js").TokenStore,
+ *          credentialsProvider?:import("./aws-credentials.js").CredentialsProviderLike,
+ *          appIdentifyId?:string|null,
+ *          fetchImpl?:typeof globalThis.fetch,
  *          required?:boolean}} [opts]
- * @returns {RegisterTransport|undefined}
+ * @returns {RegisterTransport}
  */
-export function resolveRegisterTransport({ baseUrl, config, tokenStore, fetchImpl, required }?: {
+export function resolveRegisterTransport({ baseUrl, config, configStore, tokenStore, credentialsProvider, appIdentifyId, fetchImpl }?: {
     baseUrl?: string | null;
-    config?: {
+    config?: ({
         registerBaseUrl?: string | null;
-    } | null;
+    } & import("./aws-credentials.js").AppIdConfigLike) | null;
+    configStore?: import("./aws-credentials.js").AppIdConfigStoreLike | null;
     tokenStore?: import("./tokens.js").TokenStore;
+    credentialsProvider?: import("./aws-credentials.js").CredentialsProviderLike;
+    appIdentifyId?: string | null;
     fetchImpl?: typeof globalThis.fetch;
     required?: boolean;
-}): RegisterTransport | undefined;
+}): RegisterTransport;
 /**
  * guestKeysSign — 既存登録済みデバイスの再ログイン時に session token を取得する
  * (CHSesameOS3.kt:474-484, CHAPIClientBiz.kt:143-144)。
@@ -254,6 +419,11 @@ export function registerSesame5(transport: RegisterTransport, { deviceUUID, prod
     productType: (string | number);
     serverSecret: string;
 }): Promise<any>;
+/**
+ * 既定の REST ホスト (app.properties:3 candyhouse.sesame.api.prod = BuildConfig.ch_server)。
+ * config.registerBaseUrl や明示引数で上書き可能。
+ */
+export const DEFAULT_REGISTER_BASE_URL: "https://app.candyhouse.co/prod";
 /**
  * 下位 WS トランスポート。完全な型は transport.js の Hub3WsClient。
  */

@@ -7,11 +7,11 @@ import {
   parseScanWifiSSID, parseNetworkType, parseMechSetting, parseSesameKeys, parseHub3Publish,
   Hub3Commands,
 } from "../../src/ble/hub3.js";
-import { ITEM_CODES } from "../../src/itemcodes.js";
+import { ITEM_CODES, UNVERIFIED_ITEM_CODES } from "../../src/itemcodes.js";
 import { capabilitiesForModel } from "../../src/ble/devicemodel.js";
 
 describe("itemcodes: Hub3 固有 (SesameProtocols.kt:40,52)", () => {
-  it("131-136 / 208-209 が SDK 値と一致", () => {
+  it("131-136 / 208 が SDK 値と一致", () => {
     expect(ITEM_CODES.HUB3_ITEM_CODE_WIFI_SSID).toBe(131);
     expect(ITEM_CODES.HUB3_ITEM_CODE_SSID_FIRST).toBe(132);
     expect(ITEM_CODES.HUB3_ITEM_CODE_SSID_NOTIFY).toBe(133);
@@ -19,7 +19,14 @@ describe("itemcodes: Hub3 固有 (SesameProtocols.kt:40,52)", () => {
     expect(ITEM_CODES.HUB3_ITEM_CODE_WIFI_PASSWORD).toBe(135);
     expect(ITEM_CODES.HUB3_UPDATE_WIFI_SSID).toBe(136);
     expect(ITEM_CODES.HUB3_ITEM_CODE_RELAY_SWITCH).toBe(208);
-    expect(ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE).toBe(209);
+  });
+
+  it("209 (networkType) は SDK 非由来として UNVERIFIED_ITEM_CODES に隔離される (P3-14)", () => {
+    // SesameItemCode は 208 で終端 (SesameProtocols.kt:32-53)。209 は biz3 web の native ブリッジ
+    // 挙動 (references_web/src/components/MobileWifiModule.js:219-235) からの推定であり、
+    // SDK 由来定数群 (ITEM_CODES) には居場所が無い。
+    expect(ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE).toBeUndefined();
+    expect(UNVERIFIED_ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE).toBe(209);
   });
 });
 
@@ -72,7 +79,7 @@ describe("publish 解析 (onGattSesamePublish, kt:268-340)", () => {
     expect(parseScanWifiSSID(buf)).toEqual({ rssi: -50, ssid: "HomeWiFi" });
   });
 
-  it("NETWORK_TYPE: payload[0]=wifi, payload[1]=lte (==1 で接続) (kt:328-333)", () => {
+  it("NETWORK_TYPE: payload[0]=wifi, payload[1]=lte (==1 で接続) (SDK 非由来の推定 — P3-14)", () => {
     expect(parseNetworkType(Buffer.from([1, 0]))).toEqual({ isWifiConnected: true, isLTEConnected: false });
     expect(parseNetworkType(Buffer.from([0, 1]))).toEqual({ isWifiConnected: false, isLTEConnected: true });
     expect(parseNetworkType(Buffer.from([1, 1]))).toEqual({ isWifiConnected: true, isLTEConnected: true });
@@ -126,11 +133,33 @@ describe("publish 解析 (onGattSesamePublish, kt:268-340)", () => {
     expect(parseSesameKeys(Buffer.alloc(10))).toEqual([]);
   });
 
+  it("MECH_STATUS(81): Hub3 ではネットワーク状態 bit ベクタ (kt:291-301、P3-16)", () => {
+    // ベクタ導出元: CHHub3Device.kt:293-299 — payload[0] の bit1..bit7 を順に検証。
+    const parse = (b) => parseHub3Publish({ itemCode: ITEM_CODES.MECH_STATUS, body: Buffer.from([b]) });
+    expect(parse(0b0000_0010)).toMatchObject({ kind: "networkStatus", isAp: true, isNet: false, isIot: false });
+    expect(parse(0b0000_0100)).toMatchObject({ kind: "networkStatus", isNet: true });
+    expect(parse(0b0000_1000)).toMatchObject({ kind: "networkStatus", isIot: true });
+    expect(parse(0b0001_0000)).toMatchObject({ kind: "networkStatus", isAPCheck: true });
+    expect(parse(0b0010_0000)).toMatchObject({ kind: "networkStatus", isAPConnecting: true });
+    expect(parse(0b0100_0000)).toMatchObject({ kind: "networkStatus", isNETConnecting: true });
+    // bit7 (0x80) は Kotlin signed Byte の負値判定 (payload[0] < 0) と等価。
+    expect(parse(0b1000_0000)).toMatchObject({ kind: "networkStatus", isIOTConnecting: true });
+    // 全 bit 同時 (0xFE) — isAp..isIOTConnecting すべて true。
+    expect(parse(0xfe)).toMatchObject({
+      kind: "networkStatus",
+      isAp: true, isNet: true, isIot: true, isAPCheck: true,
+      isAPConnecting: true, isNETConnecting: true, isIOTConnecting: true,
+    });
+  });
+
   it("parseHub3Publish のディスパッチ", () => {
     expect(parseHub3Publish({ itemCode: ITEM_CODES.HUB3_ITEM_CODE_SSID_NOTIFY, body: Buffer.concat([Buffer.from([0xce, 0xff]), Buffer.from("x", "utf8")]) }).kind).toBe("scanWifiSSID");
-    expect(parseHub3Publish({ itemCode: ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE, body: Buffer.from([1, 0]) })).toEqual({ kind: "networkType", isWifiConnected: true, isLTEConnected: false });
+    // 209 は SDK 非由来の推定 (UNVERIFIED_ITEM_CODES。P3-14)。
+    expect(parseHub3Publish({ itemCode: UNVERIFIED_ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE, body: Buffer.from([1, 0]) })).toEqual({ kind: "networkType", isWifiConnected: true, isLTEConnected: false });
     expect(parseHub3Publish({ itemCode: ITEM_CODES.MOVE_TO, body: Buffer.from([42]) })).toEqual({ kind: "otaProgress", progress: 42 });
     expect(parseHub3Publish({ itemCode: ITEM_CODES.MECH_SETTING, body: Buffer.alloc(60) }).kind).toBe("mechSetting");
+    // MECH_STATUS(81) は Hub3 ではロック機構状態ではなくネットワーク状態 (kt:291-301、P3-16)。
+    expect(parseHub3Publish({ itemCode: ITEM_CODES.MECH_STATUS, body: Buffer.from([0x0e]) }).kind).toBe("networkStatus");
     expect(parseHub3Publish({ itemCode: ITEM_CODES.PUB_KEY_SESAME, body: Buffer.alloc(0) }).kind).toBe("sesameKeys");
     // SSID_FIRST / SSID_LAST はマーカー (SDK は no-op)
     expect(parseHub3Publish({ itemCode: ITEM_CODES.HUB3_ITEM_CODE_SSID_FIRST, body: Buffer.alloc(0) }).kind).toBe("ssidMarker");
@@ -166,7 +195,8 @@ describe("Hub3Commands ファサード (session 注入)", () => {
       ITEM_CODES.HUB3_UPDATE_WIFI_SSID,
       ITEM_CODES.HUB3_ITEM_CODE_WIFI_PASSWORD,
       ITEM_CODES.REMOVE_SESAME,
-      ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE,
+      // networkType は SDK 非由来の推定 itemCode (UNVERIFIED_ITEM_CODES。P3-14)。
+      UNVERIFIED_ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE,
     ]);
     // removeSesame の data = 生 16B
     const rmCall = s.request.mock.calls.find((c) => c[0] === ITEM_CODES.REMOVE_SESAME);
@@ -179,7 +209,7 @@ describe("Hub3Commands ファサード (session 注入)", () => {
     const hub = new Hub3Commands({ session: s });
     const seen = [];
     hub.onPublish((p) => seen.push(p));
-    s._emit({ itemCode: ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE, body: Buffer.from([1, 0]) });
+    s._emit({ itemCode: UNVERIFIED_ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE, body: Buffer.from([1, 0]) });
     expect(seen).toHaveLength(1);
     expect(seen[0].kind).toBe("networkType");
     expect(seen[0].isWifiConnected).toBe(true);
@@ -191,7 +221,7 @@ describe("Hub3Commands ファサード (session 注入)", () => {
     const seen = [];
     hub.onPublish((p) => seen.push(p));
     hub.dispose();
-    s._emit({ itemCode: ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE, body: Buffer.from([1, 0]) });
+    s._emit({ itemCode: UNVERIFIED_ITEM_CODES.HUB3_ITEM_CODE_NETWORK_TYPE, body: Buffer.from([1, 0]) });
     expect(seen).toHaveLength(0);
   });
 

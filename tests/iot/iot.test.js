@@ -6,7 +6,10 @@
 import { describe, it, expect, vi } from "vitest";
 
 // cmacTime を固定値にする (sign = 4B = aa bb cc dd)。
-vi.mock("../../src/crypto.js", () => ({
+// cmacTime 以外 (P5-4 で iot.js が使うようになった hexToBuf 等) は実物を素通しする
+// (部分 mock。全置換にすると mock に無い import が undefined になり別経路で落ちる)。
+vi.mock("../../src/crypto.js", async (importOriginal) => ({
+  .../** @type {object} */ (await importOriginal()),
   cmacTime: () => "aabbccdd",
 }));
 
@@ -27,30 +30,8 @@ import {
   __internal,
 } from "../../src/iot.js";
 
-// 最小 mock client: send を記録、subscribe を記録して push を手動発火できる。
-function mockClient() {
-  const sent = [];
-  /** @type {Map<string, Set<Function>>} */
-  const subs = new Map();
-  return {
-    sent,
-    subs,
-    send(frame) {
-      sent.push(frame);
-    },
-    subscribe(key, fn) {
-      let set = subs.get(key);
-      if (!set) { set = new Set(); subs.set(key, set); }
-      set.add(fn);
-      return () => set.delete(fn);
-    },
-    // テストヘルパー: 指定 key の購読者全員に push
-    push(key, msg) {
-      const set = subs.get(key);
-      if (set) for (const fn of [...set]) fn(msg);
-    },
-  };
-}
+// 共有 fake (P5-7 / ARCH-16): send を記録、subscribe を記録して push(key, msg) を手動発火できる。
+import { chunkMockClient as mockClient } from "../helpers/mock-ws.js";
 
 // payload(base64) を hex 文字列にデコードして検証しやすくする。
 function payloadHex(base64) {

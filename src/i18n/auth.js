@@ -6,11 +6,13 @@ export default {
     "auth.noPending": "No pending sign-in. Run `login <email>` first.",
     "auth.anotherChallenge": "Another challenge required: {name}. (sign in again)",
     "auth.wrongCodeRetry": "Incorrect code. Run `sesame verify <code>` again with the right code.",
+    "auth.staleDeviceRetry": "Stored device credentials were rejected and have been cleared. A new sign-in code was emailed — run `sesame verify <code>` again with the new code.",
   },
   ja: {
     "auth.noTokens": "No tokens stored. `sesame login <email>` で sign-in してください。",
     "auth.noPending": "No pending sign-in. 先に `login <email>` を実行してください。",
     "auth.anotherChallenge": "Another challenge required: {name}. (再 login が必要)",
     "auth.wrongCodeRetry": "コードが違います。正しいコードで `sesame verify <code>` をもう一度実行してください。",
+    "auth.staleDeviceRetry": "保存済みデバイス資格情報が拒否されたため破棄しました。新しい確認コードを email に送信したので、新コードで `sesame verify <code>` をもう一度実行してください。",
   },
 };

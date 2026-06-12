@@ -13,13 +13,25 @@ This implementation is a Node.js port of the **official biz3 admin web app (http
 | This implementation | biz3 vendor source |
 |---|---|
 | `src/transport.js` | `references_web/src/websocket/WebSocketManager.ts` (window dependency removed, switched to Node `ws`; reconnect/keepalive/idle/sleep detection identical to biz3; callback registry made FIFO) |
-| `src/auth.js` | `references_web/src/api/useAuthState.js` (Amplify replaced with direct AWS SDK calls) |
+| `src/auth.js` | the Android app's login trace (AWSMobileClient 2.77.0 + CUSTOM_AUTH, `LoginMailFG.kt`) — **not** the web `useAuthState.js`; Cognito is called with plain `fetch` (`src/cognito-http.js`), no AWS SDK |
 | `src/lock.js` | `sendCommandToWM2` in `references_web/src/api/useIotCtrl.js` |
 | `src/ir.js` | `references_web/src/api/useRemoteCtrl.js` (only the JSON-building part extracted from the hook's useCallback) |
 | `src/devices.js` | `references_web/src/api/useManageDevice.js` / `useManageGroup.js` / `useDeveloper.js` / `MobileBatteryChart.js` |
-| `src/crypto.js` | `references_web/src/utils/Cmac.js` + `biz3utils.js` + `constants/cmdCode.js` (CMAC implemented with `node-aes-cmac`) |
+| `src/crypto.js` | `references_web/src/utils/Cmac.js` + `biz3utils.js` + `constants/cmdCode.js` (AES-CMAC implemented in-house: `src/aes-cmac.js`, RFC 4493) |
 
-**The only functional difference from biz3**: the Cognito Client ID is swapped from biz3's `21u50hboia4s5q0sbk6pbdfmss` to the same Consumer Client as the official iOS/Android apps, `6ialca0p8u0lsgvbmvsljfm305`. This keeps the refreshToken from effectively expiring. The biz3 MIT license text is bundled as [LICENSE.biz3](../../LICENSE.biz3).
+**Cognito Client ID (historical note)**: this kit uses the Consumer Client `6ialca0p8u0lsgvbmvsljfm305` — the same client as the official iOS/Android apps, with the app's token lifetimes. An older version of this document described it as "swapped from biz3's `21u50hboia4s5q0sbk6pbdfmss`", but the current biz3 reference (`references_web/src/aws-exports.js:5`, `userPoolWebClientId`) uses this **same** Consumer Client, so it is no longer a functional difference — only a historical one. The biz3 MIT license text is bundled as [LICENSE.biz3](../../LICENSE.biz3).
+
+## Authorization matrix (cloud surfaces)
+
+The vendor cloud has three distinct authorization schemes. The kit's implementation status per route:
+
+| Route | Authorization | Status in this kit |
+|---|---|---|
+| ① API Gateway REST (`https://app.candyhouse.co/prod` — register, biometrics) | SigV4 with Cognito **Identity Pool** temporary credentials + `x-api-key` + `appidentifyid` (`ApiClientConfigBuilder.kt:34-46`, `BaseApp.kt:95-102`) | **Implemented** (`src/aws-credentials.js` + `src/sigv4.js`, no AWS SDK dependency); request shaping pinned by tests, real-gateway acceptance **hardware-unverified** |
+| ② AWS IoT MQTT over WSS (official app's push channel) | SigV4 **presign** with unauthenticated-identity credentials | **Not implemented** — recorded here as a capability map only; the kit does not need this channel |
+| ③ biz3 web WebSocket (API Gateway `execute-api`, `wss://…/public`) | Cognito **idToken** as the `?token=` query parameter | **Implemented — the kit's primary route** (`src/transport.js`) |
+
+**logout**: the official apps only sign out locally. This kit's `sesame logout` additionally calls `ForgetDevice` (so remembered devices do not accumulate on the account) and `RevokeToken` (so the refresh token does not survive local deletion) — a **deliberate hardening over the official behaviour**, scoped to this session/device only (no `GlobalSignOut`; other sessions are unaffected).
 
 ## Unified cloud / BLE design (the route is the leaf)
 

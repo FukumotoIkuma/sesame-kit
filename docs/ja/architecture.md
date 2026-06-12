@@ -13,15 +13,33 @@
 | この実装 | biz3 vendor 元 |
 |---|---|
 | `src/transport.js` | `references_web/src/websocket/WebSocketManager.ts` (window 依存除去、Node `ws` 化、reconnect/keepalive/idle/sleep 検知は biz3 と同値、callback registry は FIFO 化) |
-| `src/auth.js` | `references_web/src/api/useAuthState.js` (Amplify → AWS SDK 直叩きに置換) |
+| `src/auth.js` | Android アプリのログイントレース（AWSMobileClient 2.77.0 + CUSTOM_AUTH、`LoginMailFG.kt`）— web の `useAuthState.js` では**ない**。Cognito は素の `fetch`（`src/cognito-http.js`）で直叩きし AWS SDK 非依存 |
 | `src/lock.js` | `references_web/src/api/useIotCtrl.js` の `sendCommandToWM2` |
 | `src/ir.js` | `references_web/src/api/useRemoteCtrl.js` (hook 内 useCallback から JSON 構築部だけ抽出) |
 | `src/devices.js` | `references_web/src/api/useManageDevice.js` / `useManageGroup.js` / `useDeveloper.js` / `MobileBatteryChart.js` |
-| `src/crypto.js` | `references_web/src/utils/Cmac.js` + `biz3utils.js` + `constants/cmdCode.js` (CMAC は `node-aes-cmac` で実装) |
+| `src/crypto.js` | `references_web/src/utils/Cmac.js` + `biz3utils.js` + `constants/cmdCode.js` (AES-CMAC は内製実装: `src/aes-cmac.js`、RFC 4493) |
 
-**biz3 との唯一の機能的相違**: Cognito Client ID を biz3 の `21u50hboia4s5q0sbk6pbdfmss` から、公式
-iOS/Android アプリと同じ Consumer Client `6ialca0p8u0lsgvbmvsljfm305` に差し替えています。これにより
-refreshToken が事実上失効しなくなります。biz3 の MIT ライセンス本文は [LICENSE.biz3](../../LICENSE.biz3) として同梱しています。
+**Cognito Client ID（歴史的経緯）**: 本 kit は公式 iOS/Android アプリと同じ Consumer Client
+`6ialca0p8u0lsgvbmvsljfm305`（アプリと同じトークン寿命）を使います。本ドキュメントの旧版は「biz3 の
+`21u50hboia4s5q0sbk6pbdfmss` から差し替えた」と記載していましたが、現行の biz3 参照
+（`references_web/src/aws-exports.js:5` の `userPoolWebClientId`）も**同一の** Consumer Client を使っており、
+これはもはや機能的相違ではなく歴史的経緯です。biz3 の MIT ライセンス本文は
+[LICENSE.biz3](../../LICENSE.biz3) として同梱しています。
+
+## 認可マトリクス（クラウド面）
+
+ベンダークラウドには 3 つの異なる認可方式があります。経路ごとの kit の実装状況:
+
+| 経路 | 認可 | kit の状況 |
+|---|---|---|
+| ① API Gateway REST（`https://app.candyhouse.co/prod` — register・biometrics） | SigV4（Cognito **Identity Pool** の一時 credentials）+ `x-api-key` + `appidentifyid`（`ApiClientConfigBuilder.kt:34-46`、`BaseApp.kt:95-102`） | **実装済み**（`src/aws-credentials.js` + `src/sigv4.js`、AWS SDK 非依存）。リクエスト形はテストで固定済み、実 Gateway 受理は**実機未検証** |
+| ② AWS IoT MQTT over WSS（公式アプリの push チャネル） | unauth identity の credentials による SigV4 **presign** | **未実装** — 能力マップとしての記録のみ。kit はこのチャネルを必要としない |
+| ③ biz3 web WebSocket（API Gateway `execute-api`、`wss://…/public`） | Cognito **idToken** を `?token=` クエリで渡す | **実装済み — kit の主経路**（`src/transport.js`） |
+
+**logout**: 公式アプリはローカル signOut のみです。本 kit の `sesame logout` は加えて `ForgetDevice`
+（remembered device がアカウントに溜まらないように）と `RevokeToken`（refresh token がローカル削除後も
+生き残らないように）を呼びます — **公式挙動に対する意図的な強化**で、対象はこのセッション / このデバイス
+のみです（`GlobalSignOut` は使わず、他セッションには影響しません）。
 
 ## クラウド / BLE の統合設計（経路は葉）
 

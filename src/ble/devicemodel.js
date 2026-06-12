@@ -89,7 +89,10 @@ const CAPS = Object.freeze({
   [KIND.BIKE_OS2]: { os: 2, cloud: ["unlock"],                   ble: ["unlock"],                                mechKind: "os2bot",  label: "SESAME Bike (OS2)" },
   [KIND.BIOMETRIC]:{ os: 3, cloud: [],                           ble: [],                          biometric: true, mechKind: null,      label: "SESAME Touch/Face/Sensor/Remote" },
   [KIND.HUB3]:     { os: 3, cloud: ["ir", "relay", "led"],       ble: [],                          hubProvisioning: true, mechKind: null,      label: "SESAME Hub3" },
-  [KIND.WIFI]:     { os: 3, cloud: ["ir", "relay", "led"],       ble: [],                          wifiProvisioning: true, mechKind: null,      label: "WiFi Module 2" },
+  // WM2 の公開 API に IR/リレー/LED は無い (open/devices/CHWifiModule2.kt:30-39 — scanWifiSSID/
+  // setWifiSSID/setWifiPassword/connectWifi/insertSesames/removeSesame のみ)。ir/relay/led は
+  // Hub3 専用 (CHHub3.kt) であり、旧定義の cloud:["ir","relay","led"] は能力の捏造だった (P1-9)。
+  [KIND.WIFI]:     { os: 3, cloud: [],                           ble: [],                          wifiProvisioning: true, mechKind: null,      label: "WiFi Module 2" },
   [KIND.UNKNOWN]:  { os: 0, cloud: [],                           ble: [],                                        mechKind: null,      label: "(未知のデバイス)" },
 });
 
@@ -105,8 +108,9 @@ function unionOps(caps) {
   return out;
 }
 
-// Hub3/WM2 の IR/リレー/LED は「別 API 面」(biz3OperateIoT) であって、ロック系デバイス制御
+// Hub3 の IR/リレー/LED は「別 API 面」(biz3OperateIoT) であって、ロック系デバイス制御
 // (`sesame <device> <action>`) の動詞ではない。制御 op 語彙からは除外する。
+// (WM2 はこれらを持たない — CHWifiModule2.kt:30-39。P1-9 で cloud:[] に修正済み。)
 const IOT_OPS = Object.freeze(["ir", "relay", "led"]);
 
 /**
@@ -127,11 +131,62 @@ function deriveControlOps() {
   return Object.freeze(ordered);
 }
 
+// ---------- 生体・アクセス制御の機種別能力 (BiometricCapability / DeviceProfiles) ----------
+
 /**
- * productType (整数) → { model, kind }。
+ * 生体・アクセス制御の capability 語彙。
+ * 出典: CHSesameBiometricDevice.kt:28-30 `enum class BiometricCapability { CARD, FINGERPRINT,
+ * PASSCODE, FACE, PALM }` と 1:1。
+ */
+export const BIO_CAPABILITY = Object.freeze({
+  CARD: "card", FINGERPRINT: "fingerprint", PASSCODE: "passcode", FACE: "face", PALM: "palm",
+});
+
+// 機種プロファイル → capability 集合。CHSesameBiometricDevice.kt:44-57 (object DeviceProfiles) を
+// 1:1 で移植 (集合の中身・機種割当とも SDK の deviceFactory() 呼び出しで確定)。
+// 空集合機種 (OpenSensor/OpenSensor2/Remote/RemoteNano) は CHDeivceProtocols.kt:81,112,118,172 で
+// `CHSesameBiometricDeviceImpl(..., setOf())` と生成される (= enroll API を一切持たない)。
+const BIO = BIO_CAPABILITY;
+const BIO_PROFILES = Object.freeze({
+  // CHSesameBiometricDevice.kt:45 SESAME_TOUCH = {CARD, FINGERPRINT}
+  TOUCH: Object.freeze([BIO.CARD, BIO.FINGERPRINT]),
+  // kt:46 SESAME_TOUCH_PRO = {FINGERPRINT, PASSCODE, CARD}
+  TOUCH_PRO: Object.freeze([BIO.CARD, BIO.FINGERPRINT, BIO.PASSCODE]),
+  // kt:47 SESAME_FACE = {CARD, FINGERPRINT, PALM, FACE}
+  FACE: Object.freeze([BIO.CARD, BIO.FINGERPRINT, BIO.PALM, BIO.FACE]),
+  // kt:48 SESAME_FACE_AI = {PALM, FACE}
+  FACE_AI: Object.freeze([BIO.PALM, BIO.FACE]),
+  // kt:49-55 SESAME_FACE_PRO = {PASSCODE, CARD, FINGERPRINT, PALM, FACE} (全部)
+  FACE_PRO: Object.freeze([BIO.CARD, BIO.FINGERPRINT, BIO.PASSCODE, BIO.PALM, BIO.FACE]),
+  // kt:56 SESAME_FACE_PRO_AI = {PASSCODE, PALM, FACE}
+  FACE_PRO_AI: Object.freeze([BIO.PASSCODE, BIO.PALM, BIO.FACE]),
+  // CHDeivceProtocols.kt:81,112,118,172: OpenSensor/Remote/RemoteNano/OpenSensor2 = setOf()
+  NONE: Object.freeze([]),
+});
+
+/**
+ * productType (整数) → { model, kind, bioCaps?, openSensor?, remote? }。
  * 値は CHProductModel enum (CHDeivceProtocols.kt:28-252) と deviceFactory() の生成クラスに準拠。
  * pType 12 は SDK でも欠番。
+ *
+ * BIOMETRIC kind の各機種には次を併記する (P3-15):
+ *  - bioCaps    : DeviceProfiles の capability 集合 (CHSesameBiometricDevice.kt:44-57。
+ *                 deviceFactory() の第 2 引数で機種に割当。CHDeivceProtocols.kt:77-216)
+ *  - openSensor : BiometricDeviceType.OPEN_SENSOR / OPEN_SENSOR_2 か
+ *                 (parsePubKeySesame の空きスロット判定が >1 になる機種。
+ *                  CHSesameBiometricDeviceImpl.kt:225-231 / BLEP-11)
+ *  - remote     : BiometricDeviceType.REMOTE か。SDK では remote と remote_nano が **どちらも**
+ *                 REMOTE 型で生成される (CHDeivceProtocols.kt:112,118) ため、
+ *                 isRemote() ガード (CHRemoteNanoEventHandler.kt:17) は両機種で真 (BLEP-09)
+ *
+ * @typedef {Object} ProductTypeEntry
+ * @property {string} model
+ * @property {string} kind
+ * @property {readonly string[]} [bioCaps] 生体 capability 集合 (BIOMETRIC kind のみ)
+ * @property {boolean} [openSensor] OpenSensor 系か (BIOMETRIC kind のみ)
+ * @property {boolean} [remote] Remote/Remote Nano 系か (BIOMETRIC kind のみ)
  */
+/** @type {Readonly<Record<number, ProductTypeEntry>>} */
 export const PRODUCT_TYPES = Object.freeze({
   0:  { model: "sesame_2",                 kind: KIND.SESAME2 },
   1:  { model: "wm_2",                      kind: KIND.WIFI },
@@ -141,34 +196,50 @@ export const PRODUCT_TYPES = Object.freeze({
   5:  { model: "sesame_5",                  kind: KIND.LOCK5 },
   6:  { model: "bike_2",                    kind: KIND.BIKE2 },
   7:  { model: "sesame_5_pro",              kind: KIND.LOCK5 },
-  8:  { model: "open_sensor_1",             kind: KIND.BIOMETRIC },
-  9:  { model: "ssm_touch_pro",             kind: KIND.BIOMETRIC },
-  10: { model: "ssm_touch",                 kind: KIND.BIOMETRIC },
+  8:  { model: "open_sensor_1",             kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.NONE, openSensor: true },  // CHDeivceProtocols.kt:81 OPEN_SENSOR, setOf()
+  9:  { model: "ssm_touch_pro",             kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.TOUCH_PRO },               // kt:87-88
+  10: { model: "ssm_touch",                 kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.TOUCH },                   // kt:94
   11: { model: "BLE_Connector_1",           kind: KIND.LOCK5 },
   13: { model: "hub_3",                     kind: KIND.HUB3 },
-  14: { model: "remote",                    kind: KIND.BIOMETRIC },
-  15: { model: "remote_nano",               kind: KIND.BIOMETRIC },
+  14: { model: "remote",                    kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.NONE, remote: true },      // kt:112 REMOTE, setOf()
+  15: { model: "remote_nano",               kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.NONE, remote: true },      // kt:118 REMOTE, setOf()
   16: { model: "sesame_5_us",               kind: KIND.LOCK5 },
   17: { model: "bot_2",                     kind: KIND.BOT2 },
-  18: { model: "sesame_face_Pro",           kind: KIND.BIOMETRIC },
-  19: { model: "sesame_face",               kind: KIND.BIOMETRIC },
+  18: { model: "sesame_face_Pro",           kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.FACE_PRO },                // kt:136
+  19: { model: "sesame_face",               kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.FACE },                    // kt:142
   20: { model: "sesame_6",                  kind: KIND.LOCK5 },
   21: { model: "sesame_6_pro",              kind: KIND.LOCK5 },
-  22: { model: "sesame_face_pro_ai",        kind: KIND.BIOMETRIC },
-  23: { model: "sesame_face_ai",            kind: KIND.BIOMETRIC },
-  24: { model: "open_sensor_2",             kind: KIND.BIOMETRIC },
-  25: { model: "ssm_touch_2",               kind: KIND.BIOMETRIC },
-  26: { model: "ssm_touch_2_pro",           kind: KIND.BIOMETRIC },
-  27: { model: "sesame_face_2",             kind: KIND.BIOMETRIC },
-  28: { model: "ssm_face_2_pro",            kind: KIND.BIOMETRIC },
+  22: { model: "sesame_face_pro_ai",        kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.FACE_PRO_AI },             // kt:160
+  23: { model: "sesame_face_ai",            kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.FACE_AI },                 // kt:166
+  24: { model: "open_sensor_2",             kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.NONE, openSensor: true },  // kt:172 OPEN_SENSOR_2, setOf()
+  25: { model: "ssm_touch_2",               kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.TOUCH },                   // kt:178
+  26: { model: "ssm_touch_2_pro",           kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.TOUCH_PRO },               // kt:184-185
+  27: { model: "sesame_face_2",             kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.FACE },                    // kt:191
+  28: { model: "ssm_face_2_pro",            kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.FACE_PRO },                // kt:197
   29: { model: "sesame_miwa",               kind: KIND.LOCK5 },
-  30: { model: "sesame_face_2_ai",          kind: KIND.BIOMETRIC },
-  31: { model: "sesame_face_2_pro_ai",      kind: KIND.BIOMETRIC },
+  30: { model: "sesame_face_2_ai",          kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.FACE_AI },                 // kt:209
+  31: { model: "sesame_face_2_pro_ai",      kind: KIND.BIOMETRIC, bioCaps: BIO_PROFILES.FACE_PRO_AI },             // kt:215
   32: { model: "sesame_6_pro_slidingdoor",  kind: KIND.LOCK5 },
   33: { model: "bike_3",                    kind: KIND.BIKE3 },
   35: { model: "bot_3",                     kind: KIND.BOT2 },
   36: { model: "hub_3_lte",                 kind: KIND.HUB3 },
 });
+
+/** model 文字列 → PRODUCT_TYPES エントリの逆引き表 (bioCaps/openSensor/remote の解決用)。 */
+const ENTRY_BY_MODEL = Object.freeze(
+  Object.fromEntries(Object.values(PRODUCT_TYPES).map((v) => [v.model, v])),
+);
+
+/**
+ * model 文字列から生体 capability 集合 (DeviceProfiles 1:1) を返す。
+ * 非 biometric 機種・未知機種・空集合機種 (open sensor / remote 系) は空配列。
+ * @param {string|null|undefined} model
+ * @returns {readonly string[]} BIO_CAPABILITY 値の配列
+ */
+export function bioCapsForModel(model) {
+  const entry = model ? ENTRY_BY_MODEL[model] : null;
+  return (entry && entry.bioCaps) || BIO_PROFILES.NONE;
+}
 
 /** model 文字列 → kind の逆引き表。 */
 const KIND_BY_MODEL = Object.freeze(
@@ -204,17 +275,39 @@ export function kindForModel(model) {
  *   - ops         : 和集合 (UI で見せる操作・提示順)
  *   - bleSupported: BLE 制御を実装しているか (= ble.length>0)
  *   - biometric   : 生体・アクセス制御の BLE 登録 API を持つか (BIOMETRIC kind のみ true)
+ *   - bioCaps     : 機種別の生体 capability 集合 (DeviceProfiles 1:1。P3-15)。BIOMETRIC kind でも
+ *                   open sensor / remote 系は空配列 (CHDeivceProtocols.kt:81,112,118,172)
+ *   - isOpenSensor: OpenSensor 系か (parsePubKeySesame の空き判定が >1 になる。BLEP-11)
+ *   - isRemote    : Remote/Remote Nano 系か (TRIGGER_DELAYTIME(191) publish の dispatch 対象。BLEP-09)。
+ *                   SesameBle#remoteNano ゲッタの露出ゲートにも使う (追加バックログ 7) — SDK の
+ *                   isRemote() (CHSesameBiometricDevice.kt:67-69) が remote/remote_nano の両機種で
+ *                   真になるのと 1:1 のため、専用フラグは追加しない
  *   - wifiProvisioning: WM2 の BLE プロビジョニング API を持つか (WIFI kind のみ true)
  *   - script      : Bot2/Bot3 のスクリプト API を持つか (BOT2 kind のみ true)
  *   - fingerprint : Bike3 の指紋登録 API を持つか (BIKE3 kind のみ true)
  *   - hubProvisioning: Hub3 の BLE プロビジョニング API を持つか (HUB3 kind のみ true)
  * @param {string|null|undefined} model
- * @returns {{kind:string, os:number, cloud:string[], ble:string[], ops:string[], mechKind:string|null, bleSupported:boolean, biometric:boolean, wifiProvisioning:boolean, hubProvisioning:boolean, script:boolean, fingerprint:boolean, label:string}}
+ * @returns {{kind:string, os:number, cloud:string[], ble:string[], ops:string[], mechKind:string|null, bleSupported:boolean, biometric:boolean, bioCaps:readonly string[], isOpenSensor:boolean, isRemote:boolean, wifiProvisioning:boolean, hubProvisioning:boolean, script:boolean, fingerprint:boolean, label:string}}
  */
 export function capabilitiesForModel(model) {
   const kind = kindForModel(model);
   const caps = CAPS[kind];
-  return { kind, ...caps, ops: unionOps(caps), bleSupported: caps.ble.length > 0, biometric: !!caps.biometric, wifiProvisioning: !!caps.wifiProvisioning, hubProvisioning: !!caps.hubProvisioning, script: !!caps.script, fingerprint: !!caps.fingerprint };
+  const entry = model ? ENTRY_BY_MODEL[model] : null;
+  return {
+    kind,
+    ...caps,
+    ops: unionOps(caps),
+    bleSupported: caps.ble.length > 0,
+    biometric: !!caps.biometric,
+    // 機種別の生体 capability (P3-15)。kind が BIOMETRIC でも機種により空集合がある。
+    bioCaps: bioCapsForModel(model),
+    isOpenSensor: !!(entry && entry.openSensor),
+    isRemote: !!(entry && entry.remote),
+    wifiProvisioning: !!caps.wifiProvisioning,
+    hubProvisioning: !!caps.hubProvisioning,
+    script: !!caps.script,
+    fingerprint: !!caps.fingerprint,
+  };
 }
 
 /**

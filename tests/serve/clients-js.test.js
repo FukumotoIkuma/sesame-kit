@@ -11,7 +11,9 @@ import { Daemon } from "../../src/serve/daemon.js";
 import { startSocketFraming } from "../../src/serve/framing/socket.js";
 import { startHttpFraming } from "../../src/serve/framing/http.js";
 import { startWsFraming } from "../../src/serve/framing/ws.js";
-import { SesameClient, SesameError } from "../../clients/js/sesame-client.mjs";
+// P5-9 (ARCH-19): 改名後の正式名 SesameRpcError と、後方互換 alias の SesameError (deprecated) を
+// 両方 import し、alias が同一クラスを指し続けることもこの e2e で固定する。
+import { SesameClient, SesameRpcError, SesameError } from "../../clients/js/sesame-client.mjs";
 
 const TOKEN = "jsclient-token-dddddddddddddddddddddddddddddddd";
 
@@ -82,7 +84,7 @@ describe("JS 同梱クライアント e2e", () => {
   it("WS: 誤った token は not_authenticated で reject (握りつぶさない)", async () => {
     const { wsUrl } = await boot();
     await expect(SesameClient.ws(wsUrl, "wrong-token")).rejects.toMatchObject({
-      name: "SesameError", kind: "not_authenticated",
+      name: "SesameRpcError", kind: "not_authenticated",
     });
   });
 
@@ -90,21 +92,28 @@ describe("JS 同梱クライアント e2e", () => {
     const { wsUrl } = await boot();
     const c = await SesameClient.ws(wsUrl, TOKEN); clients.push(c);
     await expect(c.subscribe(["bogus_topic"], () => {})).rejects.toMatchObject({
-      name: "SesameError", kind: "bad_params",
+      name: "SesameRpcError", kind: "bad_params",
     });
   });
 
   it("HTTP: subscribe の不正 topic は throw する", async () => {
     const { httpUrl } = await boot();
     const c = SesameClient.http(httpUrl, TOKEN); clients.push(c);
-    await expect(c.subscribe(["bogus_topic"], () => {})).rejects.toBeInstanceOf(SesameError);
+    await expect(c.subscribe(["bogus_topic"], () => {})).rejects.toBeInstanceOf(SesameRpcError);
   });
 
-  it("HTTP: transport-level 413 も SesameError として kind/code を保つ", async () => {
+  it("P5-9: 旧名 SesameError は SesameRpcError の後方互換 alias (同一クラス) を 1 リリース維持", () => {
+    expect(SesameError).toBe(SesameRpcError);
+    const e = new SesameError("x", "timeout", 1);
+    expect(e).toBeInstanceOf(SesameRpcError);
+    expect(e.name).toBe("SesameRpcError");
+  });
+
+  it("HTTP: transport-level 413 も SesameRpcError として kind/code を保つ", async () => {
     const { httpUrl } = await boot();
     const c = SesameClient.http(httpUrl, TOKEN); clients.push(c);
     await expect(c.call("status", { big: "a".repeat(1_100_000) })).rejects.toMatchObject({
-      name: "SesameError",
+      name: "SesameRpcError",
       kind: "bad_params",
       code: 413,
     });

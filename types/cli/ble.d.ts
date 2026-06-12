@@ -85,15 +85,24 @@ export type BleOptions = {
     ak?: string;
     registerBaseUrl?: string;
     serverAuth?: boolean;
+    args?: string;
+    keyIndex?: string;
+    ssmPublicKey?: string;
+    yes?: boolean;
+    companyId?: string;
 };
 /**
  * resolveBleEntry の解決結果。
+ * ssmPublicKey/keyIndex は OS2 デバイス用の鍵素材 (バックログ4): 優先順位は
+ * 明示フラグ (--ssm-public-key / --key-index) > config locks エントリの保存値 > null。
  */
 export type BleEntry = {
     name: string;
     deviceUUID: string;
     secretKey: string;
     model: (string | null);
+    ssmPublicKey: (string | null);
+    keyIndex: (string | null);
 };
 /**
  * listNearby() / listNearbyDevices() の発見結果 1 件 (advertise だけから判る属性 + rssi)。

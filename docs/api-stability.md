@@ -77,8 +77,9 @@ confidence we hold internally and the promise we make externally stay consistent
 | **stable** | Method name, params, return shape, and error `kind`s do not change incompatibly. Removal/incompatible change only on a major bump, after a deprecation period. | Covered by the API semver (`apiVersion` in `status` / `rpc.discover`). |
 | **experimental** | May change or be removed in any release, no deprecation period. The generated SDKs annotate these methods with a JSDoc/docstring `@experimental` marker (`@experimental unverified — may change without notice.`) on the normal namespace — there is no separate `experimental` namespace; the methods live alongside stable ones (e.g. `client.org.*`) and tooling/IDEs surface the marker. | Excluded from the semver guarantee. |
 
-The tier of every method is **machine-readable** via `rpc.discover` (planned:
-`x-stability: stable | experimental` per method) so SDKs and tools can enforce it.
+The tier of every method is **machine-readable** via `rpc.discover` — each method
+and event carries `x-stability: stable | experimental` and `x-provenance` — so
+SDKs and tools can enforce it.
 
 Principle (pre-1.0 latitude, 1.0 strictness): keep the **stable surface small and
 provably solid**; ship breadth as **experimental** rather than over-committing.
@@ -95,9 +96,11 @@ provably solid**; ship breadth as **experimental** rather than over-committing.
 
 ## Stable 1.0 surface (core)
 
-~15 methods + 2 events. This is the only surface the platform commits to at 1.0.
-Each qualifies under the stable test above: **load-bearing in the official app**
-(vendor unlikely to break) **and verified by us**.
+**13 methods + 3 events** (the single source is `src/serve/stability.js`, locked
+against the live registry by `tests/serve-stability.test.js` / `tests/provenance.test.js`).
+This is the only surface the platform commits to at 1.0. Each qualifies under the
+stable test above: **load-bearing in the official app** (vendor unlikely to break)
+**and verified by us**.
 
 ### Meta
 | Method | Description |
@@ -125,23 +128,38 @@ Each qualifies under the stable test above: **load-bearing in the official app**
 ### events
 | Method | Params |
 |---|---|
-| `events.subscribe` | `{topics}` — `lockState` \| `deviceUpdate` |
+| `events.subscribe` | `{topics}` — `lockState` \| `deviceUpdate` \| `deviceListChanged` (experimental topic) |
 | `events.unsubscribe` | `{topics}` |
 
-Events emitted: `event.lockState`, `event.deviceUpdate`. (See delivery semantics
-below and the pre-1.0 issues.)
+Stable events emitted: `event.lockState`, `event.deviceUpdate` (provenance
+app-core) and `event.ready` (provenance local — a connection-ready lifecycle
+notification sent once on every persistent connection since contract 1.2.0).
+`event.deviceListChanged` is **experimental** (provenance unverified; biz3
+`pubUserDeviceChange`). (See delivery semantics below.)
 
 ## Experimental namespaces (excluded from 1.0 guarantee)
 
-All of the following stay **experimental** — broad cloud/business features, many
+The registry exposes **135 methods** in total (contract 1.2.0); everything outside
+the 13 stable methods stays **experimental** — broad cloud/business features, many
 with explicitly unverified response shapes (`未確認` notes in source):
 
-- `org.*` (~34 ops: employees, groups, tags, device-group binding, key sharing)
-- `company.*` (4 ops)
-- `access.*` (11 ops: cards / passcodes) and `access.registerCards` (bulk cloud-register convenience over `postCards`; pairs with the `access cards enroll` BLE command)
-- `iot.*` (11 ops: Hub3 device mgmt, Matter, firmware)
-- `presetir.*` (3 ops) and `ir.send` / `ir.listKeys` — IR features
+- `org.*` (34 ops: employees, groups, tags, device-group binding, key sharing)
+- `company.*` (4 ops) and `payment.*` (6 ops)
+- `access.*` (17 ops: cards / passcodes DB sync, `registerCards` / `registerPasscodes`
+  bulk cloud-register conveniences pairing with the `access cards|passcodes enroll`
+  BLE commands, and the `/device/v1/biometrics` REST ops `postAuthenticationData` /
+  `putAuthenticationData` / `deleteAuthenticationData` / `updateAuthenticationName`)
+- `iot.*` (10 ops: Hub3 device mgmt, Matter, firmware, raw cmd escape hatch)
+- `presetir.*` (3 ops) and `ir.*` (14 ops: send / learn / remote & key CRUD /
+  preset search & match / `addRemoteToMatter`)
 - `schedule.*` (2 ops)
+- `devices.*` beyond `devices.list` (userList / add / reorder / notifyStatus /
+  notifyManage / switchRecharge) and `device.*` beyond history/battery
+  (hideHistory / hideBattery / rename / delete)
+- `config.sync*` (4 ops), `webapi.*` (4 ops), `firmware.list`, `cloud.ping`,
+  `lock.setAutolock` (cloud/BLE `transport` param; only BLE takes effect on-device)
+- `ble.*` (11 ops: `invoke` / `os2.invoke` generic facades plus typed wrappers —
+  register / os2.register / updateFirmware / reset / position / wifi.*)
 
 These remain callable and documented, but the generated SDKs tag them with a
 JSDoc/docstring `@experimental` marker (on the normal namespace, alongside stable
@@ -182,7 +200,8 @@ JSON-RPC 2.0 errors carry a structured, machine-readable `data.kind`:
 
 ## Pre-1.0 issues to resolve before freezing `stable`
 
-Tracked here so the stable tier is honest when it freezes:
+Tracked here so the stable tier is honest when it freezes. All five original
+issues are now addressed:
 
 1. **Domain errors collapse to `internal`.** *(addressed — stable lock path in
    1.1.0, remaining namespaces since)* — `src/errors.js` (`SesameError` + machine
@@ -194,14 +213,22 @@ Tracked here so the stable tier is honest when it freezes:
    `rejected` / `timeout` helpers (`src/util.js`), so caller-input validation maps
    to `bad_params`, explicit upstream failures to `rejected` (with
    `data.upstreamCode`), and paged-push waits to `timeout` — no longer `internal`.
-2. **`event.ready`** is advertised in `rpc.discover` but never emitted — either
-   emit it or drop it from the contract.
-3. **`iot.subscribeIotResponse` / `iot.removeSesameFromHub3`** have no extracted
-   params, so `discover` describes them only as `(params)`. (Experimental, but
-   fix the self-description.)
-4. **Stale `CONTRACT_VERSION` doc-comment** ("79 method") vs the 81 now exposed.
-5. **`apiVersion` separation** — version the API surface independently from the
-   package version; expose it in `status` and `rpc.discover`.
+2. **`event.ready` advertised but never emitted.** *(addressed — contract 1.2.0)*
+   It is now emitted once on **every** persistent connection (stdio / socket / ws /
+   SSE / gRPC Subscribe) via `daemon.addConnection`, and is part of the stable
+   event surface (provenance `local`).
+3. **Methods with no extracted params** (`iot.subscribeIotResponse` /
+   `iot.removeSesameFromHub3` showed only `(params)`). *(addressed —
+   `iot.subscribeIotResponse` is no longer exposed as an RPC method, and
+   `iot.removeSesameFromHub3` now self-describes its full param list in
+   `rpc.discover` / `schema/openrpc.json`.)*
+4. **Stale `CONTRACT_VERSION` doc-comment** ("79 method" vs 81 exposed).
+   *(addressed — `src/serve/jsonrpc.js` now keeps a per-version changelog
+   (1.0.0 / 1.1.0 / 1.2.0); the registry exposes 135 methods at 1.2.0.)*
+5. **`apiVersion` separation.** *(addressed — 1.1.0)* The API surface is versioned
+   independently from the package version and exposed as `apiVersion` in `status`
+   and `rpc.discover` (`contractVersion` / `x-contractVersion` kept as deprecated
+   aliases).
 
 ## Definition of 1.0
 

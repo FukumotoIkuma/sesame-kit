@@ -62,17 +62,23 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * page===1 で全置換、page>1 で追記。本実装は totalCount と蓄積件数が一致するまで
  * (または次 chunk が来なくなるまで) 待ち、全 list を 1 配列で返す。
  *
+ * partialOnTimeout (BIZ-14, オプトイン): true なら timeout 時に reject せず、その時点までの
+ * 蓄積を `{partial:true, count, list}` で resolve する (参照 UI は page push のたびに表示へ
+ * 反映するため、完了前でも部分結果が残る — useManageEmployee.js:70-88)。指定時は完走しても
+ * `{partial:false, count, list}` の同 shape で返る。既定 (false) は従来どおり timeout で reject。
+ *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{companyID:string, timeoutMs?:number}} params
- * @returns {Promise<{count:number, list:any[]}>}  count=totalCount, list=全社員
+ * @param {{companyID:string, timeoutMs?:number, partialOnTimeout?:boolean}} params
+ * @returns {Promise<{count:number, list:any[], partial?:boolean}>}  count=totalCount, list=全社員
  */
-export async function getEmployees(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+export async function getEmployees(client, { companyID, timeoutMs = DEFAULT_TIMEOUT_MS, partialOnTimeout = false }) {
   if (!companyID) throw badRequest("org.req.companyID");
-  return /** @type {{count:number, list:any[]}} */ (await collectChunks(client, {
+  return /** @type {{count:number, list:any[], partial?:boolean}} */ (await collectChunks(client, {
     action: ACT_EMPLOYEE,
     pubOp: "pubEmployees", // useManageEmployee.js:7
     sendFrame: { action: ACT_EMPLOYEE, companyID, op: "get" }, // :18-22
     timeoutMs,
+    partialOnTimeout,
     // pubEmployees の chunk 形: { totalCount, data:{ list, page } } (:71-88)
     parseChunk: (msg) => {
       const totalCount = msg?.data?.totalCount;
@@ -173,18 +179,23 @@ export async function reorderEmployees(client, { items, timeoutMs = DEFAULT_TIME
  * page 単位の chunk が来るので page===totalPage まで蓄積し、全 list を返す。
  * 各 chunk: res.data = { data:{ list, page }, totalPage }。
  *
+ * partialOnTimeout (BIZ-14, オプトイン): true なら timeout 時に reject せず、その時点までの
+ * 蓄積を `{partial:true, list}` で resolve する (完走時も `{partial:false, list}` の同 shape。
+ * 既定の配列戻りと shape が変わる点に注意)。既定 (false) は従来どおり timeout で reject。
+ *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{keyword:string, timeoutMs?:number}} params
- * @returns {Promise<any[]>} 全 chunk を結合した検索結果リスト
+ * @param {{keyword:string, timeoutMs?:number, partialOnTimeout?:boolean}} params
+ * @returns {Promise<any[] | {partial:boolean, list:any[]}>} 全 chunk を結合した検索結果リスト
  */
-export async function queryByCS(client, { keyword, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+export async function queryByCS(client, { keyword, timeoutMs = DEFAULT_TIMEOUT_MS, partialOnTimeout = false }) {
   if (!keyword) throw badRequest("org.req.keyword");
-  return /** @type {any[]} */ (await collectChunks(client, {
+  return /** @type {any[] | {partial:boolean, list:any[]}} */ (await collectChunks(client, {
     action: ACT_EMPLOYEE,
     pubOp: "pubQueryByCS", // useManageEmployee.js:411,415
     sendFrame: { action: ACT_EMPLOYEE, keyword, op: "queryByCS" }, // :394-398
     timeoutMs,
     returnListOnly: true,
+    partialOnTimeout,
     // chunk 形: res.data = { data:{ list, page }, totalPage } (:405-408)
     parseChunk: (msg) => {
       const top = msg?.data ?? {};
@@ -192,7 +203,10 @@ export async function queryByCS(client, { keyword, timeoutMs = DEFAULT_TIMEOUT_M
       return {
         list: inner.list ?? [],
         page: inner.page ?? 1,
-        totalPage: top.totalPage ?? 1,
+        // P3-9: totalPage 欠落時に `?? 1` で補うと結果が静かに切り詰められる。参照
+        // (useManageEmployee.js:405-412) は page===totalPage が成立するまで完了しない
+        // (= 欠落時は完了せず待つ) ので、undefined のまま返して timeout に倒す (安全側)。
+        totalPage: top.totalPage,
       };
     },
   }));
@@ -736,6 +750,12 @@ export async function getDeviceEmployeeKeys(client, { deviceUUID, companyID, lim
  *   - parseChunk が totalCount を返す場合 (pubEmployees): 蓄積件数 >= totalCount で完了
  *     (totalCount===0 や 1 ページのみでも即完了)。
  *
+ * partialOnTimeout (BIZ-14 / バックログ6, オプトイン): timeout 時に reject せず、その時点の
+ * 蓄積へ partial フラグを付けた object で resolve する (util.subscribeChunks の同名オプション
+ * に透過。参照 UI は部分蓄積を表示し続ける — useManageEmployee.js:70-88)。このモードでは
+ * returnListOnly でも shape を object に揃える ({partial, list}。spread で partial を合成する
+ * subscribeChunks の契約上、配列は返せないため)。
+ *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{
  *   action:string,
@@ -744,11 +764,12 @@ export async function getDeviceEmployeeKeys(client, { deviceUUID, companyID, lim
  *   timeoutMs:number,
  *   parseChunk:(msg:any)=>{list:any[], page:number, totalPage?:number, totalCount?:number},
  *   returnListOnly?:boolean,
+ *   partialOnTimeout?:boolean,
  * }} cfg
- * @returns {Promise<{count:number, list:any[]} | any[]>}
+ * @returns {Promise<{count:number, list:any[]} | any[] | {partial:boolean, count?:number, list:any[]}>}
  */
 function collectChunks(client, cfg) {
-  const { action, pubOp, sendFrame, timeoutMs, parseChunk, returnListOnly } = cfg;
+  const { action, pubOp, sendFrame, timeoutMs, parseChunk, returnListOnly, partialOnTimeout = false } = cfg;
   // 蓄積は本関数のクロージャで持ち、ライフサイクル (Promise/cleanup/timeout/二重解決ガード) は
   // util.subscribeChunks に委譲する (devices/access と共通の定型)。
   /** @type {any[]} */
@@ -759,7 +780,21 @@ function collectChunks(client, cfg) {
     sendFrame,
     timeoutMs,
     onTimeout: () => timeoutError(`${action}:${pubOp} timeout`),
-    result: () => (returnListOnly ? acc : { count: total ?? acc.length, list: acc }),
+    // P3-9: 要求 op で返る即時エラー (同 action の success:false) も失敗として検知する
+    // (useManageEmployee.js:405-412 は pub 側 chunk の success:false しか見ないが、
+    //  useManageDevice.js:27-34 は action 全体で !message.success を失敗扱いするのが vendor 規範)。
+    errorAction: action,
+    partialOnTimeout,
+    // partialOnTimeout 時は常に object 形 (partial:false を含めて shape を固定。timeout 確定時は
+    // subscribeChunks 側の spread `{...result(), partial:true}` が true へ上書きする)。
+    result: () => {
+      if (partialOnTimeout) {
+        return returnListOnly
+          ? { partial: false, list: acc }
+          : { partial: false, count: total ?? acc.length, list: acc };
+      }
+      return returnListOnly ? acc : { count: total ?? acc.length, list: acc };
+    },
     subscriptions: [{
       key: `${action}:${pubOp}`,
       /** @param {any} msg @param {(err?: Error) => void} finish */

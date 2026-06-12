@@ -1,0 +1,26 @@
+{
+  "$comment": "HTTP ステータス → SesameError kind/retryable 写像の正 (REFACTORING_PLAN.md P4-5/SURF-10)。4 実装 (sdk/ts=gen-sdk-ts.mjs, sdk/python=gen-sdk-py.mjs, clients/js/sesame-client.mjs, clients/python/sesame_client.py) はこの表に一致させる。thin クライアント (clients/) は retryable フィールドを持たないため kind のみ照合する。検証: tests/serve/http-kind-map.test.js",
+  "statuses": {
+    "400": { "kind": "bad_params", "retryable": false },
+    "401": { "kind": "not_authenticated", "retryable": false },
+    "403": { "kind": "not_authenticated", "retryable": false },
+    "404": { "kind": "not_implemented", "retryable": false },
+    "408": { "kind": "connection_lost", "retryable": true },
+    "413": { "kind": "bad_params", "retryable": false },
+    "415": { "kind": "bad_params", "retryable": false },
+    "429": { "kind": "connection_lost", "retryable": true }
+  },
+  "serverErrorRange": {
+    "$comment": "5xx (>= 500) は一律 connection_lost / retryable=true",
+    "from": 500,
+    "kind": "connection_lost",
+    "retryable": true,
+    "samples": [500, 502, 503, 599]
+  },
+  "fallback": {
+    "$comment": "上記以外は internal / retryable=false",
+    "kind": "internal",
+    "retryable": false,
+    "samples": [402, 405, 406, 410, 418, 451]
+  }
+}

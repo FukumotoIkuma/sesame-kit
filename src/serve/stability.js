@@ -47,7 +47,7 @@ export const STABLE_EVENTS = {
  * @returns {boolean}
  */
 function has(map, name) {
-  return Object.prototype.hasOwnProperty.call(map, name);
+  return Object.hasOwn(map, name);
 }
 
 /** メソッド名 → "stable" | "experimental" (provenance から導出)。

@@ -1,4 +1,11 @@
 /**
+ * model 文字列から生体 capability 集合 (DeviceProfiles 1:1) を返す。
+ * 非 biometric 機種・未知機種・空集合機種 (open sensor / remote 系) は空配列。
+ * @param {string|null|undefined} model
+ * @returns {readonly string[]} BIO_CAPABILITY 値の配列
+ */
+export function bioCapsForModel(model: string | null | undefined): readonly string[];
+/**
  * model 文字列から kind を返す。
  *   - model 未指定 (null/空) → lock5 (SesameBle の config-less 利用 & 既存ロック config の後方互換。
  *     config.locks は同期時にロック機種のみ whitelist + model 保存なので、ここに来るのは実質ロック)。
@@ -14,12 +21,19 @@ export function kindForModel(model: string | null | undefined): string;
  *   - ops         : 和集合 (UI で見せる操作・提示順)
  *   - bleSupported: BLE 制御を実装しているか (= ble.length>0)
  *   - biometric   : 生体・アクセス制御の BLE 登録 API を持つか (BIOMETRIC kind のみ true)
+ *   - bioCaps     : 機種別の生体 capability 集合 (DeviceProfiles 1:1。P3-15)。BIOMETRIC kind でも
+ *                   open sensor / remote 系は空配列 (CHDeivceProtocols.kt:81,112,118,172)
+ *   - isOpenSensor: OpenSensor 系か (parsePubKeySesame の空き判定が >1 になる。BLEP-11)
+ *   - isRemote    : Remote/Remote Nano 系か (TRIGGER_DELAYTIME(191) publish の dispatch 対象。BLEP-09)。
+ *                   SesameBle#remoteNano ゲッタの露出ゲートにも使う (追加バックログ 7) — SDK の
+ *                   isRemote() (CHSesameBiometricDevice.kt:67-69) が remote/remote_nano の両機種で
+ *                   真になるのと 1:1 のため、専用フラグは追加しない
  *   - wifiProvisioning: WM2 の BLE プロビジョニング API を持つか (WIFI kind のみ true)
  *   - script      : Bot2/Bot3 のスクリプト API を持つか (BOT2 kind のみ true)
  *   - fingerprint : Bike3 の指紋登録 API を持つか (BIKE3 kind のみ true)
  *   - hubProvisioning: Hub3 の BLE プロビジョニング API を持つか (HUB3 kind のみ true)
  * @param {string|null|undefined} model
- * @returns {{kind:string, os:number, cloud:string[], ble:string[], ops:string[], mechKind:string|null, bleSupported:boolean, biometric:boolean, wifiProvisioning:boolean, hubProvisioning:boolean, script:boolean, fingerprint:boolean, label:string}}
+ * @returns {{kind:string, os:number, cloud:string[], ble:string[], ops:string[], mechKind:string|null, bleSupported:boolean, biometric:boolean, bioCaps:readonly string[], isOpenSensor:boolean, isRemote:boolean, wifiProvisioning:boolean, hubProvisioning:boolean, script:boolean, fingerprint:boolean, label:string}}
  */
 export function capabilitiesForModel(model: string | null | undefined): {
     kind: string;
@@ -30,6 +44,9 @@ export function capabilitiesForModel(model: string | null | undefined): {
     mechKind: string | null;
     bleSupported: boolean;
     biometric: boolean;
+    bioCaps: readonly string[];
+    isOpenSensor: boolean;
+    isRemote: boolean;
     wifiProvisioning: boolean;
     hubProvisioning: boolean;
     script: boolean;
@@ -87,152 +104,41 @@ export const KIND: Readonly<{
     UNKNOWN: "unknown";
 }>;
 /**
- * productType (整数) → { model, kind }。
+ * 生体・アクセス制御の capability 語彙。
+ * 出典: CHSesameBiometricDevice.kt:28-30 `enum class BiometricCapability { CARD, FINGERPRINT,
+ * PASSCODE, FACE, PALM }` と 1:1。
+ */
+export const BIO_CAPABILITY: Readonly<{
+    CARD: "card";
+    FINGERPRINT: "fingerprint";
+    PASSCODE: "passcode";
+    FACE: "face";
+    PALM: "palm";
+}>;
+/**
+ * productType (整数) → { model, kind, bioCaps?, openSensor?, remote? }。
  * 値は CHProductModel enum (CHDeivceProtocols.kt:28-252) と deviceFactory() の生成クラスに準拠。
  * pType 12 は SDK でも欠番。
+ *
+ * BIOMETRIC kind の各機種には次を併記する (P3-15):
+ *  - bioCaps    : DeviceProfiles の capability 集合 (CHSesameBiometricDevice.kt:44-57。
+ *                 deviceFactory() の第 2 引数で機種に割当。CHDeivceProtocols.kt:77-216)
+ *  - openSensor : BiometricDeviceType.OPEN_SENSOR / OPEN_SENSOR_2 か
+ *                 (parsePubKeySesame の空きスロット判定が >1 になる機種。
+ *                  CHSesameBiometricDeviceImpl.kt:225-231 / BLEP-11)
+ *  - remote     : BiometricDeviceType.REMOTE か。SDK では remote と remote_nano が **どちらも**
+ *                 REMOTE 型で生成される (CHDeivceProtocols.kt:112,118) ため、
+ *                 isRemote() ガード (CHRemoteNanoEventHandler.kt:17) は両機種で真 (BLEP-09)
+ *
+ * @typedef {Object} ProductTypeEntry
+ * @property {string} model
+ * @property {string} kind
+ * @property {readonly string[]} [bioCaps] 生体 capability 集合 (BIOMETRIC kind のみ)
+ * @property {boolean} [openSensor] OpenSensor 系か (BIOMETRIC kind のみ)
+ * @property {boolean} [remote] Remote/Remote Nano 系か (BIOMETRIC kind のみ)
  */
-export const PRODUCT_TYPES: Readonly<{
-    0: {
-        model: string;
-        kind: "sesame2";
-    };
-    1: {
-        model: string;
-        kind: "wifi";
-    };
-    2: {
-        model: string;
-        kind: "botOs2";
-    };
-    3: {
-        model: string;
-        kind: "bikeOs2";
-    };
-    4: {
-        model: string;
-        kind: "sesame2";
-    };
-    5: {
-        model: string;
-        kind: "lock5";
-    };
-    6: {
-        model: string;
-        kind: "bike2";
-    };
-    7: {
-        model: string;
-        kind: "lock5";
-    };
-    8: {
-        model: string;
-        kind: "biometric";
-    };
-    9: {
-        model: string;
-        kind: "biometric";
-    };
-    10: {
-        model: string;
-        kind: "biometric";
-    };
-    11: {
-        model: string;
-        kind: "lock5";
-    };
-    13: {
-        model: string;
-        kind: "hub3";
-    };
-    14: {
-        model: string;
-        kind: "biometric";
-    };
-    15: {
-        model: string;
-        kind: "biometric";
-    };
-    16: {
-        model: string;
-        kind: "lock5";
-    };
-    17: {
-        model: string;
-        kind: "bot2";
-    };
-    18: {
-        model: string;
-        kind: "biometric";
-    };
-    19: {
-        model: string;
-        kind: "biometric";
-    };
-    20: {
-        model: string;
-        kind: "lock5";
-    };
-    21: {
-        model: string;
-        kind: "lock5";
-    };
-    22: {
-        model: string;
-        kind: "biometric";
-    };
-    23: {
-        model: string;
-        kind: "biometric";
-    };
-    24: {
-        model: string;
-        kind: "biometric";
-    };
-    25: {
-        model: string;
-        kind: "biometric";
-    };
-    26: {
-        model: string;
-        kind: "biometric";
-    };
-    27: {
-        model: string;
-        kind: "biometric";
-    };
-    28: {
-        model: string;
-        kind: "biometric";
-    };
-    29: {
-        model: string;
-        kind: "lock5";
-    };
-    30: {
-        model: string;
-        kind: "biometric";
-    };
-    31: {
-        model: string;
-        kind: "biometric";
-    };
-    32: {
-        model: string;
-        kind: "lock5";
-    };
-    33: {
-        model: string;
-        kind: "bike3";
-    };
-    35: {
-        model: string;
-        kind: "bot2";
-    };
-    36: {
-        model: string;
-        kind: "hub3";
-    };
-}>;
+/** @type {Readonly<Record<number, ProductTypeEntry>>} */
+export const PRODUCT_TYPES: Readonly<Record<number, ProductTypeEntry>>;
 /**
  * ロック系デバイス制御 op の語彙 (CAPS から導出した単一真実源)。
  * 現状 = ["lock", "unlock", "toggle", "click", "autolock"]。
@@ -285,5 +191,36 @@ export type Caps = {
      * Bike3 の指紋登録 API を持つか
      */
     fingerprint?: boolean | undefined;
+};
+/**
+ * productType (整数) → { model, kind, bioCaps?, openSensor?, remote? }。
+ * 値は CHProductModel enum (CHDeivceProtocols.kt:28-252) と deviceFactory() の生成クラスに準拠。
+ * pType 12 は SDK でも欠番。
+ *
+ * BIOMETRIC kind の各機種には次を併記する (P3-15):
+ *  - bioCaps    : DeviceProfiles の capability 集合 (CHSesameBiometricDevice.kt:44-57。
+ *                 deviceFactory() の第 2 引数で機種に割当。CHDeivceProtocols.kt:77-216)
+ *  - openSensor : BiometricDeviceType.OPEN_SENSOR / OPEN_SENSOR_2 か
+ *                 (parsePubKeySesame の空きスロット判定が >1 になる機種。
+ *                  CHSesameBiometricDeviceImpl.kt:225-231 / BLEP-11)
+ *  - remote     : BiometricDeviceType.REMOTE か。SDK では remote と remote_nano が **どちらも**
+ *                 REMOTE 型で生成される (CHDeivceProtocols.kt:112,118) ため、
+ *                 isRemote() ガード (CHRemoteNanoEventHandler.kt:17) は両機種で真 (BLEP-09)
+ */
+export type ProductTypeEntry = {
+    model: string;
+    kind: string;
+    /**
+     * 生体 capability 集合 (BIOMETRIC kind のみ)
+     */
+    bioCaps?: readonly string[] | undefined;
+    /**
+     * OpenSensor 系か (BIOMETRIC kind のみ)
+     */
+    openSensor?: boolean | undefined;
+    /**
+     * Remote/Remote Nano 系か (BIOMETRIC kind のみ)
+     */
+    remote?: boolean | undefined;
 };
 //# sourceMappingURL=devicemodel.d.ts.map

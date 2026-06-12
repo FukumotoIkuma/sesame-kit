@@ -1,12 +1,30 @@
 /**
- * config オブジェクトを実行時 shape に正規化する。
- * ConfigStore.load() を通らない embedded 利用でも、保存正準形 `devices` から
- * 互換 view の `locks` / `hub3s` を必ず再投影する。
+ * 旧 shape の config を現行 shape (SCHEMA_VERSION) へ段階的に移行する。
+ * schemaVersion が現行より**新しい** config (新版で書かれたファイルを旧版で開いた =
+ * ダウングレード) には何もしない: 版数も未知キーもそのまま保持し、save() で消さない。
+ * @param {Partial<ConfigData> & Record<string, unknown>} raw
+ * @returns {Partial<ConfigData> & Record<string, unknown>}
+ */
+export function migrateConfig(raw?: Partial<ConfigData> & Record<string, unknown>): Partial<ConfigData> & Record<string, unknown>;
+/**
+ * config オブジェクトを実行時 shape に正規化する (**最新 shape 専用**)。
+ * 既定値の穴埋めと、保存正準形 `devices` からの互換 view `locks`/`hub3s` の再投影のみを行う。
+ * 旧 shape (v1 の locks/hub3s 永続化) の解釈は {@link migrateConfig} が担うため、
+ * ConfigStore.load() を通らない embedded 利用では migrateConfig → normalizeConfig の順で通すこと
+ * (SesameHub3 のコンストラクタはそうしている)。
  *
  * @param {Partial<ConfigData>} raw
  * @returns {LoadedConfig}
  */
 export function normalizeConfig(raw?: Partial<ConfigData>): LoadedConfig;
+/**
+ * irType から sendIR の operation を導出する (P3-8)。
+ * 自己学習リモコン (実 type 0xFE00) のみ learnEmit、プリセット (0xC000/0x2000/0xE000/0x8000)
+ * は remoteEmit + HXD code (remote-air/index.js:369 / remote-non-air/index.js:155-156)。
+ * @param {number} irType
+ * @returns {"learnEmit"|"remoteEmit"}
+ */
+export function deriveIrOperation(irType: number): "learnEmit" | "remoteEmit";
 /**
  * ロック系 model か (biz3 lockModelDevices と完全一致, gUtils.js:279-294)。
  * @param {string|null|undefined} model
@@ -19,6 +37,13 @@ export function isLockModel(model: string | null | undefined): boolean;
  * @returns {boolean}
  */
 export function isHub3Model(model: string | null | undefined): boolean;
+/**
+ * 現行 config スキーマ版数 (P5-6 / ARCH-12)。
+ *   v1: locks/hub3s をトップレベルに永続化していた旧 shape (schemaVersion フィールド無し)。
+ *   v2: devices{} が単一の真実。locks/hub3s は派生 view (保存しない)。schemaVersion を明記。
+ * 旧版からの変換は {@link MIGRATIONS} に登録する。
+ */
+export const SCHEMA_VERSION: 2;
 export class ConfigStore {
     /**
      * @param {string} configDir
@@ -38,8 +63,6 @@ export class ConfigStore {
      * @returns {LoadedConfig}
      */
     load(): LoadedConfig;
-    /** devices{} から locks{}/hub3s{} の派生 view (旧 shape) を都度組み立てる。reader 互換用。 */
-    _reproject(): void;
     save(): void;
     /**
      * 空スケルトンを書き出す。既存があれば触らない。
@@ -55,6 +78,7 @@ export class ConfigStore {
     }): boolean;
     /**
      * name 省略時は default.remote、無ければ remotes が 1 つだけならそれ。
+     * 解決ロジックは resolveByName (src/resolve.js) に一本化 (P5-4)。失敗は SesameError(BAD_REQUEST)。
      * @param {string} [name]
      * @returns {{name: string, remote: RemoteEntry, hub3Name: string, hub3: Hub3View}}
      */
@@ -77,13 +101,16 @@ export class ConfigStore {
     /**
      * @param {string} name
      * @param {{hub3?: string, irDeviceUUID?: string, irType?: number|string,
-     *          irOperation?: string, alias?: string|null, keys?: Record<string, string>}} remote
+     *          irOperation?: string, code?: number|string|null, state?: string|null,
+     *          alias?: string|null, keys?: Record<string, string>}} remote
      */
     addRemote(name: string, remote: {
         hub3?: string;
         irDeviceUUID?: string;
         irType?: number | string;
         irOperation?: string;
+        code?: number | string | null;
+        state?: string | null;
         alias?: string | null;
         keys?: Record<string, string>;
     }): void;
@@ -96,6 +123,7 @@ export class ConfigStore {
     updateRemoteKeys(name: string, keys: Record<string, string>): void;
     /**
      * name 省略時は default.lock、無ければ locks が 1 つだけならそれ。
+     * 解決ロジックは resolveByName (src/resolve.js) に一本化 (P5-4)。失敗は SesameError(BAD_REQUEST)。
      * @param {string} [name]
      * @returns {{name: string, lock: LockView}}
      */
@@ -105,37 +133,24 @@ export class ConfigStore {
     };
     /**
      * @param {string} name
-     * @param {{deviceUUID?: string, secretKey?: string, model?: string|null, alias?: string|null}} lock
+     * @param {{deviceUUID?: string, secretKey?: string, model?: string|null, alias?: string|null,
+     *          ssmPublicKey?: string|null, keyIndex?: string|null}} lock
+     *   ssmPublicKey/keyIndex は OS2 デバイス用の任意フィールド (バックログ4):
+     *   os2-register の戻り値 (sesamePublicKey / keyIndex) を保存し、os2-invoke 等が
+     *   --ssm-public-key 無しでも config から解決できるようにする。
      */
     addLock(name: string, lock: {
         deviceUUID?: string;
         secretKey?: string;
         model?: string | null;
         alias?: string | null;
+        ssmPublicKey?: string | null;
+        keyIndex?: string | null;
     }): void;
     /** @param {string} name */
     setDefaultLock(name: string): void;
     /** @param {string} name */
     removeLock(name: string): void;
-    /**
-     * @param {DeviceRecord[]} deviceList
-     * @param {{ accept:(d:DeviceRecord)=>boolean, category:"lock"|"hub3", prune?:boolean,
-     *           onFirstAdd?:((name:string)=>void)|null, pruneProtect?:((name:string)=>boolean)|null }} opts
-     *   accept  受理条件 (取り込む incoming device の判定)
-     *   category この sync が司る view。prune はこの view に属する device だけを対象にする
-     * @returns {{added:string[], updated:string[], removed:string[]}}
-     */
-    _syncDevices(deviceList: DeviceRecord[], { accept, category, prune, onFirstAdd, pruneProtect }: {
-        accept: (d: DeviceRecord) => boolean;
-        category: "lock" | "hub3";
-        prune?: boolean;
-        onFirstAdd?: ((name: string) => void) | null;
-        pruneProtect?: ((name: string) => boolean) | null;
-    }): {
-        added: string[];
-        updated: string[];
-        removed: string[];
-    };
     /**
      * `devices` (getCompanyDevice 等) の結果からロックを取り込む (devices{} に丸ごと格納)。
      * @param {DeviceRecord[]} deviceList
@@ -169,7 +184,7 @@ export class ConfigStore {
      * `{uuid, type, alias?}` 付きで持っているので、それを直接展開する。
      * 先に hub3s が登録済みである必要がある (syncHub3sFromDevices を先に呼ぶ)。
      *
-     * @param {Array<DeviceRecord & {stateInfo?: {remoteList?: Array<{uuid?: string, irDeviceUUID?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null}>}}>} deviceList  getCompanyDevice / getUserDevice の応答
+     * @param {Array<DeviceRecord & {stateInfo?: {remoteList?: Array<{uuid?: string, irDeviceUUID?: string, type?: number|string, irType?: number|string, code?: number|string|null, state?: string|null, alias?: string|null, name?: string|null}>}}>} deviceList  getCompanyDevice / getUserDevice の応答
      * @returns {{added:string[], updated:string[]}}
      */
     syncRemotesFromDevices(deviceList: Array<DeviceRecord & {
@@ -179,6 +194,8 @@ export class ConfigStore {
                 irDeviceUUID?: string;
                 type?: number | string;
                 irType?: number | string;
+                code?: number | string | null;
+                state?: string | null;
                 alias?: string | null;
                 name?: string | null;
             }>;
@@ -190,7 +207,7 @@ export class ConfigStore {
     /**
      * server 側 (getRemoteList) のリモコン一覧から remote 定義を取り込む (上級/代替経路)。
      * 通常は syncRemotesFromDevices で足りる。company 横断の一覧が欲しい場合のみ。
-     * @param {Array<{irDeviceUUID?: string, uuid?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null, irOperation?: string}>} remoteList  getRemoteList の応答 (irDeviceUUID/uuid, type, alias/name 等)
+     * @param {Array<{irDeviceUUID?: string, uuid?: string, type?: number|string, irType?: number|string, code?: number|string|null, state?: string|null, alias?: string|null, name?: string|null, irOperation?: string}>} remoteList  getRemoteList の応答 (irDeviceUUID/uuid, type, alias/name 等)
      * @param {string} hub3Name   これらのリモコンが属する Hub3 の config 名
      * @returns {{added:string[], updated:string[]}}
      */
@@ -199,6 +216,8 @@ export class ConfigStore {
         uuid?: string;
         type?: number | string;
         irType?: number | string;
+        code?: number | string | null;
+        state?: string | null;
         alias?: string | null;
         name?: string | null;
         irOperation?: string;
@@ -221,6 +240,15 @@ export type DeviceRecord = {
      */
     category?: string | undefined;
     /**
+     * OS2 デバイス公開鍵 (64B = 128 hex)。os2-register の
+     * sesamePublicKey をローカル保存する注釈 (サーバ応答には無い)。OS2 BLE login (ECDH) に必須。
+     */
+    ssmPublicKey?: string | undefined;
+    /**
+     * OS2 keyIndex / userIdx (2B = 4 hex、既定 "0000")。ローカル注釈。
+     */
+    keyIndex?: string | undefined;
+    /**
      * sanitize で除外されるが incoming では存在しうる。
      */
     stateInfo?: any;
@@ -233,6 +261,14 @@ export type LockView = {
     secretKey: string | null | undefined;
     model: string | null;
     alias: string | null;
+    /**
+     * OS2 デバイス公開鍵 (128 hex)。保存済みのときだけ載る。
+     */
+    ssmPublicKey?: string | undefined;
+    /**
+     * OS2 keyIndex (4 hex)。保存済みのときだけ載る。
+     */
+    keyIndex?: string | undefined;
 };
 /**
  * hub3s{} の派生 view エントリ (旧 shape)。
@@ -245,6 +281,9 @@ export type Hub3View = {
 };
 /**
  * remotes{} のエントリ (IR リモコン定義)。
+ * code/state はプリセットリモコン (irType !== 0xFE00) 用 (IrRemote.kt:5-15 の code/state):
+ *   code  = メーカー DB の HXD 码組 Code (remoteEmit の command 生成に必須)
+ *   state = 最後に発射した command HEX (updateRemoteState で永続化される現在状態)
  */
 export type RemoteEntry = {
     /**
@@ -253,7 +292,12 @@ export type RemoteEntry = {
     hub3: string;
     irDeviceUUID?: string | undefined;
     irType: number;
+    /**
+     * "learnEmit" (自己学習 0xFE00) | "remoteEmit" (プリセット)
+     */
     irOperation: string;
+    code?: number | null | undefined;
+    state?: string | null | undefined;
     alias?: string | null | undefined;
     /**
      * キー名 → keyUUID
@@ -271,6 +315,10 @@ export type ConfigDefault = {
  * config.json 全体のドメインモデル。
  */
 export type ConfigData = {
+    /**
+     * config スキーマ版数 (P5-6)。現行は {@link SCHEMA_VERSION}。
+     */
+    schemaVersion?: number | undefined;
     companyID?: string | undefined;
     wsUrl?: string | undefined;
     lang?: string | undefined;
@@ -293,6 +341,12 @@ export type ConfigData = {
      * register REST base URL (biometrics fallback)。
      */
     registerBaseUrl?: string | undefined;
+    /**
+     * appidentifyid ヘッダ用の安定 ID (PERSISTED)。
+     * ANDROID_ID 相当としてランダム UUID を初回生成して保持する (AppIdentifyIdUtil.kt:26-48 の
+     * SharedPreferences 永続化相当。生成は src/aws-credentials.js resolveAppIdentifyId)。
+     */
+    appIdentifyId?: string | null | undefined;
     /**
      * devices からの派生 view (保存しない)。
      */

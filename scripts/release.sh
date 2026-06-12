@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 #
-# リリース自動化: npm publish + git タグ + GitHub Release を一括で、順序とガード付きで実行する。
+# リリース起動スクリプト: preflight チェック → v タグ作成 & push まで。
+# npm publish と GitHub Release は tag-push トリガの CI (.github/workflows/release.yml) が行う
+# (P5-8/ARCH-21: `npm publish --provenance` + trusted publishing のためローカルから publish しない)。
 # バージョンは package.json のものを使う (このスクリプトは bump しない)。
 #   先に: バージョンを上げてコミット & push しておくこと (npm version <patch|minor|major> --no-git-tag-version)。
 #
 # 使い方:
-#   npm run release               # 2FA はブラウザで確認する (npm publish が自動でブラウザを開く)
+#   npm run release
 #
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -34,17 +36,9 @@ git rev-parse "$TAG" >/dev/null 2>&1 && red "タグ $TAG が既に存在しま�
 if npm view "sesame-kit@$VERSION" version >/dev/null 2>&1; then red "$VERSION は既に npm に公開済みです。"; fi
 ok "リリース対象: sesame-kit@$VERSION"
 
-# ---- ① npm publish (2FA はブラウザで確認) ----
-npm publish
-ok "npm publish 完了"
-
-# ---- ② git タグ ----
+# ---- タグ push (以降は CI が引き継ぐ) ----
 git tag -a "$TAG" -m "$TAG"
 git push origin "$TAG"
 ok "タグ $TAG を push"
 
-# ---- ③ GitHub Release (前タグからのコミットでノート自動生成) ----
-gh release create "$TAG" --title "$TAG" --generate-notes
-ok "GitHub Release $TAG を作成"
-
-printf '\n🎉 %s をリリースしました (npm + タグ + GitHub Release)\n' "$TAG"
+printf '\n🚀 %s のタグを push しました。npm publish (provenance 付き) と GitHub Release は\n   GitHub Actions の Release workflow が実行します: https://github.com/FukumotoIkuma/sesame-kit/actions\n' "$TAG"

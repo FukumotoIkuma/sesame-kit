@@ -18,6 +18,12 @@
 //     refreshAccount() で実 (priorityCompanyId) 値に更新されるため withAccount を使う。
 //     get だけは companyID 不要だが、一覧の各要素に companyID が含まれる一次データなので
 //     ここでも withAccount で揃える (実害なし)。
+//
+// 既定 companyID の解決 (BIZ-11): 「config.companyID 既定、明示パラメータで上書き」が
+//     本 CLI の方針 (現状維持。--priority 等のフラグは増やさない)。web (biz3) と同じ
+//     「優先会社」(rootUser / feeLevel 最大) を既定にしたい場合は、ライブラリの
+//     account.priorityCompany(customerInfo, companies) / priorityCompanyId()
+//     (useStripeInfo.js:41-67 の 1:1 移植) で companyID を選定し、明示的に渡すこと。
 
 import { t } from "../i18n.js";
 

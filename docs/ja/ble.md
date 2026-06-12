@@ -97,7 +97,7 @@ sesame ble script <device> [--index <n>] # Bot2/Bot3 のスクリプト名一覧
 
 ### BLE を初期化できない
 
-BLE を起動できない場合、CLI は無言クラッシュせず、わかりやすい 1 行メッセージを表示して終了コード `2` で終了します（`--json` モードでは stderr に `{ "error": "…", "code": 2, "bleCode": "…" }` を出力します）。（以前は `@abandonware/noble` のネイティブ CoreBluetooth バインディングが、権限やアダプタの無い状態で初期化された瞬間に `abort()`（プロセスレベルの `SIGABRT`・終了コード `134`）を呼び、これは `try`/`catch` で捕捉できませんでした。現在は CLI が先に独立した子プロセスで BLE を探触するため、abort する状況ではプロセス内のバックエンドに一切触れません。）
+BLE を起動できない場合、CLI は無言クラッシュせず、わかりやすい 1 行メッセージを表示して終了コード `1` で終了します — 実行環境のランタイム障害であり使い方エラーではありません（`--json` モードでは stderr に `{ "error": "…", "code": 1, "bleCode": "…" }` を出力します）。（以前は `@abandonware/noble` のネイティブ CoreBluetooth バインディングが、権限やアダプタの無い状態で初期化された瞬間に `abort()`（プロセスレベルの `SIGABRT`・終了コード `134`）を呼び、これは `try`/`catch` で捕捉できませんでした。現在は CLI が先に独立した子プロセスで BLE を探触するため、abort する状況ではプロセス内のバックエンドに一切触れません。）
 
 メッセージでどのケースかが分かります。
 
@@ -269,7 +269,7 @@ WM2 コマンドは `WM2ActionCode` enum（`src/itemcodes.js` の `WM2_ACTION` /
 
 ### Wi-Fi プロビジョニング・接続種別（Hub3）
 
-Hub3（`hub_3` / `hub_3_lte`）もロック操作を持たず、`lock.hub3()`（同一 session 上の `Hub3Commands` インスタンス）として BLE プロビジョニング API を公開します。このゲッタは能力テーブルでゲートされており、Hub3 以外の機種で参照すると throw します。WM2 と違い **Hub3 は既定 SESAME GATT**（`fd81`）上にあるため特別な GATT 結線は不要です（`CHHub3Device : CHSesameOS3` で OS3 スタックを継承）。Wi-Fi コマンドは別 enum ではなく **`SesameItemCode` に直接**乗ります（`src/itemcodes.js` の Hub3 固有コード 131–136 / 209）。これは SDK 自体の Hub3 のレイアウトです。
+Hub3（`hub_3` / `hub_3_lte`）もロック操作を持たず、`lock.hub3()`（同一 session 上の `Hub3Commands` インスタンス）として BLE プロビジョニング API を公開します。このゲッタは能力テーブルでゲートされており、Hub3 以外の機種で参照すると throw します。WM2 と違い **Hub3 は既定 SESAME GATT**（`fd81`）上にあるため特別な GATT 結線は不要です（`CHHub3Device : CHSesameOS3` で OS3 スタックを継承）。Wi-Fi コマンドは別 enum ではなく **`SesameItemCode` に直接**乗ります（`src/itemcodes.js` の Hub3 固有コード 131–136）。これは SDK 自体の Hub3 のレイアウトです。接続種別の 209 は **このレイアウトに含まれません**: `SesameItemCode` は 208 で終端し、`CHHub3Device.kt` にも 209 のハンドラはありません。biz3 web の native ブリッジ挙動（`references_web/src/components/MobileWifiModule.js:219-235`）からの推定として、別表 `UNVERIFIED_ITEM_CODES` に隔離しています（experimental・実機未検証）。
 
 ```js
 await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
@@ -283,16 +283,16 @@ await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
   await hub.setWifiSSID("my-ap");            // HUB3_UPDATE_WIFI_SSID (136)
   await hub.setWifiPassword("secret");       // HUB3_ITEM_CODE_WIFI_PASSWORD (135)
   await hub.removeSesame(childUUID);         // REMOVE_SESAME (103); data = dash 除去 UUID を decode した生 16B
-  hub.networkType();                         // { kind: "networkType", isWifiConnected, isLTEConnected } で届く
+  hub.networkType();                         // EXPERIMENTAL（item 209 は Android SDK に無い。biz3 web ブリッジからの推定）
   off();
 });
 ```
 
-Hub3 は BLE のロック制御 op を持ちませんが、共通の OS3 経路は継承します。`connect`/`login`・`register`（`SesameBle.register()`）・`reset()`（`Reset(104)`）・`updateFirmware()`（`MOVE_TO(84)`、後述）はいずれも動作します。純関数の data builder / publish parser（`setWifiSSIDData`・`parseHub3Publish`・`parseNetworkType` など）も `sesame-kit/ble`（`ble.hub3.*`）から export されており、独自結線に利用できます。**実機未確認**です（特に `networkType` の *要求* は SDK では publish 受信のみ確認でき、送信コマンドとしては未確認）。
+Hub3 は BLE のロック制御 op を持ちませんが、共通の OS3 経路は継承します。`connect`/`login`・`register`（`SesameBle.register()`）・`reset()`（`Reset(104)`）・`updateFirmware()`（`MOVE_TO(84)`、後述）はいずれも動作します。純関数の data builder / publish parser（`setWifiSSIDData`・`parseHub3Publish`・`parseNetworkType` など）も `sesame-kit/ble`（`ble.hub3.*`）から export されており、独自結線に利用できます。**実機未確認**です。特に `networkType` 経路（item code 209、要求・publish の両方と `[wifi 1B][lte 1B]` という payload 解釈）は **Android SDK に一次ソースが無く**、biz3 web の native ブリッジからの推定です（確証が得られなければ削除を検討）。
 
 ### BLE 経由ファームウェア更新（DFU / OTA）
 
-`lock.updateFirmware({ onProgress })` で BLE OTA を開始します。経路は model で分岐します（SDK と 1:1）。WM2 は `OPEN_OTA_SERVER`（126）を送り（`CHWifiModule2Device.updateFirmware`）、Hub3 / OS3 ロックは `MOVE_TO`（84）を送ります（`CHHub3Device.updateFirmwareBleOnly` / `CHSesameOS3.updateFirmware`）。進捗は publish で届き、payload の先頭 1 バイトが進捗値です。OTA を持たない機種（OS2・Bot/Bike・生体・未知）は op を捏造せず明示エラーを投げます。
+`lock.updateFirmware({ onProgress })` で BLE OTA を開始します。経路は model で分岐します（SDK と 1:1）。WM2 は `OPEN_OTA_SERVER`（126）を送り（`CHWifiModule2Device.updateFirmware`）、`MOVE_TO`（84）を送るのは **Hub3 のみ**です（`CHHub3Device.updateFirmwareBleOnly` — Hub3 専用コマンド）。OS3 ロック（および Bot2 / Bike2/3 / 生体）は**命令を一切送らず**、接続済みデバイスハンドルを返すだけです（`CHSesameOS3.updateFirmware` は no-op のハンドル返し。実際のファーム転送は別 GATT サービス上の Nordic DFU 相当が必要で、本 kit は未実装）。進捗（Hub3/WM2）は publish で届き、payload の先頭 1 バイトが進捗値です。OTA 経路を持たない機種（OS2・未知）は op を捏造せず明示エラーを投げます。
 
 ```js
 await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
@@ -300,7 +300,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
 });
 ```
 
-ファサードは OTA サーバ起動（コマンド応答）の時点で内部の進捗購読を解除します。100% 完了まで進捗を取り続けたい場合は `ble.onMoveToOtaProgress(session, cb)`（Hub3 / OS3 ロック）または `ble.onWM2OtaProgress(session, cb)`（WM2）を直接購読してください。純ロジック層（`updateFirmware` / `updateFirmwareBleOnly` / `updateFirmwareWM2`）も `sesame-kit/ble`（`ble.dfu.*`）から export されており、独自結線に利用できます。実際の DFU バイナリ転送は別 GATT サービスで外部 DFU ライブラリが行い、この層は OTA サーバの起動と進捗報告のみを担当します。
+ファサードは OTA サーバ起動（コマンド応答）の時点で内部の進捗購読を解除します。100% 完了まで進捗を取り続けたい場合は `ble.onMoveToOtaProgress(session, cb)`（Hub3）または `ble.onWM2OtaProgress(session, cb)`（WM2）を直接購読してください。純ロジック層（`updateFirmware` / `updateFirmwareBleOnly` / `updateFirmwareWM2`）も `sesame-kit/ble`（`ble.dfu.*`）から export されており、独自結線に利用できます。実際の DFU バイナリ転送は別 GATT サービスで外部 DFU ライブラリが行い、この層は OTA サーバの起動と進捗報告のみを担当します。
 
 ### OS2 デバイス（SESAME 2 / 3 / 4・Bot1・Bike1）
 

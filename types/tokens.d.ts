@@ -15,8 +15,16 @@ export class FileTokenStore {
     loginStatePath: string;
     /** @returns {StoredTokens|null} */
     load(): StoredTokens | null;
-    /** @param {StoredTokens} t */
+    /**
+     * ロック内で「ディスク再読 → merge → アトミック書き込み」する。
+     * merge 規則は mergeStoredTokens のコメント参照 (lost-update 防止の核心)。
+     * @param {StoredTokens} t
+     */
     save(t: StoredTokens): void;
+    /**
+     * tokens.json を削除する。save (load→merge→write) と同じロックで直列化し、
+     * 「clear 中に他プロセスの save が割り込んで中途半端に復活する」競合を防ぐ。
+     */
     clear(): void;
     /** @returns {PendingLogin|null} */
     loadPending(): PendingLogin | null;

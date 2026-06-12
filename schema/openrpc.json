@@ -29,7 +29,7 @@
         {
           "name": "subUUID",
           "required": false,
-          "description": "string",
+          "description": "string — auto-injected by the daemon from the logged-in account when omitted",
           "schema": {
             "type": "string"
           }
@@ -60,7 +60,7 @@
         {
           "name": "subUUID",
           "required": false,
-          "description": "string",
+          "description": "string — auto-injected by the daemon from the logged-in account when omitted",
           "schema": {
             "type": "string"
           }
@@ -98,8 +98,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -110,6 +110,14 @@
           "description": "number",
           "schema": {
             "type": "number"
+          }
+        },
+        {
+          "name": "partialOnTimeout",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
           }
         }
       ],
@@ -186,8 +194,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -306,6 +314,14 @@
           "schema": {
             "type": "number"
           }
+        },
+        {
+          "name": "partialOnTimeout",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
+          }
         }
       ],
       "result": {
@@ -355,8 +371,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -386,8 +402,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -425,8 +441,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -464,8 +480,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -534,8 +550,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -589,8 +605,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -647,8 +663,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -686,8 +702,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -717,8 +733,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -756,8 +772,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -795,8 +811,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -826,8 +842,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -876,8 +892,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -915,8 +931,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -957,8 +973,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1012,8 +1028,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1101,8 +1117,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1174,8 +1190,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1213,8 +1229,8 @@
       "params": [
         {
           "name": "subUUID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from the logged-in account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1345,8 +1361,8 @@
         },
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1407,8 +1423,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1462,8 +1478,8 @@
         },
         {
           "name": "subUUID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from the logged-in account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1493,8 +1509,8 @@
       "params": [
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -1523,10 +1539,28 @@
       "summary": "getPaymentMethods of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1544,10 +1578,28 @@
       "summary": "getClientSecret of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1565,10 +1617,36 @@
       "summary": "changeDefaultPayment of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "defaultPaymentMethod",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1586,10 +1664,36 @@
       "summary": "removePayment of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "paymentId",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1607,10 +1711,68 @@
       "summary": "payUpdateLevel of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "subId",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "subscriptionId",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "level",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "isUpgrade",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "isCancel",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1628,10 +1790,44 @@
       "summary": "getDevApiInfo of payment (auto-exposed)",
       "params": [
         {
-          "name": "(params)",
+          "name": "customerId",
           "required": false,
-          "description": "pass the biz3 op params as-is",
-          "schema": {}
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyID",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "email",
+          "required": false,
+          "description": "string",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "update",
+          "required": false,
+          "description": "boolean | null",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -1666,6 +1862,22 @@
           "schema": {
             "type": "number"
           }
+        },
+        {
+          "name": "graceMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "partialOnTimeout",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
+          }
         }
       ],
       "result": {
@@ -1699,6 +1911,22 @@
           "description": "number",
           "schema": {
             "type": "number"
+          }
+        },
+        {
+          "name": "graceMs",
+          "required": false,
+          "description": "number",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "partialOnTimeout",
+          "required": false,
+          "description": "boolean",
+          "schema": {
+            "type": "boolean"
           }
         }
       ],
@@ -2559,8 +2787,8 @@
         },
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -2614,8 +2842,8 @@
         },
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -2642,6 +2870,14 @@
           "description": "number",
           "schema": {
             "type": "number"
+          }
+        },
+        {
+          "name": "savedState",
+          "required": false,
+          "description": "string | null",
+          "schema": {
+            "type": "string"
           }
         },
         {
@@ -2725,8 +2961,8 @@
         },
         {
           "name": "companyID",
-          "required": true,
-          "description": "string",
+          "required": false,
+          "description": "string — auto-injected by the daemon from config/account when omitted",
           "schema": {
             "type": "string"
           }
@@ -2783,6 +3019,5439 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "ble.script.click",
+      "summary": "[experimental] BLE op script.click (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "index",
+          "required": false,
+          "description": "script number 0..9 to run (omit = plain click 89)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.script.selectScript",
+      "summary": "[experimental] BLE op script.selectScript (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "index",
+          "required": true,
+          "description": "script slot to activate (0..9)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.script.sendClickScript",
+      "summary": "[experimental] BLE op script.sendClickScript (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "index",
+          "required": true,
+          "description": "slot to write (0..9)",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "script",
+          "required": true,
+          "description": "{name, actions:[{action,time}]} or raw bytes",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.script.getCurrentScript",
+      "summary": "[experimental] BLE op script.getCurrentScript (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "index",
+          "required": false,
+          "description": "slot to read (omit = currently selected)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.script.getScriptNameList",
+      "summary": "[experimental] BLE op script.getScriptNameList (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.cardModeSet",
+      "summary": "[experimental] BLE op biometric.cardModeSet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "required": true,
+          "description": "card enroll mode byte (kicks off CARD_FIRST/NOTIFY/LAST push)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.cardModeGet",
+      "summary": "[experimental] BLE op biometric.cardModeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.cardGet",
+      "summary": "[experimental] BLE op biometric.cardGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.cardAdd",
+      "summary": "[experimental] BLE op biometric.cardAdd (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "id",
+          "required": true,
+          "description": "card UID raw bytes ({type:'Buffer',data:[]} or {$buffer})",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "hexName",
+          "required": true,
+          "description": "card name (UTF-8 string)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.cardDelete",
+      "summary": "[experimental] BLE op biometric.cardDelete (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cardID",
+          "required": true,
+          "description": "card id (hex) to delete",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.cardMove",
+      "summary": "[experimental] BLE op biometric.cardMove (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cardId",
+          "required": true,
+          "description": "card id (hex) to move",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "touchProUUID",
+          "required": true,
+          "description": "destination Touch Pro UUID (UTF-8)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.cardChange",
+      "summary": "[experimental] BLE op biometric.cardChange (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ID",
+          "required": true,
+          "description": "card id (hex)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hexName",
+          "required": true,
+          "description": "new name (hex, folded 2 chars/byte)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.cardChangeValue",
+      "summary": "[experimental] BLE op biometric.cardChangeValue (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ID",
+          "required": true,
+          "description": "card id (hex)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "newID",
+          "required": true,
+          "description": "new card id value (UTF-8)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.passcodeModeSet",
+      "summary": "[experimental] BLE op biometric.passcodeModeSet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "required": true,
+          "description": "passcode enroll mode byte",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.passcodeModeGet",
+      "summary": "[experimental] BLE op biometric.passcodeModeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.passcodeGet",
+      "summary": "[experimental] BLE op biometric.passcodeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.passcodeAdd",
+      "summary": "[experimental] BLE op biometric.passcodeAdd (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "id",
+          "required": true,
+          "description": "passcode id raw bytes ({type:'Buffer',data:[]} or {$buffer})",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "hexName",
+          "required": true,
+          "description": "passcode name (UTF-8 string)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.passcodeDelete",
+      "summary": "[experimental] BLE op biometric.passcodeDelete (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyBoardPassCodeID",
+          "required": true,
+          "description": "passcode id (hex) to delete",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.passcodeMove",
+      "summary": "[experimental] BLE op biometric.passcodeMove (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cardId",
+          "required": true,
+          "description": "passcode id (hex) to move",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "touchProUUID",
+          "required": true,
+          "description": "destination Touch Pro UUID (UTF-8)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.passcodeChange",
+      "summary": "[experimental] BLE op biometric.passcodeChange (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ID",
+          "required": true,
+          "description": "passcode id (hex)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hexName",
+          "required": true,
+          "description": "new name (hex, folded 2 chars/byte)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.faceModeSet",
+      "summary": "[experimental] BLE op biometric.faceModeSet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "required": true,
+          "description": "face enroll mode byte",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.faceModeGet",
+      "summary": "[experimental] BLE op biometric.faceModeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.faceListGet",
+      "summary": "[experimental] BLE op biometric.faceListGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.faceChange",
+      "summary": "[experimental] BLE op biometric.faceChange (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ID",
+          "required": true,
+          "description": "face id (hex)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "name",
+          "required": true,
+          "description": "new name (hex, folded 2 chars/byte)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.faceDelete",
+      "summary": "[experimental] BLE op biometric.faceDelete (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "faceID",
+          "required": true,
+          "description": "face id (hex single byte) to delete",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.palmModeSet",
+      "summary": "[experimental] BLE op biometric.palmModeSet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "required": true,
+          "description": "palm enroll mode byte",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.palmModeGet",
+      "summary": "[experimental] BLE op biometric.palmModeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.palmListGet",
+      "summary": "[experimental] BLE op biometric.palmListGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.palmDelete",
+      "summary": "[experimental] BLE op biometric.palmDelete (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "palmID",
+          "required": true,
+          "description": "palm id (hex single byte) to delete",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.insertSesame",
+      "summary": "[experimental] BLE op biometric.insertSesame (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sesame",
+          "required": true,
+          "description": "{deviceUUID, secretKey, sesame2PublicKey?} child Sesame key to add",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.removeSesame",
+      "summary": "[experimental] BLE op biometric.removeSesame (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "tag",
+          "required": true,
+          "description": "child Sesame UUID to remove",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "opts",
+          "required": false,
+          "description": "{keyType?} 0x04=OS2 / 0x05=OS3 (default 0x05)",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.biometric.setRadarSensitivity",
+      "summary": "[experimental] BLE op biometric.setRadarSensitivity (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "payload",
+          "required": true,
+          "description": "raw radar parameter bytes ({type:'Buffer',data:[]} or {$buffer})",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.fingerPrint.fingerPrintModeSet",
+      "summary": "[experimental] BLE op fingerPrint.fingerPrintModeSet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "required": true,
+          "description": "fingerprint enroll mode byte",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.fingerPrint.fingerPrintModeGet",
+      "summary": "[experimental] BLE op fingerPrint.fingerPrintModeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.fingerPrint.fingerPrints",
+      "summary": "[experimental] BLE op fingerPrint.fingerPrints (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.fingerPrint.fingerPrintDelete",
+      "summary": "[experimental] BLE op fingerPrint.fingerPrintDelete (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "fingerPrintID",
+          "required": true,
+          "description": "fingerprint id (hex) to delete",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.fingerPrint.fingerPrintChange",
+      "summary": "[experimental] BLE op fingerPrint.fingerPrintChange (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ID",
+          "required": true,
+          "description": "fingerprint id (hex)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hexName",
+          "required": true,
+          "description": "new name (hex, folded 2 chars/byte)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.remoteNano.setTriggerDelayTime",
+      "summary": "[experimental] BLE op remoteNano.setTriggerDelayTime (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "time",
+          "required": true,
+          "description": "trigger delay seconds (UByte 0..255)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.remoteNano.insertSesame",
+      "summary": "[experimental] BLE op remoteNano.insertSesame (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sesame",
+          "required": true,
+          "description": "{deviceUUID, secretKey, sesame2PublicKey?} child Sesame key to add",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.remoteNano.removeSesame",
+      "summary": "[experimental] BLE op remoteNano.removeSesame (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "tag",
+          "required": true,
+          "description": "child Sesame UUID to remove",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "opts",
+          "required": false,
+          "description": "{keyType?} 0x04=OS2 / 0x05=OS3 (default 0x05)",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.remoteNano.setRadarSensitivity",
+      "summary": "[experimental] BLE op remoteNano.setRadarSensitivity (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "payload",
+          "required": true,
+          "description": "raw radar parameter bytes ({type:'Buffer',data:[]} or {$buffer})",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.insertSesames",
+      "summary": "register a child Sesame key on the WM2",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sesameKey",
+          "required": true,
+          "description": "child Sesame key {deviceUUID, secretKey, sesame2PublicKey?, deviceModel?}",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.removeSesame",
+      "summary": "remove a child Sesame key from the WM2",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sesameKeyTag",
+          "required": true,
+          "description": "child Sesame key tag (UUID string) to remove",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.networkStatus",
+      "summary": "request WM2 network status (experimental)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.reset",
+      "summary": "factory-reset the WM2 (drops the session on success)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.hub3.scanWifiSSID",
+      "summary": "start a Wi-Fi SSID scan on the Hub3 (results arrive via publish)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.hub3.setWifiSSID",
+      "summary": "set the Hub3 Wi-Fi SSID",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssid",
+          "required": true,
+          "description": "Wi-Fi SSID to set on the Hub3",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.hub3.setWifiPassword",
+      "summary": "set the Hub3 Wi-Fi password",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "password",
+          "required": true,
+          "description": "Wi-Fi password to set on the Hub3",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.hub3.removeSesame",
+      "summary": "remove a child Sesame key from the Hub3",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "tag",
+          "required": true,
+          "description": "child Sesame key tag (UUID string) to remove",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.hub3.networkType",
+      "summary": "request the Hub3 connection type (Wi-Fi/LTE) (unverified, not in SDK)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.history",
+      "summary": "read one BLE history record (OS3, raw bytes; first 4B = recordId)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.deleteHistory",
+      "summary": "[experimental] BLE op deleteHistory (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "historyPayload",
+          "required": true,
+          "description": "the payload Buffer returned by history() (first 4B = recordId); JSON {$buffer} / {type:'Buffer',data} accepted",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.getVersionTag",
+      "summary": "read firmware version tag string (OS3)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.magnet",
+      "summary": "send the magnet command (SESAME 5, LOCK5-only)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.opSensorControl",
+      "summary": "[experimental] BLE op opSensorControl (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "seconds",
+          "required": true,
+          "description": "open-sensor auto-lock seconds (0..65535, 0 = disable)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.sendAdvProductType",
+      "summary": "[experimental] BLE op sendAdvProductType (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "data",
+          "required": true,
+          "description": "raw advertised product-type bytes (Buffer); JSON {$buffer} / {type:'Buffer',data} accepted",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.setBleTxPower",
+      "summary": "[experimental] BLE op setBleTxPower (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "txPower",
+          "required": true,
+          "description": "signed 1-byte BLE TX power (-128..127)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.os2.autolock",
+      "summary": "[experimental] BLE op autolock (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyIndex",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmPublicKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "seconds",
+          "required": true,
+          "description": "auto-lock delay seconds (0..65535, 0 = disable)",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "tag",
+          "required": false,
+          "description": "optional history tag bytes (Buffer)",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.os2.disableAutolock",
+      "summary": "disable auto-lock (= autolock(0)) (OS2)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyIndex",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmPublicKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "tag",
+          "required": false,
+          "description": "optional history tag bytes (Buffer)",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.os2.getAutolock",
+      "summary": "read the current auto-lock seconds (OS2)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyIndex",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmPublicKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.os2.history",
+      "summary": "read one BLE history batch (OS2, raw bytes)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyIndex",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmPublicKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "opts",
+          "required": false,
+          "description": "{ ack?: boolean } — ack=false reads without deleting on-device (default true)",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.os2.versionTag",
+      "summary": "read firmware version tag string (OS2)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyIndex",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmPublicKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "BLE operation result",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.os2.updateSetting",
+      "summary": "[experimental] BLE op updateSetting (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyIndex",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssmPublicKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "setting",
+          "required": true,
+          "description": "Bot1 mech setting object {userPrefDir, lockSec, unlockSec, clickLockSec, clickHoldSec, clickUnlockSec, buttonMode}",
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "tag",
+          "required": false,
+          "description": "optional history tag bytes (Buffer)",
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "status",
       "summary": "daemon status (connection/auth/user/contract version)",
       "params": [],
@@ -2818,6 +8487,20 @@
       },
       "x-stability": "stable",
       "x-provenance": "local"
+    },
+    {
+      "name": "cloud.ping",
+      "summary": "verify cloud liveness with one biz3KeepAlive round-trip",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ ok: true, rttMs }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
     },
     {
       "name": "account.whoami",
@@ -3100,6 +8783,14 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "scriptIndex",
+          "required": false,
+          "description": "Bot2/Bot3 script number 0..9 to run (omit = click the selected script)",
+          "schema": {
+            "type": "number"
+          }
         }
       ],
       "result": {
@@ -3137,7 +8828,7 @@
     },
     {
       "name": "lock.setAutolock",
-      "summary": "set autolock seconds (cloud path; BLE is preferred when available)",
+      "summary": "set autolock seconds. transport:\"cloud\" (default) is unverified on real hardware (ack only); transport:\"ble\" sends ItemCode 11 over BLE and is the reliable path",
       "params": [
         {
           "name": "name",
@@ -3166,7 +8857,7 @@
         {
           "name": "seconds",
           "required": true,
-          "description": "",
+          "description": "0..65535 (0 = disable)",
           "schema": {
             "type": "number"
           }
@@ -3178,12 +8869,56 @@
           "schema": {
             "type": "number"
           }
+        },
+        {
+          "name": "transport",
+          "required": false,
+          "description": "\"cloud\" (default; unverified on real hardware) or \"ble\" (reliable; needs deviceUUID/secretKey/model)",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "cloud",
+              "ble"
+            ]
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
         }
       ],
       "result": {
         "name": "result",
         "schema": {
-          "description": "{ ack, cmd, seconds }",
+          "description": "{ ack, cmd, seconds } (cloud) | { resultCode, resultName, seconds, transport } (ble)",
           "type": "object"
         }
       },
@@ -3298,8 +9033,164 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "devices.add",
+      "summary": "add devices to the company (biz3ManageDevice/add; items = QR-derived key objects)",
+      "params": [
+        {
+          "name": "items",
+          "required": true,
+          "description": "QR-derived device key objects to add (biz3ManageDevice/add items)",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "manageDevice ack ('Limit Exceeded' propagates as rejected)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "devices.reorder",
+      "summary": "reorder company devices (biz3ManageDevice/reorderDevices; rank = -index is assigned)",
+      "params": [
+        {
+          "name": "items",
+          "required": true,
+          "description": "device objects in the desired order (rank = -index is assigned)",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "reordered device[] (resp.data)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "devices.notifyStatus",
+      "summary": "per-device push-notification settings (biz3ManageDevice/notifyList)",
+      "params": [
+        {
+          "name": "pushToken",
+          "required": true,
+          "description": "mobile push token (FCM etc.; carried in the biz3 notify frame)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "items",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "notify status list (resp.data)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "devices.notifyManage",
+      "summary": "switch push notification for one device (biz3ManageDevice/notifyManage)",
+      "params": [
+        {
+          "name": "pushToken",
+          "required": true,
+          "description": "mobile push token (FCM etc.; carried in the biz3 notify frame)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "enablePush",
+          "required": true,
+          "description": "1/0 or boolean",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "manageDevice ack",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "devices.switchRecharge",
+      "summary": "switch rechargeable-battery mode (biz3ManageDevice/switchRecharge)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "isRechargeBattery",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "manageDevice ack",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "access.registerCards",
-      "summary": "[experimental] bulk-register read IC cards to the cloud DB (postCards)",
+      "summary": "[experimental] register read IC cards to the cloud DB (per-record updateCardName)",
       "params": [
         {
           "name": "deviceUUID",
@@ -3312,7 +9203,7 @@
         {
           "name": "cards",
           "required": true,
-          "description": "card records to register: [{cardID, cardName, cardType}, ...]",
+          "description": "card records to register: [{cardID, cardName, cardType, nameUUID?}, ...] (nameUUID = firmware-assigned, from BLE enroll)",
           "schema": {
             "type": "array",
             "items": {
@@ -3324,7 +9215,41 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "postCards ack (null if cards empty)",
+          "description": "updateCardName responses (null if cards empty)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "access.registerPasscodes",
+      "summary": "[experimental] register read passcodes to the cloud DB (postPasscodes; symmetric with access.registerCards)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "target deviceUUID",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "passcodes",
+          "required": true,
+          "description": "passcode records to register: [{cardID|passwordID, cardName|name, nameUUID?}, ...] (nameUUID = firmware-assigned, from BLE enroll)",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "postPasscodes response (null if passcodes empty)",
           "type": "object"
         }
       },
@@ -3347,6 +9272,14 @@
           "name": "pageSize",
           "required": false,
           "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "lastKey",
+          "required": false,
+          "description": "paging cursor: timestamp of the last record of the previous page (DeviceHistory.js:37-44)",
           "schema": {
             "type": "number"
           }
@@ -3413,6 +9346,14 @@
           "description": "",
           "schema": {
             "type": "number"
+          }
+        },
+        {
+          "name": "lastEvaluatedKey",
+          "required": false,
+          "description": "paging cursor: lastEvaluatedKey object returned by the previous device.battery page",
+          "schema": {
+            "type": "object"
           }
         }
       ],
@@ -3585,6 +9526,89 @@
         "name": "result",
         "schema": {
           "description": "firmware[]",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "config.syncLocks",
+      "summary": "[experimental] import locks from the device list into the daemon config (writes config.json)",
+      "params": [
+        {
+          "name": "prune",
+          "required": false,
+          "description": "also remove config entries that no longer exist in the device list",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ added, updated, removed }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "config.syncHub3s",
+      "summary": "[experimental] import Hub3s from the device list into the daemon config (writes config.json)",
+      "params": [
+        {
+          "name": "prune",
+          "required": false,
+          "description": "also remove config entries that no longer exist in the device list",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ added, updated, removed }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "config.syncRemotes",
+      "summary": "[experimental] import Hub3s + IR remotes from the device list into the daemon config (writes config.json)",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ hub3: {added,updated,removed}, remotes: {added,updated} }",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "config.syncRemoteKeys",
+      "summary": "[experimental] fetch one remote's keys from the server and write them back to the daemon config",
+      "params": [
+        {
+          "name": "remote",
+          "required": false,
+          "description": "remote name in config (default remote when omitted)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ name, keyCount }",
           "type": "object"
         }
       },
@@ -3812,12 +9836,28 @@
     },
     {
       "name": "ir.listKeys",
-      "summary": "learned keys of a remote",
+      "summary": "learned keys of a remote (config name, or direct hub3DeviceId+irDeviceUUID)",
       "params": [
         {
           "name": "remote",
           "required": false,
           "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hub3DeviceId",
+          "required": false,
+          "description": "direct target: Hub3 deviceUUID (config-independent; pass together with irDeviceUUID)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irDeviceUUID",
+          "required": false,
+          "description": "direct target: IR remote UUID (config-independent; pass together with hub3DeviceId)",
           "schema": {
             "type": "string"
           }
@@ -3904,7 +9944,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "remote[]",
+          "description": "{ list: remote[], pagination: object|null }",
           "type": "object"
         }
       },
@@ -3935,7 +9975,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "remote[]",
+          "description": "{ list: remote[], pagination: object|null }",
           "type": "object"
         }
       },
@@ -4176,6 +10216,69 @@
         "name": "result",
         "schema": {
           "description": "matchRemote response",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ir.addRemoteToMatter",
+      "summary": "register an IR remote as a Matter on/off device on Hub3 (experimental, untested on real hardware)",
+      "params": [
+        {
+          "name": "hub3DeviceId",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irDeviceType",
+          "required": true,
+          "description": "IR remote type (irRemote.type, e.g. 49152=AC)",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "cmdOn",
+          "required": true,
+          "description": "ON command HEX emitted when Matter switches the device on",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cmdOff",
+          "required": true,
+          "description": "OFF command HEX emitted when Matter switches the device off",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irDeviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "irDeviceName",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "addRemoteToMatter response",
           "type": "object"
         }
       },
@@ -4602,6 +10705,738 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "ble.updateFirmware",
+      "summary": "start BLE firmware update (WM2: OPEN_OTA_SERVER / Hub3: MOVE_TO / OS3 locks: no command sent, SDK no-op path)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ commandSent, resultCode|null, resultName|null }",
+          "type": "object",
+          "properties": {
+            "commandSent": {
+              "type": "boolean"
+            },
+            "resultCode": {
+              "type": "number",
+              "nullable": true
+            },
+            "resultName": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          "required": [
+            "commandSent"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.reset",
+      "summary": "factory-reset an OS3 device over BLE (destructive: invalidates its keys)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object",
+          "properties": {
+            "resultCode": {
+              "type": "number"
+            },
+            "resultName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resultCode",
+            "resultName"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.position",
+      "summary": "configure lock/unlock angles over BLE (configureLockPosition; OS3 Sesame5/6-family locks)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "lockPosition",
+          "required": true,
+          "description": "lock angle (signed 16-bit integer)",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "unlockPosition",
+          "required": true,
+          "description": "unlock angle (signed 16-bit integer)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object",
+          "properties": {
+            "resultCode": {
+              "type": "number"
+            },
+            "resultName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resultCode",
+            "resultName"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.scan",
+      "summary": "scan nearby Wi-Fi SSIDs via WM2/Hub3 BLE (kind auto-detected from model)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": true,
+          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyId",
+          "required": false,
+          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "collectMs",
+          "required": false,
+          "description": "how long to collect SSID publishes in ms (default 8000; Hub3 finishes early on the SSID_LAST marker)",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ ssids: [{ssid, rssi}] }",
+          "type": "object",
+          "properties": {
+            "ssids": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "ssid": {
+                    "type": "string"
+                  },
+                  "rssi": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "ssid",
+                  "rssi"
+                ]
+              }
+            }
+          },
+          "required": [
+            "ssids"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.setSsid",
+      "summary": "set Wi-Fi SSID via WM2/Hub3 BLE (kind auto-detected from model)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": true,
+          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ssid",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyId",
+          "required": false,
+          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object",
+          "properties": {
+            "resultCode": {
+              "type": "number"
+            },
+            "resultName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resultCode",
+            "resultName"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.setPassword",
+      "summary": "set Wi-Fi password via WM2/Hub3 BLE (kind auto-detected from model)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": true,
+          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "password",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyId",
+          "required": false,
+          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object",
+          "properties": {
+            "resultCode": {
+              "type": "number"
+            },
+            "resultName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resultCode",
+            "resultName"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "ble.wifi.connect",
+      "summary": "connect WM2 to the configured Wi-Fi (CONNECT_WIFI; WM2 only)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "address",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "model",
+          "required": true,
+          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scanTimeoutMs",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "debug",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "needAuthFromServer",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "registerBaseUrl",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "companyId",
+          "required": false,
+          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "{ resultCode, resultName }",
+          "type": "object",
+          "properties": {
+            "resultCode": {
+              "type": "number"
+            },
+            "resultName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resultCode",
+            "resultName"
+          ]
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "ble.register",
       "summary": "register a factory-reset OS3 BLE device through the daemon host Bluetooth adapter",
       "params": [
@@ -4856,12 +11691,12 @@
     },
     {
       "name": "events.subscribe",
-      "summary": "subscribe to events (topics: lockState/deviceUpdate). event.<topic> notifications follow",
+      "summary": "subscribe to events (topics: lockState/deviceUpdate/deviceListChanged). event.<topic> notifications follow",
       "params": [
         {
           "name": "topics",
           "required": true,
-          "description": "topic array to subscribe (lockState/deviceUpdate)",
+          "description": "topic array to subscribe (lockState/deviceUpdate/deviceListChanged)",
           "schema": {}
         }
       ],
@@ -4933,6 +11768,12 @@
       "x-provenance": "app-core"
     },
     {
+      "name": "event.deviceListChanged",
+      "description": "device-list change push (key sharing / device add-remove; biz3 pubUserDeviceChange)",
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "event.ready",
       "description": "connection-ready notification sent once on every persistent connection (stdio/socket/ws/SSE/gRPC Subscribe)",
       "x-stability": "stable",
@@ -4941,6 +11782,7 @@
   ],
   "x-event-topics": [
     "lockState",
-    "deviceUpdate"
+    "deviceUpdate",
+    "deviceListChanged"
   ]
 }

@@ -213,39 +213,27 @@
   },
   "PaymentGetPaymentMethods": {
     "method": "payment.getPaymentMethods",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "PaymentGetClientSecret": {
     "method": "payment.getClientSecret",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "PaymentChangeDefaultPayment": {
     "method": "payment.changeDefaultPayment",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "PaymentRemovePayment": {
     "method": "payment.removePayment",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "PaymentPayUpdateLevel": {
     "method": "payment.payUpdateLevel",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "PaymentGetDevApiInfo": {
     "method": "payment.getDevApiInfo",
-    "jsonFields": [
-      "params"
-    ]
+    "jsonFields": []
   },
   "AccessGetCards": {
     "method": "access.getCards",
@@ -355,8 +343,297 @@
     "method": "presetir.emitButton",
     "jsonFields": []
   },
+  "BleScriptClick": {
+    "method": "ble.script.click",
+    "jsonFields": []
+  },
+  "BleScriptSelectScript": {
+    "method": "ble.script.selectScript",
+    "jsonFields": []
+  },
+  "BleScriptSendClickScript": {
+    "method": "ble.script.sendClickScript",
+    "jsonFields": [
+      "script"
+    ]
+  },
+  "BleScriptGetCurrentScript": {
+    "method": "ble.script.getCurrentScript",
+    "jsonFields": []
+  },
+  "BleScriptGetScriptNameList": {
+    "method": "ble.script.getScriptNameList",
+    "jsonFields": []
+  },
+  "BleBiometricCardModeSet": {
+    "method": "ble.biometric.cardModeSet",
+    "jsonFields": []
+  },
+  "BleBiometricCardModeGet": {
+    "method": "ble.biometric.cardModeGet",
+    "jsonFields": []
+  },
+  "BleBiometricCardGet": {
+    "method": "ble.biometric.cardGet",
+    "jsonFields": []
+  },
+  "BleBiometricCardAdd": {
+    "method": "ble.biometric.cardAdd",
+    "jsonFields": [
+      "id"
+    ]
+  },
+  "BleBiometricCardDelete": {
+    "method": "ble.biometric.cardDelete",
+    "jsonFields": []
+  },
+  "BleBiometricCardMove": {
+    "method": "ble.biometric.cardMove",
+    "jsonFields": []
+  },
+  "BleBiometricCardChange": {
+    "method": "ble.biometric.cardChange",
+    "jsonFields": []
+  },
+  "BleBiometricCardChangeValue": {
+    "method": "ble.biometric.cardChangeValue",
+    "jsonFields": []
+  },
+  "BleBiometricPasscodeModeSet": {
+    "method": "ble.biometric.passcodeModeSet",
+    "jsonFields": []
+  },
+  "BleBiometricPasscodeModeGet": {
+    "method": "ble.biometric.passcodeModeGet",
+    "jsonFields": []
+  },
+  "BleBiometricPasscodeGet": {
+    "method": "ble.biometric.passcodeGet",
+    "jsonFields": []
+  },
+  "BleBiometricPasscodeAdd": {
+    "method": "ble.biometric.passcodeAdd",
+    "jsonFields": [
+      "id"
+    ]
+  },
+  "BleBiometricPasscodeDelete": {
+    "method": "ble.biometric.passcodeDelete",
+    "jsonFields": []
+  },
+  "BleBiometricPasscodeMove": {
+    "method": "ble.biometric.passcodeMove",
+    "jsonFields": []
+  },
+  "BleBiometricPasscodeChange": {
+    "method": "ble.biometric.passcodeChange",
+    "jsonFields": []
+  },
+  "BleBiometricFaceModeSet": {
+    "method": "ble.biometric.faceModeSet",
+    "jsonFields": []
+  },
+  "BleBiometricFaceModeGet": {
+    "method": "ble.biometric.faceModeGet",
+    "jsonFields": []
+  },
+  "BleBiometricFaceListGet": {
+    "method": "ble.biometric.faceListGet",
+    "jsonFields": []
+  },
+  "BleBiometricFaceChange": {
+    "method": "ble.biometric.faceChange",
+    "jsonFields": []
+  },
+  "BleBiometricFaceDelete": {
+    "method": "ble.biometric.faceDelete",
+    "jsonFields": []
+  },
+  "BleBiometricPalmModeSet": {
+    "method": "ble.biometric.palmModeSet",
+    "jsonFields": []
+  },
+  "BleBiometricPalmModeGet": {
+    "method": "ble.biometric.palmModeGet",
+    "jsonFields": []
+  },
+  "BleBiometricPalmListGet": {
+    "method": "ble.biometric.palmListGet",
+    "jsonFields": []
+  },
+  "BleBiometricPalmDelete": {
+    "method": "ble.biometric.palmDelete",
+    "jsonFields": []
+  },
+  "BleBiometricInsertSesame": {
+    "method": "ble.biometric.insertSesame",
+    "jsonFields": [
+      "sesame"
+    ]
+  },
+  "BleBiometricRemoveSesame": {
+    "method": "ble.biometric.removeSesame",
+    "jsonFields": [
+      "opts"
+    ]
+  },
+  "BleBiometricSetRadarSensitivity": {
+    "method": "ble.biometric.setRadarSensitivity",
+    "jsonFields": [
+      "payload"
+    ]
+  },
+  "BleFingerPrintFingerPrintModeSet": {
+    "method": "ble.fingerPrint.fingerPrintModeSet",
+    "jsonFields": []
+  },
+  "BleFingerPrintFingerPrintModeGet": {
+    "method": "ble.fingerPrint.fingerPrintModeGet",
+    "jsonFields": []
+  },
+  "BleFingerPrintFingerPrints": {
+    "method": "ble.fingerPrint.fingerPrints",
+    "jsonFields": []
+  },
+  "BleFingerPrintFingerPrintDelete": {
+    "method": "ble.fingerPrint.fingerPrintDelete",
+    "jsonFields": []
+  },
+  "BleFingerPrintFingerPrintChange": {
+    "method": "ble.fingerPrint.fingerPrintChange",
+    "jsonFields": []
+  },
+  "BleRemoteNanoSetTriggerDelayTime": {
+    "method": "ble.remoteNano.setTriggerDelayTime",
+    "jsonFields": []
+  },
+  "BleRemoteNanoInsertSesame": {
+    "method": "ble.remoteNano.insertSesame",
+    "jsonFields": [
+      "sesame"
+    ]
+  },
+  "BleRemoteNanoRemoveSesame": {
+    "method": "ble.remoteNano.removeSesame",
+    "jsonFields": [
+      "opts"
+    ]
+  },
+  "BleRemoteNanoSetRadarSensitivity": {
+    "method": "ble.remoteNano.setRadarSensitivity",
+    "jsonFields": [
+      "payload"
+    ]
+  },
+  "BleWifiInsertSesames": {
+    "method": "ble.wifi.insertSesames",
+    "jsonFields": [
+      "sesameKey"
+    ]
+  },
+  "BleWifiRemoveSesame": {
+    "method": "ble.wifi.removeSesame",
+    "jsonFields": []
+  },
+  "BleWifiNetworkStatus": {
+    "method": "ble.wifi.networkStatus",
+    "jsonFields": []
+  },
+  "BleWifiReset": {
+    "method": "ble.wifi.reset",
+    "jsonFields": []
+  },
+  "BleHub3ScanWifiSSID": {
+    "method": "ble.hub3.scanWifiSSID",
+    "jsonFields": []
+  },
+  "BleHub3SetWifiSSID": {
+    "method": "ble.hub3.setWifiSSID",
+    "jsonFields": []
+  },
+  "BleHub3SetWifiPassword": {
+    "method": "ble.hub3.setWifiPassword",
+    "jsonFields": []
+  },
+  "BleHub3RemoveSesame": {
+    "method": "ble.hub3.removeSesame",
+    "jsonFields": []
+  },
+  "BleHub3NetworkType": {
+    "method": "ble.hub3.networkType",
+    "jsonFields": []
+  },
+  "BleHistory": {
+    "method": "ble.history",
+    "jsonFields": []
+  },
+  "BleDeleteHistory": {
+    "method": "ble.deleteHistory",
+    "jsonFields": [
+      "historyPayload"
+    ]
+  },
+  "BleGetVersionTag": {
+    "method": "ble.getVersionTag",
+    "jsonFields": []
+  },
+  "BleMagnet": {
+    "method": "ble.magnet",
+    "jsonFields": []
+  },
+  "BleOpSensorControl": {
+    "method": "ble.opSensorControl",
+    "jsonFields": []
+  },
+  "BleSendAdvProductType": {
+    "method": "ble.sendAdvProductType",
+    "jsonFields": [
+      "data"
+    ]
+  },
+  "BleSetBleTxPower": {
+    "method": "ble.setBleTxPower",
+    "jsonFields": []
+  },
+  "BleOs2Autolock": {
+    "method": "ble.os2.autolock",
+    "jsonFields": [
+      "tag"
+    ]
+  },
+  "BleOs2DisableAutolock": {
+    "method": "ble.os2.disableAutolock",
+    "jsonFields": [
+      "tag"
+    ]
+  },
+  "BleOs2GetAutolock": {
+    "method": "ble.os2.getAutolock",
+    "jsonFields": []
+  },
+  "BleOs2History": {
+    "method": "ble.os2.history",
+    "jsonFields": [
+      "opts"
+    ]
+  },
+  "BleOs2VersionTag": {
+    "method": "ble.os2.versionTag",
+    "jsonFields": []
+  },
+  "BleOs2UpdateSetting": {
+    "method": "ble.os2.updateSetting",
+    "jsonFields": [
+      "setting",
+      "tag"
+    ]
+  },
   "Status": {
     "method": "status",
+    "jsonFields": []
+  },
+  "CloudPing": {
+    "method": "cloud.ping",
     "jsonFields": []
   },
   "AccountWhoami": {
@@ -395,10 +672,42 @@
     "method": "devices.userList",
     "jsonFields": []
   },
+  "DevicesAdd": {
+    "method": "devices.add",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "DevicesReorder": {
+    "method": "devices.reorder",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "DevicesNotifyStatus": {
+    "method": "devices.notifyStatus",
+    "jsonFields": [
+      "items"
+    ]
+  },
+  "DevicesNotifyManage": {
+    "method": "devices.notifyManage",
+    "jsonFields": []
+  },
+  "DevicesSwitchRecharge": {
+    "method": "devices.switchRecharge",
+    "jsonFields": []
+  },
   "AccessRegisterCards": {
     "method": "access.registerCards",
     "jsonFields": [
       "cards"
+    ]
+  },
+  "AccessRegisterPasscodes": {
+    "method": "access.registerPasscodes",
+    "jsonFields": [
+      "passcodes"
     ]
   },
   "DeviceHistory": {
@@ -407,7 +716,9 @@
   },
   "DeviceBattery": {
     "method": "device.battery",
-    "jsonFields": []
+    "jsonFields": [
+      "lastEvaluatedKey"
+    ]
   },
   "DeviceHideHistory": {
     "method": "device.hideHistory",
@@ -427,6 +738,22 @@
   },
   "FirmwareList": {
     "method": "firmware.list",
+    "jsonFields": []
+  },
+  "ConfigSyncLocks": {
+    "method": "config.syncLocks",
+    "jsonFields": []
+  },
+  "ConfigSyncHub3s": {
+    "method": "config.syncHub3s",
+    "jsonFields": []
+  },
+  "ConfigSyncRemotes": {
+    "method": "config.syncRemotes",
+    "jsonFields": []
+  },
+  "ConfigSyncRemoteKeys": {
+    "method": "config.syncRemoteKeys",
     "jsonFields": []
   },
   "WebapiInvoke": {
@@ -502,6 +829,10 @@
     "method": "ir.matchRemote",
     "jsonFields": []
   },
+  "IrAddRemoteToMatter": {
+    "method": "ir.addRemoteToMatter",
+    "jsonFields": []
+  },
   "AccessPostAuthenticationData": {
     "method": "access.postAuthenticationData",
     "jsonFields": [
@@ -532,6 +863,34 @@
       "args"
     ]
   },
+  "BleUpdateFirmware": {
+    "method": "ble.updateFirmware",
+    "jsonFields": []
+  },
+  "BleReset": {
+    "method": "ble.reset",
+    "jsonFields": []
+  },
+  "BlePosition": {
+    "method": "ble.position",
+    "jsonFields": []
+  },
+  "BleWifiScan": {
+    "method": "ble.wifi.scan",
+    "jsonFields": []
+  },
+  "BleWifiSetSsid": {
+    "method": "ble.wifi.setSsid",
+    "jsonFields": []
+  },
+  "BleWifiSetPassword": {
+    "method": "ble.wifi.setPassword",
+    "jsonFields": []
+  },
+  "BleWifiConnect": {
+    "method": "ble.wifi.connect",
+    "jsonFields": []
+  },
   "BleRegister": {
     "method": "ble.register",
     "jsonFields": []
@@ -547,9 +906,5 @@
     "jsonFields": [
       "ak"
     ]
-  },
-  "Discover": {
-    "method": "rpc.discover",
-    "jsonFields": []
   }
 }

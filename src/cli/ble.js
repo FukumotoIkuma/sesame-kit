@@ -1,12 +1,16 @@
-// `sesame ble …` コマンド群 — BLE 直結の補助操作 (鍵不要の近接スキャン +
-// 初期登録 + 生体/アクセス制御デバイスの登録済み一覧 + Bot2/Bot3 スクリプト読み出し)。
+// `sesame ble …` コマンド群 — BLE 直結操作 (鍵不要の近接スキャン + 初期登録 +
+// 生体/アクセス制御デバイスの登録済み一覧 + Bot2/Bot3 スクリプト読み出し +
+// 汎用脱出口 invoke/os2-invoke + 高価値 op の専用コマンド ota/reset/wifi/position)。
 //
 // 本体ロジックは src/ble/* (SesameBle facade / BiometricCommands / Bot2Commands)。
 // ここは commander への配線・対象解決・入出力整形のみを担う。
 //
-// 設計方針:
-//   - 通常の状態変更 (enroll/delete/mode-set 等) は専用 CLI にせず、Node API と
-//     serve の ble.invoke / ble.os2.invoke に集約する。初期登録だけは鍵取得の入口なので CLI に持つ。
+// 設計方針 (P4-1 で改訂):
+//   - 「全機能を CLI・RPC・SDK のすべてから」のコンセプトに従い、BLE 書き込み系も CLI から
+//     到達できる。任意 op は `ble invoke <device> <op>` (serve の ble.invoke RPC と同じ
+//     ドット op パス / JSON 引数 revive / allowlist 照合 — 単一実装 serve/registry.invokePath)、
+//     頻出の OTA / 工場リセット / Wi-Fi provisioning / 施解錠角設定は専用コマンドを持つ。
+//     カード等の enroll 系は既存 `sesame access cards enroll` (cli/access.js) が担う。
 //   - scan は鍵不要 (advertise のみ)。それ以外は config(locks) の secretKey で BLE login する。
 //   - biometric の一覧は GET 要求 → デバイスが publish (START → NOTIFY×N → END) を返す設計なので、
 //     registerDelegate で収集し END (または timeout) で確定する。
@@ -18,8 +22,16 @@
 // BLE は hub を使わないので withHub は通らず、config は ctx.loadCtx().configStore から引く。
 
 import { t } from "../i18n.js";
-import { SesameBle, SesameOS2Ble, createBleTransport, capabilitiesForModel } from "../ble/index.js";
+import {
+  SesameBle, SesameOS2Ble, createBleTransport, capabilitiesForModel,
+  BLE_RPC_ALLOWLIST, OS2_BLE_RPC_ALLOWLIST,
+} from "../ble/index.js";
+// ble.invoke RPC と「同じドット op パス・同じ JSON 引数 revive 規約・同じ allowlist 照合」を
+// 共有するため、単一実装 (serve/registry.js) を import する (P4-1 段階1: CLI 汎用脱出口)。
+import { invokePath, collectWifiScan, wifiViewOf, bleCommandAck } from "../serve/registry.js";
 import { resolveRegisterTransport } from "../devices.js";
+// hex 検証は crypto.js の hexToBuf に一本化 (REFACTORING_PLAN P5-4 / ARCH-08)。
+import { hexToBuf } from "../crypto.js";
 
 /**
  * ble サブコマンドの commander options。値は string|undefined (boolean フラグは無い)。
@@ -35,12 +47,20 @@ import { resolveRegisterTransport } from "../devices.js";
  *   ak?: string,
  *   registerBaseUrl?: string,
  *   serverAuth?: boolean,
+ *   args?: string,
+ *   keyIndex?: string,
+ *   ssmPublicKey?: string,
+ *   yes?: boolean,
+ *   companyId?: string,
  * }} BleOptions
  */
 
 /**
  * resolveBleEntry の解決結果。
- * @typedef {{ name: string, deviceUUID: string, secretKey: string, model: (string|null) }} BleEntry
+ * ssmPublicKey/keyIndex は OS2 デバイス用の鍵素材 (バックログ4): 優先順位は
+ * 明示フラグ (--ssm-public-key / --key-index) > config locks エントリの保存値 > null。
+ * @typedef {{ name: string, deviceUUID: string, secretKey: string, model: (string|null),
+ *             ssmPublicKey: (string|null), keyIndex: (string|null) }} BleEntry
  */
 
 /**
@@ -158,6 +178,73 @@ export function registerBleCommands(program, ctx) {
   )
     .option("--index <n>", t("ble.cli.script.opt.index"))
     .action((device, options) => cmdScript(ctx, device, options));
+
+  // ---- ble script-run <device> <index> ---- (台本を番号指定で BLE 実行: click(170+index))
+  withTargetOpts(
+    ble.command("script-run <device> <index>").description(t("ble.cli.scriptRun.desc")),
+  ).action((device, index, options) => cmdScriptRun(ctx, device, index, options));
+
+  // ---- ble script-select <device> <index> ---- (アクティブ台本を切り替え: SCRIPT_SELECT 94)
+  withTargetOpts(
+    ble.command("script-select <device> <index>").description(t("ble.cli.scriptSelect.desc")),
+  ).action((device, index, options) => cmdScriptSelect(ctx, device, index, options));
+
+  // ---- ble script-write <device> <index> --json <{name,actions}> ---- (台本の書き込み: EDIT_SCRIPT 181)
+  withTargetOpts(
+    ble.command("script-write <device> <index>").description(t("ble.cli.scriptWrite.desc")),
+  )
+    .option("--json <script>", t("ble.cli.scriptWrite.opt.json"))
+    .action((device, index, options) => cmdScriptWrite(ctx, device, index, options));
+
+  // ---- ble invoke <device> <op> [--args <json>] ----
+  // P4-1 段階1: 汎用脱出口。serve の ble.invoke RPC と同じドット op パス / JSON 引数 revive /
+  // allowlist (BLE_RPC_ALLOWLIST) でファサードを直接叩く (デーモン不要)。
+  withTargetOpts(
+    ble.command("invoke <device> <op>").description(t("ble.cli.invoke.desc")),
+  )
+    .option("--args <json>", t("ble.cli.invoke.opt.args"))
+    .option("--address <address>", t("ble.cli.opt.address"))
+    .action((device, op, options) => cmdInvoke(ctx, device, op, options));
+
+  // ---- ble os2-invoke <device> <op> [--args <json>] ----
+  // OS2 (SESAME2/3/4・初代 Bot/Bike) の汎用脱出口。ble.os2.invoke RPC と対称。
+  // OS2 login は ECDH のため keyIndex / ssmPublicKey が必要 (os2-register の戻り値)。
+  ble
+    .command("os2-invoke <device> <op>")
+    .description(t("ble.cli.os2Invoke.desc"))
+    .option("--args <json>", t("ble.cli.invoke.opt.args"))
+    .option("--secret <hex>", t("ble.cli.opt.secret"))
+    .option("--model <model>", t("ble.cli.opt.model"))
+    .option("--key-index <hex>", t("ble.cli.os2Invoke.opt.keyIndex"))
+    .option("--ssm-public-key <hex>", t("ble.cli.os2Invoke.opt.ssmPublicKey"))
+    .option("--address <address>", t("ble.cli.opt.address"))
+    .option("--timeout <ms>", t("ble.cli.opt.scanTimeout"))
+    .action((device, op, options) => cmdOS2Invoke(ctx, device, op, options));
+
+  // ---- ble ota <device> ---- (P4-1 段階2: updateFirmware)
+  withTargetOpts(
+    ble.command("ota <device>").description(t("ble.cli.ota.desc")),
+  ).action((device, options) => cmdOta(ctx, device, options));
+
+  // ---- ble reset <device> ---- (P4-1 段階2: OS3 工場出荷リセット。破壊的なので確認を取る)
+  withTargetOpts(
+    ble.command("reset <device>").description(t("ble.cli.reset.desc")),
+  )
+    .option("--yes", t("ble.cli.reset.opt.yes"))
+    .action((device, options) => cmdReset(ctx, device, options));
+
+  // ---- ble wifi <device> scan|ssid <value>|password <value>|connect ----
+  // (P4-1 段階2: WM2/Hub3 の Wi-Fi プロビジョニング。kind は model から自動判別)
+  withTargetOpts(
+    ble.command("wifi <device> <action> [value]").description(t("ble.cli.wifi.desc")),
+  )
+    .option("--company-id <id>", t("ble.cli.wifi.opt.companyId"))
+    .action((device, action, value, options) => cmdWifi(ctx, device, action, value, options));
+
+  // ---- ble position <device> <lock> <unlock> ---- (P4-1 段階2: configureLockPosition)
+  withTargetOpts(
+    ble.command("position <device> <lock> <unlock>").description(t("ble.cli.position.desc")),
+  ).action((device, lockPos, unlockPos, options) => cmdPosition(ctx, device, lockPos, unlockPos, options));
 }
 
 // ---------- コマンド実体 ----------
@@ -251,6 +338,12 @@ async function cmdOS2Register(ctx, deviceUUID, options) {
     console.log(`secretKey=${result.secretKey}`);
     console.log(`ownerKey=${result.ownerKey}`);
     console.log(`sesamePublicKey=${result.sesamePublicKey}`);
+    // バックログ4: 鍵素材を config に保存すれば以後の os2-invoke で --ssm-public-key が不要になる。
+    console.log(t("ble.cli.os2Register.saveHint", {
+      deviceUUID: result.deviceUUID ?? "",
+      secretKey: result.secretKey ?? "",
+      sesamePublicKey: result.sesamePublicKey ?? "",
+    }));
   }, { ok: true, result });
 }
 
@@ -337,7 +430,314 @@ async function cmdScript(ctx, device, options) {
   );
 }
 
+/**
+ * Bot2/Bot3 用の script ファサードを解決して fn(dev.script, dev) を実行する共通ヘルパ。
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {string} device
+ * @param {BleOptions} options
+ * @param {(script: import("../ble/bot2.js").Bot2Commands, dev: any) => Promise<unknown>} fn
+ * @returns {Promise<void>}
+ */
+async function withScript(ctx, device, options, fn) {
+  const { opts, configStore, tokenStore } = ctx.loadCtx();
+  const entry = resolveBleEntry(ctx, device, options);
+  if (!entry) return;
+  const caps = capabilitiesForModel(entry.model);
+  if (!caps.script) { ctx.die(t("ble.cli.script.notSupported", { name: entry.name, model: entry.model || "?" }), 2); return; }
+  const serverAuth = resolveCliServerAuth({ configStore, tokenStore, options });
+  await SesameBle.use(
+    { secretKey: entry.secretKey, deviceUUID: entry.deviceUUID, model: entry.model, debug: !!opts.debug, ...serverAuth },
+    (dev) => fn(dev.script, dev),
+  );
+}
+
+/**
+ * 0..9 の台本 index をパースする (不正は exit 2)。
+ * @param {import("../cli.js").CliCtx} ctx @param {string} raw @returns {number|null}
+ */
+function parseScriptIndex(ctx, raw) {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 9) { ctx.die(t("ble.cli.scriptRun.badIndex", { index: String(raw) }), 2); return null; }
+  return n;
+}
+
+/**
+ * `ble script-run <device> <index>`: 台本を番号指定で実行 (click(170+index), CHSesameBot2Device.kt:73-97)。
+ * @param {import("../cli.js").CliCtx} ctx @param {string} device @param {string} index @param {BleOptions} options
+ */
+async function cmdScriptRun(ctx, device, index, options) {
+  const idx = parseScriptIndex(ctx, index);
+  if (idx == null) return;
+  const { opts } = ctx.loadCtx();
+  await withScript(ctx, device, options, async (script) => {
+    const r = await script.click(idx);
+    ctx.out(opts.json, () => console.log(t("ble.cli.scriptRun.done", { index: idx })),
+      { ok: true, scriptIndex: idx, resultCode: r?.resultCode ?? null });
+  });
+}
+
+/**
+ * `ble script-select <device> <index>`: アクティブ台本を切り替え (SCRIPT_SELECT 94)。
+ * @param {import("../cli.js").CliCtx} ctx @param {string} device @param {string} index @param {BleOptions} options
+ */
+async function cmdScriptSelect(ctx, device, index, options) {
+  const idx = parseScriptIndex(ctx, index);
+  if (idx == null) return;
+  const { opts } = ctx.loadCtx();
+  await withScript(ctx, device, options, async (script) => {
+    const r = await script.selectScript(idx);
+    ctx.out(opts.json, () => console.log(t("ble.cli.scriptSelect.done", { index: idx })),
+      { ok: true, scriptIndex: idx, resultCode: r?.resultCode ?? null });
+  });
+}
+
+/**
+ * `ble script-write <device> <index> --json '{"name":..,"actions":[{action,time},..]}'`:
+ * 台本を書き込む (EDIT_SCRIPT 181, CHSesameBot2Device.kt:99-110)。
+ * @param {import("../cli.js").CliCtx} ctx @param {string} device @param {string} index @param {BleOptions & {json?:string}} options
+ */
+async function cmdScriptWrite(ctx, device, index, options) {
+  const idx = parseScriptIndex(ctx, index);
+  if (idx == null) return;
+  if (!options.json) { ctx.die(t("ble.cli.scriptWrite.jsonRequired"), 2); return; }
+  const script = ctx.parseJson(options.json, "ble script-write --json");
+  const { opts } = ctx.loadCtx();
+  await withScript(ctx, device, options, async (s) => {
+    const r = await s.sendClickScript(idx, script);
+    ctx.out(opts.json, () => console.log(t("ble.cli.scriptWrite.done", { index: idx })),
+      { ok: true, scriptIndex: idx, resultCode: r?.resultCode ?? null });
+  });
+}
+
+/**
+ * P4-1 段階1: 汎用脱出口 `ble invoke <device> <op>`。
+ * serve の ble.invoke RPC と同一実装 (registry.invokePath + BLE_RPC_ALLOWLIST) を直接呼ぶ。
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {string} device
+ * @param {string} op ドット区切り op パス (例 "lock" / "script.getScriptNameList")
+ * @param {BleOptions} options
+ */
+async function cmdInvoke(ctx, device, op, options) {
+  const entry = resolveBleEntry(ctx, device, options);
+  if (!entry) return;
+  const args = parseInvokeArgs(ctx, options.args);
+  await useBleDevice(ctx, entry, options, async (dev, opts) => {
+    const result = await invokePath(dev, op, args, BLE_RPC_ALLOWLIST);
+    ctx.out(opts.json, () => {
+      console.log(t("ble.cli.invoke.done", { op, name: entry.name }));
+      if (result !== undefined) console.log(JSON.stringify(result, null, 2));
+    }, { ok: true, op, name: entry.name, deviceUUID: entry.deviceUUID, result: result === undefined ? null : result });
+  });
+}
+
+/**
+ * OS2 用の汎用脱出口 `ble os2-invoke <device> <op>` (ble.os2.invoke RPC と対称)。
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {string} device
+ * @param {string} op
+ * @param {BleOptions} options
+ */
+async function cmdOS2Invoke(ctx, device, op, options) {
+  const { opts } = ctx.loadCtx();
+  const entry = resolveBleEntry(ctx, device, options);
+  if (!entry) return;
+  // OS2 login は ECDH 必須 (sesame2KeyData.sesame2PublicKey)。鍵素材はバックログ4で
+  // config locks にも保存できる (locks add --ssm-public-key)。resolveBleEntry が
+  // 「明示フラグ > config 保存値」の優先順位で解決済み。どちらにも無ければ明示要求する。
+  if (!entry.ssmPublicKey) {
+    ctx.die(t("ble.cli.os2Invoke.needSsmPublicKey"), 2);
+    return;
+  }
+  const args = parseInvokeArgs(ctx, options.args);
+  const transport = createBleTransport({
+    deviceUUID: entry.deviceUUID,
+    address: options.address,
+    scanTimeoutMs: Number(options.timeout) || 8000,
+    debug: !!opts.debug,
+  });
+  const result = await SesameOS2Ble.use({
+    transport,
+    deviceUUID: entry.deviceUUID,
+    secretKey: entry.secretKey,
+    // 省略時 (フラグも config も無し) は undefined → session 既定の "0000" (CHSesame2Device.kt:465)
+    keyIndex: entry.keyIndex ?? undefined,
+    ssmPublicKey: entry.ssmPublicKey,
+    model: entry.model,
+    debug: !!opts.debug,
+  }, (dev) => invokePath(/** @type {Record<string, any>} */ (/** @type {unknown} */ (dev)), op, args, OS2_BLE_RPC_ALLOWLIST));
+  ctx.out(opts.json, () => {
+    console.log(t("ble.cli.invoke.done", { op, name: entry.name }));
+    if (result !== undefined) console.log(JSON.stringify(result, null, 2));
+  }, { ok: true, op, name: entry.name, deviceUUID: entry.deviceUUID, result: result === undefined ? null : result });
+}
+
+/**
+ * `ble ota <device>` — BLE ファームウェア更新 (updateFirmware)。経路は model で分岐
+ * (WM2=OPEN_OTA_SERVER / Hub3=MOVE_TO / OS3 ロック系=SDK 同様コマンド無送信、P1-7)。
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {string} device
+ * @param {BleOptions} options
+ */
+async function cmdOta(ctx, device, options) {
+  const entry = resolveBleEntry(ctx, device, options);
+  if (!entry) return;
+  const timeoutMs = Number(options.timeout) || undefined;
+  await useBleDevice(ctx, entry, options, async (dev, opts) => {
+    const r = /** @type {{resultCode?:number}} */ (
+      await Promise.resolve(dev.updateFirmware({ timeoutMs }))
+    );
+    const sent = typeof r?.resultCode === "number";
+    const ack = sent ? bleCommandAck(/** @type {{resultCode:number}} */ (r)) : { resultCode: null, resultName: null };
+    ctx.out(opts.json, () => {
+      console.log(t(sent ? "ble.cli.ota.sent" : "ble.cli.ota.noop", {
+        name: entry.name,
+        resultName: ack.resultName ?? "",
+      }));
+    }, { ok: true, name: entry.name, deviceUUID: entry.deviceUUID, commandSent: sent, ...ack });
+  });
+}
+
+/**
+ * `ble reset <device>` — OS3 デバイスを工場出荷状態へ戻す (破壊的: 鍵が無効化される)。
+ * 非対話 (--json / パイプ) では --yes を必須にする。
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {string} device
+ * @param {BleOptions} options
+ */
+async function cmdReset(ctx, device, options) {
+  const entry = resolveBleEntry(ctx, device, options);
+  if (!entry) return;
+  if (!options.yes) {
+    if (!ctx.canPrompt()) { ctx.die(t("ble.cli.reset.needYes"), 2); return; }
+    const ok = await ctx.prompts.confirm(t("ble.cli.reset.prompt", { name: entry.name }), { defaultYes: false });
+    // 正常な中断: die ではなく plain log + return (org employee confirm と同じ流儀)。
+    if (!ok) { console.error(t("ble.cli.reset.aborted")); return; }
+  }
+  await useBleDevice(ctx, entry, options, async (dev, opts) => {
+    const ack = bleCommandAck(await dev.reset());
+    ctx.out(opts.json, () => console.log(t("ble.cli.reset.done", { name: entry.name })),
+      { ok: true, name: entry.name, deviceUUID: entry.deviceUUID, ...ack });
+  });
+}
+
+// `ble wifi` の action 語彙 (scan / ssid <value> / password <value> / connect)。
+const WIFI_ACTIONS = ["scan", "ssid", "password", "connect"];
+
+/**
+ * `ble wifi <device> <action> [value]` — WM2/Hub3 の Wi-Fi プロビジョニング。
+ * WM2 か Hub3 かは model の kind から自動判別する (wifiViewOf。GATT も自動切替)。
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {string} device
+ * @param {string} action scan|ssid|password|connect
+ * @param {string|undefined} value ssid/password の設定値
+ * @param {BleOptions} options
+ */
+async function cmdWifi(ctx, device, action, value, options) {
+  if (!WIFI_ACTIONS.includes(action)) {
+    ctx.die(t("ble.cli.wifi.badAction", { action, actions: WIFI_ACTIONS.join("/") }), 2);
+    return;
+  }
+  if ((action === "ssid" || action === "password") && value == null) {
+    ctx.die(t("ble.cli.wifi.valueRequired", { action }), 2);
+    return;
+  }
+  const entry = resolveBleEntry(ctx, device, options);
+  if (!entry) return;
+  // 接続前に能力で弾く (WM2 は専用 GATT のため model 不明では接続もできない)。
+  const caps = capabilitiesForModel(entry.model);
+  if (!caps.wifiProvisioning && !caps.hubProvisioning) {
+    ctx.die(t("ble.cli.wifi.notSupported", { name: entry.name, model: entry.model || "?" }), 2);
+    return;
+  }
+  if (action === "connect" && !caps.wifiProvisioning) {
+    // Hub3 に connect コマンドは存在しない (CHHub3Device.kt は SSID/Password 設定のみ)。
+    ctx.die(t("ble.cli.wifi.connectWm2Only"), 2);
+    return;
+  }
+  await useBleDevice(ctx, entry, options, async (dev, opts) => {
+    const { view } = wifiViewOf(dev, { companyId: options.companyId });
+    if (action === "scan") {
+      const collectMs = Number(options.timeout) || 8000;
+      const { ssids } = await collectWifiScan(view, { collectMs });
+      ctx.out(opts.json, () => {
+        if (!ssids.length) { console.log(t("ble.cli.wifi.scanNone")); return; }
+        console.log(t("ble.cli.wifi.scanHeader", { count: ssids.length, name: entry.name }));
+        for (const s of ssids) console.log(`  ${s.ssid}\t${s.rssi}dBm`);
+      }, { ok: true, name: entry.name, deviceUUID: entry.deviceUUID, ssids });
+      return;
+    }
+    const ack = bleCommandAck(
+      action === "ssid" ? await view.setWifiSSID(value)
+        : action === "password" ? await view.setWifiPassword(value)
+        : await view.connectWifi(),
+    );
+    ctx.out(opts.json, () => console.log(t("ble.cli.wifi.done", { action, name: entry.name })),
+      { ok: true, action, name: entry.name, deviceUUID: entry.deviceUUID, ...ack });
+  });
+}
+
+/**
+ * `ble position <device> <lock> <unlock>` — 施錠/解錠角を設定 (configureLockPosition)。
+ * OS3 Sesame5/6 系ロック専用 (ファサードの _assertLock5 が機種を弾く)。
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {string} device
+ * @param {string} lockPos 施錠角 (整数 -32768..32767)
+ * @param {string} unlockPos 解錠角 (整数 -32768..32767)
+ * @param {BleOptions} options
+ */
+async function cmdPosition(ctx, device, lockPos, unlockPos, options) {
+  const lock = Number(lockPos);
+  const unlock = Number(unlockPos);
+  if (!Number.isInteger(lock) || !Number.isInteger(unlock)) {
+    ctx.die(t("ble.cli.position.badNumber"), 2);
+    return;
+  }
+  const entry = resolveBleEntry(ctx, device, options);
+  if (!entry) return;
+  await useBleDevice(ctx, entry, options, async (dev, opts) => {
+    const ack = bleCommandAck(await dev.configureLockPosition(lock, unlock));
+    ctx.out(opts.json, () => console.log(t("ble.cli.position.done", { name: entry.name, lock, unlock })),
+      { ok: true, name: entry.name, deviceUUID: entry.deviceUUID, lockPosition: lock, unlockPosition: unlock, ...ack });
+  });
+}
+
 // ---------- ヘルパ ----------
+
+/**
+ * 解決済み entry で SesameBle を構築し connect → fn → close する (新コマンド共通の足場)。
+ * ctx.makeBle 経由で構築するためテストで fake BLE に差し替え可能 (access enroll と同じ seam)。
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {BleEntry} entry
+ * @param {BleOptions} options
+ * @param {(dev: import("../ble/index.js").SesameBle, opts: Record<string, any>) => Promise<unknown>} fn
+ */
+async function useBleDevice(ctx, entry, options, fn) {
+  const { opts, configStore, tokenStore } = ctx.loadCtx();
+  const serverAuth = resolveCliServerAuth({ configStore, tokenStore, options });
+  const dev = ctx.makeBle({
+    secretKey: entry.secretKey,
+    deviceUUID: entry.deviceUUID,
+    model: entry.model,
+    debug: !!opts.debug,
+    ...serverAuth,
+  });
+  await dev.connect();
+  try { return await fn(dev, opts); }
+  finally { await dev.close().catch(() => {}); }
+}
+
+/**
+ * --args <json> を ble.invoke RPC の args と同じ規約で解釈する (省略 = []、JSON 配列推奨。
+ * 非配列は invokePath 側で単一引数として包む。Buffer は {"$buffer":"00ff"} / {type:"Buffer",data:[…]}
+ * を invokePath の revive が復元する)。parse 失敗は die(…, 2)。
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {string|undefined} raw
+ * @returns {unknown[]}
+ */
+function parseInvokeArgs(ctx, raw) {
+  if (raw === undefined) return [];
+  return ctx.parseJson(raw, '["arg1", {"$buffer":"00ff"}]');
+}
 
 /**
  * @param {{configStore: import("../config.js").ConfigStore,
@@ -393,11 +793,14 @@ function resolveBleEntry(ctx, device, options) {
   const deviceUUID = rec?.deviceUUID || device;
   const secretKey = options.secret || rec?.secretKey;
   const model = options.model || rec?.model || null;
+  // OS2 鍵素材 (バックログ4): 明示フラグ > config 保存値 (locks add --ssm-public-key/--key-index)。
+  const ssmPublicKey = options.ssmPublicKey || rec?.ssmPublicKey || null;
+  const keyIndex = options.keyIndex || rec?.keyIndex || null;
   if (!secretKey) {
     ctx.die(t("ble.cli.resolve.noSecret", { device }), 2);
     return null;
   }
-  return { name: rec ? name : deviceUUID, deviceUUID, secretKey, model };
+  return { name: rec ? name : deviceUUID, deviceUUID, secretKey, model, ssmPublicKey, keyIndex };
 }
 
 /**
@@ -500,12 +903,14 @@ function bufToText(v) {
  * @returns {Buffer|undefined}
  */
 function parseHexOption(ctx, value, name) {
-  const hex = String(value || "");
-  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) {
+  // 検証 + 変換は crypto.js:hexToBuf に委譲 (P5-4)。CLI のエラー文言 (i18n ble.cli.badHex)
+  // と exit code 2 は従来どおり維持する (挙動互換)。
+  try {
+    return hexToBuf(String(value || ""));
+  } catch {
     ctx.die(t("ble.cli.badHex", { name }), 2);
     return undefined;
   }
-  return Buffer.from(hex, "hex");
 }
 
 /**

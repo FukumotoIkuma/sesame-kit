@@ -67,6 +67,22 @@ export function rejected(message: string, data?: object | null): SesameError;
  * 満たしたら `finish()` を、失敗を検出したら `finish(err)` を呼ぶ。`finish` 呼び出し後の
  * 後続メッセージは無視される (二重解決しない)。
  *
+ * errorAction (P3-9, オプトイン): biz3 のハンドラは push op を見る前に **同 action の
+ * `success:false` フレーム**を一律で失敗扱いする (useManageDevice.js:27-34 の
+ * `if (!message.success)` / useManageEmployee.js:405-412)。push op だけを購読すると、
+ * サーバの即時エラー応答 (要求 op で返る) を拾えず timeout に化けてメッセージが失われる。
+ * `errorAction` を指定すると、client.onMessage (全受信) で同 action の success:false を
+ * 観測した時点で `finish(err)` する。未指定なら従来挙動 (後方互換)。
+ * client が onMessage を持たない (狭い fake 等) 場合は黙ってスキップする。
+ *
+ * partialOnTimeout (BIZ-14 / バックログ6, オプトイン): timeout 時に reject する代わりに、
+ * その時点までの集約済み結果へ `partial: true` を付けて resolve する。参照 UI は chunk を
+ * 受信のたびに state へ反映するため、完了通知が来なくても部分蓄積が表示され続ける
+ * (useManageEmployee.js:70-88 の pubEmployees 蓄積は完了通知に依存しない)。CLI/ライブラリで
+ * 同じ「取れた分は返す」を選べるようにする opt-in。既定 (false) は従来どおり reject
+ * (後方互換)。このモードでは `result()` は **plain object** を返す契約 (spread で
+ * `partial: true` を合成するため。各利用側がオプション指定時に object 形へ切り替える)。
+ *
  * @template T
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {object} cfg
@@ -75,10 +91,12 @@ export function rejected(message: string, data?: object | null): SesameError;
  *        dispatch key (`${action}:${op}`) と、その push を処理するハンドラの組。
  * @param {number} cfg.timeoutMs
  * @param {()=>Error} [cfg.onTimeout]                  timeout 時に投げる Error を生成 (既定: 汎用 timeout)
+ * @param {string} [cfg.errorAction]                   この action の success:false フレームで finish(err) (オプトイン)
+ * @param {boolean} [cfg.partialOnTimeout]             timeout 時に reject せず {partial:true, ...result()} で resolve (オプトイン)
  * @param {()=>T} cfg.result                           成功確定時に resolve する値を組み立てる
  * @returns {Promise<T>}
  */
-export function subscribeChunks<T>(client: import("./transport.js").Hub3WsClient, { sendFrame, subscriptions, timeoutMs, onTimeout, result }: {
+export function subscribeChunks<T>(client: import("./transport.js").Hub3WsClient, { sendFrame, subscriptions, timeoutMs, onTimeout, errorAction, partialOnTimeout, result }: {
     sendFrame: import("./transport.js").WsFrame;
     subscriptions: Array<{
         key: string;
@@ -86,6 +104,8 @@ export function subscribeChunks<T>(client: import("./transport.js").Hub3WsClient
     }>;
     timeoutMs: number;
     onTimeout?: (() => Error) | undefined;
+    errorAction?: string | undefined;
+    partialOnTimeout?: boolean | undefined;
     result: () => T;
 }): Promise<T>;
 /**

@@ -24,6 +24,7 @@
 import { Buffer } from "node:buffer";
 import { ITEM_CODES } from "../itemcodes.js";
 import { t } from "../i18n.js";
+import { historyTagBLE as defaultHistoryTagBLE } from "./protocol.js";
 
 const ITEM = ITEM_CODES;
 
@@ -204,14 +205,32 @@ export function parseScriptNameList(buf) {
  * click(index) はファサード SesameBle.click(tag) (CLICK 89) と棲み分ける。CLICK は従来通り残し、
  * 本クラスは index 指定 click と script 管理を担う。
  */
+/**
+ * `script` サブファサードの RPC 公開仕様 (SURF-08 段階3)。
+ * registry がこれを読み `ble.script.<op>` を型付き RPC/SDK メソッドとして自動展開する。
+ * params の **順序 = Bot2Commands メソッドの位置引数の順序**。result: "ack"=コマンド ack
+ * ({resultCode,resultName}) / "raw"=パース結果をそのまま返す。
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const SCRIPT_RPC_OPS = {
+  "script.click": { params: [{ name: "index", type: "number", required: false, desc: "script number 0..9 to run (omit = plain click 89)" }], result: "ack" },
+  "script.selectScript": { params: [{ name: "index", type: "number", required: true, desc: "script slot to activate (0..9)" }], result: "ack" },
+  "script.sendClickScript": { params: [{ name: "index", type: "number", required: true, desc: "slot to write (0..9)" }, { name: "script", type: "object", required: true, desc: "{name, actions:[{action,time}]} or raw bytes" }], result: "ack" },
+  "script.getCurrentScript": { params: [{ name: "index", type: "number", required: false, desc: "slot to read (omit = currently selected)" }], result: "raw" },
+  "script.getScriptNameList": { params: [], result: "raw" },
+};
+
 export class Bot2Commands {
   /**
    * @param {import("./session.js").SesameBleSession} session login 済み (request が使える) session
-   * @param {(tag?: Buffer) => Buffer} [historyTagBLE] 履歴タグ生成器 (protocol.historyTagBLE を注入)
+   * @param {(tag?: Buffer) => Buffer} [historyTagBLE] 履歴タグ生成器の上書き (省略時は
+   *   protocol.historyTagBLE を直接使う)。SDK の click は常に historyTagBLE を payload にする
+   *   (CHSesameBot2Device.kt:91-93: sendCommand(..., historyTagBLE(historytag))。tag 無しでも
+   *   最低 [0x00,0x0E] の 2B)。旧実装は未注入時に空 payload を送っており SDK と乖離していた (P1-10)。
    */
-  constructor(session, historyTagBLE) {
+  constructor(session, historyTagBLE = defaultHistoryTagBLE) {
     this._session = session;
-    this._historyTagBLE = historyTagBLE;
+    this._historyTagBLE = historyTagBLE || defaultHistoryTagBLE;
     // SDK の override var scripts (CHSesameBot2Device.kt:40-41 初期値 curIdx=0/eventLength=0/events=[])。
     /** @type {ScriptNameList} */
     this.scripts = { curIdx: 0, eventLength: 0, events: [] };
@@ -220,15 +239,15 @@ export class Bot2Commands {
   /**
    * index 指定 click。CHSesameBot2Device.kt:73-97 と 1:1:
    *   index!=null → itemCode = RUN_SCRIPT_0(170)+index、index==null → click(89)。
-   *   payload は historyTagBLE(tag) (CLICK と同じ履歴タグ)。
+   *   payload は **常に** historyTagBLE(tag) (CHSesameBot2Device.kt:91-93。tag 無しでも
+   *   最低 [0x00,0x0E] 2B を送る — 空 payload は SDK に存在しない)。
    * @param {number|null} [index] 0..9 (省略で通常 click)
    * @param {Buffer} [tag] 履歴タグ
    * @returns {Promise<{resultCode:number, payload:Buffer}>}
    */
   click(index = null, tag) {
     const itemCode = clickItemCode(index);
-    const data = this._historyTagBLE ? this._historyTagBLE(tag) : Buffer.alloc(0);
-    return this._session.request(itemCode, data);
+    return this._session.request(itemCode, this._historyTagBLE(tag));
   }
 
   /**

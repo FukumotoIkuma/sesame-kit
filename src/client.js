@@ -57,9 +57,11 @@
  */
 
 import { Hub3WsClient, sendIR, getIRCodes } from "./transport.js";
-import { ConfigStore, normalizeConfig } from "./config.js";
+import { ConfigStore, normalizeConfig, migrateConfig } from "./config.js";
+import { resolveByName, REMOTE_RESOLVE_ERRORS } from "./resolve.js";
 import { FileTokenStore } from "./tokens.js";
 import { getValidIdToken, jwtSub } from "./auth.js";
+import { makeCognitoCredentialsProvider, DEFAULT_CH_API_BASE_URL } from "./aws-credentials.js";
 import { configPaths } from "./paths.js";
 import { LockManager } from "./lock-manager.js";
 import { ACTION_TYPES } from "../vendor/biz3/constants/messageConstants.js";
@@ -74,6 +76,7 @@ import * as iot from "./iot.js";
 import * as presetir from "./presetir.js";
 import * as payment from "./payment.js";
 import { setAutolock as setAutolockRaw } from "./lock.js";
+import { subscribeChunks, timeoutError, badRequest } from "./util.js";
 import { t } from "./i18n.js";
 
 /**
@@ -181,7 +184,9 @@ export class SesameHub3 {
   constructor({ config, tokenStore, configStore = null, debug = false }) {
     if (!config) throw new Error(t("domain.client.configRequired"));
     if (!tokenStore) throw new Error(t("domain.client.tokenStoreRequired"));
-    this._config = normalizeConfig({ ...DEFAULT_CONFIG, ...config });
+    // P5-6: 直接構築 (embedded) の config は旧 shape (locks/hub3s 永続化) でも受け付ける。
+    // 旧 shape の解釈は migrateConfig、最新 shape の正規化は normalizeConfig (役割分担)。
+    this._config = normalizeConfig(migrateConfig({ ...DEFAULT_CONFIG, ...config }));
     this._configStore = configStore;
     this._tokenStore = tokenStore;
     this._debug = debug;
@@ -244,16 +249,13 @@ export class SesameHub3 {
    */
   resolveRemote(name) {
     if (this._configStore) return this._configStore.resolveRemote(name);
-    // configStore なしで直接構築された場合: 手動で解決
+    // configStore なしで直接構築された場合: resolveByName (src/resolve.js) で解決 (P5-4 で
+    // ConfigStore.resolveRemote と一本化。失敗は SesameError(BAD_REQUEST) に統一)。
     const cfg = this._config;
-    const remotes = cfg.remotes || {};
-    const names = Object.keys(remotes);
-    const chosen = name || cfg.default?.remote || (names.length === 1 ? names[0] : null);
-    if (!chosen) throw new Error(t("domain.client.noRemoteNoDefault"));
-    const remote = remotes[chosen];
-    if (!remote) throw new Error(t("domain.client.unknownRemote", { name: chosen }));
+    const { name: chosen, entry: remote } =
+      resolveByName(cfg.remotes, name, cfg.default?.remote, REMOTE_RESOLVE_ERRORS);
     const hub3 = cfg.hub3s?.[remote.hub3];
-    if (!hub3) throw new Error(t("domain.client.remoteMissingHub3", { name: chosen, hub3: remote.hub3 }));
+    if (!hub3) throw badRequest("domain.client.remoteMissingHub3", { name: chosen, hub3: remote.hub3 });
     return { name: chosen, remote, hub3Name: remote.hub3, hub3 };
   }
 
@@ -267,12 +269,13 @@ export class SesameHub3 {
       idToken,
       lang: this._config.lang,
       debug: this._debug,
-      // 再接続が MAX_RETRIES_BEFORE_TOKEN_CHECK に達した時、
-      // token を強制 refresh して再接続を継続する。
+      // 再接続が MAX_RETRIES_BEFORE_TOKEN_CHECK に達した時に呼ばれる。
+      // 参照 (references_web/src/api/useAuthState.js:50-60 checkTokenExpiration) と同じく
+      // exp を確認し、期限内なら refresh せず現 token を返す (= transport 側は同一 token
+      // なので差し替えず backoff 継続)。期限切れ/閾値内のみ getValidIdToken が refresh する。
       onTokenRefreshNeeded: async () => {
         try {
-          // marginSec を大きくして必ず refresh する
-          return await getValidIdToken(this._tokenStore, { marginSec: 999999 });
+          return await getValidIdToken(this._tokenStore);
         } catch (e) {
           if (this._debug) console.error("[hub3] token refresh failed:", errMsg(e));
           return null;
@@ -462,39 +465,35 @@ export class SesameHub3 {
    */
   async listDevices({ timeoutMs = 10_000 } = {}) {
     const ws = this._ensureConnected();
-    /** @type {(msg: import("./transport.js").WsMessage) => void} */
-    let resolveGot;
-    /** @type {Promise<import("./transport.js").WsMessage>} */
-    const got = new Promise((resolve) => { resolveGot = resolve; });
-    /** @param {import("./transport.js").WsMessage} msg */
-    const listener = (msg) => {
-      if (msg.action === ACTION_TYPES.BIZ3_MANAGE_DEVICE && msg.op === "PubedCompanyDevice") {
-        resolveGot(msg);
-      }
-    };
-    // 3rd-pass L-3: onMessage の戻り unsubscribe を必ず呼んで listener leak を防ぐ
-    // (daemon 用途で listDevices を繰り返し呼ぶと累積していた)
-    const off = ws.onMessage(listener);
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let timeoutId;
-    try {
-      ws.send({
+    // biz3 PubedCompanyDevice は page 単位 push (vendor 確認: useManageDevice.js:36-55):
+    //   message.data = { totalPage, data: { list, page } }
+    // page===1 で全置換、page>1 で追記、totalPage===page で確定。最初の push で即 resolve
+    // すると 1 ページ超のアカウントで一覧が先頭ページに切り詰められる (P1-13)。
+    // 同一プロトコルの devices.js getUserDevices (PubedUserDevice) と同型の実装。
+    /** @type {DeviceInfo[]} */
+    let acc = [];
+    return subscribeChunks(ws, {
+      sendFrame: {
         action: ACTION_TYPES.BIZ3_MANAGE_DEVICE,
         op: "getCompanyDevice",
         companyID: this._companyID,
-      });
-      /** @type {Promise<never>} */
-      const timeout = new Promise((_, rej) => {
-        timeoutId = setTimeout(() => rej(new Error(t("domain.client.getCompanyDeviceTimeout"))), timeoutMs);
-      });
-      const msg = await Promise.race([got, timeout]);
-      // data.data.list は biz3 の動的応答ペイロード。device レコード配列として読む。
-      const payload = /** @type {{ data?: { data?: { list?: import("./config.js").DeviceRecord[] } } }} */ (msg);
-      return payload?.data?.data?.list || [];
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
-      off();
-    }
+      },
+      timeoutMs,
+      onTimeout: () => timeoutError(t("domain.client.getCompanyDeviceTimeout")),
+      result: () => acc,
+      subscriptions: [{
+        key: `${ACTION_TYPES.BIZ3_MANAGE_DEVICE}:PubedCompanyDevice`,
+        /** @param {any} msg @param {(err?: Error) => void} finish */
+        onMessage: (msg, finish) => {
+          const totalPage = msg?.data?.totalPage;
+          const inner = msg?.data?.data ?? {};
+          const page = inner.page ?? 1;
+          acc = page === 1 ? [...(inner.list ?? [])] : [...acc, ...(inner.list ?? [])];
+          // totalPage が無ければ単一 chunk とみなし即完了 (vendor も totalPage===page で確定)。
+          if (typeof totalPage !== "number" || page >= totalPage) finish();
+        },
+      }],
+    });
   }
 
   // ---------- devices → config 同期 (ドメイン操作) ----------
@@ -592,10 +591,12 @@ export class SesameHub3 {
   async syncRemotesFromServer(hub3Name, irType) {
     this._ensureConnected();
     const configStore = this._requireConfigStore("syncRemotesFromServer");
-    const list = /** @type {Array<{irDeviceUUID?: string, uuid?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null, irOperation?: string}>} */ (
-      await this.listIRRemotes(irType)
+    // P1-12: listIRRemotes は {list, pagination} を返す。config へ渡すのは一覧本体のみ。
+    const { list } = await this.listIRRemotes(irType);
+    return configStore.syncRemotesFromServer(
+      /** @type {Array<{irDeviceUUID?: string, uuid?: string, type?: number|string, irType?: number|string, alias?: string|null, name?: string|null, irOperation?: string}>} */ (list),
+      hub3Name,
     );
-    return configStore.syncRemotesFromServer(list, hub3Name);
   }
 
   /**
@@ -664,6 +665,25 @@ export class SesameHub3 {
   async botClick(name) {
     return this._lock.botClick(name);
   }
+
+  /**
+   * SESAME Bot2/Bot3 の **台本 (スクリプト) を番号指定で実行** (name-based, cloud 経由)。
+   * cmd = 170 + scriptIndex (`CHSesameBot2Device.kt:73-89` の click(index) 相当)。
+   * `botClick` (cmd=89) は「選択中の台本」を実行する別経路。
+   * @param {string|null} name ロック名 (null で default.lock)
+   * @param {number} scriptIndex 0..9
+   * @returns {Promise<object>}
+   */
+  async botClickScript(name, scriptIndex) {
+    return this._lock.botClickScript(name, scriptIndex);
+  }
+
+  /**
+   * 直接 (config を介さず) Bot2/Bot3 台本を番号指定で実行。
+   * @param {{deviceUUID:string, secretKey:string, scriptIndex:number, timeoutMs?:number}} p
+   * @returns {Promise<object>}
+   */
+  botClickScriptDevice(p) { return this._lock.botClickScriptDevice(p); }
 
   /**
    * デバッグ用: WS の全受信メッセージを購読する (戻り値で unsubscribe)。
@@ -738,8 +758,12 @@ export class SesameHub3 {
   }
 
   /**
+   * 登録済み IR リモコン一覧 (1 ページ分)。
+   * 次ページは戻り値 pagination の currentPage+1 を page に渡す (vendor loadMoreRemotes,
+   * useRemoteCtrl.js:431-441 と同じ読み方)。
    * @param {number} type irType
    * @param {{ page?: number, pageSize?: number }} [opts]
+   * @returns {Promise<import("./ir.js").RemoteListPage>}
    */
   async listIRRemotes(type, { page, pageSize } = {}) {
     const ws = this._ensureConnected();
@@ -747,8 +771,10 @@ export class SesameHub3 {
   }
 
   /**
+   * プリセット IR リモコン検索 (最大 1000 件)。
    * @param {number} type irType
    * @param {string} searchTerm
+   * @returns {Promise<import("./ir.js").RemoteListPage>}
    */
   async searchPresetIRRemotes(type, searchTerm) {
     const ws = this._ensureConnected();
@@ -857,6 +883,21 @@ export class SesameHub3 {
     return ir.matchRemote(ws, { irData, irType, brandName, companyID: this._companyID });
   }
 
+  /**
+   * リモコンを Matter デバイスとして Hub3 に登録 (P3-3、useRemoteCtrl.js:933-955 フィールド 1:1)。
+   * Matter ペアリング窓 (iot.js) の開放とセットで使う。
+   * @experimental 実機未検証 (参照: useRemoteCtrl.js:933-955)。
+   * @param {{hub3DeviceId: string, irDeviceType: number, cmdOn: string, cmdOff: string,
+   *          irDeviceUUID: string, irDeviceName: string}} p
+   */
+  async addRemoteToMatter({ hub3DeviceId, irDeviceType, cmdOn, cmdOff, irDeviceUUID, irDeviceName }) {
+    const ws = this._ensureConnected();
+    return ir.addRemoteToMatter(ws, {
+      hub3DeviceId, irDeviceType, cmdOn, cmdOff, irDeviceUUID, irDeviceName,
+      companyID: this._companyID,
+    });
+  }
+
   /** @param {string} [name] @returns {import("./config.js").Hub3View} */
   _resolveHub3(name) {
     const cfg = this._config;
@@ -884,14 +925,16 @@ export class SesameHub3 {
   }
 
   /**
-   * 読み取った複数 IC カードをクラウド DB へ一括登録する (postCards への委譲)。
+   * 読み取った複数 IC カードをクラウド DB へ登録する。
    *
    * BLE enroll (`sesame access cards enroll`) で集約した records をそのまま渡せる。
-   * cards 要素は BLE 読み取り形 `{cardID, cardName, cardType}` (access.enrolledToCardList が
-   * postCards の list 形へ写像する)。既に postCards の list 形を持つ場合は access.postCards を直接使う。
+   * cards 要素は BLE 読み取り形 `{cardID, cardName, cardType, nameUUID?}`。タップ登録経路は
+   * vendor (cards/index.js:104-136) と同じくレコード毎の updateCardName 委譲で DB 同期する
+   * (nameUUID はファーム採番値を透過。P3-11)。postCards の list 形を既に持つ一括投入は
+   * access.postCards / syncEnrolledCards({list}) を直接使う。
    * @param {string} deviceUUID 対象 Touch の deviceUUID
-   * @param {Array<{cardID:string, cardName?:string, cardType?:number}>} cards
-   * @returns {Promise<object|null>} postCards 応答 (cards 空なら null)
+   * @param {Array<{cardID:string, cardName?:string, cardType?:number, nameUUID?:string}>} cards
+   * @returns {Promise<object|null>} updateCardName 応答の配列 (cards 空なら null)
    */
   async registerCards(deviceUUID, cards) {
     const ws = this._ensureConnected();
@@ -902,19 +945,65 @@ export class SesameHub3 {
   }
 
   /**
-   * biometrics REST のベース URL を解決する。引数 > config.biometricsBaseUrl > config.registerBaseUrl。
+   * 読み取った複数パスコードをクラウド DB へ登録する (registerCards と対称。SURF-04)。
+   *
+   * BLE enroll (`sesame access passcodes enroll`) で集約した records をそのまま渡せる。
+   * records 要素は BLE 読み取り形 `{cardID|passwordID, cardName|name, nameUUID?}`。
+   * DB 同期は access.syncEnrolledPasscodes (= postPasscodes 委譲。passcode に card のような
+   * タップ登録→updateCardName 経路は参照に無い — passwords.js:94-115) で、nameUUID
+   * (ファームウェア採番値) は透過される (P3-11 の不変条件: ファームと DB の nameUUID 一致)。
+   * postPasscodes の list 形を既に持つ一括投入は access.postPasscodes /
+   * syncEnrolledPasscodes({list}) を直接使う。
+   * @param {string} deviceUUID 対象 Touch (Pro) / キーパッド搭載機の deviceUUID
+   * @param {Array<{cardID?:string, passwordID?:string, cardName?:string, name?:string, nameUUID?:string}>} passcodes
+   * @returns {Promise<object|null>} postPasscodes 応答 (records 空なら null)
+   */
+  async registerPasscodes(deviceUUID, passcodes) {
+    const ws = this._ensureConnected();
+    return access.syncEnrolledPasscodes(ws, { deviceUUID, records: passcodes });
+  }
+
+  /**
+   * biometrics REST のベース URL を解決する。引数 > config.biometricsBaseUrl > config.registerBaseUrl
+   * > 公式既定 (app.properties:3 = https://app.candyhouse.co/prod)。
    * @param {string} [baseUrl]
    * @returns {string}
    */
   _biometricsBaseUrl(baseUrl) {
-    const url = baseUrl || this._config.biometricsBaseUrl || this._config.registerBaseUrl;
-    if (!url) throw new Error("biometrics baseUrl required (set config.biometricsBaseUrl or pass baseUrl)");
-    return url;
+    return baseUrl || this._config.biometricsBaseUrl || this._config.registerBaseUrl
+      || DEFAULT_CH_API_BASE_URL;
   }
 
-  /** @returns {() => Promise<string>} 都度 idToken から Bearer を発行する provider */
-  _biometricsAuthorizationProvider() {
-    return async () => `Bearer ${await getValidIdToken(this._tokenStore)}`;
+  /**
+   * biometrics REST 用の Identity Pool credentials provider (SigV4 経路、P2-1/BIZ-07)。
+   * 公式の認可は SigV4 + x-api-key + appidentifyid (ApiClientConfigBuilder.kt:34-46) で、
+   * 旧 idToken Bearer は参照に存在しないため撤去した。provider はキャッシュを持つので
+   * インスタンスで 1 つを共有する。
+   * @returns {import("./aws-credentials.js").CredentialsProviderLike}
+   */
+  _biometricsCredentialsProvider() {
+    if (!this._bioCredentialsProvider) {
+      this._bioCredentialsProvider = makeCognitoCredentialsProvider({
+        getIdToken: () => getValidIdToken(this._tokenStore),
+      });
+    }
+    return this._bioCredentialsProvider;
+  }
+
+  /**
+   * biometrics 4 メソッド共通の transport 解決オプション (SigV4 + appidentifyid 永続化)。
+   * @param {string} [baseUrl]
+   * @param {import("./access.js").BiometricsTransport} [transport]
+   */
+  _biometricsTransportOpts(baseUrl, transport) {
+    if (transport) return { transport };
+    return {
+      transport: undefined,
+      baseUrl: this._biometricsBaseUrl(baseUrl),
+      credentialsProvider: this._biometricsCredentialsProvider(),
+      config: this._config,
+      configStore: this._configStore ?? undefined,
+    };
   }
 
   /** @param {import("./client.js").BiometricAuthBag} [args] */
@@ -923,9 +1012,7 @@ export class SesameHub3 {
       operation,
       deviceID,
       items,
-      transport,
-      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
-      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+      ...this._biometricsTransportOpts(baseUrl, transport),
     });
   }
 
@@ -935,9 +1022,7 @@ export class SesameHub3 {
       operation,
       deviceID,
       items,
-      transport,
-      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
-      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+      ...this._biometricsTransportOpts(baseUrl, transport),
     });
   }
 
@@ -947,9 +1032,7 @@ export class SesameHub3 {
       operation,
       deviceID,
       items,
-      transport,
-      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
-      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+      ...this._biometricsTransportOpts(baseUrl, transport),
     });
   }
 
@@ -959,9 +1042,7 @@ export class SesameHub3 {
       request,
       kind,
       ...rest,
-      transport,
-      baseUrl: transport ? undefined : this._biometricsBaseUrl(baseUrl),
-      authorizationProvider: transport ? undefined : this._biometricsAuthorizationProvider(),
+      ...this._biometricsTransportOpts(baseUrl, transport),
     });
   }
 
@@ -988,6 +1069,54 @@ export class SesameHub3 {
   }
 
   /**
+   * デバイスを company に追加する (P3-1)。items は QR 由来のデバイスキーオブジェクト配列
+   * (useManageDevice.js:256-268)。上限超過時はサーバの "Limit Exceeded" がそのまま throw される。
+   * @param {object[]} items
+   */
+  async addDevices(items) {
+    const ws = this._ensureConnected();
+    return devices.addDevices(ws, { companyID: this._companyID, items });
+  }
+
+  /**
+   * デバイスの並び順を更新 (P3-1)。items は並べたい順のデバイスオブジェクト配列
+   * (rank は lib 側が vendor と同じ -index で採番する — useManageDevice.js:270-285)。
+   * @param {object[]} items
+   * @returns {Promise<any>} 並び替え後のデバイス一覧
+   */
+  async reorderDevices(items) {
+    const ws = this._ensureConnected();
+    return devices.reorderDevices(ws, { companyID: this._companyID, items });
+  }
+
+  /**
+   * デバイスごとの push 通知設定一覧 (P3-1, useManageDevice.js:287-302)。
+   * @param {{pushToken: string, items: object[]}} p
+   */
+  async getDevicesNotifyStatus({ pushToken, items }) {
+    const ws = this._ensureConnected();
+    return devices.getNotifyStatus(ws, { companyID: this._companyID, pushToken, items });
+  }
+
+  /**
+   * 単機の push 通知 ON/OFF 切り替え (P3-1, useManageDevice.js:304-320)。
+   * @param {{pushToken: string, deviceUUID: string, enablePush: boolean|number}} p
+   */
+  async switchDeviceNotify({ pushToken, deviceUUID, enablePush }) {
+    const ws = this._ensureConnected();
+    return devices.switchNotify(ws, { companyID: this._companyID, pushToken, deviceUUID, enablePush });
+  }
+
+  /**
+   * 充電池モード切り替え (P3-1, useManageDevice.js:360-372。frame に companyID は乗らない)。
+   * @param {{deviceUUID: string, isRechargeBattery: boolean|number}} p
+   */
+  async switchRechargeableBattery({ deviceUUID, isRechargeBattery }) {
+    const ws = this._ensureConnected();
+    return devices.switchRechargeableBattery(ws, { deviceUUID, isRechargeBattery });
+  }
+
+  /**
    * @deprecated `onDeviceUpdate(items, fn)` を使ってください (on* イベント命名に統一)。
    * 後方互換のため残置。内部実装は onDeviceUpdate と同一。
    * @param {{deviceUUID:string, deviceModel?:string}[]} deviceInfos
@@ -999,8 +1128,10 @@ export class SesameHub3 {
 
   /**
    * ロック開閉履歴を取得。`list` はデバイス指定の配列。
+   * 要素の `lastKey` (直前ページ末尾レコードの timestamp) でページングできる (P3-7、
+   * DeviceHistory.js:37-44 — vendor は常に {deviceUUID, lastKey} を送る)。
    *
-   * @param {Array<{deviceUUID: string}>} list 履歴を取得するデバイスの配列
+   * @param {Array<{deviceUUID: string, lastKey?: number|null}>} list 履歴を取得するデバイスの配列
    * @param {number} [pageSize] 1 ページあたりの件数 (未指定でサーバ既定)
    * @returns {Promise<any>}
    */
@@ -1010,6 +1141,23 @@ export class SesameHub3 {
       companyID: this._companyID,
       list,
       pageSize,
+    });
+  }
+
+  /**
+   * 単機の開閉履歴を全ページ自動取得 (P3-7、vendor fetchAllHistory 相当 —
+   * DeviceHistory.js:37-74: res.length===pageSize の間 lastKey=末尾 timestamp で継続)。
+   * @param {string} deviceUUID
+   * @param {{ pageSize?: number, maxPages?: number }} [opts]
+   * @returns {Promise<any[]>}
+   */
+  async getAllDeviceHistory(deviceUUID, { pageSize, maxPages } = {}) {
+    const ws = this._ensureConnected();
+    return devices.getAllDeviceHistory(ws, {
+      companyID: this._companyID,
+      deviceUUID,
+      pageSize,
+      maxPages,
     });
   }
 
@@ -1177,18 +1325,47 @@ export class SesameHub3 {
   onLockStateChange(name, fn) {
     this._ensureConnected();
     const { lock } = this.resolveLock(name);
-    return this.onLockStateChangeDevice(lock.deviceUUID, fn);
+    // config 上の model が分かるので購読 frame の items に乗せる
+    // (vendor subscribeDevices は {deviceUUID, deviceModel} を送る — useManageDevice.js:341-344)。
+    return this.onLockStateChangeDevice(lock.deviceUUID, fn, { deviceModel: lock.model ?? undefined });
   }
 
   /**
    * UUID 直指定で state change を購読。
+   *
+   * P3-4: `pubDeviceStateChange` は **`subscribeDevicesUpdate` frame を送った接続にのみ**
+   * push される (useManageDevice.js:48-51,322-350)。旧実装はローカル購読だけでサーバへ
+   * 購読 frame を送っておらず、ライブラリ利用者が onLockStateChange() だけ呼ぶとイベントが
+   * 永遠に来なかった (serve daemon は onDeviceUpdate 経由で frame を送るため正常だった)。
+   * 本メソッドは対象デバイスの購読 frame を送信し、WS 再接続時にも再送する
+   * (サーバは新接続を覚えていないため再送が必須)。
+   *
+   * 既知の制限: biz3 に unsubscribe op は無いため、unsubscribe() はローカル購読の解除と
+   * 再送停止のみ (サーバ側 push は接続が生きている限り続き、ローカルで無視される)。
+   *
    * @param {string|undefined} deviceUUID
    * @param {(msg: import("./transport.js").WsMessage)=>void} fn
+   * @param {{ deviceModel?: string }} [opts] 購読 frame の items に乗せる deviceModel (分かる場合)
+   * @returns {() => void} unsubscribe
    */
-  onLockStateChangeDevice(deviceUUID, fn) {
+  onLockStateChangeDevice(deviceUUID, fn, { deviceModel } = {}) {
     const ws = this._ensureConnected();
     const target = normalizeUuid(deviceUUID);
-    return ws.subscribe(STATE_CHANGE_KEY, (msg) => {
+    // 購読 frame (useManageDevice.js:325-331 と同形)。vendor は {deviceUUID, deviceModel} を
+    // 送る (:341-344) が、model 不明の direct 経路では deviceUUID のみ送る。
+    const item = deviceModel ? { deviceUUID, deviceModel } : { deviceUUID };
+    const sendSubscribeFrame = () => {
+      ws.send({
+        action: ACTION_TYPES.BIZ3_MANAGE_DEVICE,
+        op: "subscribeDevicesUpdate",
+        items: [item],
+        companyID: this._companyID,
+      });
+    };
+    sendSubscribeFrame();
+    // 再接続時はサーバ側購読が消えるため frame を再送する (P3-4)。
+    const offReconnect = this.onReconnect(sendSubscribeFrame);
+    const offSub = ws.subscribe(STATE_CHANGE_KEY, (msg) => {
       // pubDeviceStateChange の本体は message.data、識別は data.deviceUUID
       // (vendor 確認: useIotCtrl.js:20-21 が updateDeviceState(message.data)、
       //  useManageDevice.js:147 が updatedDevice.deviceUUID)。単一フィールドのみ。
@@ -1197,6 +1374,19 @@ export class SesameHub3 {
       if (incoming !== target) return;
       try { fn(msg); } catch { /* ignore */ }
     });
+    return () => { offReconnect(); offSub(); };
+  }
+
+  /**
+   * デバイス一覧の増減 push (`pubUserDeviceChange`) を購読 (P3-5)。
+   * 鍵共有・デバイス追加/削除があるとサーバが push する。vendor はこれを受けて
+   * デバイス一覧を再取得する (useIotCtrl.js:12,23-25)。購読 frame は不要 (vendor も送らない)。
+   * @param {(msg: import("./transport.js").WsMessage)=>void} fn
+   * @returns {() => void} unsubscribe
+   */
+  onUserDeviceChange(fn) {
+    const ws = this._ensureConnected();
+    return devices.subscribeUserDeviceChange(ws, { onChange: fn });
   }
 
   /**

@@ -161,6 +161,21 @@ describe("Bot2Commands (CHSesameBot2Device.kt:73-193)", () => {
     expect(s.request.mock.calls[0][0]).toBe(89);
   });
 
+  it("historyTagBLE 未注入でも click は protocol.historyTagBLE を既定で使い最低 [0x00,0x0E] 2B を送る (kt:91-93, P1-10)", async () => {
+    // SDK の click は常に sesame2KeyData!!.historyTagBLE(historytag) を payload にする
+    // (CHSesameBot2Device.kt:91-93)。tag 無しでも type 2B が乗り、空 payload は存在しない。
+    // 旧実装は Bot2Commands を直接 new した (注入無し) とき空 payload を送っていた。
+    const s = fakeSession();
+    const c = new Bot2Commands(s); // 注入なし → protocol.js の historyTagBLE が既定
+    await c.click();
+    expect(s.request.mock.calls[0][0]).toBe(89);
+    expect(s.request.mock.calls[0][1].equals(Buffer.from([0x00, 0x0e]))).toBe(true);
+    // tag 付き: [0x00,0x0E] ++ tag (先頭 20B 切り詰めは historyTagBLE 側の契約)
+    await c.click(2, Buffer.from([0xbe, 0xef]));
+    expect(s.request.mock.calls[1][0]).toBe(172);
+    expect(s.request.mock.calls[1][1].equals(Buffer.from([0x00, 0x0e, 0xbe, 0xef]))).toBe(true);
+  });
+
   it("sendClickScript は EDIT_SCRIPT(181) + [index]+scriptBytes (kt:103-105)", async () => {
     const s = fakeSession();
     const c = new Bot2Commands(s, tagBuilder);

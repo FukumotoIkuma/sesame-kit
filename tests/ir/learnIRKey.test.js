@@ -14,6 +14,11 @@
 //   → unsubscribeIRData (send / fire-and-forget) → setIRMode(CONTROL)
 //   → keyUUID をクライアント発番 → addIRCode({keyUUID, name, uuid, deviceId, data})
 //   → 戻り値 {keyUUID, captured, saved} (captured = 生波形 = msg.data.data)
+//
+// P1-14 で追加された onData 失敗処理:
+//   - msg.success === false → reject (learn/index.js:217-249: データは success 時のみ採用)
+//   - 波形空/undefined → reject (壊れたキー保存防止)
+//   - 波形長 <= 50 → ノイズ扱いで無視し待機継続 (remote-match/index.js:142-149)
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { learnIRKey, MODE } from "../../src/ir.js";
@@ -22,6 +27,16 @@ const ACTION = "biz3IRRemote";
 
 /** UUID v4 形式。biz3 generateUUID は .toUpperCase() で大文字を返すため大文字 hex を期待。 */
 const UUID_RE = /^[0-9A-F-]{36}$/;
+
+/**
+ * 採用される波形 fixture を作る (長さ 56 > 50)。
+ * P1-14: vendor (remote-match/index.js:142-149) は波形長 <= 50 をノイズ扱いで無視して
+ * 待機継続するため、resolve させたい波形は必ず 50 文字超で作る。
+ * @param {string} seed 識別用の先頭文字列 (アサーションで波形を区別する)
+ */
+function w(seed) {
+  return seed.padEnd(56, "0");
+}
 
 /**
  * subscribeIRDataRsp が運ぶ波形ペイロードを作る。
@@ -112,7 +127,7 @@ describe("learnIRKey", () => {
     // onPrompt は sub.onData() 登録 *前* に呼ばれるため、emit は非同期 (setTimeout) で遅延させる
     const onPrompt = vi.fn(() => {
       setTimeout(() => {
-        client.emit(RSP_TOPIC, rsp(DEVICE_ID, "AABBCC"));
+        client.emit(RSP_TOPIC, rsp(DEVICE_ID, w("AABBCC")));
       }, 1);
     });
 
@@ -128,7 +143,7 @@ describe("learnIRKey", () => {
 
     // 戻り値の形: keyUUID はクライアント発番、captured は生波形 (msg.data.data)、saved は addIRCode 応答
     expect(result.keyUUID).toMatch(UUID_RE);
-    expect(result.captured).toBe("AABBCC");
+    expect(result.captured).toBe(w("AABBCC"));
     expect(result.saved).toEqual({ keyUUID: "key-1" });
 
     // op の順序検証
@@ -169,7 +184,7 @@ describe("learnIRKey", () => {
         name: "Power",
         uuid: REMOTE_ID,
         deviceId: DEVICE_ID,
-        data: "AABBCC",
+        data: w("AABBCC"),
       },
     });
     // 旧仕様のフィールドは存在しない
@@ -188,7 +203,7 @@ describe("learnIRKey", () => {
       addIRCode: { success: true, data: { ok: true } },
     });
 
-    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, "AABBCC"));
+    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, w("AABBCC")));
 
     const result = await learnIRKey(client, {
       hub3DeviceId: DEVICE_ID,
@@ -207,7 +222,7 @@ describe("learnIRKey", () => {
   });
 
   it("irCode.uuid は remoteId、irCode.deviceId は hub3DeviceId、irCode.data は msg.data.data になる", async () => {
-    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, "DEADBEEF"));
+    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, w("DEADBEEF")));
 
     await learnIRKey(client, {
       hub3DeviceId: DEVICE_ID,
@@ -222,7 +237,7 @@ describe("learnIRKey", () => {
     const addFrame = client.requests.find((f) => f.op === "addIRCode");
     expect(addFrame.irCode.uuid).toBe(REMOTE_ID);
     expect(addFrame.irCode.deviceId).toBe(DEVICE_ID);
-    expect(addFrame.irCode.data).toBe("DEADBEEF");
+    expect(addFrame.irCode.data).toBe(w("DEADBEEF"));
     expect(addFrame.irCode.name).toBe("Vol+");
   });
 
@@ -243,7 +258,7 @@ describe("learnIRKey", () => {
     const onPrompt = vi.fn(() => {
       callOrder.push("onPrompt");
       // 非同期 emit (listener 登録を待つ)
-      scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, "DEADBEEF"));
+      scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, w("DEADBEEF")));
     });
 
     await learnIRKey(client, {
@@ -268,7 +283,7 @@ describe("learnIRKey", () => {
   it("onPrompt が throw しても学習は継続する (try/catch で握りつぶす)", async () => {
     const onPrompt = vi.fn(() => {
       // throw する前に非同期 emit を schedule (Promise listener 登録後に発火)
-      scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, "FF"));
+      scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, w("FF")));
       throw new Error("UI render failed");
     });
 
@@ -282,14 +297,14 @@ describe("learnIRKey", () => {
       onPrompt,
     });
 
-    expect(result.captured).toBe("FF");
+    expect(result.captured).toBe(w("FF"));
     expect(onPrompt).toHaveBeenCalled();
   });
 
   it("onPrompt 未指定でも動作する", async () => {
     // setImmediate / queueMicrotask 相当で emit (await を切ってから)
     setTimeout(() => {
-      client.emit(RSP_TOPIC, rsp(DEVICE_ID, "01"));
+      client.emit(RSP_TOPIC, rsp(DEVICE_ID, w("01")));
     }, 5);
 
     const result = await learnIRKey(client, {
@@ -300,7 +315,7 @@ describe("learnIRKey", () => {
       companyID: COMPANY_ID,
       timeoutMs: 500,
     });
-    expect(result.captured).toBe("01");
+    expect(result.captured).toBe(w("01"));
   });
 
   it("timeout 経過しても波形が来なければ reject される。reject 時も unsubscribe と CONTROL 復帰は実行される", async () => {
@@ -335,7 +350,7 @@ describe("learnIRKey", () => {
     // ここでは timeout の数値そのものは外部から観測できないので、
     // 短時間で emit すれば確実に resolve することを確認する。
     setTimeout(() => {
-      client.emit(RSP_TOPIC, rsp(DEVICE_ID, "AA"));
+      client.emit(RSP_TOPIC, rsp(DEVICE_ID, w("AA")));
     }, 5);
 
     const start = Date.now();
@@ -349,7 +364,7 @@ describe("learnIRKey", () => {
     });
     const elapsed = Date.now() - start;
 
-    expect(result.captured).toBe("AA");
+    expect(result.captured).toBe(w("AA"));
     // 当然 60s ずっと待たない
     expect(elapsed).toBeLessThan(1000);
   });
@@ -405,7 +420,7 @@ describe("learnIRKey", () => {
       addIRCode: () => ({ success: false, message: "quota exceeded" }),
     });
 
-    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, "11"));
+    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, w("11")));
 
     const p = learnIRKey(client, {
       hub3DeviceId: DEVICE_ID,
@@ -441,7 +456,7 @@ describe("learnIRKey", () => {
       addIRCode: { success: true, data: { keyUUID: "k-ok" } },
     });
 
-    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, "22"));
+    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, w("22")));
 
     const result = await learnIRKey(client, {
       hub3DeviceId: DEVICE_ID,
@@ -454,14 +469,14 @@ describe("learnIRKey", () => {
     });
 
     expect(result.saved).toEqual({ keyUUID: "k-ok" });
-    expect(result.captured).toBe("22");
+    expect(result.captured).toBe(w("22"));
     expect(modeCallCount).toBe(2);
   });
 
   it("他デバイス向けの subscribeIRDataRsp は無視され、timeout する", async () => {
     const onPrompt = () => {
       // 別デバイスからの emit
-      client.emit(RSP_TOPIC, rsp("other-device", "FF"));
+      client.emit(RSP_TOPIC, rsp("other-device", w("FF")));
     };
 
     const p = learnIRKey(client, {
@@ -482,7 +497,7 @@ describe("learnIRKey", () => {
       // biz3: 生波形は response.data.data に入る。msg.data.data を captured/irCode.data にする。
       scheduleEmit(client, RSP_TOPIC, {
         deviceId: DEVICE_ID,
-        data: { data: "C0FFEE", extra: "ignored" },
+        data: { data: w("C0FFEE"), extra: "ignored" },
       });
     };
 
@@ -497,16 +512,150 @@ describe("learnIRKey", () => {
     });
 
     // captured は msg.data.data そのもの (msg や msg.data ではない)
-    expect(result.captured).toBe("C0FFEE");
+    expect(result.captured).toBe(w("C0FFEE"));
     const addFrame = client.requests.find((f) => f.op === "addIRCode");
-    expect(addFrame.irCode.data).toBe("C0FFEE");
+    expect(addFrame.irCode.data).toBe(w("C0FFEE"));
   });
 
-  it("msg.data.data が無い場合は captured / irCode.data が undefined になる", async () => {
+  it("msg.data.data が無い (undefined) 場合は reject — 壊れたキーを addIRCode に保存しない (P1-14)", async () => {
     const onPrompt = () => {
       // data フィールド無し → msg.data.data は undefined
       scheduleEmit(client, RSP_TOPIC, { deviceId: DEVICE_ID });
     };
+
+    const p = learnIRKey(client, {
+      hub3DeviceId: DEVICE_ID,
+      remoteId: REMOTE_ID,
+      keyName: "K",
+      irType: 1,
+      companyID: COMPANY_ID,
+      timeoutMs: 200,
+      onPrompt,
+    });
+
+    await expect(p).rejects.toThrow(/空の波形/);
+    // addIRCode は呼ばれない (旧実装は waveform=undefined のまま保存していた)
+    const ops = client.requests.map((f) => f.op);
+    expect(ops).not.toContain("addIRCode");
+    // finally で unsubscribe + CONTROL 復帰は実行される
+    expect(client.requests[2]).toMatchObject({ op: "setIRMode", mode: MODE.CONTROL });
+    expect(client.sends.some((f) => f.op === "unsubscribeIRData")).toBe(true);
+  });
+
+  it("msg.data.data が空文字の場合も reject (P1-14)", async () => {
+    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, ""));
+
+    const p = learnIRKey(client, {
+      hub3DeviceId: DEVICE_ID,
+      remoteId: REMOTE_ID,
+      keyName: "K",
+      irType: 1,
+      companyID: COMPANY_ID,
+      timeoutMs: 200,
+      onPrompt,
+    });
+
+    await expect(p).rejects.toThrow(/空の波形/);
+    expect(client.requests.map((f) => f.op)).not.toContain("addIRCode");
+  });
+
+  // fixture 導出元: references_web/src/pages/personal/devices/wifi-module/ir/learn/index.js:217-249
+  // subscribeIRData の callback は response.success を見て分岐し、success===false は失敗処理
+  // (console.error + exitLearnMode)。データを採用するのは success 時のみ。
+  it("success:false の subscribeIRDataRsp は reject し、addIRCode に進まない (P1-14)", async () => {
+    const onPrompt = () => {
+      scheduleEmit(client, RSP_TOPIC, {
+        deviceId: DEVICE_ID,
+        success: false,
+        message: "subscribe expired",
+      });
+    };
+
+    const p = learnIRKey(client, {
+      hub3DeviceId: DEVICE_ID,
+      remoteId: REMOTE_ID,
+      keyName: "K",
+      irType: 1,
+      companyID: COMPANY_ID,
+      timeoutMs: 200,
+      onPrompt,
+    });
+
+    await expect(p).rejects.toThrow(/IR 学習に失敗しました.*subscribe expired/);
+
+    const ops = client.requests.map((f) => f.op);
+    expect(ops).not.toContain("addIRCode");
+    // finally 経由で unsubscribe + CONTROL 復帰は実行される
+    expect(ops).toEqual(["setIRMode", "subscribeIRData", "setIRMode"]);
+    expect(client.requests[2].mode).toBe(MODE.CONTROL);
+    expect(client.sends.some((f) => f.op === "unsubscribeIRData")).toBe(true);
+  });
+
+  it("success が無い (undefined) push は失敗扱いしない — 明示 false のみ reject (P1-14)", async () => {
+    // 既存の正常 fixture (rsp) は success フィールドを持たない。それが通ることを明示。
+    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, w("AA")));
+    const result = await learnIRKey(client, {
+      hub3DeviceId: DEVICE_ID,
+      remoteId: REMOTE_ID,
+      keyName: "K",
+      irType: 1,
+      companyID: COMPANY_ID,
+      timeoutMs: 200,
+      onPrompt,
+    });
+    expect(result.captured).toBe(w("AA"));
+  });
+
+  // vendor remote-match/index.js:142-149:
+  //   if (!response.data.data || response.data.data.length <= 50) {
+  //     console.log('learning data is empty, continue waiting...'); ... return;
+  //   }
+  it("波形長 <= 50 はノイズ扱いで無視して待機継続し、後続の実波形を採用する (P1-14)", async () => {
+    const noise = "AB".repeat(25); // 50 文字ちょうど (<= 50 → 無視)
+    const real = w("DEAD");        // 56 文字 (> 50 → 採用)
+    const onPrompt = () => {
+      setTimeout(() => {
+        client.emit(RSP_TOPIC, rsp(DEVICE_ID, noise));
+        client.emit(RSP_TOPIC, rsp(DEVICE_ID, real));
+      }, 1);
+    };
+
+    const result = await learnIRKey(client, {
+      hub3DeviceId: DEVICE_ID,
+      remoteId: REMOTE_ID,
+      keyName: "K",
+      irType: 1,
+      companyID: COMPANY_ID,
+      timeoutMs: 500,
+      onPrompt,
+    });
+
+    // noise は採用されず real が captured になる
+    expect(result.captured).toBe(real);
+    const addFrame = client.requests.find((f) => f.op === "addIRCode");
+    expect(addFrame.irCode.data).toBe(real);
+  });
+
+  it("波形長 <= 50 しか来なければ timeout する (待機継続のままタイマーは生きている) (P1-14)", async () => {
+    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, "AB".repeat(10)));
+
+    const p = learnIRKey(client, {
+      hub3DeviceId: DEVICE_ID,
+      remoteId: REMOTE_ID,
+      keyName: "K",
+      irType: 1,
+      companyID: COMPANY_ID,
+      timeoutMs: 30,
+      onPrompt,
+    });
+
+    await expect(p).rejects.toThrow(/learn timeout/);
+    expect(client.requests.map((f) => f.op)).not.toContain("addIRCode");
+  });
+
+  it("波形長 51 (> 50 境界) は採用される (P1-14)", async () => {
+    const edge = "C".repeat(51);
+    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, edge));
 
     const result = await learnIRKey(client, {
       hub3DeviceId: DEVICE_ID,
@@ -518,19 +667,15 @@ describe("learnIRKey", () => {
       onPrompt,
     });
 
-    expect(result.captured).toBeUndefined();
-    const addFrame = client.requests.find((f) => f.op === "addIRCode");
-    expect(addFrame.irCode.data).toBeUndefined();
-    // 旧仕様の irWaveLength 概念は無い
-    expect(addFrame.irCode).not.toHaveProperty("irWaveLength");
+    expect(result.captured).toBe(edge);
   });
 
   it("複数の subscribeIRDataRsp が連続して来ても、最初の 1 個だけが captured になる", async () => {
     const onPrompt = () => {
       // 連続 2 個 (どちらも非同期 emit)。最初の resolve のみ採用される。
       setTimeout(() => {
-        client.emit(RSP_TOPIC, rsp(DEVICE_ID, "FIRST"));
-        client.emit(RSP_TOPIC, rsp(DEVICE_ID, "SECOND"));
+        client.emit(RSP_TOPIC, rsp(DEVICE_ID, w("F1")));
+        client.emit(RSP_TOPIC, rsp(DEVICE_ID, w("5EC0")));
       }, 1);
     };
 
@@ -545,9 +690,9 @@ describe("learnIRKey", () => {
     });
 
     // Promise は 1 回 resolve したらそれ以降の resolve は noop なので、最初の値が勝つ
-    expect(result.captured).toBe("FIRST");
+    expect(result.captured).toBe(w("F1"));
     const addFrame = client.requests.find((f) => f.op === "addIRCode");
-    expect(addFrame.irCode.data).toBe("FIRST");
+    expect(addFrame.irCode.data).toBe(w("F1"));
   });
 
   it("client.send (unsubscribeIRData) が throw しても learnIRKey 自体は成功する (try/catch で握りつぶす)", async () => {
@@ -557,7 +702,7 @@ describe("learnIRKey", () => {
       throw new Error("ws closed");
     });
 
-    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, "AA"));
+    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, w("AA")));
 
     const result = await learnIRKey(client, {
       hub3DeviceId: DEVICE_ID,
@@ -569,12 +714,12 @@ describe("learnIRKey", () => {
       onPrompt,
     });
 
-    expect(result.captured).toBe("AA");
+    expect(result.captured).toBe(w("AA"));
     expect(client.send).toHaveBeenCalled();
   });
 
   it("companyID / deviceId / keyName / remoteId がすべてのフレームに正しく載る", async () => {
-    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, "AB"));
+    const onPrompt = () => scheduleEmit(client, RSP_TOPIC, rsp(DEVICE_ID, w("AB")));
 
     await learnIRKey(client, {
       hub3DeviceId: DEVICE_ID,

@@ -49,6 +49,22 @@ describe("buildShareKeyUrl", () => {
     const { keyIndex, ...noKeyIndex } = OS3_KEY;
     expect(() => buildShareKeyUrl(noKeyIndex, { keyLevel: 0 })).toThrow(/keyIndex required/);
   });
+
+  // ---- BIZ-09: biz3utils.js:127-131 と 1:1 (参照に無いフォールバックを置かない) ----
+
+  it("l は opts.keyLevel のみ — deviceKey.keyLevel へフォールバックしない (biz3utils.js:131)", () => {
+    // OS3_KEY.keyLevel = 0 だが opts 未指定なら biz3 同様 'undefined' が埋まる。
+    const url = buildShareKeyUrl(OS3_KEY, {});
+    const p = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+    expect(p.get("l")).toBe("undefined");
+  });
+
+  it("n は name || deviceKey.deviceName。両欠落時は biz3 同様 'undefined' (biz3utils.js:127 1:1)", () => {
+    const { deviceName, ...noName } = OS3_KEY;
+    const url = buildShareKeyUrl(noName, { keyLevel: 0 });
+    const p = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+    expect(p.get("n")).toBe("undefined");
+  });
 });
 
 describe("parseShareKeyUrl (round-trip)", () => {
@@ -73,5 +89,14 @@ describe("parseShareKeyUrl (round-trip)", () => {
 
   it("sk param が無ければ throw", () => {
     expect(() => parseShareKeyUrl("ssm://UI?t=sk&l=0")).toThrow(/sk param not found/);
+  });
+
+  it("l 欠落時の keyLevel は NaN (biz3utils.js:189 parseInt の 1:1。null には倒さない)", () => {
+    // l パラメータを落とした URL を作る。
+    const url = buildShareKeyUrl(OS3_KEY, { keyLevel: 0 });
+    const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+    const noL = `ssm://UI?t=sk&sk=${encodeURIComponent(params.get("sk"))}`;
+    const back = parseShareKeyUrl(noL);
+    expect(Number.isNaN(back.keyLevel)).toBe(true);
   });
 });

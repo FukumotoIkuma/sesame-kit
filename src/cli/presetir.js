@@ -81,6 +81,35 @@ async function resolveDeviceId(hub, ctx, device) {
 }
 
 /**
+ * `--remote <name>` の config 解決 (P3-8)。
+ * config の remotes[name] から deviceId (親 Hub3) / code / irDeviceUUID / irType / state を引く。
+ * sync (P3-8 で code/state を保存するようになった syncRemotesFromDevices) 済みのプリセット
+ * リモコンなら --code 等を手で渡さずに発射できる。明示オプションが常に優先。
+ *
+ * @param {import("../client.js").SesameHub3} hub
+ * @param {import("../cli.js").CliCtx} ctx
+ * @param {string|undefined} remoteName
+ * @returns {{ deviceId?: string, code?: number, irDeviceUUID?: string, irType?: number, state?: string|null }|undefined}
+ */
+function resolveFromConfigRemote(hub, ctx, remoteName) {
+  if (!remoteName) return {};
+  const { remote, hub3 } = hub.resolveRemote(remoteName);
+  const r = /** @type {{ irDeviceUUID?: string, irType?: number, code?: number|null, state?: string|null }} */ (remote);
+  if (r.code == null) {
+    // code 未保存 = 学習リモコン or 旧 config (sync 前)。preset-ir では code 必須。
+    ctx.die(t("presetir.err.remoteNoCode", { name: remoteName }), 2);
+    return undefined;
+  }
+  return {
+    deviceId: /** @type {string|undefined} */ (hub3.deviceId),
+    code: Number(r.code),
+    irDeviceUUID: r.irDeviceUUID,
+    irType: r.irType,
+    state: r.state ?? null,
+  };
+}
+
+/**
  * @param {import("commander").Command} program
  * @param {import("../cli.js").CliCtx} ctx cli.js makeCtx() が供給する共有コンテキスト
  */
@@ -89,10 +118,11 @@ export function registerPresetIrCommands(program, ctx) {
     .command("preset-ir")
     .description(t("presetir.cmd.parent.desc"));
 
-  // sesame preset-ir air --device <hub3uuid> --code <n> [--power --temp <c> --mode <n> --fan <n> --wind <n> --swing]
+  // sesame preset-ir air [--remote <name>] --device <hub3uuid> --code <n> [--power --temp <c> --mode <n> --fan <n> --wind <n> --swing]
   presetir
     .command("air")
     .description(t("presetir.cmd.air.desc"))
+    .option("--remote <name>", t("presetir.opt.remote"))
     .option("--device <hub3uuid>", t("presetir.opt.device"))
     .option("--code <n>", t("presetir.opt.code"), toInt)
     .option("--power", t("presetir.opt.power"))
@@ -103,19 +133,27 @@ export function registerPresetIrCommands(program, ctx) {
     .option("--swing", t("presetir.opt.swing"))
     .action((opts) =>
       ctx.withHub(async (hub, { opts: gopts }) => {
-        const deviceId = await resolveDeviceId(hub, ctx, opts.device);
+        // P3-8: --remote 指定時は config から deviceId/code/irDeviceUUID/state を解決 (明示優先)。
+        const fromConfig = resolveFromConfigRemote(hub, ctx, opts.remote);
+        if (!fromConfig) return;
+        const deviceId = opts.device || fromConfig.deviceId || await resolveDeviceId(hub, ctx, undefined);
         if (!deviceId) return;
-        if (opts.code == null) {
+        const code = opts.code ?? fromConfig.code;
+        if (code == null) {
           ctx.die(t("presetir.err.codeRequired"), 2);
           return;
         }
         // 指定されたものだけ params に載せ、エアコン状態の既定は本体に委ねる。
+        // savedState (config remote.state) があれば emitAir が復元して既定値に使う (P3-2)。
         /**
          * @type {{ deviceId: string, code: number, power?: boolean,
          *   temperature?: number, mode?: number, fanSpeed?: number,
-         *   windDirection?: number, autoSwing?: boolean }}
+         *   windDirection?: number, autoSwing?: boolean,
+         *   irDeviceUUID?: string, savedState?: string|null }}
          */
-        const params = { deviceId, code: opts.code };
+        const params = { deviceId, code };
+        if (fromConfig.irDeviceUUID) params.irDeviceUUID = fromConfig.irDeviceUUID;
+        if (fromConfig.state) params.savedState = fromConfig.state;
         if (opts.power) params.power = true;
         if (opts.temp != null) params.temperature = opts.temp;
         if (opts.mode != null) params.mode = opts.mode;
@@ -135,23 +173,29 @@ export function registerPresetIrCommands(program, ctx) {
       }),
     );
 
-  // sesame preset-ir button --device <hub3uuid> --code <n> --button <type> --irtype <n>
+  // sesame preset-ir button [--remote <name>] --device <hub3uuid> --code <n> --button <type> --irtype <n>
   presetir
     .command("button")
     .description(t("presetir.cmd.button.desc"))
+    .option("--remote <name>", t("presetir.opt.remote"))
     .option("--device <hub3uuid>", t("presetir.opt.device"))
     .option("--code <n>", t("presetir.opt.code"), toInt)
     .option("--button <type>", t("presetir.opt.button"))
     .option("--irtype <n>", t("presetir.opt.irtypeButton"), toInt)
     .action((opts) =>
       ctx.withHub(async (hub, { opts: gopts }) => {
-        const deviceId = await resolveDeviceId(hub, ctx, opts.device);
+        // P3-8: --remote 指定時は config から deviceId/code/irType/irDeviceUUID を解決 (明示優先)。
+        const fromConfig = resolveFromConfigRemote(hub, ctx, opts.remote);
+        if (!fromConfig) return;
+        const deviceId = opts.device || fromConfig.deviceId || await resolveDeviceId(hub, ctx, undefined);
         if (!deviceId) return;
-        if (opts.code == null) {
+        const code = opts.code ?? fromConfig.code;
+        if (code == null) {
           ctx.die(t("presetir.err.codeRequired"), 2);
           return;
         }
-        if (opts.irtype == null) {
+        const irType = opts.irtype ?? fromConfig.irType;
+        if (irType == null) {
           ctx.die(t("presetir.err.irtypeRequired"), 2);
           return;
         }
@@ -163,9 +207,10 @@ export function registerPresetIrCommands(program, ctx) {
           /** @type {{ command: string, response: object }} */ (
             await hub.presetir.emitButton({
               deviceId,
-              code: opts.code,
-              irType: opts.irtype,
+              code,
+              irType,
               buttonType: opts.button,
+              ...(fromConfig.irDeviceUUID ? { irDeviceUUID: fromConfig.irDeviceUUID } : {}),
             })
           );
         ctx.out(gopts.json, () => {
@@ -175,33 +220,48 @@ export function registerPresetIrCommands(program, ctx) {
       }),
     );
 
-  // sesame preset-ir send --device <hub3uuid> --command <hex> --irtype <n>
+  // sesame preset-ir send [--remote <name>] --device <hub3uuid> --command <hex> --irtype <n>
   presetir
     .command("send")
     .description(t("presetir.cmd.send.desc"))
+    .option("--remote <name>", t("presetir.opt.remote"))
     .option("--device <hub3uuid>", t("presetir.opt.device"))
     .option("--command <hex>", t("presetir.opt.command"))
     .option("--irtype <n>", t("presetir.opt.irtypeSend"), toInt)
     .action((opts) =>
       ctx.withHub(async (hub, { opts: gopts }) => {
-        const deviceId = await resolveDeviceId(hub, ctx, opts.device);
+        // P3-8: send は command を手で渡す前提なので code は不要 (deviceId/irType のみ解決)。
+        // resolveFromConfigRemote は code 必須なので使わず、resolveRemote を直接引く。
+        /** @type {{ deviceId?: string, irType?: number, irDeviceUUID?: string }} */
+        let fromConfig = {};
+        if (opts.remote) {
+          const { remote, hub3 } = hub.resolveRemote(opts.remote);
+          fromConfig = {
+            deviceId: /** @type {string|undefined} */ (hub3.deviceId),
+            irType: remote.irType,
+            irDeviceUUID: remote.irDeviceUUID,
+          };
+        }
+        const deviceId = opts.device || fromConfig.deviceId || await resolveDeviceId(hub, ctx, undefined);
         if (!deviceId) return;
         if (!opts.command) {
           ctx.die(t("presetir.err.commandOptRequired"), 2);
           return;
         }
-        if (opts.irtype == null) {
+        const irType = opts.irtype ?? fromConfig.irType;
+        if (irType == null) {
           ctx.die(t("presetir.err.irtypeRequired"), 2);
           return;
         }
         const response = await hub.presetir.sendIR({
           deviceId,
           command: opts.command,
-          irType: opts.irtype,
+          irType,
+          ...(fromConfig.irDeviceUUID ? { irDeviceUUID: fromConfig.irDeviceUUID } : {}),
         });
         ctx.out(gopts.json, () => {
           console.log(t("presetir.out.sent", { deviceId }));
-        }, { ok: true, deviceId, command: opts.command, irType: opts.irtype, response });
+        }, { ok: true, deviceId, command: opts.command, irType, response });
       }),
     );
 }

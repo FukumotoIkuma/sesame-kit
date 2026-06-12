@@ -94,34 +94,6 @@ export function parseWifiSSIDPublish(payload: Buffer): string;
  */
 export function parseWifiPasswordPublish(payload: Buffer): string;
 /**
- * NETWORK_STATUS publish payload[0] のビットフラグを解析 (CHWifiModule2Device.kt:502-510)。
- *   isAp           = (payload[0] and 2)  > 0   bit1
- *   isNet          = (payload[0] and 4)  > 0   bit2
- *   isIot          = (payload[0] and 8)  > 0   bit3
- *   isAPCheck      = (payload[0] and 16) > 0   bit4
- *   isAPConnecting = (payload[0] and 32) > 0   bit5
- *   isNETConnecting= (payload[0] and 64) > 0   bit6
- *   isIOTConnecting= payload[0] < 0            (Kotlin signed Byte の最上位 bit7)
- *
- * 注: Kotlin の payload[0] は **signed Byte**。最上位 bit (0x80) が立つと負値になり、
- *   isIOTConnecting = (payload[0] < 0) はそのまま bit7 判定と等価。JS では payload[0] は
- *   0..255 の unsigned なので bit7 を (b & 0x80) で判定する (= 等価)。
- *
- * @param {Buffer} payload (>=1B)
- * @returns {{isAp:boolean, isNet:boolean, isIot:boolean, isAPCheck:boolean,
- *            isAPConnecting:boolean, isNETConnecting:boolean, isIOTConnecting:boolean, raw:number}}
- */
-export function parseNetworkStatus(payload: Buffer): {
-    isAp: boolean;
-    isNet: boolean;
-    isIot: boolean;
-    isAPCheck: boolean;
-    isAPConnecting: boolean;
-    isNETConnecting: boolean;
-    isIOTConnecting: boolean;
-    raw: number;
-};
-/**
  * SESAME_KEYS publish payload を 23B チャンクに分割し、子 Sesame の {ssm id → ロック状態} を返す
  * (CHWifiModule2Device.kt:468-485)。各エントリ:
  *   ss2_ir_22   = chunk[0..21]   (22B = base64 で詰めた IR データ)
@@ -189,6 +161,7 @@ export const WM2_ACTION: Readonly<{
     OPEN_OTA_SERVER: 126;
     VERSION_TAG: 127;
 }>;
+export { parseNetworkStatus };
 export class WifiModule2 {
     /**
      * @param {{session?:import("./session.js").SesameBleSession, companyId?:string, deviceUUID?:string}} [opts]
@@ -201,8 +174,6 @@ export class WifiModule2 {
         companyId?: string;
         deviceUUID?: string;
     });
-    /** @type {Set<(parsed: ReturnType<typeof parseWM2Publish>) => void>} */
-    /** @type {(() => void)|null} */
     /**
      * WM2 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。
      * @param {(parsed: ReturnType<typeof parseWM2Publish>) => void} fn
@@ -243,7 +214,16 @@ export class WifiModule2 {
         resultCode: number;
         payload: Buffer;
     }>;
-    /** WM2 に現在の network 状態を要求 (状態は onPublish の {kind:"networkStatus"} で届く)。 */
+    /**
+     * WM2 に現在の network 状態を要求する (NETWORK_STATUS=6 を空 data で送信)。
+     *
+     * 注 (BLEP-07): SDK に NETWORK_STATUS の **送信 (要求)** 経路は存在しない —
+     *   CHWifiModule2Device.kt は NETWORK_STATUS を publish 受信 (kt:502-510) でしか扱わず、
+     *   CHWifiModule2 公開 API (CHWifiModule2.kt:30-39) にも対応メソッドが無い。要求コマンドと
+     *   して空 data を送る本メソッドは kit 独自の発明であり、デバイスが応答する保証はない。
+     * @experimental 実機未検証。受信だけ必要なら onPublish の {kind:"networkStatus"} を購読すればよい
+     *   (デバイスは状態変化時に自発 publish する)。
+     */
     networkStatus(): Promise<{
         resultCode: number;
         payload: Buffer;
@@ -293,6 +273,8 @@ export class WifiModule2 {
         payload: Buffer;
     }>;
 }
+/** @type {import("./index.js").BleRpcOpSpec} */
+export const WM2_RPC_OPS: import("./index.js").BleRpcOpSpec;
 /**
  * insertSesames: data = allKey (子 Sesame の鍵束)。CHWifiModule2Device.kt:380-401 を 1:1 移植。
  *
@@ -318,4 +300,5 @@ export type ChildSesameKey = {
     deviceModel?: string | undefined;
 };
 import { Buffer } from "node:buffer";
+import { parseNetworkStatus } from "./protocol.js";
 //# sourceMappingURL=wm2.d.ts.map

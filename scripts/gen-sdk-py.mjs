@@ -209,12 +209,26 @@ class SesameRpcError(Exception):
 
 # HTTP status → machine-readable error kind (matches src/serve/jsonrpc.js KIND taxonomy and
 # docs/en/integration.md). Used only when an HTTP-level failure has no JSON-RPC error body.
+# Shared by all four client implementations (sdk/ts, sdk/python, clients/js, clients/python).
+# Canonical table: REFACTORING_PLAN.md P4-5/SURF-10, pinned by tests/fixtures/http-kind-map.json.
+#   400/413/415 → bad_params · 401/403 → not_authenticated · 404 → not_implemented
+#   408/429/5xx → connection_lost (retryable) · anything else → internal (not retryable)
 _HTTP_STATUS_KIND = {
     400: "bad_params",
     401: "not_authenticated",
+    403: "not_authenticated",
     404: "not_implemented",
+    408: "connection_lost",
     413: "bad_params",
+    415: "bad_params",
+    429: "connection_lost",
 }
+
+
+def _http_error_kind(status: int) -> str:
+    if status >= 500:  # all 5xx are transient from the client's view
+        return "connection_lost"
+    return _HTTP_STATUS_KIND.get(status, "internal")
 
 
 def _raise_http_error(e: "urllib.error.HTTPError") -> "SesameRpcError":
@@ -241,8 +255,8 @@ def _raise_http_error(e: "urllib.error.HTTPError") -> "SesameRpcError":
         err = body["error"]
         return SesameRpcError(err.get("message", "error"), err.get("code", -32000), err.get("data"))
     status = e.code
-    kind = _HTTP_STATUS_KIND.get(status, "internal")
-    retryable = status >= 500  # 4xx are caller errors (not retryable); 5xx/transient are
+    kind = _http_error_kind(status)
+    retryable = kind == "connection_lost"  # 408/429/5xx are transient; other 4xx are caller errors
     hint = ""
     detail = ""
     if isinstance(body, dict):

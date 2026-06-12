@@ -8,7 +8,13 @@ import { configDefaults, defineConfig } from "vitest/config";
 //    切ってから e2e を単独実行し (`--project`)、ユニットとの CPU 競合自体を無くす。
 const INTEGRATION = [
   "tests/serve/**/*.test.js",
+  // bin/sesame.js を execFileSync で spawn する CLI 契約テスト群。unit の並列負荷下では
+  // node 起動が test timeout を超えて偽陽性で落ちる (HEAD 時点から観測された flake) ため、
+  // 上記コメントの設計どおり全 spawn 系をこの直列 project に置く。
   "tests/cli/json-contract.test.js",
+  "tests/cli/arg-router.test.js",
+  "tests/cli/contract.test.js",
+  "tests/cli/status-transport.test.js",
   "tests/session-ui.test.js",
 ];
 

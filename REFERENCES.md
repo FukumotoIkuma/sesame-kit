@@ -16,10 +16,29 @@ how it actually reads/writes the field, and mirror that exactly.
 Both directories are in `.gitignore` (primary sources, never committed). Drop the
 checkouts here so the inline citations resolve and tracing is one `grep` away:
 
-| Directory | What | Cited in code as |
+Primary source is assigned **per domain**, not per directory:
+
+| Domain | Primary source | Cited in code as |
 |---|---|---|
-| `references_web/` | CANDY-HOUSE **biz3 web** (React). The cloud/auth port's primary source. | `references_web/src/api/useManageDevice.js:147`, `…/useOperateIoT.js`, `…/useIotCtrl.js`, `…/useAuthState.js`, `…/aws-exports.js`, `…/learn/index.js`, etc. |
-| `_sesame_sdk_ref/` | **Android SesameSDK** (Kotlin) + demo app. The BLE port's primary source. | bare `CHHub3Device.kt`, `CHSesame5Device.kt`, `CHSesameOS3.kt`, `CHServerAuth.kt`, `SesameProtocols.kt`, etc. |
+| **auth / token** (login, refresh, ConfirmDevice, token persistence) | `_sesame_sdk_ref/` — the Android app's behavior, including what **AWSMobileClient 2.77.0** does under the hood (CUSTOM_AUTH + device SRP). | `app.properties`, `AWSConfig.kt`, `LoginMailFG.kt`, `CHLoginViewModel.kt`, `CognitoIdentityProviderClientConfig.java`, etc. |
+| **cloud transport** (WS frames, IoT topics, API request/response shapes) | `references_web/` — CANDY-HOUSE **biz3 web** (React). | `references_web/src/api/useManageDevice.js:147`, `…/useOperateIoT.js`, `…/useIotCtrl.js`, `…/aws-exports.js`, `…/learn/index.js`, etc. |
+| **BLE** (OS2/OS3 protocol, peripherals) | `_sesame_sdk_ref/` — **Android SesameSDK** (Kotlin) + demo app. | bare `CHHub3Device.kt`, `CHSesame5Device.kt`, `CHSesameOS3.kt`, `CHServerAuth.kt`, `SesameProtocols.kt`, etc. |
+
+### ⚠️ auth is traced from the **app**, never from the web (absolute constraint)
+
+The web dashboard (`references_web/src/api/useAuthState.js`) authenticates with a
+plain CUSTOM_AUTH flow **without ConfirmDevice**: Cognito issues it a short-lived
+refresh token tied to no confirmed device, so its tokens **cannot be persisted**
+across sessions — the web simply re-logins in the browser. This kit is a
+long-lived CLI/daemon and *must* persist tokens, which is only possible with the
+Android app's flow (AWSMobileClient 2.77.0: CUSTOM_AUTH + device SRP +
+ConfirmDevice → durable, rotatable refresh token).
+
+**Do not "fix" auth code to be more faithful to `useAuthState.js` — that is a
+regression, not a faithful port.** If auth code looks like it diverges from the
+web source, that divergence is intentional; the reference to trace is the app
+(`_sesame_sdk_ref` + AWSMobileClient 2.77.0 behavior). `useAuthState.js` may be
+consulted only as *negative* evidence (what the kit must not do).
 
 Layout so citations resolve verbatim (e.g. `references_web/src/api/useManageDevice.js`):
 

@@ -16,7 +16,8 @@
     c.subscribe(["lockState"], lambda topic, payload: print("EVENT", topic, payload))
     c.wait()
 
-失敗は SesameError(message, kind) を raise (kind: not_authenticated / connection_lost / timeout …)。
+失敗は SesameError(message, kind) を raise (kind: not_authenticated / connection_lost / timeout /
+not_implemented / bad_params / rejected / internal — serve の error.data.kind 7 種と一致)。
 エラーメッセージは「次に何をすべきか」を含む (例: デーモン未起動なら起動コマンドを案内)。
 """
 from __future__ import annotations
@@ -66,6 +67,11 @@ class SesameError(RuntimeError):
         return f"{self.message}{extra}"
 
 
+# HTTP ステータス → SesameError.kind 写像 (出典: REFACTORING_PLAN.md P4-5/SURF-10)。
+# sdk/ts・sdk/python・clients/js と共通の正で、tests/fixtures/http-kind-map.json に固定。
+#   400/413/415→bad_params, 401/403→not_authenticated, 404→not_implemented,
+#   408/429/5xx→connection_lost (再試行可), その他→internal
+# (thin クライアントは retryable フィールドを持たない — connection_lost が再試行可能の意)
 def _http_kind(status: int) -> str:
     if status in (401, 403):
         return "not_authenticated"

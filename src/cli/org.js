@@ -24,6 +24,7 @@
 // 本体側で吸収済みなので、ここでは本体の引数名にそのまま合わせる。
 
 import { buildShareKeyUrl } from "../sharekey.js";
+import { cmacTime } from "../crypto.js";
 import { t } from "../i18n.js";
 
 /**
@@ -381,10 +382,10 @@ export function registerOrgCommands(program, ctx) {
             return;
           }
           console.log(t("org.role.ls.found", { n: list.length }));
-          for (const t of list) {
-            const id = t.id ?? t.tagId ?? "(no-id)";
-            const name = t.name ?? t.tagName ?? "(no-name)";
-            console.log(`  ${id}\t${name}`);
+          // ロールの実フィールドは {tag, access[]} (DataTableColumns.js:560-575)。
+          // id/name は存在しない (P3-10: 旧 `?? ` フォールバック連鎖は誤フィールドを隠すため削除)。
+          for (const tagSetting of list) {
+            console.log(`  ${tagSetting.tag}\t${tagSetting.access.join(",")}`);
           }
         }, { ok: true, count: Array.isArray(list) ? list.length : 0, tags: list });
       }),
@@ -419,7 +420,9 @@ export function registerOrgCommands(program, ctx) {
           ctx.die(t("org.role.rm.need"), 2);
           return;
         }
-        const data = ctx.parseJson(cmdOpts.json, '{"id":"…"}');
+        // removeTag へ渡す data は tagSetting 全体 ({tag, access[]})。
+        // 参照: DataTableColumns.js:627 gManageEmployee.removeTag(tagSetting, …)。
+        const data = ctx.parseJson(cmdOpts.json, t("org.role.rm.hint"));
         if (data === undefined) return;
         const resp = await hub.org.removeTag({ data });
         ctx.out(opts.json, () => {
@@ -675,6 +678,24 @@ export function registerOrgCommands(program, ctx) {
         }
         const data = ctx.parseJson(cmdOpts.json, '{"subUUID":"…","deviceUUID":"…"}');
         if (data === undefined) return;
+        // BIZ-12: ゲスト鍵削除 (guestKeyId あり) は randomTag = cmacTime(device.secretKey) が
+        // 必須 (DeviceUserList.js:117-132 onRemoveUser)。256 秒粒度の時刻 CMAC で手入力は
+        // 事実上不可能なため、未指定なら listDevices から該当 deviceUUID の secretKey を
+        // 引いて自動補完する (同じ計算 = crypto.cmacTime)。
+        if (data.guestKeyId && !data.randomTag) {
+          const list = await hub.listDevices();
+          const devs = Array.isArray(list) ? list : [];
+          const device = devs.find((d) => d.deviceUUID === data.deviceUUID);
+          if (!device) {
+            ctx.die(t("org.keys.rm.deviceNotFound", { deviceUUID: String(data.deviceUUID ?? "") }), 2);
+            return;
+          }
+          if (!device.secretKey) {
+            ctx.die(t("org.keys.rm.noSecretKey", { deviceUUID: String(data.deviceUUID) }), 2);
+            return;
+          }
+          data.randomTag = cmacTime(device.secretKey);
+        }
         const resp = await hub.org.removeEmployeeDeviceKey({ data });
         ctx.out(opts.json, () => {
           console.log(t("org.keys.rm.ok"));

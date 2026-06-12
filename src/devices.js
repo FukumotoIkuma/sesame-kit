@@ -14,6 +14,11 @@ import { assertSuccess, subscribeChunks, badRequest, timeoutError, rejected } fr
 import { t } from "./i18n.js";
 import { productTypeFromModelName } from "./crypto.js";
 import { getValidIdToken } from "./auth.js";
+import {
+  makeCognitoCredentialsProvider,
+  makeApiGatewayTransport,
+  DEFAULT_CH_API_BASE_URL,
+} from "./aws-credentials.js";
 
 /**
  * 下位 WS トランスポート。完全な型は transport.js の Hub3WsClient。
@@ -45,11 +50,30 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
  * 個人ユーザのデバイス一覧。companyID 不要。
+ *
+ * partialOnTimeout (BIZ-14 / バックログ6, オプトイン): true なら timeout 時に reject せず、
+ * その時点までの蓄積を `{partial:true, list}` で resolve する (参照 UI は page push のたびに
+ * 表示へ反映するため、完了前でも部分蓄積が残る — useManageDevice.js:38-55 の setDevices /
+ * useManageEmployee.js:70-88 と同パターン)。指定時は完走しても `{partial:false, list}` の
+ * 同 shape で返る (既定の配列戻りと shape が変わる点に注意)。既定 (false) は従来どおり reject。
+ *
+ * @overload
  * @param {WsClient} client
- * @param {{timeoutMs?: number}} [opts]
+ * @param {{timeoutMs?: number, partialOnTimeout: true}} opts
+ * @returns {Promise<{partial:boolean, list:any[]}>}
+ */
+/**
+ * @overload
+ * @param {WsClient} client
+ * @param {{timeoutMs?: number, partialOnTimeout?: false}} [opts]
  * @returns {Promise<any[]>}
  */
-export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+/**
+ * @param {WsClient} client
+ * @param {{timeoutMs?: number, partialOnTimeout?: boolean}} [opts]
+ * @returns {Promise<any[] | {partial:boolean, list:any[]}>}
+ */
+export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS, partialOnTimeout = false } = {}) {
   // biz3 PubedUserDevice は page 単位 push (vendor 確認: useManageDevice.js:38-55):
   //   message.data = { totalPage, data: { list, page } }
   // page===1 で全置換、page>1 で追記、totalPage===page で完了。単発 resolve だと複数
@@ -60,7 +84,13 @@ export async function getUserDevices(client, { timeoutMs = DEFAULT_TIMEOUT_MS } 
     sendFrame: { action: ACT_MANAGE, op: "getUserDevice" },
     timeoutMs,
     onTimeout: () => timeoutError(t("domain.devices.getUserDeviceTimeout")),
-    result: () => acc,
+    // P3-9: 同 action の success:false (即時エラー応答) で timeout を待たず失敗確定
+    // (useManageDevice.js:27-34 の !message.success 判定)。
+    errorAction: ACT_MANAGE,
+    partialOnTimeout,
+    // partialOnTimeout 時は object 形へ切り替える (subscribeChunks の spread 契約。
+    // timeout 確定時は partial:true へ上書きされる)。
+    result: () => (partialOnTimeout ? { partial: false, list: acc } : acc),
     subscriptions: [{
       key: `${ACT_MANAGE}:PubedUserDevice`,
       /** @param {any} msg @param {(err?: Error) => void} finish */
@@ -131,6 +161,115 @@ export async function deleteDevices(client, { companyID, items }) {
 }
 
 /**
+ * デバイスを company に追加する (biz3ManageDevice/add)。
+ * **デバイスを「増やす」唯一の経路** (del だけある現状は非対称だった — P3-1)。
+ * items は QR 由来のデバイスキーオブジェクト配列 (vendor は addSesameDevicesToBiz3 が
+ * そのまま items に乗せる — useManageDevice.js:256-268)。
+ *
+ * 失敗応答の伝搬: サーバはデバイス数上限で `{success:false, message:"Limit Exceeded"}` を
+ * 返す (useManageDevice.js:28-30)。assertSuccess(strict) がその message を含む
+ * SesameError(rejected) で throw するため、呼び出し側にそのまま伝搬する。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, items: object[]}} p
+ */
+export async function addDevices(client, { companyID, items }) {
+  if (!Array.isArray(items)) throw badRequest("domain.devices.itemsArray");
+  const resp = await client.request(
+    // frame 1:1 (useManageDevice.js:258-263): { action, op:'add', items, companyID }
+    { action: ACT_MANAGE, op: "add", items, companyID },
+    DEFAULT_TIMEOUT_MS,
+  );
+  assertSuccess(resp, "addDevices", { strict: true });
+  return resp;
+}
+
+/**
+ * デバイスの並び順を更新する (biz3ManageDevice/reorderDevices)。
+ * vendor (useManageDevice.js:270-285) は items の各要素に `rank = 0 - index` を
+ * 振ってから送る (先頭ほど大きい = 降順負値)。本関数も同じ採番を行う。
+ * 応答 data は並び替え後のデバイス一覧 (useManageDevice.js:80-81 setCompanyDevices(message.data))。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, items: object[]}} p items は並べたい順のデバイスオブジェクト配列
+ * @returns {Promise<any>} 並び替え後のデバイス一覧 (resp.data)
+ */
+export async function reorderDevices(client, { companyID, items }) {
+  if (!Array.isArray(items)) throw badRequest("domain.devices.itemsArray");
+  // rank 採番は vendor と同じ in-place (useManageDevice.js:272-274 item.rank = 0 - index)。
+  const ranked = items.map((item, index) => ({ ...item, rank: 0 - index }));
+  const resp = await client.request(
+    // frame 1:1 (useManageDevice.js:275-280): { action, op:'reorderDevices', items, companyID }
+    { action: ACT_MANAGE, op: "reorderDevices", items: ranked, companyID },
+    DEFAULT_TIMEOUT_MS,
+  );
+  assertSuccess(resp, "reorderDevices", { strict: true });
+  return resp.data;
+}
+
+/**
+ * デバイスごとの push 通知設定一覧を取得する (biz3ManageDevice/notifyList)。
+ * pushToken はモバイル push トークン (vendor は FCM 等の端末トークンを渡す)。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, pushToken: string, items: object[]}} p
+ * @returns {Promise<any>} 通知設定一覧 (resp.data)
+ */
+export async function getNotifyStatus(client, { companyID, pushToken, items }) {
+  if (!Array.isArray(items)) throw badRequest("domain.devices.itemsArray");
+  const resp = await client.request(
+    // frame 1:1 (useManageDevice.js:287-299): { action, companyID, pushToken, items, op:'notifyList' }
+    { action: ACT_MANAGE, companyID, pushToken, items, op: "notifyList" },
+    DEFAULT_TIMEOUT_MS,
+  );
+  assertSuccess(resp, "getNotifyStatus", { strict: true });
+  return resp.data;
+}
+
+/**
+ * 単機の push 通知 ON/OFF を切り替える (biz3ManageDevice/notifyManage)。
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, pushToken: string, deviceUUID: string, enablePush: number|boolean}} p
+ *   enablePush: vendor はそのまま乗せる (useManageDevice.js:304-318)。boolean は 1/0 へ正規化。
+ */
+export async function switchNotify(client, { companyID, pushToken, deviceUUID, enablePush }) {
+  if (!deviceUUID) throw badRequest("domain.devices.deviceUUIDRequired");
+  const resp = await client.request(
+    // frame 1:1 (useManageDevice.js:308-315): { action, companyID, enablePush, deviceUUID, pushToken, op:'notifyManage' }
+    {
+      action: ACT_MANAGE,
+      companyID,
+      enablePush: typeof enablePush === "boolean" ? (enablePush ? 1 : 0) : enablePush,
+      deviceUUID,
+      pushToken,
+      op: "notifyManage",
+    },
+    DEFAULT_TIMEOUT_MS,
+  );
+  assertSuccess(resp, "switchNotify", { strict: true });
+  return resp;
+}
+
+/**
+ * 充電池モード (リチウム充電池使用フラグ) を切り替える (biz3ManageDevice/switchRecharge)。
+ * vendor フレームに companyID は**乗らない** (useManageDevice.js:360-372)。
+ *
+ * @param {WsClient} client
+ * @param {{deviceUUID: string, isRechargeBattery: boolean|number}} p
+ */
+export async function switchRechargeableBattery(client, { deviceUUID, isRechargeBattery }) {
+  if (!deviceUUID) throw badRequest("domain.devices.deviceUUIDRequired");
+  const resp = await client.request(
+    // frame 1:1 (useManageDevice.js:362-367): { action, deviceUUID, isRechargeBattery: 1|0, op:'switchRecharge' }
+    { action: ACT_MANAGE, deviceUUID, isRechargeBattery: isRechargeBattery ? 1 : 0, op: "switchRecharge" },
+    DEFAULT_TIMEOUT_MS,
+  );
+  assertSuccess(resp, "switchRechargeableBattery", { strict: true });
+  return resp;
+}
+
+/**
  * デバイス state push を購読。subscribeDevicesUpdate (biz3ManageDevice) を投げて購読要求し、
  * 実際の state push は **`biz3TriggerLocker:pubDeviceStateChange`** で届く。
  *
@@ -155,6 +294,25 @@ export function subscribeDevicesUpdate(client, { companyID, items, onUpdate }) {
   });
 }
 
+/**
+ * デバイス一覧の増減 push (`pubUserDeviceChange`) を購読する (P3-5)。
+ *
+ * vendor (useIotCtrl.js:12,23-25): 鍵共有・デバイス追加/削除があるとサーバが
+ * `{action:"biz3TriggerLocker", op:"pubUserDeviceChange", ...}` を push し、
+ * web はそれを受けて getCompanyDevices() でデバイス一覧を再取得する。
+ * 購読要求フレームは存在しない (pubDeviceStateChange と違い subscribe op 無しで届く) ため、
+ * 本関数はローカル購読のみを行う。再接続を跨いでも transport の subscribers は保持される。
+ *
+ * @param {WsClient} client
+ * @param {{onChange: (msg: any) => void}} p
+ * @returns {() => void} unsubscribe
+ */
+export function subscribeUserDeviceChange(client, { onChange }) {
+  return client.subscribe(`biz3TriggerLocker:pubUserDeviceChange`, (msg) => {
+    try { onChange(msg); } catch { /* ignore */ }
+  });
+}
+
 // ---------- history ----------
 
 /**
@@ -169,6 +327,41 @@ export async function getDeviceHistory(client, { companyID, list, pageSize = nul
   );
   assertSuccess(resp, "getDeviceHistory", { strict: true });
   return resp.data;
+}
+
+/**
+ * 単機の開閉履歴を全ページ自動取得する (P3-7、vendor fetchAllHistory 相当)。
+ *
+ * vendor (DeviceHistory.js:37-74 downloadDeviceHistory/fetchAllHistory):
+ *   - lastKey = 直前ページ末尾レコードの timestamp (初回は null)
+ *   - 1 ページ取得して `res.length === pageSize` なら次ページ継続、満たなければ終端
+ *   - pageSize は 100 固定 (DeviceHistory.js:56)
+ *
+ * @param {WsClient} client
+ * @param {{companyID: string, deviceUUID: string, pageSize?: number, maxPages?: number}} p
+ *   maxPages: 安全弁 (vendor には無い意図的逸脱 §0.1-2 — CLI/RPC で無限ループを防ぐ。既定 1000)。
+ * @returns {Promise<any[]>} 全ページを結合した履歴配列
+ */
+export async function getAllDeviceHistory(client, { companyID, deviceUUID, pageSize = 100, maxPages = 1000 }) {
+  if (!deviceUUID) throw badRequest("domain.devices.deviceUUIDRequired");
+  /** @type {any[]} */
+  const all = [];
+  /** @type {number|null} */
+  let lastKey = null;
+  for (let page = 0; page < maxPages; page += 1) {
+    /** @type {any[]} */
+    const res = /** @type {any[]} */ (await getDeviceHistory(client, {
+      companyID,
+      list: [{ deviceUUID, lastKey }],
+      pageSize,
+    })) || [];
+    all.push(...res);
+    // 継続条件は vendor 1:1 (DeviceHistory.js:64: res.length > 0 && res.length === pageSize)。
+    if (!(res.length > 0 && res.length === pageSize)) break;
+    lastKey = res[res.length - 1]?.timestamp ?? null;
+    if (lastKey == null) break; // timestamp 欠落時は継続不能 (vendor は undefined を渡し続けるが無限ループ防止)
+  }
+  return all;
 }
 
 /**
@@ -200,7 +393,11 @@ export async function getBatteryRecord(client, { deviceUUID, lastEvaluatedKey = 
     { action: ACT_BATTERY, op: "batch-get", deviceUUID, lastEvaluatedKey, pageSize },
     DEFAULT_TIMEOUT_MS,
   );
-  assertSuccess(resp, "getBatteryRecord", { strict: true });
+  // P3-18: vendor (MobileBatteryChart.js:39-50 getBatteryRecordCallback) は success を見ずに
+  // message.data.records を読む。strict:true だと success を省略する正常応答を例外化するため、
+  // 非 strict (success===false のみ拒否) に緩める。
+  // 注: 実応答で success フィールドの有無は未確認 (REFACTORING_PLAN §9 V9)。
+  assertSuccess(resp, "getBatteryRecord");
   return resp.data || { records: [], lastEvaluatedKey: null };
 }
 
@@ -238,7 +435,16 @@ export async function listFirmware(client) {
     subscriptions: [{
       key: `${ACT_FIRMWARE}:`,
       /** @param {any} msg @param {(err?: Error) => void} finish */
-      onMessage: (msg, finish) => { data = msg?.data || []; finish(); },
+      onMessage: (msg, finish) => {
+        // P3-9: success:false の即時エラーを空配列の成功に化けさせない
+        // (useDeveloper.js:18-31 は素通しだが、本 kit は明示失敗にする)。
+        if (msg?.success === false) {
+          finish(rejected(t("domain.util.opFailed", { op: "listFirmware", detail: msg?.message || JSON.stringify(msg) }),
+            { upstreamCode: msg?.code ?? null }));
+          return;
+        }
+        data = msg?.data || []; finish();
+      },
     }],
   });
 }
@@ -258,7 +464,11 @@ export async function invokeWebAPI(client, { func, apiKeyId, query = {}, body = 
     { action: ACT_WEBAPI, op: func, apiKeyId, query, body },
     DEFAULT_TIMEOUT_MS,
   );
-  assertSuccess(resp, `invokeWebAPI(${func})`, { strict: true });
+  // P3-18: vendor (useDeveloper.js:18-31 handleAPIInfoResponse) は success を見ずに応答を
+  // そのままコールバックへ流す。strict:true だと success を省略する正常応答を例外化するため、
+  // 非 strict (success===false のみ拒否) に緩める。
+  // 注: 実応答で success フィールドの有無は未確認 (REFACTORING_PLAN §9 V9)。
+  assertSuccess(resp, `invokeWebAPI(${func})`);
   return resp.data;
 }
 
@@ -307,21 +517,23 @@ export function webapiSendCmd(client, { apiKeyId, deviceId, cmd, sign, history }
 
 // ---------- BLE デバイス登録 / 初期ペアリング REST API クライアント (reg-guestkey-sign-client) ----------
 //
-// ★★ 移植忠実性: 未確定 (UNVERIFIED PORT) ★★
-//   このブロック (signGuestKey / registerSesame5) は OS3 デバイス登録 (SESAME5 系) の
-//   REST API クライアントである。リクエスト整形 (パス / フィールド名 / 大文字化 / hex) は
-//   原典 SDK の該当 Kotlin を 1:1 で移植したが、以下は **未照合**:
-//     - REST ホスト (BuildConfig.ch_server)。SDK では gradle ext (candyhouse.sesame.api.*)
-//       由来でリポジトリに焼き込まれておらず、biz3 web (aws-exports.js) も WS gateway しか
-//       持たない。よって本番ホストは config 注入を必須とし、ここでは決め打ちしない。
-//     - API Gateway の認証方式 (IAM SigV4 + Cognito identity pool か idToken Bearer か)。
-//       SDK は ApiClientConfigBuilder で AWSCredentialsProvider (identity pool) を使うが、
-//       本 kit の既存クラウド認証は Cognito idToken (getValidIdToken) のみ。ここでは既存
-//       認証を再利用し Authorization: Bearer <idToken> を付すが、実機 API Gateway が
-//       これを受理するかは E2E 未検証。
-//   本ブロックは SesameBle の needAuthFromServer / registerTransport 経路から任意に呼ばれる。
-//   BLE session-layer の登録ハンドシェイクは実装済みだが、この REST 認証方式そのものは
-//   実機 OS3 register キャプチャで突き合わせるまで未検証として扱う。
+// 認可方式 (参照実装と一致。REFACTORING_PLAN P2-1 / AUTH-01 + AUTH-02):
+//   公式の REST (API Gateway) 認可は「SigV4 (Cognito Identity Pool の一時 credentials) +
+//   x-api-key + appidentifyid」である:
+//     - ApiClientConfigBuilder.kt:34-46 — ApiClientFactory()
+//         .credentialsProvider(credentialsProvider).apiKey(apiKey).region("ap-northeast-1")
+//     - BaseApp.kt:95-102 — setCHAPIClient(): credentialsProvider = AWSMobileClient.getInstance(),
+//       apiKey = BuildConfig.API_GATEWAY_API_KEY (= app.properties:5)
+//     - AppIdentifyIdUtil.kt:42 — appidentifyid = "ap-northeast-1:<ANDROID_ID 相当の安定 ID>"
+//   idToken を Authorization: Bearer に使う箇所は参照 SDK に存在しないため、旧 Bearer 経路は
+//   撤去した。REST ホストは _sesame_sdk_ref/app.properties:2-3 にチェックインされている
+//   (prod = https://app.candyhouse.co/prod)。旧注記の「REST ホストは参照に無い」は虚偽
+//   だったため削除し、既定ホストとして焼き込む (config 上書きは維持)。
+//   実装基盤は src/aws-credentials.js (CognitoCachingCredentialsProvider / ApiClientFactory 相当)
+//   + src/sigv4.js (SigV4 自前実装)。
+//
+// ★ 実機未検証マーカー: ヘッダ構成は参照実装から導出したが、実機 API Gateway での受理は
+//   未検証 (REFACTORING_PLAN §9 V4/V5)。
 //
 // 原典 (CANDY-HOUSE SesameSDK):
 //   co/candyhouse/sesame/server/CHAPIClient.kt:84-96 — エンドポイント定義:
@@ -369,48 +581,66 @@ function assertHttpOk(res, op) {
 }
 
 /**
- * 末尾のスラッシュを線形時間で除去する (正規表現 `/\/+$/` は crafted 入力で
- * ポリノミアル backtracking = ReDoS のため使わない)。
- * @param {string} s
- * @returns {string}
+ * 既定の REST ホスト (app.properties:3 candyhouse.sesame.api.prod = BuildConfig.ch_server)。
+ * config.registerBaseUrl や明示引数で上書き可能。
  */
-function stripTrailingSlashes(s) {
-  let end = s.length;
-  while (end > 0 && s.charCodeAt(end - 1) === 0x2f /* "/" */) end--;
-  return s.slice(0, end);
-}
+export const DEFAULT_REGISTER_BASE_URL = DEFAULT_CH_API_BASE_URL;
 
 /**
- * デフォルト REST transport を作る。原典は API Gateway (AWSCredentialsProvider) だが、
- * 本 kit は既存の Cognito idToken (getValidIdToken) を再利用し Authorization に乗せる。
+ * デフォルト REST transport を作る。
+ * 公式アプリと同じ「SigV4 (Cognito Identity Pool 一時 credentials) + x-api-key」を付ける
+ * (ApiClientConfigBuilder.kt:34-46, BaseApp.kt:95-102。冒頭ブロック注記参照)。
  *
- * ★ホストは UNVERIFIED (上記ブロック注記参照)。`baseUrl` を必ず注入すること。
+ * appidentifyid は付けない (バックログ8: per-op 化)。本 transport が叩くエンドポイント
+ *   POST /device/v1/sesame2/sign        (CHAPIClient.kt:95-96 guestKeysSignPost)
+ *   POST /device/v1/sesame2/{device_id} (CHAPIClient.kt:77-81 register os2)
+ *   POST /device/v1/sesame5/{device_id} (CHAPIClient.kt:84-88 register os3)
+ * には参照に @Parameter(name="appidentifyid", location="header") が無い。
+ * 全列挙表は aws-credentials.js makeApiGatewayTransport の冒頭コメント参照。
+ * 旧実装は appIdentifyId を常時解決・付与していたが参照より広かったため撤去した。
+ * appIdentifyId / config / configStore オプションは後方互換のため受理するが **無視する**。
  *
- * @param {{baseUrl?:string, tokenStore?:import("./tokens.js").TokenStore, fetchImpl?:typeof globalThis.fetch}} [opts]
+ * 認可の入力は次のどちらか:
+ *   - tokenStore — 既存ログイン (`sesame login`) の idToken を Identity Pool に連携して
+ *     一時 credentials を取得する (BaseApp.kt:99 の AWSMobileClient.getInstance() 相当)。
+ *   - credentialsProvider — 取得済み provider を直接注入 (テスト / 上級用)。
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
+ *
+ * @param {{baseUrl?:string,
+ *          tokenStore?:import("./tokens.js").TokenStore,
+ *          credentialsProvider?:import("./aws-credentials.js").CredentialsProviderLike,
+ *          appIdentifyId?:string|null,
+ *          config?:import("./aws-credentials.js").AppIdConfigLike|null,
+ *          configStore?:import("./aws-credentials.js").AppIdConfigStoreLike|null,
+ *          apiKey?:string,
+ *          fetchImpl?:typeof globalThis.fetch}} [opts]
+ *   appIdentifyId / config / configStore は旧 API 互換のため受理するが無視する
+ *   (参照のこれらのエンドポイントに appidentifyid ヘッダは無い)。
  * @returns {RegisterTransport}
  */
-export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalThis.fetch } = {}) {
-  if (!baseUrl) throw badRequest("domain.devices.registerBaseUrlRequired");
-  if (!tokenStore) throw badRequest("domain.devices.registerTokenStoreRequired");
+export function makeRegisterTransport({
+  baseUrl = DEFAULT_REGISTER_BASE_URL,
+  tokenStore,
+  credentialsProvider,
+  apiKey,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  if (!credentialsProvider && !tokenStore) throw badRequest("domain.devices.registerAuthRequired");
   if (typeof fetchImpl !== "function") throw badRequest("domain.devices.registerFetchRequired");
-  const base = stripTrailingSlashes(baseUrl); // 末尾スラッシュ除去 (パスと二重化させない)
-  return async ({ method, path, body }) => {
-    // path 未指定で base + undefined = '...undefined' という無効 URL を作らない (低優先の防御)。
-    if (typeof path !== "string" || !path) throw badRequest("domain.devices.registerPathRequired");
-    const idToken = await getValidIdToken(tokenStore);
-    const res = await fetchImpl(base + path, {
-      method,
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${idToken}`,
-      },
-      body: body != null ? JSON.stringify(body) : undefined,
-    });
-    const text = await res.text();
-    let json;
-    try { json = text ? JSON.parse(text) : null; } catch { json = null; }
-    return { status: res.status, text, json };
-  };
+  const store = /** @type {import("./tokens.js").TokenStore} */ (tokenStore);
+  const provider = credentialsProvider
+    // CognitoCachingCredentialsProvider 相当: 既存ログインの idToken (getValidIdToken が
+    // 失効前 refresh を担う) を Identity Pool に連携して一時 credentials を取得・キャッシュ。
+    || makeCognitoCredentialsProvider({ getIdToken: () => getValidIdToken(store), fetchImpl });
+  return makeApiGatewayTransport({
+    baseUrl: baseUrl || DEFAULT_REGISTER_BASE_URL,
+    credentialsProvider: provider,
+    // appIdentifyId は渡さない (既定 null = ヘッダ無し)。sign/register 系エンドポイントに
+    // appidentifyid は参照に存在しない (CHAPIClient.kt:77-96)。
+    apiKey,
+    fetchImpl,
+  });
 }
 
 /**
@@ -418,24 +648,35 @@ export function makeRegisterTransport({ baseUrl, tokenStore, fetchImpl = globalT
  *
  * register / guest-key signing の REST API は BLE 経路からも使われるが、Cognito の
  * idToken/refreshToken ライフサイクルは `sesame login` が確立した TokenStore に集約する。
- * ここを通すことで CLI/RPC が別ログインや生 Bearer token を持たず、Consumer Client +
+ * ここを通すことで CLI/RPC が別ログインや生 credentials を持たず、Consumer Client +
  * ConfirmDevice による refreshToken 維持をそのまま再利用する。
  *
- * baseUrl は明示値を最優先し、無ければ config.registerBaseUrl を使う。どちらも無い場合、
- * required=false では undefined を返して BLE-only 登録を維持し、required=true では明示エラー。
+ * baseUrl は明示値 > config.registerBaseUrl > DEFAULT_REGISTER_BASE_URL の順。既定ホストが
+ * app.properties:2-3 で確定したため、baseUrl 未設定でも常に transport を返す
+ * (旧「baseUrl 必須 throw / undefined 返し」は撤廃。`required` は後方互換のため受理するが無視)。
+ * appIdentifyId / configStore も後方互換のため受理するが無視する (バックログ8:
+ * sign/register 系エンドポイントに appidentifyid ヘッダは無い — makeRegisterTransport 注記)。
  *
- * @param {{baseUrl?:string|null, config?:{registerBaseUrl?:string|null}|null,
- *          tokenStore?:import("./tokens.js").TokenStore, fetchImpl?:typeof globalThis.fetch,
+ * @param {{baseUrl?:string|null,
+ *          config?:({registerBaseUrl?:string|null} & import("./aws-credentials.js").AppIdConfigLike)|null,
+ *          configStore?:import("./aws-credentials.js").AppIdConfigStoreLike|null,
+ *          tokenStore?:import("./tokens.js").TokenStore,
+ *          credentialsProvider?:import("./aws-credentials.js").CredentialsProviderLike,
+ *          appIdentifyId?:string|null,
+ *          fetchImpl?:typeof globalThis.fetch,
  *          required?:boolean}} [opts]
- * @returns {RegisterTransport|undefined}
+ * @returns {RegisterTransport}
  */
-export function resolveRegisterTransport({ baseUrl, config, tokenStore, fetchImpl, required = false } = {}) {
-  const resolvedBaseUrl = baseUrl || config?.registerBaseUrl || null;
-  if (!resolvedBaseUrl) {
-    if (required) throw badRequest("domain.devices.registerBaseUrlRequired");
-    return undefined;
-  }
-  return makeRegisterTransport({ baseUrl: resolvedBaseUrl, tokenStore, fetchImpl });
+export function resolveRegisterTransport({ baseUrl, config, configStore, tokenStore, credentialsProvider, appIdentifyId, fetchImpl } = {}) {
+  return makeRegisterTransport({
+    baseUrl: baseUrl || config?.registerBaseUrl || DEFAULT_REGISTER_BASE_URL,
+    config,
+    configStore,
+    tokenStore,
+    credentialsProvider,
+    appIdentifyId,
+    fetchImpl,
+  });
 }
 
 /**

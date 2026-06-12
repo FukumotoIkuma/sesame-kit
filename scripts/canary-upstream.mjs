@@ -62,7 +62,9 @@ function validate(schema, value, path = "$") {
     case "array": {
       if (!Array.isArray(value)) return [`${path}: array を期待したが ${typeof value}`];
       const errors = [];
-      value.forEach((item, i) => errors.push(...validate(schema.items, item, `${path}[${i}]`)));
+      value.forEach((item, i) => {
+        errors.push(...validate(schema.items, item, `${path}[${i}]`));
+      });
       return errors;
     }
     case "string":

@@ -7,19 +7,8 @@ import {
   addCompany,
   getPaymentConfig,
 } from "../../src/company.js";
-
-// 最小 mock client: request(frame) を記録し、固定応答を返す。
-// account/getLoginUser.test.js と同じ手本。
-function mockClient(reply) {
-  const sent = [];
-  return {
-    sent,
-    async request(frame) {
-      sent.push(frame);
-      return reply;
-    },
-  };
-}
+// 共有 fake (P5-7 / ARCH-16): request(frame) を記録し、固定応答を返す。
+import { mockClient } from "../helpers/mock-ws.js";
 
 describe("getCompanies", () => {
   it("フレームは {action:'biz3ManageCompany', op:'get'} で companyID/email を含まない", async () => {
@@ -92,10 +81,10 @@ describe("updateCompanyName", () => {
     expect(r).toEqual({ companyID: "ch_A", name: "新名" });
   });
 
-  it("data 欠落時は入力値で補完して返す", async () => {
+  it("data 欠落時は undefined を返す (BIZ-10: 入力値で応答を捏造しない)", async () => {
     const c = mockClient({ success: true });
     const r = await updateCompanyName(c, { companyID: "ch_A", name: "新名" });
-    expect(r).toEqual({ companyID: "ch_A", name: "新名" });
+    expect(r).toBeUndefined();
   });
 
   it("success:false は throw", async () => {

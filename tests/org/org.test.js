@@ -5,47 +5,10 @@
 // chunk 応答 (pubEmployees / pubQueryByCS) は send + subscribe の組合せ。
 // mock client は request/send/subscribe を記録し、subscribe には登録された fn を
 // テスト側から呼び出して push を疑似再現する。
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import * as org from "../../src/org.js";
-
-// 同期 op 用 mock: request(frame) を記録し固定 reply を返す。
-function mockClient(reply) {
-  const sent = [];
-  return {
-    sent,
-    async request(frame) {
-      sent.push(frame);
-      return reply;
-    },
-    send(frame) {
-      sent.push(frame);
-    },
-    subscribe() {
-      return () => {};
-    },
-  };
-}
-
-// chunk op 用 mock: subscribe で登録した fn を保持し、send 後にテストが push を流せる。
-function chunkMockClient() {
-  const sent = [];
-  const subs = new Map();
-  return {
-    sent,
-    request: async (f) => { sent.push(f); },
-    send(frame) { sent.push(frame); },
-    subscribe(key, fn) {
-      subs.set(key, fn);
-      return () => subs.delete(key);
-    },
-    // テスト用: 指定 key の subscriber に push を流す。
-    push(key, msg) {
-      const fn = subs.get(key);
-      if (fn) fn(msg);
-    },
-    hasSub(key) { return subs.has(key); },
-  };
-}
+// 共有 fake (P5-7 / ARCH-16): mockClient = 同期 op 用、chunkMockClient = push 集約 op 用。
+import { mockClient, chunkMockClient } from "../helpers/mock-ws.js";
 
 // ════════════════════════════ employee ════════════════════════════
 
@@ -92,6 +55,35 @@ describe("getEmployees", () => {
     const p = org.getEmployees(c, { companyID: "ch_X" });
     c.push("biz3ManageEmployee:pubEmployees", { success: false, message: "boom" });
     await expect(p).rejects.toThrow(/failed: boom/);
+  });
+
+  describe("partialOnTimeout (BIZ-14 / バックログ6)", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("timeout 時に reject せず {partial:true, count, list} で部分蓄積を返す", async () => {
+      vi.useFakeTimers();
+      const c = chunkMockClient();
+      const p = org.getEmployees(c, { companyID: "ch_X", timeoutMs: 500, partialOnTimeout: true });
+      // totalCount=3 のうち 1 ページ目 (2 件) だけ届いて完了しないまま timeout
+      c.push("biz3ManageEmployee:pubEmployees", {
+        data: { totalCount: 3, data: { list: [{ subUUID: "a" }, { subUUID: "b" }], page: 1 } },
+      });
+      vi.advanceTimersByTime(500);
+      await expect(p).resolves.toEqual({
+        partial: true,
+        count: 3,
+        list: [{ subUUID: "a" }, { subUUID: "b" }],
+      });
+    });
+
+    it("完走時は {partial:false, count, list} の同 shape で返る", async () => {
+      const c = chunkMockClient();
+      const p = org.getEmployees(c, { companyID: "ch_X", partialOnTimeout: true });
+      c.push("biz3ManageEmployee:pubEmployees", {
+        data: { totalCount: 1, data: { list: [{ subUUID: "a" }], page: 1 } },
+      });
+      await expect(p).resolves.toEqual({ partial: false, count: 1, list: [{ subUUID: "a" }] });
+    });
   });
 });
 

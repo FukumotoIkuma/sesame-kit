@@ -16,7 +16,8 @@
 //   - aesCmac で独立計算した期待 MAC と cmacTime 出力が一致
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { aesCmac } from "node-aes-cmac";
+// AES-CMAC は内製実装 (src/aes-cmac.js, RFC 4493)。旧 node-aes-cmac は P5-2 で除去。
+import { aesCmac } from "../../src/aes-cmac.js";
 import { cmacTime } from "../../src/crypto.js";
 
 // RFC 4493 §4 Test Vector 共通鍵

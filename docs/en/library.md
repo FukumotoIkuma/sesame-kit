@@ -137,6 +137,27 @@ import { learnIRKey } from "sesame-kit/ir";
 import { lockLock } from "sesame-kit/lock";
 ```
 
+## Error handling: branch on `err.code`, never on the message
+
+Error **messages thrown by the library are locale-dependent** (they go through the same i18n layer as the CLI, so the text changes with `--lang` / `config.uiLang`). For machine branching, use the structured fields of `SesameError` instead:
+
+```js
+import { SesameError } from "sesame-kit";
+
+try {
+  await hub.unlock("front");
+} catch (e) {
+  if (e instanceof SesameError) {
+    // e.code: "not_connected" | "timeout" | "rejected" | "bad_request" | "unauthenticated"
+    // e.retryable: true on transient failures (timeout / not_connected)
+    // e.data: extra info (e.g. the upstream cloud's own code on "rejected")
+    if (e.retryable) scheduleRetry();
+  }
+}
+```
+
+The same rule applies over `sesame serve`: JSON-RPC errors carry `error.data.kind` (mapped from `code`) — never parse `error.message`.
+
 ## TypeScript
 
 `.d.ts` type definitions are bundled (`types/`, generated from JSDoc with `tsc`). With `moduleResolution: "node16" / "nodenext" / "bundler"`,

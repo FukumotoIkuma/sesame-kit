@@ -150,6 +150,7 @@
     "test:e2e": "vitest run --project e2e",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome lint",
     "build:types": "tsc -p tsconfig.json && node scripts/strip-private-decls.mjs",
     "build:rpc-schema": "node scripts/gen-rpc-schema.mjs",
     "build:grpc-proto": "node scripts/gen-grpc-proto.mjs",
@@ -164,23 +165,52 @@
     "release": "bash scripts/release.sh"
   },
   "dependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.1057.0",
-    "@grpc/grpc-js": "^1.14.4",
-    "@grpc/proto-loader": "^0.8.1",
     "@inquirer/prompts": "^8.5.2",
     "commander": "^15.0.0",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
     "ink": "^7.0.5",
     "ink-select-input": "^6.2.0",
     "ink-text-input": "^6.0.0",
-    "node-aes-cmac": "^0.1.1",
-    "react": "^19.2.7",
-    "ws": "^8.18.0"
+    "react": "^19.2.7"
+  },
+  "peerDependenciesMeta": {
+    "@grpc/grpc-js": {
+      "optional": true
+    },
+    "@grpc/proto-loader": {
+      "optional": true
+    },
+    "ink": {
+      "optional": true
+    },
+    "ink-select-input": {
+      "optional": true
+    },
+    "ink-text-input": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.16",
+    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
+    "@types/react": "^19.2.17",
+    "@types/ws": "^8.18.1",
+    "ink": "^7.0.5",
+    "ink-select-input": "^6.2.0",
     "ink-testing-library": "^4.0.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.7",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
   },

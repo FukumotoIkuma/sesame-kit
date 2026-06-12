@@ -28,6 +28,26 @@ export function buildAirCommandHex(state: {
     keyType?: string;
 }): string;
 /**
+ * 保存済み state (updateRemoteState で永続化した command HEX) から emitAir 入力の
+ * UI state を復元する (P3-2、vendor restoreStateFromRemote 相当)。
+ *
+ * vendor (remote-air/index.js:108-113,564-581): remote.state があれば
+ * parseAirCommand(remote.state) → convertToUIState で UI 状態に戻す。
+ * 不正/空 HEX は null (vendor も復元せず既定値のまま)。
+ *
+ * @param {string|null|undefined} stateHex 保存済み command HEX (remote.state)
+ * @returns {{power:boolean, temperature:number, mode:number, fanSpeed:number,
+ *            windDirection:number, autoSwing:boolean}|null}
+ */
+export function restoreAirState(stateHex: string | null | undefined): {
+    power: boolean;
+    temperature: number;
+    mode: number;
+    fanSpeed: number;
+    windDirection: number;
+    autoSwing: boolean;
+} | null;
+/**
  * 非エアコン (TV/ライト/扇風機) の発射 command (HEX 文字列) を生成。
  * biz3 buildCommand を再現 (remote-non-air/index.js:113-124, 呼び出しフロー extraLogic D)。
  *
@@ -78,14 +98,21 @@ export function sendIR(client: import("./transport.js").Hub3WsClient, p: {
 }): Promise<object>;
 /**
  * エアコン: 状態から command を生成してそのまま発射する複合関数。
+ *
+ * state 復元 (P3-2): `savedState` (updateRemoteState で保存した command HEX。サーバの
+ * remote.state) を渡すと、そこから復元した値を既定値として使い、明示指定の項目だけ上書きする
+ * (vendor remote-air/index.js:108-113 restoreStateFromRemote → ユーザ操作で部分更新、と同じ流れ)。
+ * 発射成功後、irDeviceUUID があれば command を state として自動保存する
+ * (remote-air/index.js:371-383)。
+ *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{
  *   deviceId: string, companyID: string, code: number,
- *   irDeviceUUID?: string, timeoutMs?: number,
+ *   irDeviceUUID?: string, timeoutMs?: number, savedState?: string|null,
  *   power?: boolean, temperature?: number, mode?: number,
  *   fanSpeed?: number, windDirection?: number, autoSwing?: boolean, keyType?: string,
  * }} p
- * @returns {Promise<{command:string, response:object}>}
+ * @returns {Promise<{command:string, response:object, stateSaved:boolean}>}
  */
 export function emitAir(client: import("./transport.js").Hub3WsClient, p: {
     deviceId: string;
@@ -93,6 +120,7 @@ export function emitAir(client: import("./transport.js").Hub3WsClient, p: {
     code: number;
     irDeviceUUID?: string;
     timeoutMs?: number;
+    savedState?: string | null;
     power?: boolean;
     temperature?: number;
     mode?: number;
@@ -103,16 +131,19 @@ export function emitAir(client: import("./transport.js").Hub3WsClient, p: {
 }): Promise<{
     command: string;
     response: object;
+    stateSaved: boolean;
 }>;
 /**
  * 非エアコン (TV/ライト/扇風機): ボタン押下を生成して発射する複合関数。
+ * 発射成功後、irDeviceUUID があれば command を state として自動保存する (P3-2、
+ * remote-non-air/index.js:158-166)。
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{
  *   deviceId: string, companyID: string, code: number,
  *   irType: number, buttonType: string,
  *   irDeviceUUID?: string, timeoutMs?: number,
  * }} p
- * @returns {Promise<{command:string, response:object}>}
+ * @returns {Promise<{command:string, response:object, stateSaved:boolean}>}
  */
 export function emitButton(client: import("./transport.js").Hub3WsClient, p: {
     deviceId: string;
@@ -125,6 +156,7 @@ export function emitButton(client: import("./transport.js").Hub3WsClient, p: {
 }): Promise<{
     command: string;
     response: object;
+    stateSaved: boolean;
 }>;
 /**
  * irType (remote.type) の確定値。
@@ -244,20 +276,58 @@ export class HXDParametersSwapper {
      */
     getAirKey(type?: string): number;
     /**
+     * mode HXD 値 → index (vendor:34-43)。{0x01:自動,0x02:制冷,0x03:除湿,0x04:送風,0x05:制熱}。default 0。
+     * @param {number} value @returns {number}
+     */
+    getModeIndex(value: number): number;
+    /**
      * mode index → HXD 値 (vendor:45-54)。{0:自動,1:制冷,2:除湿,3:送風,4:制熱}
      * @param {number} index @returns {number}
      */
     getModeValue(index: number): number;
+    /**
+     * fanSpeed HXD 値 → index (vendor:57-65)。default 0。
+     * @param {number} value @returns {number}
+     */
+    getFanSpeedIndex(value: number): number;
     /**
      * fanSpeed index → HXD 値 (vendor:67-75)。{0:自動,1:低,2:中,3:高}
      * @param {number} index @returns {number}
      */
     getFanSpeedValue(index: number): number;
     /**
+     * windDirection HXD 値 → index (vendor:78-85)。default 0。
+     * @param {number} value @returns {number}
+     */
+    getWindDirectionIndex(value: number): number;
+    /**
      * windDirection index → HXD 値 (vendor:87-94)。{0:上,1:中,2:下}。default 0x02。
      * @param {number} index @returns {number}
      */
     getWindDirectionValue(index: number): number;
+    /**
+     * parseAirCommand の HXD 状態 → UI state (vendor:221-242 convertToUIState)。
+     * emitAir の入力 (power:boolean, temperature, mode/fanSpeed/windDirection index, autoSwing) と同形。
+     * @param {{power:number, temperature:number, mode:number, fanSpeed:number,
+     *          windDirection:number, autoWindDirection:number}|null} parsedState
+     * @returns {{power:boolean, temperature:number, mode:number, fanSpeed:number,
+     *            windDirection:number, autoSwing:boolean}|null}
+     */
+    convertToUIState(parsedState: {
+        power: number;
+        temperature: number;
+        mode: number;
+        fanSpeed: number;
+        windDirection: number;
+        autoWindDirection: number;
+    } | null): {
+        power: boolean;
+        temperature: number;
+        mode: number;
+        fanSpeed: number;
+        windDirection: number;
+        autoSwing: boolean;
+    } | null;
     /**
      * ライト key (vendor:114-125)。
      * @param {string} type @returns {number}

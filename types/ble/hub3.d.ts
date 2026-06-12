@@ -23,7 +23,11 @@ export function setWifiPasswordData(password: string): Buffer;
  * @returns {Buffer} 16B
  */
 export function removeSesameData(tag: string): Buffer;
-/** networkType 取得コマンドの data (無し)。状態は NETWORK_TYPE(209) publish で届く。 */
+/**
+ * networkType 取得コマンドの data (無し)。
+ * @experimental 実機未検証 (§9 V6)。itemCode 209 は Android SDK に存在せず、biz3 web の native
+ *   ブリッジ挙動 (references_web/src/components/MobileWifiModule.js:219-235) からの推定 (P3-14)。
+ */
 export function networkTypeData(): Buffer<ArrayBuffer>;
 /**
  * SSID_NOTIFY(133) publish payload を解析 (CHHub3Device.kt:322-326)。
@@ -44,10 +48,17 @@ export function parseScanWifiSSID(payload: Buffer): {
     ssid: string;
 };
 /**
- * NETWORK_TYPE(209) publish payload を解析 (CHHub3Device.kt:328-333)。
- *   isWifiConnected = payload[0].toInt() == 1
- *   isLTEConnected  = payload[1].toInt() == 1
- * CHHub3NetWorkType (CHWifiModule2.kt:42-44) の 2 フラグに対応する。
+ * NETWORK_TYPE(209) publish payload を解析する — と推定。
+ *   isWifiConnected = payload[0] == 1
+ *   isLTEConnected  = payload[1] == 1
+ *
+ * 出典 (P3-14): **Android SDK に存在しない**。SesameItemCode は 208 で終端し
+ *   (SesameProtocols.kt:32-53)、CHHub3Device.kt の onGattSesamePublish (kt:272-338) にも 209 の
+ *   ハンドラは無い。biz3 web の native ブリッジが requestNetworkType に対し
+ *   {isWifiConnected, isLTEConnected} の 2 boolean を返す挙動
+ *   (references_web/src/components/MobileWifiModule.js:219-235) からの **推定** で、payload の
+ *   バイト配置 ([wifi 1B][lte 1B]) を裏付ける一次ソースは無い。
+ * @experimental 実機未検証 (§9 V6)。確証が得られない場合は機能ごと削除を検討する。
  *
  * @param {Buffer} payload (>=2B)
  * @returns {{isWifiConnected:boolean, isLTEConnected:boolean}}
@@ -91,15 +102,20 @@ export function parseSesameKeys(payload: Buffer): Array<{
  * Hub3 の publish ({itemCode, body}) を itemCode ごとに解析して `{ kind, ... }` の正規化
  * オブジェクトに変換する (session.onPublish のディスパッチ補助)。
  *
- * 対応 (CHHub3Device.kt:268-340 onGattSesamePublish):
+ * 対応 (CHHub3Device.kt:272-338 onGattSesamePublish):
  *   MECH_SETTING(80)         → { kind:"mechSetting", wifiSSID, wifiPassWord }
+ *   MECH_STATUS(81)          → { kind:"networkStatus", isAp, isNet, isIot, ... }
+ *                              (Hub3 では 81 がロック機構状態ではなく **ネットワーク状態 bit ベクタ**。
+ *                               CHHub3Device.kt:291-301 → CHWifiModule2NetWorkStatus。WM2 の
+ *                               NETWORK_STATUS(6) と同一 bit layout なので protocol.js の
+ *                               parseNetworkStatus を共有する。P3-16)
  *   PUB_KEY_SESAME(102)      → { kind:"sesameKeys", keys:[{deviceUUID,index}] }
  *   MOVE_TO(84)              → { kind:"otaProgress", progress }  (payload.first(), OTA 進捗)
  *   HUB3_ITEM_CODE_SSID_NOTIFY(133)  → { kind:"scanWifiSSID", rssi, ssid }
- *   HUB3_ITEM_CODE_NETWORK_TYPE(209) → { kind:"networkType", isWifiConnected, isLTEConnected }
  *   HUB3_ITEM_CODE_SSID_FIRST(132) / SSID_LAST(134) → { kind:"ssidMarker", itemCode }  (SDK は no-op)
- * 上記以外 (mechStatus(81) はネットワーク状態として session が別途扱う) は
- *   { kind:"unknown", itemCode, body } を返す。
+ *   NETWORK_TYPE(209)        → { kind:"networkType", isWifiConnected, isLTEConnected }
+ *                              (@experimental — SDK 非由来の推定 itemCode。parseNetworkType 参照)
+ * 上記以外は { kind:"unknown", itemCode, body } を返す。
  *
  * @param {{itemCode:number, body:Buffer}} pub
  * @returns {object} 解析結果
@@ -116,8 +132,6 @@ export class Hub3Commands {
     constructor({ session }?: {
         session: import("./session.js").SesameBleSession;
     });
-    /** @type {Set<(parsed:any)=>void>} */
-    /** @type {(() => void)|null} session publish 中継の unsubscribe。 */
     /** Hub3 publish (正規化済み {kind, ...}) を購読。戻り値 unsubscribe。 @param {(parsed:any)=>void} fn */
     onPublish(fn: (parsed: any) => void): () => boolean;
     /** 購読解除 (session の publish 中継を外す)。 */
@@ -151,17 +165,20 @@ export class Hub3Commands {
     }>;
     /**
      * Hub3 に現在の接続種別を要求する (NETWORK_TYPE=209)。
-     * 状態は onPublish の {kind:"networkType"} で届く。
+     * 状態は onPublish の {kind:"networkType"} で届く — と推定。
      *
-     * 注: CHHub3Device.kt は NETWORK_TYPE の **送信 (要求)** 経路を明示しておらず、publish 受信
-     *   (CHHub3Device.kt:328-333) のみ確認できる。要求コマンドとして空 data を送る本メソッドは
-     *   SDK で送信側が確認できない (publish 専用の可能性がある) ため実機未検証。受信だけ必要なら
-     *   onPublish の {kind:"networkType"} を購読すればよい。
+     * 注 (P3-14): itemCode 209 は **Android SDK に存在しない** (SesameItemCode は 208 で終端、
+     *   SesameProtocols.kt:32-53。CHHub3Device.kt に送信・受信どちらのハンドラも無い)。biz3 web の
+     *   native ブリッジ挙動 (requestNetworkType、references_web/src/components/MobileWifiModule.js:219-235)
+     *   からの推定であり、BLE 経路の存在自体が未確認。
+     * @experimental 実機未検証 (§9 V6)。確証が得られない場合は機能ごと削除を検討する。
      */
     networkType(): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
 }
+/** @type {import("./index.js").BleRpcOpSpec} */
+export const HUB3_RPC_OPS: import("./index.js").BleRpcOpSpec;
 import { Buffer } from "node:buffer";
 //# sourceMappingURL=hub3.d.ts.map

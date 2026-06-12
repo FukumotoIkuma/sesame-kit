@@ -15,6 +15,7 @@ import {
   updateFirmware, updateFirmwareBleOnly, updateFirmwareWM2,
   onMoveToOtaProgress, onWM2OtaProgress,
 } from "../../src/ble/dfu.js";
+import { SesameBle } from "../../src/ble/index.js";
 
 const SECRET = "0123456789abcdef0123456789abcdef";
 const WM2_OPEN_OTA_SERVER = 126; // CHWifiModule2Device.kt:540 WM2ActionCode.OPEN_OTA_SERVER
@@ -150,5 +151,101 @@ describe("BLE DFU / OTA", () => {
     dev.emitProgress(WM2_OPEN_OTA_SERVER, 90);
     off();
     expect(got).toEqual([10, 90]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P1-7: ファサード SesameBle.updateFirmware() の機種×送信コマンドのマトリクス。
+// 旧実装は LOCK5 も MOVE_TO(84) へ流していたが、MOVE_TO はモーター駆動命令の番号域で
+// SDK は SS5 に送らない。Kotlin の振る舞い表 (各 file:line) と 1:1 で照合する:
+//   - sesame_5 / ssm_touch / bot_2 / bike_2 / bike_3 → **命令を一切送らず** {session} を返す
+//     (CHSesameOS3.kt:441-449 の共通 no-op。実転送は Nordic DFU 相当が必要で本 kit 未実装)
+//   - hub_3   → MOVE_TO(84) を送る (CHHub3Device.kt:217-230 updateFirmwareBleOnly は Hub3 専用)
+//   - wm_2    → OPEN_OTA_SERVER(126) を送る (CHWifiModule2Device.kt:450-458)
+//   - OS2 (sesame_2) / 未知 model → throw (経路を捏造しない)
+// ---------------------------------------------------------------------------
+
+/** WM2 profile の鏡像 mock (facade.test.js と同形)。導出元: CHWifiModule2Device.kt:314-321 (login)、
+ *  :521-528,539-541 (INITIAL=13)、SesameOS3BleCipher.kt:8-32 (鍵=secret生/sault=token4)。 */
+class MockWM2 {
+  constructor() {
+    this.secret = Buffer.from(SECRET, "hex");
+    this.token = Buffer.from([1, 2, 3, 4]);
+    this.asm = new SegmentAssembler();
+    this.encCount = 0; this.decCount = 0;
+    this.onPacket = null; this.lastCommand = null; this.disconnected = false;
+  }
+  connect(onPacket) {
+    this.onPacket = onPacket;
+    this._emitPlain(Buffer.concat([Buffer.from([OP.PUBLISH, 13]), this.token])); // INITIAL=13
+    return Promise.resolve();
+  }
+  write(seg) {
+    const a = this.asm.feed(Buffer.from(seg));
+    if (!a) return;
+    let frame;
+    if (a.type === SEG.CIPHERTEXT) { frame = ccmDecrypt(this.secret, this.decCount, this.token, a.data, "wm2"); this.decCount++; }
+    else frame = a.data;
+    const item = frame[0];
+    if (a.type === SEG.PLAINTEXT && item === 2) { // login 17B
+      this._emitCipher(Buffer.from([OP.RESPONSE, 2, 0]));
+      return;
+    }
+    this.lastCommand = { item, data: Buffer.from(frame.subarray(1)) };
+    this._emitCipher(Buffer.from([OP.RESPONSE, item, 0x00]));
+  }
+  disconnect() { this.disconnected = true; return Promise.resolve(); }
+  _emitPlain(f) { for (const s of splitSegments(f, SEG.PLAINTEXT)) this.onPacket(s); }
+  _emitCipher(f) { const ct = ccmEncrypt(this.secret, this.encCount, this.token, f, "wm2"); this.encCount++; for (const s of splitSegments(ct, SEG.CIPHERTEXT)) this.onPacket(s); }
+}
+
+describe("SesameBle.updateFirmware 機種×送信コマンドのマトリクス (P1-7)", () => {
+  it.each(["sesame_5", "ssm_touch", "bot_2", "bike_2", "bike_3"])(
+    "%s は命令を一切送らずハンドルを返す (CHSesameOS3.kt:441-449 no-op)",
+    async (model) => {
+      const dev = new MockSesame();
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: dev });
+      await ble.connect();
+      dev.lastCommand = null;
+      const handle = ble.updateFirmware();
+      // 同期でハンドルが返り、device は何も受信していない (MOVE_TO 含むコマンド無送信)。
+      expect(handle.session).toBeTruthy();
+      expect(dev.lastCommand).toBeNull();
+      await ble.close();
+    },
+  );
+
+  it("hub_3 のみ MOVE_TO(84) を空 data で送る (CHHub3Device.kt:217-230)", async () => {
+    const dev = new MockSesame();
+    const ble = new SesameBle({ secretKey: SECRET, model: "hub_3", transport: dev });
+    await ble.connect();
+    const r = await ble.updateFirmware();
+    expect(r.resultCode).toBe(0);
+    expect(dev.lastCommand.item).toBe(ITEM.MOVE_TO); // 84
+    expect(dev.lastCommand.data.length).toBe(0);
+    await ble.close();
+  });
+
+  it("wm_2 は OPEN_OTA_SERVER(126) を空 data で送る (CHWifiModule2Device.kt:450-458、profile wm2 経由)", async () => {
+    const dev = new MockWM2();
+    const ble = new SesameBle({ secretKey: SECRET, model: "wm_2", transport: dev });
+    await ble.connect();
+    const r = await ble.updateFirmware();
+    expect(r.resultCode).toBe(0);
+    expect(dev.lastCommand.item).toBe(WM2_OPEN_OTA_SERVER); // 126
+    expect(dev.lastCommand.data.length).toBe(0);
+    await ble.close();
+  });
+
+  it("OS2 (sesame_2/ssmbot_1/bike_1) と未知 model は明示エラー (OTA 経路を捏造しない)", () => {
+    for (const model of ["sesame_2", "sesame_4", "ssmbot_1", "bike_1", "unknown_xyz"]) {
+      const ble = new SesameBle({ secretKey: SECRET, model, transport: new MockSesame() });
+      expect(() => ble.updateFirmware(), model).toThrow();
+    }
+  });
+
+  it("未接続の OS3 lock は 'device is not available' (CHSesameOS3.kt:447 の device==null 相当)", () => {
+    const ble = new SesameBle({ secretKey: SECRET, model: "sesame_5", transport: new MockSesame() });
+    expect(() => ble.updateFirmware()).toThrow(/not available/);
   });
 });

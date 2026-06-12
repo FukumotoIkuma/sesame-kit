@@ -361,6 +361,14 @@ export function batchAddPacket(data: Buffer, dataIndex: number): {
  * @param {BiometricPublishPacket} pkt    publish パケット (session.onPublish の引数)
  * @param {BiometricDelegate} delegate  下記コールバックの一部または全部を持つオブジェクト
  * @param {unknown} [device]     コールバックへ素通しする識別子 (省略可)
+ * @param {{isRemote?:(boolean|null), isOpenSensor?:boolean}} [opts] 機種文脈 (P3-15 の model 伝搬):
+ *   - isRemote: Remote/Remote Nano 系か。SDK は TRIGGER_DELAYTIME(191) publish を
+ *     device.isRemote() のときだけ delegate へ流す (CHRemoteNanoEventHandler.kt:15-21。BLEP-09)。
+ *     false を渡すと 191 は「処理済み・dispatch 無し」(SDK の handled=true と同義)。
+ *     省略 (null) 時は機種不明として従来どおり dispatch する (後方互換。ファサード経由では
+ *     BiometricCommands が model から確定値を渡す)。
+ *   - isOpenSensor: OpenSensor 系か。PUB_KEY_SESAME(102) の空きスロット判定が >1 になる
+ *     (CHSesameBiometricDeviceImpl.kt:225-231。BLEP-11)。既定 false。
  * @returns {boolean} 生体 capability として処理したら true
  *
  * delegate コールバック (SDK CH*Delegate.kt 1:1):
@@ -375,19 +383,38 @@ export function batchAddPacket(data: Buffer, dataIndex: number): {
  *                  (CHSesameBiometricDeviceImpl.kt:214-217 handleMechStatus + CHDeviceStatusDelegate.onMechStatus)
  *   pubKey:      onSesameKeysReceived({keys,slotFull,emptySlotCount})
  *                  (kt:219-255 handlePubKeySesame + ObservableMutableMap.setSlotFull)。
- *                  ※ slotFull は既定 (非 OpenSensor) 判定。OpenSensor 判定が要る場合は
- *                    呼び出し側で parsePubKeySesame(payload,{isOpenSensor:true}) を直接使う。
+ *                  ※ slotFull の OpenSensor 判定 (>1) は opts.isOpenSensor で切り替わる (BLEP-11)。
  *   battery:     onBatteryVoltageReceived(payloadHex)  (kt:185-187 reportBatteryData(payload.toHexString()))
  *   support:     onSupportChanged(false)               (kt:189-192 setSupport(false))
  *   bleTxPower:  onBleTxPowerReceive(txPower)           (kt:194-197 bleTxPower=payload[0]、符号付き 1B)
  */
-export function handleBiometricPublish(pkt: BiometricPublishPacket, delegate: BiometricDelegate, device?: unknown): boolean;
+export function handleBiometricPublish(pkt: BiometricPublishPacket, delegate: BiometricDelegate, device?: unknown, { isRemote, isOpenSensor }?: {
+    isRemote?: (boolean | null);
+    isOpenSensor?: boolean;
+}): boolean;
 /**
  * card / passcode の enroll publish を 1 登録セッション単位に集約し、セッション終端
  * (*_LAST) で sink へ渡す delegate を生成する。戻り値は BiometricCommands.registerDelegate /
  * handleBiometricPublish にそのまま渡せる delegate オブジェクト。
  *
- * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値)。
+ * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値) に、
+ * 取れる場合は **ファームウェア採番の nameUUID** を加えた 4 値 (P3-11)。
+ *
+ * nameUUID の出典トレース:
+ *   - BLE NOTIFY/ack payload の「名前」位置 ([type 1B][idLen 1B][id idLen B][nameLen 1B][name nameLen B]、
+ *     CHSesameBiometricParseData.kt:10-17 CHSesameTouchCard) に、ファームはタップ登録時に
+ *     **自前で採番した 16B UUID** を載せる。biz3 web は同じ位置のフィールドを `nameUUID` として
+ *     読み (references_web/src/utils/biz3utils.js:365-391 parseHexStrToCardInfo: id の後の
+ *     [nameUUIDLen 1B][nameUUID 16B]。passcode は :393-420 parseHexStrToPasscodeInfo で id 枠 16B
+ *     固定の後に同形)、タップ登録の ack ではこの値を updateCardName へそのまま渡して DB と
+ *     ファームの nameUUID を一致させる (references_web/src/pages/biz/cards/index.js:104-136)。
+ *   - よって BLE 側では parseTouchCard の cardName (hex) が名前位置のフィールドであり、
+ *     それが 16B (= 32 hex) のとき「ファーム採番の nameUUID」とみなして record.nameUUID に載せる。
+ *     16B でない場合 (ユーザーが短い表示名へ rename 済み等) は省略する (取れない種別では省略可)。
+ *   - 値は parseTouchFace と同じ方針で **ハイフン無し hex (小文字)** のまま返す。web の表示は
+ *     insertUUIDIsolationCharacter (biz3utils.js:236-238) でハイフン整形しているだけで、識別子と
+ *     しての値は hex と同値 (ハイフン整形は消費側 access.js の責務)。
+ *
  * sink には kind ('card'|'passcode') と集約配列を渡すだけで、DB へどう載せるか
  * (access.toPostCardList → access.postCards 等) は呼び出し側が決める。
  *
@@ -396,6 +423,9 @@ export function handleBiometricPublish(pkt: BiometricPublishPacket, delegate: Bi
  * @property {string} cardID
  * @property {string} cardName
  * @property {number} cardType
+ * @property {string} [nameUUID] ファームウェア採番の nameUUID (32hex 小文字・ハイフン無し)。
+ *   NOTIFY の名前フィールドが 16B のときのみ存在 (P3-11。access.js 側が postCards/updateCardName
+ *   の同期に消費する)。
  *
  * @typedef {Object} EnrollBatch
  * @property {'card'|'passcode'} kind
@@ -422,93 +452,178 @@ export class BiometricCommands {
     /**
      * @param {BiometricSession} session SesameBleSession 互換 (request(itemCode,data)→Promise<{resultCode,payload}> と
      *                         onPublish(fn)→unsubscribe を持つこと)。
+     * @param {{model?:(string|null)}} [opts] model: デバイス model 文字列 (例 "remote_nano")。
+     *   渡すと publish ディスパッチに機種文脈が伝搬する (P3-15 の model 伝搬):
+     *     - isRemote: TRIGGER_DELAYTIME(191) を remote/remote_nano 以外で黙殺 (BLEP-09、
+     *       CHRemoteNanoEventHandler.kt:15-21)
+     *     - isOpenSensor: PUB_KEY_SESAME の空きスロット判定を >1 に (BLEP-11、
+     *       CHSesameBiometricDeviceImpl.kt:225-231)
+     *   省略時は機種不明として従来挙動 (191 dispatch あり / 非 OpenSensor 判定)。
      */
-    constructor(session: BiometricSession);
-    /**
-     * request の薄いラッパ (将来 timeout 等を一括調整できるよう一箇所に集約)。
-     * @param {number} itemCode
-     * @param {Buffer} data
-     * @returns {Promise<{resultCode:number, payload:Buffer}>}
-     */
-    _req(itemCode: number, data: Buffer): Promise<{
-        resultCode: number;
-        payload: Buffer;
-    }>;
+    constructor(session: BiometricSession, { model }?: {
+        model?: (string | null);
+    });
     /**
      * 登録モード設定。応答後にデバイスが CARD_FIRST/NOTIFY/LAST を push する。
      * @param {number} mode
+     * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
-    cardModeSet(mode: number): Promise<void>;
+    cardModeSet(mode: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     cardModeGet(): Promise<number>;
-    cardGet(): Promise<void>;
-    /** @param {Buffer} id @param {string} hexName */
-    cardAdd(id: Buffer, hexName: string): Promise<void>;
-    /** @param {string} cardID */
-    cardDelete(cardID: string): Promise<void>;
-    /** @param {string} cardId @param {string} touchProUUID */
-    cardMove(cardId: string, touchProUUID: string): Promise<void>;
-    /** @param {string} ID @param {string} hexName */
-    cardChange(ID: string, hexName: string): Promise<void>;
-    /** @param {string} ID @param {string} newID */
-    cardChangeValue(ID: string, newID: string): Promise<void>;
+    /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardGet(): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {Buffer} id @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardAdd(id: Buffer, hexName: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} cardID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardDelete(cardID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} cardId @param {string} touchProUUID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardMove(cardId: string, touchProUUID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} ID @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardChange(ID: string, hexName: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} ID @param {string} newID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardChangeValue(ID: string, newID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * card の一括登録 (STP 分割転送)。STP_ITEM_CODE_CARDS_ADD で送る。
      * @param {Buffer} id @param {(current:number,total:number)=>void} [progress]
      */
     cardBatchAdd(id: Buffer, progress?: (current: number, total: number) => void): Promise<void>;
-    /** @param {number} mode */
-    fingerPrintModeSet(mode: number): Promise<void>;
+    /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    fingerPrintModeSet(mode: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     fingerPrintModeGet(): Promise<number>;
-    fingerPrints(): Promise<void>;
-    /** @param {string} fingerPrintID */
-    fingerPrintDelete(fingerPrintID: string): Promise<void>;
-    /** @param {string} ID @param {string} hexName */
-    fingerPrintChange(ID: string, hexName: string): Promise<void>;
-    /** @param {number} mode */
-    passcodeModeSet(mode: number): Promise<void>;
+    /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    fingerPrints(): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} fingerPrintID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    fingerPrintDelete(fingerPrintID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} ID @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    fingerPrintChange(ID: string, hexName: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeModeSet(mode: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     passcodeModeGet(): Promise<number>;
-    passcodeGet(): Promise<void>;
-    /** @param {Buffer} id @param {string} hexName */
-    passcodeAdd(id: Buffer, hexName: string): Promise<void>;
-    /** @param {string} keyBoardPassCodeID */
-    passcodeDelete(keyBoardPassCodeID: string): Promise<void>;
-    /** @param {string} cardId @param {string} touchProUUID */
-    passcodeMove(cardId: string, touchProUUID: string): Promise<void>;
-    /** @param {string} ID @param {string} hexName */
-    passcodeChange(ID: string, hexName: string): Promise<void>;
+    /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeGet(): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {Buffer} id @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeAdd(id: Buffer, hexName: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} keyBoardPassCodeID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeDelete(keyBoardPassCodeID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} cardId @param {string} touchProUUID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeMove(cardId: string, touchProUUID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} ID @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeChange(ID: string, hexName: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * passcode の一括登録 (STP 分割転送)。STP_ITEM_CODE_PASSCODES_ADD で送る。
      * @param {Buffer} data @param {(current:number,total:number)=>void} [progress]
      */
     passcodeBatchAdd(data: Buffer, progress?: (current: number, total: number) => void): Promise<void>;
-    /** @param {number} mode */
-    faceModeSet(mode: number): Promise<void>;
+    /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    faceModeSet(mode: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     faceModeGet(): Promise<number>;
-    faceListGet(): Promise<void>;
-    /** @param {string} ID @param {string} name */
-    faceChange(ID: string, name: string): Promise<void>;
-    /** @param {string} faceID */
-    faceDelete(faceID: string): Promise<void>;
-    /** @param {number} mode */
-    palmModeSet(mode: number): Promise<void>;
+    /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    faceListGet(): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} ID @param {string} name @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    faceChange(ID: string, name: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} faceID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    faceDelete(faceID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    palmModeSet(mode: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     palmModeGet(): Promise<number>;
-    palmListGet(): Promise<void>;
-    /** @param {string} palmID */
-    palmDelete(palmID: string): Promise<void>;
+    /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    palmListGet(): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} palmID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    palmDelete(palmID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * Remote Nano のトリガ遅延秒を設定する (CHRemoteNanoCapableImpl.setTriggerDelayTime と 1:1)。
      * itemCode 190 + [time(UByte 1B)]。応答後にデバイスが TRIGGER_DELAYTIME(191) を push しうる
      * (publish は registerDelegate の onTriggerDelaySecondReceived で受ける)。
      * @param {number} time 0..255 (秒)
+     * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
-    setTriggerDelay(time: number): Promise<void>;
+    setTriggerDelay(time: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * Face のレーダー感度パラメータを設定する (CHDeviceConnectCapableImpl.setRadarSensitivity と 1:1)。
      * itemCode 200 + payload を無加工で送る。payload 構造は SDK 側でも不透明 (生バイト)。
      * 受信 (RADAR_PARAM_PUBLISH=201) は registerDelegate の onRadarReceive で生 payload を受ける。
      * @param {Buffer} payload レーダーパラメータの生バイト列
+     * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
-    setRadarSensitivity(payload: Buffer): Promise<void>;
+    setRadarSensitivity(payload: Buffer): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * 子 Sesame の鍵を connector デバイスへ追加する (CHDeviceConnectCapableImpl.insertSesame と 1:1)。
      * OS3 子鍵は `{deviceUUID, secretKey}`、OS2 子鍵はそれに `sesame2PublicKey` を加えて渡す。
@@ -537,18 +652,9 @@ export class BiometricCommands {
         payload: Buffer;
     }>;
     /**
-     * STP 分割転送による一括登録 (cardBatchAdd / passcodeBatchAdd 共通実体)。
-     * SDK CHCardCapableImpl.kt:106-160 / CHPassCodeCapableImpl.kt:52-114 を 1:1 で移植:
-     *   209B ずつに分割し、各パケットを [dataIndex(2B LE)][dataSize(2B LE)][chunk] で送る。
-     *   1 パケットごとに送信完了を待ち (request の Promise が CountDownLatch 相当)、
-     *   次パケットが残るなら 4 秒待つ。
-     * @param {number} stpItemCode STP_ITEM_CODE_CARDS_ADD / STP_ITEM_CODE_PASSCODES_ADD
-     * @param {Buffer} data 全登録データ
-     * @param {(current:number,total:number)=>void} [progress] 進捗コールバック
-     */
-    _batchAdd(stpItemCode: number, data: Buffer, progress?: (current: number, total: number) => void): Promise<void>;
-    /**
      * publish 受信を delegate に結線する (session.onPublish へ handleBiometricPublish を登録)。
+     * コンストラクタへ渡した model から確定した機種文脈 (isRemote / isOpenSensor) を
+     * handleBiometricPublish へ伝搬する (BLEP-09 / BLEP-11)。
      * @param {BiometricDelegate} delegate handleBiometricPublish の delegate
      * @param {unknown} [device] コールバックへ素通しする識別子
      * @returns {() => void} unsubscribe (session.onPublish が無ければ no-op)
@@ -571,6 +677,46 @@ export class BiometricCommands {
     }): () => void;
 }
 export { STP_ITEM_CODES as STP_ITEM };
+/**
+ * `biometric` サブファサード (Touch / Touch Pro / Face / Palm の card/passcode/face/palm 登録 +
+ * connector 共通面) の RPC 公開仕様。
+ *
+ * 各 op の出典 (位置引数の意味・順序の裏取り):
+ *   card:     CHCardCapableImpl.kt:38-174 (cardModeGet/Set:38,49 / cardAdd:83 / cardDelete:60 /
+ *             cardMove:72 / cardChange:158 / cardChangeValue:169)
+ *   passcode: CHPassCodeCapableImpl.kt:27-130 (keyBoardPassCode* — modeGet/Set:27,33 / add:39 /
+ *             delete:113 / move:119 / change:130)
+ *   face:     CHFaceCapableImpl.kt:22-51 (faceModeSet:22 / faceModeGet:29 / faceListGet:39 /
+ *             faceChange:45 / faceDelete:51)
+ *   palm:     CHPalmCapableImpl.kt:19-42 (palmModeSet:19 / palmModeGet:26 / palmListGet:36 / palmDelete:42)
+ *   connect:  CHDeviceConnectCapableImpl.kt:23-95 (insertSesame:23 / removeSesame:52 / setRadarSensitivity:89)
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const BIOMETRIC_RPC_OPS: import("./index.js").BleRpcOpSpec;
+/**
+ * `fingerPrint` サブファサード (SESAME Bike3 の指紋登録、CHFingerPrintCapable) の RPC 公開仕様。
+ * Bike3 は card/passcode/face/palm を持たず指紋のみ。registerDelegate は除外 (publish 購読の
+ * ローカルコールバック登録)。
+ *
+ * 出典: CHFingerPrintCapableImpl.kt:20-64 (fingerPrintModeGet:20 / fingerPrintModeSet:31 /
+ *   fingerPrintDelete:42 / fingerPrints:53 / fingerPrintsChange:64)。
+ * ※ ファサード公開名は `fingerPrintChange` (SDK の fingerPrintsChange に対応、index.js fingerPrint ゲッタ)。
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const FINGERPRINT_RPC_OPS: import("./index.js").BleRpcOpSpec;
+/**
+ * `remoteNano` サブファサード (Remote / Remote Nano 専用面、connector 共通面 + trigger delay) の
+ * RPC 公開仕様。registerDelegate は除外 (publish 購読のローカルコールバック登録)。
+ *
+ * ★ 公開名 `setTriggerDelayTime` は SDK CHRemoteNanoCapable.kt:8 と 1:1 (index.js remoteNano ゲッタが
+ *   BiometricCommands.setTriggerDelay へ委譲)。読み出しコマンドは SDK に無い (現在値は
+ *   TRIGGER_DELAYTIME(191) publish が運び registerDelegate で受ける) ため getTriggerDelay 等は無い。
+ *
+ * 出典: CHRemoteNanoCapableImpl.kt:19-28 (setTriggerDelayTime) /
+ *   CHDeviceConnectCapableImpl.kt:23-95 (insertSesame:23 / removeSesame:52 / setRadarSensitivity:89)。
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const REMOTE_NANO_RPC_OPS: import("./index.js").BleRpcOpSpec;
 /**
  * publish パケット 1 件 (session.onPublish が渡す {opCode, itemCode, body})。
  */
@@ -627,7 +773,24 @@ export type BiometricDelegate = {
  * (*_LAST) で sink へ渡す delegate を生成する。戻り値は BiometricCommands.registerDelegate /
  * handleBiometricPublish にそのまま渡せる delegate オブジェクト。
  *
- * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値)。
+ * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値) に、
+ * 取れる場合は **ファームウェア採番の nameUUID** を加えた 4 値 (P3-11)。
+ *
+ * nameUUID の出典トレース:
+ *   - BLE NOTIFY/ack payload の「名前」位置 ([type 1B][idLen 1B][id idLen B][nameLen 1B][name nameLen B]、
+ *     CHSesameBiometricParseData.kt:10-17 CHSesameTouchCard) に、ファームはタップ登録時に
+ *     **自前で採番した 16B UUID** を載せる。biz3 web は同じ位置のフィールドを `nameUUID` として
+ *     読み (references_web/src/utils/biz3utils.js:365-391 parseHexStrToCardInfo: id の後の
+ *     [nameUUIDLen 1B][nameUUID 16B]。passcode は :393-420 parseHexStrToPasscodeInfo で id 枠 16B
+ *     固定の後に同形)、タップ登録の ack ではこの値を updateCardName へそのまま渡して DB と
+ *     ファームの nameUUID を一致させる (references_web/src/pages/biz/cards/index.js:104-136)。
+ *   - よって BLE 側では parseTouchCard の cardName (hex) が名前位置のフィールドであり、
+ *     それが 16B (= 32 hex) のとき「ファーム採番の nameUUID」とみなして record.nameUUID に載せる。
+ *     16B でない場合 (ユーザーが短い表示名へ rename 済み等) は省略する (取れない種別では省略可)。
+ *   - 値は parseTouchFace と同じ方針で **ハイフン無し hex (小文字)** のまま返す。web の表示は
+ *     insertUUIDIsolationCharacter (biz3utils.js:236-238) でハイフン整形しているだけで、識別子と
+ *     しての値は hex と同値 (ハイフン整形は消費側 access.js の責務)。
+ *
  * sink には kind ('card'|'passcode') と集約配列を渡すだけで、DB へどう載せるか
  * (access.toPostCardList → access.postCards 等) は呼び出し側が決める。
  *
@@ -637,13 +800,36 @@ export type EnrollRecord = {
     cardID: string;
     cardName: string;
     cardType: number;
+    /**
+     * ファームウェア採番の nameUUID (32hex 小文字・ハイフン無し)。
+     * NOTIFY の名前フィールドが 16B のときのみ存在 (P3-11。access.js 側が postCards/updateCardName
+     * の同期に消費する)。
+     */
+    nameUUID?: string | undefined;
 };
 /**
  * card / passcode の enroll publish を 1 登録セッション単位に集約し、セッション終端
  * (*_LAST) で sink へ渡す delegate を生成する。戻り値は BiometricCommands.registerDelegate /
  * handleBiometricPublish にそのまま渡せる delegate オブジェクト。
  *
- * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値)。
+ * 集約レコードは parseTouchCard 由来の { cardID, cardName, cardType } (NOTIFY で渡る 3 値) に、
+ * 取れる場合は **ファームウェア採番の nameUUID** を加えた 4 値 (P3-11)。
+ *
+ * nameUUID の出典トレース:
+ *   - BLE NOTIFY/ack payload の「名前」位置 ([type 1B][idLen 1B][id idLen B][nameLen 1B][name nameLen B]、
+ *     CHSesameBiometricParseData.kt:10-17 CHSesameTouchCard) に、ファームはタップ登録時に
+ *     **自前で採番した 16B UUID** を載せる。biz3 web は同じ位置のフィールドを `nameUUID` として
+ *     読み (references_web/src/utils/biz3utils.js:365-391 parseHexStrToCardInfo: id の後の
+ *     [nameUUIDLen 1B][nameUUID 16B]。passcode は :393-420 parseHexStrToPasscodeInfo で id 枠 16B
+ *     固定の後に同形)、タップ登録の ack ではこの値を updateCardName へそのまま渡して DB と
+ *     ファームの nameUUID を一致させる (references_web/src/pages/biz/cards/index.js:104-136)。
+ *   - よって BLE 側では parseTouchCard の cardName (hex) が名前位置のフィールドであり、
+ *     それが 16B (= 32 hex) のとき「ファーム採番の nameUUID」とみなして record.nameUUID に載せる。
+ *     16B でない場合 (ユーザーが短い表示名へ rename 済み等) は省略する (取れない種別では省略可)。
+ *   - 値は parseTouchFace と同じ方針で **ハイフン無し hex (小文字)** のまま返す。web の表示は
+ *     insertUUIDIsolationCharacter (biz3utils.js:236-238) でハイフン整形しているだけで、識別子と
+ *     しての値は hex と同値 (ハイフン整形は消費側 access.js の責務)。
+ *
  * sink には kind ('card'|'passcode') と集約配列を渡すだけで、DB へどう載せるか
  * (access.toPostCardList → access.postCards 等) は呼び出し側が決める。
  *

@@ -7,16 +7,23 @@
  * page===1 で全置換、page>1 で追記。本実装は totalCount と蓄積件数が一致するまで
  * (または次 chunk が来なくなるまで) 待ち、全 list を 1 配列で返す。
  *
+ * partialOnTimeout (BIZ-14, オプトイン): true なら timeout 時に reject せず、その時点までの
+ * 蓄積を `{partial:true, count, list}` で resolve する (参照 UI は page push のたびに表示へ
+ * 反映するため、完了前でも部分結果が残る — useManageEmployee.js:70-88)。指定時は完走しても
+ * `{partial:false, count, list}` の同 shape で返る。既定 (false) は従来どおり timeout で reject。
+ *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{companyID:string, timeoutMs?:number}} params
- * @returns {Promise<{count:number, list:any[]}>}  count=totalCount, list=全社員
+ * @param {{companyID:string, timeoutMs?:number, partialOnTimeout?:boolean}} params
+ * @returns {Promise<{count:number, list:any[], partial?:boolean}>}  count=totalCount, list=全社員
  */
-export function getEmployees(client: import("./transport.js").Hub3WsClient, { companyID, timeoutMs }: {
+export function getEmployees(client: import("./transport.js").Hub3WsClient, { companyID, timeoutMs, partialOnTimeout }: {
     companyID: string;
     timeoutMs?: number;
+    partialOnTimeout?: boolean;
 }): Promise<{
     count: number;
     list: any[];
+    partial?: boolean;
 }>;
 /**
  * ログイン中の自分自身の社員情報を取得する。companyID も items も不要。
@@ -95,14 +102,22 @@ export function reorderEmployees(client: import("./transport.js").Hub3WsClient, 
  * page 単位の chunk が来るので page===totalPage まで蓄積し、全 list を返す。
  * 各 chunk: res.data = { data:{ list, page }, totalPage }。
  *
+ * partialOnTimeout (BIZ-14, オプトイン): true なら timeout 時に reject せず、その時点までの
+ * 蓄積を `{partial:true, list}` で resolve する (完走時も `{partial:false, list}` の同 shape。
+ * 既定の配列戻りと shape が変わる点に注意)。既定 (false) は従来どおり timeout で reject。
+ *
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{keyword:string, timeoutMs?:number}} params
- * @returns {Promise<any[]>} 全 chunk を結合した検索結果リスト
+ * @param {{keyword:string, timeoutMs?:number, partialOnTimeout?:boolean}} params
+ * @returns {Promise<any[] | {partial:boolean, list:any[]}>} 全 chunk を結合した検索結果リスト
  */
-export function queryByCS(client: import("./transport.js").Hub3WsClient, { keyword, timeoutMs }: {
+export function queryByCS(client: import("./transport.js").Hub3WsClient, { keyword, timeoutMs, partialOnTimeout }: {
     keyword: string;
     timeoutMs?: number;
-}): Promise<any[]>;
+    partialOnTimeout?: boolean;
+}): Promise<any[] | {
+    partial: boolean;
+    list: any[];
+}>;
 /**
  * queryByCS で見つけたユーザーを確定する。
  * biz3: { action, email, op:'confirmQueryByCS' } (useManageEmployee.js:420-432)。

@@ -98,8 +98,8 @@ export class Hub3WsClient {
     idToken: string;
     onTokenRefreshNeeded: ((oldToken: string) => Promise<string | null>) | null;
     onReopen: (() => void) | null;
-    /** @type {WsLike | null} */
-    ws: WsLike | null;
+    /** @type {WebSocket | null} */
+    ws: WebSocket | null;
     /** @type {WsStatus} */
     status: WsStatus;
     /** @type {Map<string, ((msg: WsMessage|CodedError)=>void)[]>} action+op → FIFO の resolver 配列 */
@@ -127,9 +127,6 @@ export class Hub3WsClient {
     reconnectTimer: ReturnType<typeof setTimeout> | null;
     /** @type {ReturnType<typeof setInterval> | null} */
     sleepDetectorTimer: ReturnType<typeof setInterval> | null;
-    /** @type {Promise<void> | null} */
-    /** @type {(() => void) | null} */
-    /** @type {((reason?: unknown) => void) | null} */
     /** @param {...unknown} args */
     log(...args: unknown[]): void;
     /**
@@ -174,60 +171,12 @@ export class Hub3WsClient {
     ping(timeoutMs?: number): Promise<boolean>;
     /** 接続状態 (デバッグ・テスト用)。 */
     getStatus(): WsStatus;
-    _initWebSocket(): void;
-    _onOpen(): void;
-    /**
-     * @param {number} code
-     * @param {Buffer} [reason]
-     */
-    _onClose(code: number, reason?: Buffer): void;
-    /** @param {Error} err */
-    _onError(err: Error): void;
-    /** 受動的再接続 (close を契機)。exponential backoff。 */
-    _handleReconnect(): void;
-    /** 能動的再接続 (pong timeout / sleep wake / idle 検知)。delay なし。 */
-    _reconnect(): void;
-    /** @param {Buffer|string} raw */
-    _onMessage(raw: Buffer | string): void;
-    /**
-     * @param {string} key
-     * @param {(msg: WsMessage|CodedError)=>void} resolver
-     */
-    _registerPending(key: string, resolver: (msg: WsMessage | CodedError) => void): void;
-    /**
-     * @param {string} key
-     * @param {(msg: WsMessage|CodedError)=>void} resolver
-     */
-    _unregisterPending(key: string, resolver: (msg: WsMessage | CodedError) => void): void;
-    /** @param {CodedError} err */
-    _rejectAllPending(err: CodedError): void;
-    /** @param {WsFrame} payload */
-    _sendOrQueue(payload: WsFrame): void;
-    _flushMessageQueue(): void;
-    _startKeepalive(): void;
-    _triggerHeartbeatCheck(): void;
-    _clearKeepalive(): void;
-    _startSleepDetector(): void;
-    _stopSleepDetector(): void;
-    _wakeUpConnection(): void;
-    _clearAllTimers(): void;
 }
 /**
  * `.code` 付きの Error。serve daemon が code で kind を分類する。
  */
 export type CodedError = Error & {
     code?: string;
-};
-/**
- * transport が利用する WebSocket socket の最小インターフェース。
- * `ws` の WebSocket インスタンスがこれを満たす (型定義非同梱のため自前定義)。
- */
-export type WsLike = {
-    send: (data: string) => void;
-    close: () => void;
-    removeAllListeners: (event?: string) => void;
-    on: (event: string, listener: (...args: any[]) => void) => void;
-    once: (event: string, listener: (...args: any[]) => void) => void;
 };
 /**
  * WS 接続状態。
@@ -285,4 +234,5 @@ export type Hub3WsClientConfig = {
      */
     onReopen?: (() => void) | null | undefined;
 };
+import WebSocket from "ws";
 //# sourceMappingURL=transport.d.ts.map

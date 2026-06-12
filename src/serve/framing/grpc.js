@@ -7,13 +7,16 @@
 // loopback token を metadata (authorization: Bearer) か SubReq.token で要求。
 
 import { readFileSync } from "node:fs";
-import grpc from "@grpc/grpc-js";
-import protoLoader from "@grpc/proto-loader";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { tokenMatches } from "./token.js";
+import { tokenMatches, parseBearer } from "./token.js";
 import { errorFromThrow } from "../jsonrpc.js";
 import { t } from "../../i18n.js";
+// @grpc/grpc-js / @grpc/proto-loader は optional peerDependencies (REFACTORING_PLAN P5-1):
+// ライブラリ利用者に gRPC スタックを強制しないため、トップレベル import せず
+// startGrpcFraming() 内で遅延 import する。未導入時は importOptional が
+// 「npm i @grpc/grpc-js @grpc/proto-loader で --grpc が使える」案内エラーを投げる。
+import { importOptional } from "../../optional-deps.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROTO_PATH = resolve(HERE, "..", "sesame.proto");
@@ -46,22 +49,6 @@ function endStreamWithError(call, code, message) {
   call.emit("error", { code, details: message });
 }
 
-/** RpcError.kind → gRPC status (gRPC の作法に沿って status でエラーを返す)。
- * @param {string} kind
- * @returns {number}
- */
-function grpcStatusFor(kind) {
-  switch (kind) {
-    case "not_authenticated": return grpc.status.UNAUTHENTICATED;
-    case "bad_params": return grpc.status.INVALID_ARGUMENT;
-    case "not_implemented": return grpc.status.UNIMPLEMENTED;
-    case "connection_lost":
-    case "timeout": return grpc.status.UNAVAILABLE;
-    case "rejected": return grpc.status.FAILED_PRECONDITION; // 上流が明示的に拒否 (server bug ではない)
-    default: return grpc.status.INTERNAL;
-  }
-}
-
 /**
  * @param {GrpcCall} call
  * @returns {string}
@@ -69,7 +56,9 @@ function grpcStatusFor(kind) {
 function metaToken(call) {
   const md = call.metadata?.get?.("authorization");
   const raw = md && md[0] ? String(md[0]) : "";
-  return /^Bearer\s+(.+)$/i.exec(raw)?.[1] || "";
+  // Bearer 解析は token.js の parseBearer に一本化 (REFACTORING_PLAN P1-17)。
+  // 旧 `/^Bearer\s+(.+)$/i` は token.js が ReDoS を実測して廃止した禁止パターンの再実装だった。
+  return parseBearer(raw) ?? "";
 }
 
 /**
@@ -78,6 +67,33 @@ function metaToken(call) {
  * @returns {Promise<{ port:number, stop:()=>Promise<void> }>}
  */
 export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token }) {
+  // optional peerDependencies の遅延 import (P5-1)。未導入なら importOptional が
+  // i18n 済みの導入案内エラー (serve.grpc.missingDeps) を投げ、--grpc 以外の経路は影響を受けない。
+  const missingHint = t("serve.grpc.missingDeps");
+  const grpc = /** @type {typeof import("@grpc/grpc-js")} */ (
+    (await importOptional("@grpc/grpc-js", missingHint)).default
+  );
+  const protoLoader = /** @type {typeof import("@grpc/proto-loader")} */ (
+    (await importOptional("@grpc/proto-loader", missingHint)).default
+  );
+
+  /** RpcError.kind → gRPC status (gRPC の作法に沿って status でエラーを返す)。
+   * grpc が遅延 import になったため module スコープから本関数スコープへ移動 (P5-1)。
+   * @param {string} kind
+   * @returns {number}
+   */
+  const grpcStatusFor = (kind) => {
+    switch (kind) {
+      case "not_authenticated": return grpc.status.UNAUTHENTICATED;
+      case "bad_params": return grpc.status.INVALID_ARGUMENT;
+      case "not_implemented": return grpc.status.UNIMPLEMENTED;
+      case "connection_lost":
+      case "timeout": return grpc.status.UNAVAILABLE;
+      case "rejected": return grpc.status.FAILED_PRECONDITION; // 上流が明示的に拒否 (server bug ではない)
+      default: return grpc.status.INTERNAL;
+    }
+  };
+
   const pkgDef = protoLoader.loadSync(PROTO_PATH, { keepCase: true, longs: String, defaults: true });
   // loadPackageDefinition は GrpcObject を返すが各ノードの具体型は動的なので Record で受ける。
   const proto = /** @type {Record<string, any>} */ (grpc.loadPackageDefinition(pkgDef)).sesame;
@@ -173,7 +189,7 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
   // 型付けした impl を grpc-js の UntypedServiceImplementation へ橋渡しする (実行時に call 形を解決)。
   server.addService(
     proto.Sesame.service,
-    /** @type {grpc.UntypedServiceImplementation} */ (/** @type {unknown} */ (impl)),
+    /** @type {import("@grpc/grpc-js").UntypedServiceImplementation} */ (/** @type {unknown} */ (impl)),
   );
 
   const boundPort = await /** @type {Promise<number>} */ (new Promise((resolve2, reject) => {

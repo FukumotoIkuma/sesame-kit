@@ -1,7 +1,7 @@
 // JSON-RPC 2.0 コア (src/serve/jsonrpc.js) の単体テスト。
 import { describe, it, expect, vi } from "vitest";
 import {
-  RPC, KIND, RpcError, classify, handleMessage, makeResult, makeError, makeEvent, errorFromThrow,
+  RPC, KIND, RpcError, classify, handleMessage, makeResult, makeEvent, errorFromThrow,
 } from "../../src/serve/jsonrpc.js";
 
 describe("classify", () => {
