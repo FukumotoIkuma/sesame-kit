@@ -170,6 +170,10 @@ export function generateEphemeralA() {
  * @returns {{hkdf: Buffer, sValue: bigint}} sValue はサーバ役シミュレーションでの検証用に返す。
  */
 export function deviceAuthSecrets({ deviceGroupKey, deviceKey, devicePassword, serverB, salt, a, A }) {
+  // SRP-6a の縮退チェック: B ≡ 0 (mod N) のとき S が自明値になる。
+  // 参照: _aws_sdk_ref/CognitoUser.java:3686-3689 (deviceSrpAuthRequest)。
+  if (serverB % N === 0n) throw new Error("SRP error, B cannot be zero");
+
   const U = calculateU(A, serverB);
   if (U === 0n) throw new Error("device SRP: U cannot be 0");
 

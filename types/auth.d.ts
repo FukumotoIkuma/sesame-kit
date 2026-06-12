@@ -10,7 +10,7 @@ export function jwtSub(token: string): string | null;
  * 失効していない idToken を返す。必要なら refresh する。
  * 失効まで `marginSec` 以下なら早期 refresh する (デフォルト 120秒 =
  * AWSMobileClient 2.77.0 の REFRESH_THRESHOLD_DEFAULT、
- * CognitoIdentityProviderClientConfig.java:40)。
+ * _aws_sdk_ref/CognitoIdentityProviderClientConfig.java:40)。
  *
  * @param {import("./tokens.js").TokenStore} store
  * @param {{ marginSec?: number }} [opts]
@@ -20,17 +20,23 @@ export function getValidIdToken(store: import("./tokens.js").TokenStore, { margi
     marginSec?: number;
 }): Promise<string>;
 /**
- * Step 1: アプリと同じ「signUp 先行 → CUSTOM_AUTH 開始」(LoginMailFG.kt:106-127 の 1:1)。
- * Cognito が email に確認コードを送る。
+ * Step 1: アプリと同じ「signUp 先行 → CUSTOM_AUTH (SRP_A 付き) 開始」。
  *
  * フロー (アプリ忠実):
  *   1. SignUp (Password="dummypwk", UserAttributes=[{Name:"email"}]) を常に先に実行。
  *      既存ユーザーの UsernameExistsException は容認して signIn へ進む
- *      (LoginMailFG.kt:114-118)。
- *   2. InitiateAuth (CUSTOM_AUTH, AuthParameters={USERNAME})。
- *      DEVICE_KEY は initiate には入れない — 参照 SDK の initiateCustomAuthRequest は
- *      DEVICE_KEY を同梱しない (CognitoUser.java:3473-3507)。DEVICE_KEY は全チャレンジ
- *      回答側に注入される (CognitoUser.java:2919-2922 / ChallengeContinuation.java:160-167)。
+ *      (_sesame_sdk_ref/app/.../LoginMailFG.kt:114-118)。
+ *   2. InitiateAuth (CUSTOM_AUTH, AuthParameters={USERNAME, CHALLENGE_NAME:"SRP_A", SRP_A}).
+ *      SRP_A は `generateEphemeralA()` で生成した A = g^a mod N の hex 文字列。
+ *      _aws_sdk_ref/CognitoUser.java:3492-3494 の 1:1。
+ *      DEVICE_KEY は initiate には入れない (_aws_sdk_ref/CognitoUser.java:3473-3507)。
+ *   3a. 応答が CUSTOM_CHALLENGE → そのまま pending に保存して返す (現行 Cognito の観測形)。
+ *   3b. 応答が PASSWORD_VERIFIER → user SRP で回答してから CUSTOM_CHALLENGE を待つ
+ *      (_aws_sdk_ref/CognitoUser.java:3057-3071, 3588-3662)。
+ *
+ * @experimental 実機未検証 (§9 V13): アプリ形 InitiateAuth (SRP_A 付き) を実 Cognito が
+ *   受理し CUSTOM_CHALLENGE を返すこと、および PASSWORD_VERIFIER 連鎖経路の実機確認が未実施。
+ *   参照: _aws_sdk_ref/CognitoUser.java:3057-3071, 3588-3662。
  *
  * @param {import("./tokens.js").TokenStore} store
  * @param {string} username

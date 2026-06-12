@@ -433,7 +433,11 @@ describe("getValidIdToken", () => {
       expect(store.save).not.toHaveBeenCalled();
     });
 
-    it("P2-6: NotAuthorizedException で store.clear() し pending は残す (CognitoUser.java:1306-1311 clearCachedTokens)", async () => {
+    it("P2-3: NotAuthorizedException でトークン 3 点 + lastRefresh を破棄し device 3 点 + username を温存する (CognitoUser.java:1306-1311 clearCachedTokens / :2703-2720)", async () => {
+      // _aws_sdk_ref/CognitoUser.java:2703-2720: clearCachedTokens は
+      // idToken / accessToken / refreshToken の 3 キーのみ remove。device は別ストアで温存。
+      // _aws_sdk_ref/CognitoUser.java:3384-3396: clearCachedDevice は
+      // DEVICE_SRP_AUTH が NotAuthorized の時のみ。refresh 失効では device は消さない。
       const now = 1_700_000_000;
       vi.useFakeTimers();
       vi.setSystemTime(now * 1000);
@@ -442,18 +446,33 @@ describe("getValidIdToken", () => {
         idToken: makeJwt(now - 1),
         refreshToken: "rt-bad",
         clientId: CONSUMER_CLIENT_ID,
+        username: "user@example.com",
       });
       fetchMock.mockResolvedValueOnce(cognitoError("NotAuthorizedException", "Refresh Token has been revoked"));
 
       await expect(getValidIdToken(store)).rejects.toThrow(/Refresh Token has been revoked/);
-      expect(store.save).not.toHaveBeenCalled();
-      // 失効トークンは破棄 (clearCachedTokens 相当)。pending verify 状態は壊さない。
-      expect(store.clear).toHaveBeenCalledTimes(1);
+      // store.clear() は呼ばない (device 温存のため save に変更)
+      expect(store.clear).not.toHaveBeenCalled();
+      // store.save() でトークン 3 点 + lastRefresh が null になる
+      expect(store.save).toHaveBeenCalledTimes(1);
+      // pending verify 状態は壊さない (clearPending しない)
       expect(store.clearPending).not.toHaveBeenCalled();
-      expect(store._peek()).toBeNull();
+      // idToken / accessToken / refreshToken / lastRefresh が null
+      const saved = store._peek();
+      expect(saved?.idToken).toBeNull();
+      expect(saved?.accessToken).toBeNull();
+      expect(saved?.refreshToken).toBeNull();
+      expect(saved?.lastRefresh).toBeNull();
+      // device 3 点 + username は温存
+      expect(saved?.deviceKey).toBe(CONFIRMED_DEVICE.deviceKey);
+      expect(saved?.deviceGroupKey).toBe(CONFIRMED_DEVICE.deviceGroupKey);
+      expect(saved?.devicePassword).toBe(CONFIRMED_DEVICE.devicePassword);
+      expect(saved?.username).toBe("user@example.com");
+      // clientId も温存
+      expect(saved?.clientId).toBe(CONSUMER_CLIENT_ID);
     });
 
-    it("P2-6: UserNotFoundException でも store.clear() する (CognitoUser.java:1309-1311)", async () => {
+    it("P2-3: UserNotFoundException でもトークン 3 点破棄 + device 温存する (CognitoUser.java:1309-1311)", async () => {
       const now = 1_700_000_000;
       vi.useFakeTimers();
       vi.setSystemTime(now * 1000);
@@ -462,12 +481,18 @@ describe("getValidIdToken", () => {
         idToken: makeJwt(now - 1),
         refreshToken: "rt",
         clientId: CONSUMER_CLIENT_ID,
+        username: "user@example.com",
       });
       fetchMock.mockResolvedValueOnce(cognitoError("UserNotFoundException", "User does not exist."));
 
       await expect(getValidIdToken(store)).rejects.toThrow(/User does not exist/);
-      expect(store.clear).toHaveBeenCalledTimes(1);
+      expect(store.clear).not.toHaveBeenCalled();
+      expect(store.save).toHaveBeenCalledTimes(1);
       expect(store.clearPending).not.toHaveBeenCalled();
+      // device 3 点が温存されている
+      expect(store._peek()?.deviceKey).toBe(CONFIRMED_DEVICE.deviceKey);
+      expect(store._peek()?.idToken).toBeNull();
+      expect(store._peek()?.refreshToken).toBeNull();
     });
 
     it("その他のエラー (例: InternalErrorException) では store.clear() しない", async () => {

@@ -20,7 +20,8 @@ Primary source is assigned **per domain**, not per directory:
 
 | Domain | Primary source | Cited in code as |
 |---|---|---|
-| **auth / token** (login, refresh, ConfirmDevice, token persistence) | `_sesame_sdk_ref/` — the Android app's behavior, including what **AWSMobileClient 2.77.0** does under the hood (CUSTOM_AUTH + device SRP). | `app.properties`, `AWSConfig.kt`, `LoginMailFG.kt`, `CHLoginViewModel.kt`, `CognitoIdentityProviderClientConfig.java`, etc. |
+| **auth / token — wire shape** (InitiateAuth, RespondToAuthChallenge, ConfirmDevice, SRP math, HKDF, Identity Pool threshold) | `_aws_sdk_ref/` — **AWSMobileClient 2.77.0** Java source (`release_v2.77.0` tag). This is the actual wire format AWSMobileClient sends to Cognito; the math in `src/device-srp.js` and `src/aws-credentials.js` must be traced to this. Key files: `CognitoUser.java` (inner class `AuthenticationHelper` at :3979-4097), `Hkdf.java`, `CognitoCredentialsProvider.java`, `CognitoCachingCredentialsProvider.java`, request marshallers. | `_aws_sdk_ref/CognitoUser.java`, `_aws_sdk_ref/Hkdf.java`, `_aws_sdk_ref/CognitoCredentialsProvider.java`, etc. |
+| **auth / token — app flow** (signIn call path, login UI, device confirmation triggers) | `_sesame_sdk_ref/` — the Android **app** source (Kotlin). Shows how AWSMobileClient is *invoked* (LoginMailFG.kt, CHLoginViewModel.kt). `_aws_sdk_ref` shows what AWSMobileClient then *does* on the wire. | `app.properties`, `AWSConfig.kt`, `LoginMailFG.kt`, `CHLoginViewModel.kt`, `CognitoIdentityProviderClientConfig.java`, etc. |
 | **cloud transport** (WS frames, IoT topics, API request/response shapes) | `references_web/` — CANDY-HOUSE **biz3 web** (React). | `references_web/src/api/useManageDevice.js:147`, `…/useOperateIoT.js`, `…/useIotCtrl.js`, `…/aws-exports.js`, `…/learn/index.js`, etc. |
 | **BLE** (OS2/OS3 protocol, peripherals) | `_sesame_sdk_ref/` — **Android SesameSDK** (Kotlin) + demo app. | bare `CHHub3Device.kt`, `CHSesame5Device.kt`, `CHSesameOS3.kt`, `CHServerAuth.kt`, `SesameProtocols.kt`, etc. |
 
@@ -45,13 +46,30 @@ Layout so citations resolve verbatim (e.g. `references_web/src/api/useManageDevi
 ```
 references_web/        # = biz3 web repo root (so references_web/src/api/... exists)
 _sesame_sdk_ref/       # = SesameSDK Android repo root (Kotlin under app/src/main/...)
+_aws_sdk_ref/          # = AWSMobileClient 2.77.0 Java files (release_v2.77.0 tag)
+                       #   NOTE: AuthenticationHelper is an inner class of CognitoUser.java
+                       #   (:3979-4097). There is no standalone AuthenticationHelper.java —
+                       #   do not copy placeholder files named AH.java or AuthenticationHelper.java.
 ```
 
 ## How to populate
 
-- These are CANDY-HOUSE sources; obtain them from the upstream repos (the web
-  `biz3` dashboard source and the Android `SesameSDK` repo) and unpack into the
-  directories above. They are intentionally untracked.
+- `_sesame_sdk_ref/` and `references_web/`: CANDY-HOUSE sources; obtain them from
+  the upstream repos (the web `biz3` dashboard source and the Android `SesameSDK`
+  repo) and unpack into the directories above. They are intentionally untracked.
+- `_aws_sdk_ref/`: AWSMobileClient 2.77.0 Java files from the
+  `aws-amplify/aws-sdk-android` repo (`release_v2.77.0` tag). Key files:
+  - `CognitoUser.java`, `CognitoUserPool.java`, `AWSMobileClient.java` — core auth
+  - `AuthenticationDetails.java`, `ChallengeContinuation.java` — challenge handling
+  - `CognitoDeviceHelper.java`, `Hkdf.java` — device SRP and HKDF math
+  - `CognitoIdentityProviderClientConfig.java`, `CognitoServiceConstants.java`
+  - `CognitoCredentialsProvider.java`, `CognitoCachingCredentialsProvider.java`
+  - `SignUpRequestMarshaller.java`, `InitiateAuthRequestMarshaller.java`,
+    `RespondToAuthChallengeRequestMarshaller.java` — wire-format marshallers (P2-6)
+  - **Do NOT copy** `AuthenticationHelper.java` or `AH.java` — these are 14-byte
+    `404: Not Found` placeholders. `AuthenticationHelper` is an inner class of
+    `CognitoUser.java` at lines 3979-4097.
+  - Run `npm run check:refs` after populating to validate all files.
 - If you (a developer/agent) find a citation that does **not** resolve under
   these dirs, the reference is missing — stop and restore it before "fixing" a
   port, rather than inferring the shape from `src/`.

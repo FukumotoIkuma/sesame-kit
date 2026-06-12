@@ -117,6 +117,97 @@ describe("lost-update 防止: 古いスナップショットの save が rotatio
   });
 });
 
+describe("P2-3: idToken=null による明示破棄 (refresh 失効後の device 温存 save)", () => {
+  // 選択方式 (b): merge に「incoming.idToken === null は破棄の意図」例外を追加。
+  // _aws_sdk_ref/CognitoUser.java:2703-2720 clearCachedTokens は idToken/accessToken/
+  // refreshToken の 3 キーのみ remove。device 3 点は別ストアで温存。
+  // kit では store.save({ idToken: null, ... }) で同等の後始末を単一ロック内で行う。
+
+  it("idToken=null で save するとトークン 3 点が null になり device 3 点は温存される", () => {
+    // 初期: 正常なトークン + device
+    storeA.save({
+      idToken: "id-0",
+      accessToken: "at-0",
+      refreshToken: "rt-0",
+      lastRefresh: T0,
+      clientId: "cid",
+      username: "u@example.com",
+      deviceKey: "dk-1",
+      deviceGroupKey: "dgk-1",
+      devicePassword: "dp-1",
+    });
+    // refresh 失効後の後始末: トークン 3 点 + lastRefresh を null、device は温存
+    storeA.save({
+      idToken: null,
+      accessToken: null,
+      refreshToken: null,
+      lastRefresh: null,
+      clientId: "cid",
+      username: "u@example.com",
+      deviceKey: "dk-1",
+      deviceGroupKey: "dgk-1",
+      devicePassword: "dp-1",
+    });
+    const after = storeA.load();
+    // トークン 3 点が null
+    expect(after?.idToken).toBeNull();
+    expect(after?.accessToken).toBeNull();
+    expect(after?.refreshToken).toBeNull();
+    expect(after?.lastRefresh).toBeNull();
+    // device 3 点と username / clientId は温存
+    expect(after?.deviceKey).toBe("dk-1");
+    expect(after?.deviceGroupKey).toBe("dgk-1");
+    expect(after?.devicePassword).toBe("dp-1");
+    expect(after?.username).toBe("u@example.com");
+    expect(after?.clientId).toBe("cid");
+  });
+
+  it("idToken=null の save はディスクに新しいトークンがあっても merge で復活させない (規則 2a)", () => {
+    // serve デーモンが refresh して新しいトークンを保存済み
+    storeA.save({
+      idToken: "id-fresh",
+      accessToken: "at-fresh",
+      refreshToken: "rt-fresh",
+      lastRefresh: T1, // 新しい
+      deviceKey: "dk-1",
+      deviceGroupKey: "dgk-1",
+      devicePassword: "dp-1",
+    });
+    // 別プロセス (古いスナップショット) が refresh 失効後の後始末を save する
+    // (idToken=null = 明示的破棄 → ディスクの新しいトークンを復活させない)
+    storeB.save({
+      idToken: null,     // 明示 null = 破棄の意図 (規則 2a)
+      accessToken: null,
+      refreshToken: null,
+      lastRefresh: null,
+      deviceKey: "dk-1",
+      deviceGroupKey: "dgk-1",
+      devicePassword: "dp-1",
+    });
+    const after = storeA.load();
+    // ディスクの "id-fresh" を復活させない
+    expect(after?.idToken).toBeNull();
+    expect(after?.accessToken).toBeNull();
+    expect(after?.refreshToken).toBeNull();
+    // device は温存
+    expect(after?.deviceKey).toBe("dk-1");
+  });
+
+  it("idToken=undefined (フィールド不在) の場合は従来どおり規則 2 が適用される (null と undefined の区別)", () => {
+    // A がより新しいトークンを保存
+    storeA.save({ idToken: "id-fresh", refreshToken: "rt-fresh", lastRefresh: T1 });
+    // B が idToken フィールド自体を持たない save (username 更新相当)
+    const snapshotB = storeB.load(); // T1 のスナップショット
+    // snapshotB が新しいので規則 2 の対象にはならず incoming が勝つ
+    storeB.save({ ...snapshotB, username: "new@example.com" });
+    const after = storeA.load();
+    // 規則 2: ディスク (snapshotB = T1) と incoming (B の save = T1) は同じ新しさ → incoming 優先
+    expect(after?.username).toBe("new@example.com");
+    // idToken は incoming の値 (snapshotB 由来の "id-fresh") が使われる
+    expect(after?.idToken).toBe("id-fresh");
+  });
+});
+
 describe("ロック運用 (save/clear)", () => {
   it("save は終了後に .lock / .tmp を残さない", () => {
     storeA.save({ idToken: "id", refreshToken: "rt", lastRefresh: T0 });

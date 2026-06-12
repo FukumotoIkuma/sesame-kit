@@ -2,27 +2,46 @@
 //
 // 規範 (REFACTORING_PLAN.md §0.1): ログイン/トークン管理は Android アプリ
 // (AWSMobileClient 2.77.0 + CUSTOM_AUTH) のトレースとする。web (useAuthState.js) は使用禁止。
-//   - 一次参照: AWSMobileClient 2.77.0 の CognitoUser.java / ChallengeContinuation.java /
-//     CognitoIdentityProviderClientConfig.java (/tmp/aws-sdk-android/ に取得済み)
-//   - アプリ側: _sesame_sdk_ref/app/.../account/LoginMailFG.kt (signUp 先行 + "dummypwk")
+//   - 一次参照 (ワイヤ形・数式): _aws_sdk_ref/CognitoUser.java /
+//     _aws_sdk_ref/ChallengeContinuation.java /
+//     _aws_sdk_ref/CognitoIdentityProviderClientConfig.java
+//     (AWSMobileClient 2.77.0 / release_v2.77.0 タグ)
+//     注意: AuthenticationHelper は独立 .java ファイルではなく CognitoUser.java の
+//     inner class(_aws_sdk_ref/CognitoUser.java:3979-4097)。
+//   - アプリ側: _sesame_sdk_ref/app/.../account/LoginMailFG.kt
+//     (signUp 先行 + "dummypwk" + SRP_A 付き CUSTOM_AUTH)
 //
 // AWS Mobile SDK は Android 前提のため Node では使えず、Cognito API を素 fetch
 // (src/cognito-http.js, AWS JSON 1.1) で直叩きする。
 // 振る舞いはアプリと同じ:
 //   - User Pool: ap-northeast-1_bY2byhlCa (biz / consumer 共有)
-//   - signUp 先行 (UsernameExistsException 容認) → CUSTOM_AUTH passwordless:
-//     USERNAME → CUSTOM_CHALLENGE (email にコード) → コード回答 (LoginMailFG.kt:106-127)
+//   - signUp 先行 (UsernameExistsException 容認) →
+//     CUSTOM_AUTH (SRP_A 付き InitiateAuth):
+//       LoginMailFG.kt:131 の signIn("mail","dummypwk",null,...) →
+//       AWSMobileClient.java:1318-1322 (password!=null → 4引数 AuthenticationDetails) →
+//       AuthenticationDetails.java:67-80 (authParams != null → setCustomChallenge("SRP_A")) →
+//       CognitoUser.java:3492-3494 (AuthParams に SRP_A: A.toString(16) を注入)。
+//     InitiateAuth 応答が PASSWORD_VERIFIER の場合は user SRP で回答してから CUSTOM_CHALLENGE
+//     へ進む (_aws_sdk_ref/CognitoUser.java:3057-3071, 3588-3662)。現行 Cognito は
+//     CUSTOM_CHALLENGE を直行することが多いが、両経路を処理する。
+//   - CUSTOM_CHALLENGE → email にコード → コード回答 (LoginMailFG.kt:106-127)
 //   - ログイン後に ConfirmDevice でデバイスを確定する (loginVerify / confirmDevice)。
 //     デバイストラッキング有効 Pool では、これを省くと未確認の DEVICE_KEY で
 //     REFRESH_TOKEN_AUTH が `Invalid Refresh Token` になり、idToken 失効後の初回
 //     refresh で必ず落ちる。AWSMobileClient は handleChallenge 内で自動 ConfirmDevice
-//     している (CognitoUser.java:3130-3140)。
+//     している (_aws_sdk_ref/CognitoUser.java:3130-3140)。
 //   - Client ID は公式 iOS/Android/chat.candyhouse.co と同じ Consumer Client
 //     `6ialca0p8u0lsgvbmvsljfm305` (アプリと同じトークン寿命)。
+//
+// 意図的逸脱:
+//   - UserContextData: Android ASF 由来の端末フィンガープリント
+//     (_aws_sdk_ref/CognitoUser.java:3505, CognitoUserPool.java:626-636) は
+//     Node から忠実再現不能。非送出を意図的に採用 (規範2)。
 //
 // 状態は TokenStore (load/save/clear + loadPending/savePending/clearPending) に永続化を委譲。
 // CLI からは FileTokenStore、ライブラリ消費者は独自実装を渡せる。
 
+import { createHash, createHmac } from "node:crypto";
 import { hostname } from "node:os";
 import { cognitoCall } from "./cognito-http.js";
 import {
@@ -49,6 +68,76 @@ const DEFAULT_CLIENT_ID = CONSUMER_CLIENT_ID;
 // (_sesame_sdk_ref/app/.../LoginMailFG.kt:110)。本 kit は app をトレースする (§0.1)。
 const DUMMY_PASSWORD = "dummypwk";
 
+// ---------------------------------------------------------------------------
+// user SRP 用定数 (respondToPasswordVerifier 専用)。
+// _aws_sdk_ref/CognitoUser.java:4005-4058 (AuthenticationHelper 内クラス) の 1:1。
+// device-srp.js が保持する同一 N/G/K とは独立して定義し、エンコーディングを
+// Java の BigInteger.toByteArray() (符号バイト付き Big-endian) に合わせる。
+// ---------------------------------------------------------------------------
+
+// SRP-6a 3072-bit group prime (_aws_sdk_ref/CognitoUser.java:4005-4021)。
+const USER_SRP_N_HEX =
+  "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1" +
+  "29024E088A67CC74020BBEA63B139B22514A08798E3404DD" +
+  "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245" +
+  "E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED" +
+  "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D" +
+  "C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F" +
+  "83655D23DCA3AD961C62F356208552BB9ED529077096966D" +
+  "670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B" +
+  "E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9" +
+  "DE2BCBF6955817183995497CEA956AE515D2261898FA0510" +
+  "15728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64" +
+  "ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7" +
+  "ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6B" +
+  "F12FFA06D98A0864D87602733EC86A64521F2B18177B200C" +
+  "BBE117577A615D6C770988C0BAD946E208E24FA074E5AB31" +
+  "43DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF";
+const USER_SRP_N = BigInt("0x" + USER_SRP_N_HEX);
+const USER_SRP_G = 2n;
+
+// K = SHA256(N.toByteArray() | G.toByteArray())
+// _aws_sdk_ref/CognitoUser.java:4050-4054:
+//   messageDigest.update(N.toByteArray()); digest(GG.toByteArray())
+// Java の BigInteger.toByteArray() は最上位ビットが 1 のとき 0x00 を前置する (符号バイト)。
+// N は FFFF... で始まるため toByteArray() は [0x00, 0xFF, 0xFF, ...] の 385B になる。
+// G = 2 → toByteArray() = [0x02] の 1B。
+const USER_SRP_K = BigInt("0x" + createHash("sha256")
+  .update(Buffer.concat([Buffer.from([0x00]), Buffer.from(USER_SRP_N_HEX, "hex")])) // N.toByteArray() = 385B
+  .update(Buffer.from([2]))                                                           // G.toByteArray() = [0x02]
+  .digest("hex"));
+
+/**
+ * BigInt → Java の BigInteger.toByteArray() 相当 (符号付き Big-endian hex)。
+ * 最上位ビットが 1 なら 0x00 を前置 (padHex と同じ動作)。
+ * @param {bigint} n
+ * @returns {string} 偶数長 hex
+ */
+function userSrpPadHex(n) {
+  let hex = n.toString(16);
+  if (hex.length % 2 === 1) hex = "0" + hex;
+  else if ("89abcdef".includes(hex[0].toLowerCase())) hex = "00" + hex;
+  return hex;
+}
+
+/**
+ * モジュラ冪乗 (device-srp.js の modPow と同一)。
+ * @param {bigint} base
+ * @param {bigint} exp
+ * @param {bigint} mod
+ * @returns {bigint}
+ */
+function userSrpModPow(base, exp, mod) {
+  let result = 1n;
+  base = ((base % mod) + mod) % mod;
+  while (exp > 0n) {
+    if (exp & 1n) result = (result * base) % mod;
+    exp >>= 1n;
+    base = (base * base) % mod;
+  }
+  return result;
+}
+
 /**
  * catch 節の unknown を `{ name?, message? }` として安全に読むためのナロー化。
  * @param {unknown} e
@@ -60,10 +149,12 @@ function asErr(e) {
 
 /**
  * JWT を decode して exp を返す (秒、UNIX時間)。失敗時は 0。
- * @param {string} token
+ * null/undefined を渡した場合も 0 を返す (catch で包まれる)。
+ * @param {string|null|undefined} token
  * @returns {number}
  */
 function jwtExp(token) {
+  if (!token) return 0;
   try {
     const payload = token.split(".")[1];
     const json = Buffer.from(payload, "base64").toString("utf8");
@@ -75,10 +166,12 @@ function jwtExp(token) {
 
 /**
  * idToken の aud claim (= clientId) を返す。
- * @param {string} token
+ * null/undefined を渡した場合も null を返す (catch で包まれる)。
+ * @param {string|null|undefined} token
  * @returns {string|null}
  */
 function jwtAud(token) {
+  if (!token) return null;
   try {
     const payload = token.split(".")[1];
     const json = Buffer.from(payload, "base64").toString("utf8");
@@ -151,7 +244,7 @@ function assertAppLoginTokens(tokens, source, { requireAud = false, requireConfi
  * 失効していない idToken を返す。必要なら refresh する。
  * 失効まで `marginSec` 以下なら早期 refresh する (デフォルト 120秒 =
  * AWSMobileClient 2.77.0 の REFRESH_THRESHOLD_DEFAULT、
- * CognitoIdentityProviderClientConfig.java:40)。
+ * _aws_sdk_ref/CognitoIdentityProviderClientConfig.java:40)。
  *
  * @param {import("./tokens.js").TokenStore} store
  * @param {{ marginSec?: number }} [opts]
@@ -188,13 +281,35 @@ export async function getValidIdToken(store, { marginSec = 120 } = {}) {
   } catch (e) {
     // refresh token 失効 (公式アプリで再ログイン等) は再ログインで復帰する認証エラー。
     // 参照 SDK は refresh が NotAuthorized / UserNotFound で落ちたら clearCachedTokens()
-    // する (CognitoUser.java:1306-1311)。同じく保存済みトークンを破棄して、失効トークンで
-    // 以後のリクエストが落ち続けるのを防ぐ。pending verify 状態 (loginStatePath) は
-    // 進行中の再ログインを壊さないよう残す (clearPending しない)。
-    // 構造化して上位 (CLI 等) が message 文字列マッチ無しで分岐できるようにする。
+    // する (_aws_sdk_ref/CognitoUser.java:1306-1311)。
+    // clearCachedTokens() は idToken / accessToken / refreshToken の 3 キーのみ remove
+    // (_aws_sdk_ref/CognitoUser.java:2703-2720)。deviceKey / deviceGroupKey / devicePassword
+    // は別ストアで温存され、clearCachedDevice は DEVICE_SRP_AUTH の NotAuthorized 時のみ
+    // (_aws_sdk_ref/CognitoUser.java:3384-3396)。
+    // kit 旧実装 store.clear() は device 3 点 + username まで消すため、refresh 失効のたびに
+    // ConfirmDevice が新規発行されサーバに remembered device が累積していた (P2-3)。
+    // 修正: idToken / accessToken / refreshToken / lastRefresh を null にし
+    //       clientId / username / device 3 点 (deviceKey/deviceGroupKey/devicePassword) は温存した
+    //       save を行う。tokens.js mergeStoredTokens の規則 2a により、merge がディスク側の
+    //       古いトークンを復活させる競合も防ぐ。
+    // pending verify 状態 (loginStatePath) は進行中の再ログインを壊さないよう残す
+    // (clearPending しない)。
     const name = asErr(e).name;
     if (name === "NotAuthorizedException" || name === "UserNotFoundException") {
-      store.clear();
+      // token 3 点 + lastRefresh を破棄し、device 3 点 + username + clientId を温存する。
+      // idToken: null は mergeStoredTokens の規則 2a で「明示破棄」として扱われ、
+      // ディスク側の古いトークンが merge で復活するのを防ぐ。
+      store.save({
+        clientId: t.clientId,
+        username: t.username,
+        idToken: null,
+        accessToken: null,
+        refreshToken: null,
+        lastRefresh: null,
+        deviceKey: t.deviceKey ?? null,
+        deviceGroupKey: t.deviceGroupKey ?? null,
+        devicePassword: t.devicePassword ?? null,
+      });
       throw new SesameError(String(asErr(e).message || e), { code: ERR.UNAUTHENTICATED, cause: e });
     }
     throw e;
@@ -207,7 +322,7 @@ export async function getValidIdToken(store, { marginSec = 120 } = {}) {
 
   t.idToken = r.IdToken;
   if (r.AccessToken)  t.accessToken  = r.AccessToken;
-  // 参照 SDK は refresh 後も旧 refresh token を維持する (CognitoUser.java:2873-2874) が、
+  // 参照 SDK は refresh 後も旧 refresh token を維持する (_aws_sdk_ref/CognitoUser.java:2873-2874) が、
   // ここは refresh token rotation (AWS 新機能) への前方互換として、応答に新 token が
   // 来たら意図的に取り込む (意図的逸脱)。
   if (r.RefreshToken) t.refreshToken = r.RefreshToken;
@@ -217,17 +332,23 @@ export async function getValidIdToken(store, { marginSec = 120 } = {}) {
 }
 
 /**
- * Step 1: アプリと同じ「signUp 先行 → CUSTOM_AUTH 開始」(LoginMailFG.kt:106-127 の 1:1)。
- * Cognito が email に確認コードを送る。
+ * Step 1: アプリと同じ「signUp 先行 → CUSTOM_AUTH (SRP_A 付き) 開始」。
  *
  * フロー (アプリ忠実):
  *   1. SignUp (Password="dummypwk", UserAttributes=[{Name:"email"}]) を常に先に実行。
  *      既存ユーザーの UsernameExistsException は容認して signIn へ進む
- *      (LoginMailFG.kt:114-118)。
- *   2. InitiateAuth (CUSTOM_AUTH, AuthParameters={USERNAME})。
- *      DEVICE_KEY は initiate には入れない — 参照 SDK の initiateCustomAuthRequest は
- *      DEVICE_KEY を同梱しない (CognitoUser.java:3473-3507)。DEVICE_KEY は全チャレンジ
- *      回答側に注入される (CognitoUser.java:2919-2922 / ChallengeContinuation.java:160-167)。
+ *      (_sesame_sdk_ref/app/.../LoginMailFG.kt:114-118)。
+ *   2. InitiateAuth (CUSTOM_AUTH, AuthParameters={USERNAME, CHALLENGE_NAME:"SRP_A", SRP_A}).
+ *      SRP_A は `generateEphemeralA()` で生成した A = g^a mod N の hex 文字列。
+ *      _aws_sdk_ref/CognitoUser.java:3492-3494 の 1:1。
+ *      DEVICE_KEY は initiate には入れない (_aws_sdk_ref/CognitoUser.java:3473-3507)。
+ *   3a. 応答が CUSTOM_CHALLENGE → そのまま pending に保存して返す (現行 Cognito の観測形)。
+ *   3b. 応答が PASSWORD_VERIFIER → user SRP で回答してから CUSTOM_CHALLENGE を待つ
+ *      (_aws_sdk_ref/CognitoUser.java:3057-3071, 3588-3662)。
+ *
+ * @experimental 実機未検証 (§9 V13): アプリ形 InitiateAuth (SRP_A 付き) を実 Cognito が
+ *   受理し CUSTOM_CHALLENGE を返すこと、および PASSWORD_VERIFIER 連鎖経路の実機確認が未実施。
+ *   参照: _aws_sdk_ref/CognitoUser.java:3057-3071, 3588-3662。
  *
  * @param {import("./tokens.js").TokenStore} store
  * @param {string} username
@@ -240,23 +361,90 @@ export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT
 
   // アプリは常に signUp を先に実行し、既存ユーザーの UsernameExistsException だけを
   // 握って signIn に進む。それ以外の signUp エラーはユーザーに見せて中断する
-  // (LoginMailFG.kt:106-127)。
+  // (_sesame_sdk_ref/app/.../LoginMailFG.kt:106-127)。
   try {
     await cognitoCall("SignUp", {
       ClientId: clientId,
       Username: username,
       Password: DUMMY_PASSWORD,
       UserAttributes: [{ Name: "email", Value: username }], // LoginMailFG.kt:106-107
+      // P2-6: アプリは validationData=mapOf() (空 Map) を渡す (LoginMailFG.kt:109 の第4引数)。
+      // AWSMobileClient 4引数 signUp → Collections.emptyMap() として CognitoUserPool に渡す
+      // (_aws_sdk_ref/AWSMobileClient.java:2184-2193)。
+      // CognitoUserPool.signUpInternal は validationData != null なら空 List を構築して
+      // withValidationData に渡す (_aws_sdk_ref/CognitoUserPool.java:531-552)。
+      // SignUpRequestMarshaller は != null チェックのみ (size > 0 チェックなし) なので
+      // 空 List でも ValidationData:[] をワイヤに書く
+      // (_aws_sdk_ref/SignUpRequestMarshaller.java:95-106)。
+      ValidationData: [],
+      // P2-6: ClientMetadata も同様に空 Map → ClientMetadata:{} をワイヤに書く
+      // (_aws_sdk_ref/AWSMobileClient.java:2191-2192 emptyMap() / SignUpRequestMarshaller.java:119-132)。
+      ClientMetadata: {},
     });
   } catch (e) {
     if (asErr(e).name !== "UsernameExistsException") throw e;
   }
 
+  // SRP_A を生成。アプリは CUSTOM_AUTH でも SRP_A を InitiateAuth に含める。
+  // _aws_sdk_ref/AuthenticationDetails.java:67-80 →
+  //   4引数 ctor (authParams != null) は setCustomChallenge("SRP_A") を実行し、
+  //   authenticationParameters["CHALLENGE_NAME"] = "SRP_A" が設定される。
+  // _aws_sdk_ref/CognitoUser.java:3492-3494 →
+  //   customChallenge が "SRP_A" のとき authParams に SRP_A: A.toString(16) を注入。
+  const { a, A } = generateEphemeralA();
+
   const resp = await cognitoCall("InitiateAuth", {
     AuthFlow: "CUSTOM_AUTH",
     ClientId: clientId,
-    AuthParameters: { USERNAME: username },
+    AuthParameters: {
+      USERNAME: username,
+      CHALLENGE_NAME: "SRP_A", // AuthenticationDetails.java:75,182-184 setCustomChallenge("SRP_A")
+      SRP_A: A.toString(16),    // _aws_sdk_ref/CognitoUser.java:3493
+    },
+    // P2-6: アプリは clientMetadata を空 Map で渡す。
+    // initiateCustomAuthRequest は setClientMetadata(clientMetadata) で null チェックなし注入
+    // (_aws_sdk_ref/CognitoUser.java:3480)。
+    // InitiateAuthRequestMarshaller は != null チェックのみなので
+    // 空 Map でも ClientMetadata:{} をワイヤに書く
+    // (_aws_sdk_ref/InitiateAuthRequestMarshaller.java:85-99)。
+    ClientMetadata: {},
   });
+
+  // PASSWORD_VERIFIER が返った場合: user SRP で回答してから CUSTOM_CHALLENGE を待つ。
+  // _aws_sdk_ref/CognitoUser.java:3057-3071 の分岐。
+  if (resp.ChallengeName === "PASSWORD_VERIFIER") {
+    // ChallengeParameters フィールドは _aws_sdk_ref/CognitoUser.java:3594-3598 の
+    // 読み取りから導出:
+    //   challengeParameters.get("USERNAME")         → userId (内部ユーザー名)
+    //   challengeParameters.get("USER_ID_FOR_SRP")  → SRP 計算用のユーザー ID
+    //   challengeParameters.get("SRP_B")            → サーバ公開値 B (hex)
+    //   challengeParameters.get("SALT")             → ソルト (hex)
+    //   challengeParameters.get("SECRET_BLOCK")     → base64 秘密ブロック
+    const verifierResp = await respondToPasswordVerifier({
+      clientId,
+      session: resp.Session,
+      challengeParameters: resp.ChallengeParameters || {},
+      a,
+      A,
+      password: DUMMY_PASSWORD,
+    });
+
+    // PASSWORD_VERIFIER 応答の次は CUSTOM_CHALLENGE が来るはず。
+    // _aws_sdk_ref/CognitoUser.java:3071 → respondToChallenge → handleChallenge。
+    if (verifierResp.ChallengeName !== "CUSTOM_CHALLENGE") {
+      throw new Error(`Unexpected challenge after PASSWORD_VERIFIER: ${verifierResp.ChallengeName} (expected CUSTOM_CHALLENGE)`);
+    }
+    store.savePending({
+      clientId,
+      username,
+      session: /** @type {string|undefined} */ (verifierResp.Session),
+      initiatedAt: new Date().toISOString(),
+    });
+    return {
+      challenge: /** @type {string} */ (verifierResp.ChallengeName),
+      params: /** @type {Record<string,string>} */ (verifierResp.ChallengeParameters),
+    };
+  }
 
   if (resp.ChallengeName !== "CUSTOM_CHALLENGE") {
     throw new Error(`Unexpected challenge: ${resp.ChallengeName} (expected CUSTOM_CHALLENGE)`);
@@ -268,6 +456,111 @@ export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT
     initiatedAt: new Date().toISOString(),
   });
   return { challenge: resp.ChallengeName, params: resp.ChallengeParameters };
+}
+
+/**
+ * PASSWORD_VERIFIER チャレンジに user SRP で回答する。
+ * _aws_sdk_ref/CognitoUser.java:3588-3662 (userSrpAuthRequest) の 1:1。
+ *
+ * 数式は device-srp.js の SRP 実装 (generateEphemeralA) と同一の SRP-6a 3072-bit group だが、
+ * ハッシュ計算のエンコーディングを Java の BigInteger.toByteArray() (バイナリ連結) に
+ * 合わせて独立実装している (_aws_sdk_ref/CognitoUser.java:4060-4096)。
+ *
+ * @param {object} args
+ * @param {string} args.clientId
+ * @param {string|undefined} args.session
+ * @param {Record<string,string>} args.challengeParameters Cognito から受け取った ChallengeParameters
+ * @param {bigint} args.a クライアント秘密 (generateEphemeralA の a)
+ * @param {bigint} args.A クライアント公開値 (generateEphemeralA の A)
+ * @param {string} args.password ユーザーパスワード ("dummypwk")
+ * @returns {Promise<Record<string,unknown>>} RespondToAuthChallenge の応答
+ */
+async function respondToPasswordVerifier({ clientId, session, challengeParameters, a, A, password }) {
+  // ChallengeParameters フィールドは _aws_sdk_ref/CognitoUser.java:3594-3598 から導出。
+  const userIdForSRP = challengeParameters.USER_ID_FOR_SRP || challengeParameters.USERNAME || "";
+  const srpBHex = challengeParameters.SRP_B || "";
+  const saltHex = challengeParameters.SALT || "";
+  const secretBlockB64 = challengeParameters.SECRET_BLOCK || "";
+
+  // B mod N == 0 ガード (_aws_sdk_ref/CognitoUser.java:3605-3608)。
+  const serverB = BigInt("0x" + srpBHex);
+  if (serverB % USER_SRP_N === 0n) {
+    throw new Error("SRP error, B cannot be zero");
+  }
+
+  // poolName = USER_POOL_ID の "_" 以降 (_aws_sdk_ref/CognitoUser.java:3990-3994)。
+  const poolName = USER_POOL_ID.includes("_") ? USER_POOL_ID.split("_").slice(1).join("_") : USER_POOL_ID;
+
+  // x = H(salt.toByteArray() | H(poolName | userId | ":" | password))
+  // _aws_sdk_ref/CognitoUser.java:4074-4083。
+  // Java は toByteArray() バイナリ連結で計算する (device-srp.js の hexHash とは異なる)。
+
+  // inner hash: SHA256(poolName | userId | ":" | password) — バイト列連結
+  // _aws_sdk_ref/CognitoUser.java:4075-4079
+  const innerHash = createHash("sha256")
+    .update(Buffer.from(poolName, "utf8"))
+    .update(Buffer.from(userIdForSRP, "utf8"))
+    .update(Buffer.from(":", "utf8"))
+    .update(Buffer.from(password, "utf8"))
+    .digest();
+
+  // outer hash: SHA256(salt.toByteArray() | innerHash)
+  // _aws_sdk_ref/CognitoUser.java:4081-4083。
+  // salt は hex 文字列 → padHex で BigInteger.toByteArray() 相当に変換。
+  const saltBuf = Buffer.from(userSrpPadHex(BigInt("0x" + saltHex)), "hex");
+  const x = BigInt("0x" + createHash("sha256").update(saltBuf).update(innerHash).digest("hex"));
+
+  // u = H(A.toByteArray() | B.toByteArray()) — バイナリ連結
+  // _aws_sdk_ref/CognitoUser.java:4066-4069。
+  const u = BigInt("0x" + createHash("sha256")
+    .update(Buffer.from(userSrpPadHex(A), "hex"))
+    .update(Buffer.from(userSrpPadHex(serverB), "hex"))
+    .digest("hex"));
+  if (u === 0n) throw new Error("SRP error: u cannot be 0");
+
+  // S = (B - k * g^x) ^ (a + u*x) mod N
+  // _aws_sdk_ref/CognitoUser.java:4084-4085
+  const gModPowXN = userSrpModPow(USER_SRP_G, x, USER_SRP_N);
+  const base = ((serverB - USER_SRP_K * gModPowXN) % USER_SRP_N + USER_SRP_N) % USER_SRP_N;
+  const sValue = userSrpModPow(base, a + u * x, USER_SRP_N);
+
+  // HKDF: hkdf.init(s.toByteArray(), u.toByteArray()) → PRK = HMAC-SHA256(key=u, data=s)
+  // _aws_sdk_ref/CognitoUser.java:4093, _aws_sdk_ref/Hkdf.java:64-86
+  const sBuf = Buffer.from(userSrpPadHex(sValue), "hex");
+  const uBuf = Buffer.from(userSrpPadHex(u), "hex");
+  const prk = createHmac("sha256", uBuf).update(sBuf).digest();
+  // deriveKey("Caldera Derived Key", 16): T(1) = HMAC-SHA256(key=PRK, data=info||0x01)[0:16]
+  // _aws_sdk_ref/Hkdf.java:164-168
+  const infoBuf = Buffer.concat([Buffer.from("Caldera Derived Key", "utf8"), Buffer.from([1])]);
+  const hkdf = createHmac("sha256", prk).update(infoBuf).digest().subarray(0, 16);
+
+  // 署名: HMAC-SHA256(hkdf, poolName | userId | secretBlock | timestamp)
+  // _aws_sdk_ref/CognitoUser.java:3618-3633
+  const timestamp = cognitoTimestamp();
+  const hmac = createHmac("sha256", hkdf)
+    .update(Buffer.from(poolName, "utf8"))
+    .update(Buffer.from(userIdForSRP, "utf8"))
+    .update(Buffer.from(secretBlockB64, "base64"))
+    .update(Buffer.from(timestamp, "utf8"))
+    .digest("base64");
+
+  // ChallengeResponses: _aws_sdk_ref/CognitoUser.java:3638-3646
+  /** @type {Record<string,string>} */
+  const responses = {
+    PASSWORD_CLAIM_SECRET_BLOCK: secretBlockB64,  // CHLG_RESP_PASSWORD_CLAIM_SECRET_BLOCK
+    PASSWORD_CLAIM_SIGNATURE: hmac,                // CHLG_RESP_PASSWORD_CLAIM_SIGNATURE
+    TIMESTAMP: timestamp,                          // CHLG_RESP_TIMESTAMP
+    USERNAME: userIdForSRP,                        // CHLG_RESP_USERNAME
+    // DEVICE_KEY は存在すれば付与 (_aws_sdk_ref/CognitoUser.java:3645)。
+    // initiate 時点では pending にデバイス情報はないため省略 (意図的逸脱注記済み)。
+  };
+
+  return cognitoCall("RespondToAuthChallenge", {
+    ClientId: clientId,
+    ChallengeName: "PASSWORD_VERIFIER",
+    ...(session ? { Session: session } : {}),
+    ChallengeResponses: responses,
+  });
 }
 
 /**
@@ -283,7 +576,8 @@ export async function loginVerify(store, code) {
     throw new Error(tr("auth.noPending"));
   }
   // 参照 SDK は全チャレンジ回答に保存済み DEVICE_KEY を注入する
-  // (CognitoUser.java:2919-2922 respondToChallenge / ChallengeContinuation.java:160-167)。
+  // (_aws_sdk_ref/CognitoUser.java:2919-2922 respondToChallenge /
+  //  _aws_sdk_ref/ChallengeContinuation.java:160-167)。
   // Cognito はこれを見て、記憶済みデバイスなら次に DEVICE_SRP_AUTH を要求できる。
   // (Java は username 単位の CognitoDeviceHelper キャッシュ。ここでは同一 username の
   //  保存済みトークンが持つ deviceKey が相当する。)
@@ -310,7 +604,8 @@ export async function loginVerify(store, code) {
   if (r) {
     // デバイストラッキングが有効な Pool では NewDeviceMetadata が返る。ConfirmDevice で
     // デバイスを確定しないと REFRESH_TOKEN_AUTH が `Invalid Refresh Token` で落ちる
-    // (参照 SDK は handleChallenge 内で自動 ConfirmDevice する: CognitoUser.java:3130-3140)。
+    // (参照 SDK は handleChallenge 内で自動 ConfirmDevice する:
+    //  _aws_sdk_ref/CognitoUser.java:3130-3140)。
     device = await confirmDevice(r);
   } else if (resp.ChallengeName === "DEVICE_SRP_AUTH") {
     // 記憶済みデバイスの SRP 認証 (参照 SDK の runDeviceAuth と同じ device password チャレンジ)。
@@ -328,10 +623,10 @@ export async function loginVerify(store, code) {
     } catch (e) {
       if (asErr(e).name === "NotAuthorizedException") {
         // 参照 SDK はデバイス認証が NotAuthorized になると clearCachedDevice して
-        // 認証フローを最初からやり直す (CognitoUser.java:3384-3396)。同じく失効した
-        // device 3 点 (deviceKey/deviceGroupKey/devicePassword) を破棄し、デバイス無しの
-        // CUSTOM_AUTH を最初から再試行する。これをしないと「失効 → 再ログイン → 古い
-        // device で再失敗」が無限ループする。
+        // 認証フローを最初からやり直す (_aws_sdk_ref/CognitoUser.java:3384-3396)。
+        // 同じく失効した device 3 点 (deviceKey/deviceGroupKey/devicePassword) を破棄し、
+        // デバイス無しの CUSTOM_AUTH を最初から再試行する。これをしないと
+        // 「失効 → 再ログイン → 古い device で再失敗」が無限ループする。
         const stored = store.load?.();
         if (stored) {
           store.save({ ...stored, deviceKey: null, deviceGroupKey: null, devicePassword: null });
@@ -377,7 +672,64 @@ export async function loginVerify(store, code) {
   };
   store.save(tokens);
   store.clearPending();
+
+  // P2-8: ログイン直後の nickname 自動設定 (アプリ挙動の移植)。
+  // 参照: LoginVerifiCodeFG.kt:74-76, 112-150 — confirmSignIn 成功後に updateNickNameIfNeeded() を呼ぶ。
+  // best-effort: 失敗してもログイン成功扱いを変えない (アプリの catch→続行と同義)。
+  if (tokens.accessToken) {
+    await setNicknameIfNeeded(tokens.accessToken, s.username).catch(() => {});
+  }
+
   return tokens;
+}
+
+/**
+ * ログイン直後の nickname 自動設定 (アプリ挙動の移植)。
+ *
+ * 参照: LoginVerifiCodeFG.kt:112-150 — getUserAttributes() → nickname が空かつ
+ *   email 非空なら updateUserAttributes({nickname: email の "@" 前}) を best-effort 実行。
+ *
+ * ワイヤ形 (AWS JSON 1.1):
+ *   GetUser:              {AccessToken}
+ *     → {UserAttributes: [{Name, Value}, ...]}
+ *     (_aws_sdk_ref/CognitoUser.java:1491-1492 getUserDetailsInternal:
+ *       getUserRequest.setAccessToken(session.getAccessToken().getJWTToken()))
+ *   UpdateUserAttributes: {AccessToken, UserAttributes: [{Name:"nickname", Value:<local>}]}
+ *     (_aws_sdk_ref/CognitoUser.java:2228-2230 updateAttributesInternal:
+ *       setAccessToken / setUserAttributes(attributes.getAttributesList()))
+ *
+ * @param {string} accessToken 直前のログインで得た AccessToken
+ * @param {string} username ログインユーザー (email)。GetUser が失敗したときの email フォールバック用。
+ * @returns {Promise<void>}
+ */
+async function setNicknameIfNeeded(accessToken, username) {
+  // GetUser でユーザー属性一覧を取得する。
+  // リクエスト: {AccessToken} のみ。
+  // 参照: _aws_sdk_ref/CognitoUser.java:1491-1492 (getUserDetailsInternal)
+  const getUserResp = await cognitoCall("GetUser", { AccessToken: accessToken });
+
+  // 応答の UserAttributes は [{Name, Value}, ...] の配列。
+  // 参照: _aws_sdk_ref/CognitoUser.java:1495 userResult.getUserAttributes()
+  const attrs = /** @type {{ Name: string; Value: string }[]} */ (getUserResp.UserAttributes ?? []);
+  const nickname = attrs.find((a) => a.Name === "nickname")?.Value ?? "";
+  const emailAttr = attrs.find((a) => a.Name === "email")?.Value ?? "";
+  // email 属性が取れなければ引数の username (= ログイン email) を使う。
+  const email = emailAttr || username || "";
+
+  // nickname が空かつ email が非空のときだけ設定する。
+  // 参照: LoginVerifiCodeFG.kt:118 — nickname.isNullOrEmpty() && !email.isNullOrEmpty()
+  if (nickname !== "" || email === "") return;
+
+  const localPart = email.split("@")[0] ?? "";
+  if (!localPart) return;
+
+  // UpdateUserAttributes: UserAttributes は [{Name, Value}] の配列。
+  // 参照: _aws_sdk_ref/CognitoUser.java:2228-2230 (updateAttributesInternal)
+  //   setAccessToken / setUserAttributes(attributes.getAttributesList())
+  await cognitoCall("UpdateUserAttributes", {
+    AccessToken: accessToken,
+    UserAttributes: [{ Name: "nickname", Value: localPart }],
+  });
 }
 
 /**
@@ -385,8 +737,8 @@ export async function loginVerify(store, code) {
  * デバイストラッキング無効の Pool では NewDeviceMetadata が無いので no-op。
  *
  * 参照 SDK は ConfirmDevice のみで、UserConfirmationNecessary でも UpdateDeviceStatus
- * ("remembered" 化) は行わない (CognitoUser.java:3140-3151 は newDevice を callback に
- * 渡すだけ)。旧実装の remembered 化分岐は参照に無い独自防御だったため削除した。
+ * ("remembered" 化) は行わない (_aws_sdk_ref/CognitoUser.java:3140-3151 は newDevice を
+ * callback に渡すだけ)。旧実装の remembered 化分岐は参照に無い独自防御だったため削除した。
  *
  * @param {import("./cognito-http.js").CognitoAuthResult} authResult Cognito AuthenticationResult
  * @returns {Promise<{deviceKey:string, deviceGroupKey:string, devicePassword:string}|null>}
@@ -407,6 +759,18 @@ async function confirmDevice(authResult) {
     meta.DeviceKey,
   );
 
+  // 【意図的逸脱】参照 SDK (_aws_sdk_ref/CognitoUser.java:3861-3868) は ConfirmDevice 呼び出しを
+  // try/catch で包み、失敗時は例外を握りつぶして null を返す(best-effort)。その null を受け取った
+  // 呼び出し元 (_aws_sdk_ref/CognitoUser.java:3140-3158) はデバイス未確定のまま onSuccess を
+  // 呼び出し、ログイン自体は成功扱いにする(未確認 device はキャッシュされないだけ)。
+  //
+  // 本 kit では try/catch を設けず、ConfirmDevice 失敗(ネットワーク断・サーバエラー含む)を
+  // loginVerify 全体の失敗として伝播させる(fail-fast)。理由: kit のトークン永続化モデルでは、
+  // NewDeviceMetadata があるにもかかわらず deviceKey が null のまま保存されると、次回
+  // REFRESH_TOKEN_AUTH が "Invalid Refresh Token" で落ちる。参照は Android SharedPreferences に
+  // deviceKey/GroupKey/Password を別途キャッシュするため未確認でも後続処理が成立するが、
+  // kit はトークンストアだけが状態の唯一の保持場所であり、未確認 device の永続化を防ぐには
+  // fail-fast が最も安全な選択である。
   await cognitoCall("ConfirmDevice", {
     AccessToken: authResult.AccessToken,
     DeviceKey: meta.DeviceKey,
@@ -438,8 +802,8 @@ async function deviceSrpAuth({ clientId, username, deviceKey, deviceGroupKey, de
   const { a, A } = generateEphemeralA();
 
   // 1) SRP_A を送り、サーバから SRP_B / SALT / SECRET_BLOCK を受け取る。
-  //    DEVICE_KEY を回答に含めるのは参照どおり (CognitoUser.java:2919-2922 が全チャレンジ
-  //    回答に注入する DEVICE_KEY と同じ配置)。
+  //    DEVICE_KEY を回答に含めるのは参照どおり (_aws_sdk_ref/CognitoUser.java:2919-2922 が
+  //    全チャレンジ回答に注入する DEVICE_KEY と同じ配置)。
   const srp = await cognitoCall("RespondToAuthChallenge", {
     ClientId: clientId,
     ChallengeName: "DEVICE_SRP_AUTH",

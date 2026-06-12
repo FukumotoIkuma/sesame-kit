@@ -1,10 +1,12 @@
 // Cognito Identity Provider を素の HTTP (fetch) で呼ぶ互換層。
 //
 // 背景 (REFACTORING_PLAN.md P2-2 / ARCH-02):
-//   auth.js が使う Cognito API は 7 種 (InitiateAuth / RespondToAuthChallenge / SignUp /
-//   ConfirmDevice / UpdateDeviceStatus / ForgetDevice / RevokeToken) で、すべて SigV4 署名
-//   不要の匿名 API。`@aws-sdk/client-cognito-identity-provider` (transitive 約 30 パッケージ)
-//   を引き込む必要はなく、AWS JSON 1.1 プロトコルの素 fetch で完全置換できる。
+//   auth.js が使う Cognito API は現在 8 種 (InitiateAuth / RespondToAuthChallenge / SignUp /
+//   ConfirmDevice / ForgetDevice / RevokeToken / GetUser / UpdateUserAttributes) で、
+//   すべて SigV4 署名不要の匿名 API。
+//   (UpdateDeviceStatus は v1 P2-5 で撤去済み。GetUser / UpdateUserAttributes は P2-8 で追加。)
+//   `@aws-sdk/client-cognito-identity-provider` (transitive 約 30 パッケージ) を引き込む必要はなく、
+//   AWS JSON 1.1 プロトコルの素 fetch で完全置換できる。
 //
 // ワイヤ形状 (AWS JSON 1.1):
 //   POST https://cognito-idp.<region>.amazonaws.com/
@@ -41,6 +43,7 @@ const DEFAULT_REGION = "ap-northeast-1";
  * @property {boolean} [UserConfirmationNecessary]
  * @property {boolean} [UserConfirmed]
  * @property {string} [UserSub]
+ * @property {{ Name: string; Value: string }[]} [UserAttributes]
  */
 
 /**

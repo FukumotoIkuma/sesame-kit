@@ -18,6 +18,7 @@
  * @property {boolean} [UserConfirmationNecessary]
  * @property {boolean} [UserConfirmed]
  * @property {string} [UserSub]
+ * @property {{ Name: string; Value: string }[]} [UserAttributes]
  */
 /**
  * Cognito Identity Provider の 1 オペレーションを呼ぶ。
@@ -57,5 +58,9 @@ export type CognitoResponse = {
     UserConfirmationNecessary?: boolean | undefined;
     UserConfirmed?: boolean | undefined;
     UserSub?: string | undefined;
+    UserAttributes?: {
+        Name: string;
+        Value: string;
+    }[] | undefined;
 };
 //# sourceMappingURL=cognito-http.d.ts.map

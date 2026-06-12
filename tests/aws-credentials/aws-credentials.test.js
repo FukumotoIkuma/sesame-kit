@@ -104,7 +104,9 @@ describe("makeCognitoCredentialsProvider", () => {
     expect(fetchImpl.calls).toHaveLength(2); // GetId + GetCredentialsForIdentity の 1 往復のみ
   });
 
-  it("Expiration の 60s 手前を切ったら自動再取得する (IdentityId は再利用し GetId は再発行しない)", async () => {
+  it("Expiration の 500s 手前を切ったら自動再取得する (IdentityId は再利用し GetId は再発行しない)", async () => {
+    // DEFAULT_REFRESH_MARGIN_MS = 500_000 ms (500s) — CognitoCredentialsProvider.java:67
+    //   DEFAULT_THRESHOLD_SECONDS=500、:853-863 needsNewSession() の閾値に対応。
     let nowMs = 1_700_000_000_000;
     const expSec1 = nowMs / 1000 + 3600; // 1 回目: 1 時間有効
     const expSec2 = nowMs / 1000 + 7200;
@@ -124,8 +126,8 @@ describe("makeCognitoCredentialsProvider", () => {
     const c1 = await provider.getCredentials();
     expect(c1.sessionToken).toBe("S1");
 
-    // 失効 60s 前 (= margin 内) まで進める → 再取得が走る
-    nowMs = (expSec1 - 30) * 1000;
+    // 失効 500s 前 (= margin 内) まで進める → 再取得が走る
+    nowMs = (expSec1 - 250) * 1000;
     const c2 = await provider.getCredentials();
     expect(c2.sessionToken).toBe("S2");
     expect(getIdToken).toHaveBeenCalledTimes(2); // idToken は都度コールバックから供給

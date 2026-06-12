@@ -35,8 +35,13 @@ export const API_GATEWAY_API_KEY = "iGgXj9GorS4PeH90mAysg1l7kdvoIPxM25mPFl3k";
 /** 公式 REST ホスト (app.properties:3 candyhouse.sesame.api.prod = BuildConfig.ch_server)。 */
 export const DEFAULT_CH_API_BASE_URL = "https://app.candyhouse.co/prod";
 
-/** credentials を Expiration の何 ms 手前から失効扱いにするか (余裕 60s)。 */
-const DEFAULT_REFRESH_MARGIN_MS = 60_000;
+/**
+ * credentials を Expiration の何 ms 手前から失効扱いにするか。
+ * 参照: CognitoCredentialsProvider.java:67 `DEFAULT_THRESHOLD_SECONDS = 500`
+ *      CognitoCredentialsProvider.java:853-863 `needsNewSession()` —
+ *        `timeRemaining < (refreshThreshold * 1000)` = 500 * 1000 ms = 500_000 ms
+ */
+const DEFAULT_REFRESH_MARGIN_MS = 500_000;
 
 /**
  * Identity Pool から得る一時 credentials (getCredentials の戻り値)。

@@ -8,7 +8,9 @@
 
 - **Phase 1(P1-1〜P1-8)実施済み**(Phase 1 コミット参照)。実装はワークフロー上の軽量エージェント、監査(参照突き合わせ・全ゲート)は統括が実施。
   - 付記: P1-4 で `devices.subscribeDevicesUpdate` の戻り値が `() => void` → `{unsubscribe, sendFrame}` に変更(ライブラリ公開面・experimental)。P1-7/P1-8 で RPC メソッド集合が変化(ble.scan 追加 = 199 メソッド、生体一覧 5 op の結果形が ack → records)。**いずれも P4-1 の CONTRACT_VERSION bump / changelog に記載すること**。
-- Phase 2〜6: 未着手。
+- **Phase 2(P2-1〜P2-10)実施済み**(Phase 2 コミット参照)。`_aws_sdk_ref/`(AWSMobileClient 2.77.0)を in-repo 化し `npm run check:refs` で健全性検査を導入。P2-2 で InitiateAuth がアプリ形(SRP_A 付き)になり PASSWORD_VERIFIER ハンドラを実装(@experimental・§9 V13 実機検証待ち)。P2-3 でトークン失効時の後始末を device 温存に変更。
+  - **申し送り(P5 重複統合候補)**: P2-2 の user SRP(`auth.js` の `respondToPasswordVerifier`)は Java の `BigInteger.toByteArray()` バイナリ連結方式で独立実装した。既存の device SRP(`device-srp.js` の padHex/hexHash 方式)と数式は同型(poolName/username 差のみ)なので、本来 1 実装に統合できる。実機検証(V13)で両者の正しさが確認できたら統合を検討する(現状は二重実装の技術的負債として記録)。
+- Phase 3〜6: 未着手。
 - v1 からの繰越: §9 実機検証バックログ V1〜V10(未実施・該当 API は `@experimental` 維持)、workspace 分割(次 major、P5-14)。
 
 **この文書の読み方**: 各項目は「初見の実装者が単独で着手できる」粒度で、対象 file:line・参照 file:line・修正手順・テスト・受け入れ基準を持つ。`R2:XXX-NN` は今回監査の所見 ID(複数監査が同一問題を検出した場合は §0.3 で統合済み)。**README・docs・コード内コメントの記述は本計画の根拠にしていない**。すべて参照実装の実コードで裏取りしてある。行番号は 2026-06-12 時点の HEAD(`6c939dd`)と参照 checkout に対するもの。

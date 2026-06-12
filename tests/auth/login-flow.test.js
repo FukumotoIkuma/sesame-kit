@@ -3,11 +3,19 @@
 // 規範: Android アプリ + AWSMobileClient 2.77.0 の 1:1 トレース。
 //   - P2-4: signUp 先行 (UsernameExistsException 容認) + Password "dummypwk" +
 //     UserAttributes [{Name:"email"}] — LoginMailFG.kt:106-127
-//   - P2-3: DEVICE_KEY は InitiateAuth には入れず (CognitoUser.java:3473-3507)、
-//     チャレンジ回答 (ChallengeResponses) に入れる (CognitoUser.java:2919-2922 /
-//     ChallengeContinuation.java:160-167)
+//   - P2-2: InitiateAuth は SRP_A 付き (CHALLENGE_NAME:"SRP_A", SRP_A:<hex>)。
+//     _aws_sdk_ref/AuthenticationDetails.java:67-80 → setCustomChallenge("SRP_A")、
+//     _aws_sdk_ref/CognitoUser.java:3492-3494 → AuthParams に SRP_A を注入。
+//   - P2-2: PASSWORD_VERIFIER が返った場合は user SRP で回答してから CUSTOM_CHALLENGE
+//     へ進む (_aws_sdk_ref/CognitoUser.java:3057-3071, 3588-3662)。
+//   - P2-3: DEVICE_KEY は InitiateAuth には入れず
+//     (_aws_sdk_ref/CognitoUser.java:3473-3507)、
+//     チャレンジ回答 (ChallengeResponses) に入れる
+//     (_aws_sdk_ref/CognitoUser.java:2919-2922 /
+//      _aws_sdk_ref/ChallengeContinuation.java:160-167)
 //   - P2-6: DEVICE_SRP_AUTH が NotAuthorized なら device 3 点を破棄して
-//     デバイス無し CUSTOM_AUTH を最初から再試行 (CognitoUser.java:3384-3396)
+//     デバイス無し CUSTOM_AUTH を最初から再試行
+//     (_aws_sdk_ref/CognitoUser.java:3384-3396)
 //
 // Cognito は素 fetch (cognito-http.js) なので global.fetch を差し替えて観測する。
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
@@ -63,7 +71,8 @@ beforeEach(() => { fetchMock.mockReset(); });
 afterAll(() => { vi.unstubAllGlobals(); });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// loginInitiate (P2-4: signUp 先行 / P2-3: initiate に DEVICE_KEY を入れない)
+// loginInitiate (P2-2: SRP_A 付き initiate / P2-4: signUp 先行 /
+//                P2-3: initiate に DEVICE_KEY を入れない)
 // ═════════════════════════════════════════════════════════════════════════════
 describe("loginInitiate", () => {
   it("P2-4: signUp を先に実行し、リクエスト形が LoginMailFG.kt:106-127 と一致する", async () => {
@@ -77,18 +86,37 @@ describe("loginInitiate", () => {
     expect(cognitoOps()).toEqual(["SignUp", "InitiateAuth"]);
     const [signUp, initiate] = cognitoCalls();
     // signUp: Password="dummypwk" (app 値。web の "Aa123456" ではない) + email 属性
+    // P2-6: ValidationData:[] / ClientMetadata:{} は空コレクションとしてワイヤに乗る。
+    // 導出: LoginMailFG.kt:109 (validationData=mapOf()) →
+    //   _aws_sdk_ref/AWSMobileClient.java:2184-2193 (4引数 signUp → clientMetadata=emptyMap()) →
+    //   _aws_sdk_ref/CognitoUserPool.java:531-552 (validationData != null → 空 List 構築) →
+    //   _aws_sdk_ref/SignUpRequestMarshaller.java:95-106, 119-132 (null チェックのみ → 空で送出)。
     expect(signUp.input).toEqual({
       ClientId: CONSUMER_CLIENT_ID,
       Username: EMAIL,
       Password: "dummypwk",
       UserAttributes: [{ Name: "email", Value: EMAIL }],
+      ValidationData: [],
+      ClientMetadata: {},
     });
-    // initiate: AuthParameters は USERNAME のみ (DEVICE_KEY 無し)
-    expect(initiate.input).toEqual({
+    // initiate: P2-2 — AuthParameters は {USERNAME, CHALLENGE_NAME:"SRP_A", SRP_A} の 3 フィールド
+    // (_aws_sdk_ref/AuthenticationDetails.java:67-80 / _aws_sdk_ref/CognitoUser.java:3492-3494)。
+    // DEVICE_KEY は含まない (_aws_sdk_ref/CognitoUser.java:3473-3507)。
+    // P2-6: ClientMetadata:{} — initiateCustomAuthRequest はサイズ検査なし注入
+    // (_aws_sdk_ref/CognitoUser.java:3480 / InitiateAuthRequestMarshaller.java:85-99)。
+    expect(initiate.input).toMatchObject({
       AuthFlow: "CUSTOM_AUTH",
       ClientId: CONSUMER_CLIENT_ID,
-      AuthParameters: { USERNAME: EMAIL },
+      AuthParameters: {
+        USERNAME: EMAIL,
+        CHALLENGE_NAME: "SRP_A",
+      },
+      ClientMetadata: {},
     });
+    // SRP_A は generateEphemeralA() の A.toString(16) — 非空 hex 文字列であることを確認。
+    expect(initiate.input.AuthParameters.SRP_A).toBeTypeOf("string");
+    expect(initiate.input.AuthParameters.SRP_A.length).toBeGreaterThan(0);
+    expect(initiate.input.AuthParameters.DEVICE_KEY).toBeUndefined();
     expect(out).toEqual({ challenge: "CUSTOM_CHALLENGE", params: { email: EMAIL } });
     expect(store._peekPending()).toMatchObject({
       clientId: CONSUMER_CLIENT_ID,
@@ -97,7 +125,7 @@ describe("loginInitiate", () => {
     });
   });
 
-  it("P2-3: 保存済み deviceKey があっても InitiateAuth には DEVICE_KEY を入れない (CognitoUser.java:3473-3507)", async () => {
+  it("P2-3: 保存済み deviceKey があっても InitiateAuth には DEVICE_KEY を入れない (_aws_sdk_ref/CognitoUser.java:3473-3507)", async () => {
     fetchMock
       .mockResolvedValueOnce(cognitoError("UsernameExistsException", "exists"))
       .mockResolvedValueOnce(cognitoOk({ ChallengeName: "CUSTOM_CHALLENGE", Session: "s" }));
@@ -109,7 +137,10 @@ describe("loginInitiate", () => {
 
     const initiate = cognitoCalls()[1];
     expect(initiate.op).toBe("InitiateAuth");
-    expect(initiate.input.AuthParameters).toEqual({ USERNAME: EMAIL });
+    // P2-2: 3 フィールド (USERNAME / CHALLENGE_NAME / SRP_A) — DEVICE_KEY は含まない
+    expect(initiate.input.AuthParameters.USERNAME).toBe(EMAIL);
+    expect(initiate.input.AuthParameters.CHALLENGE_NAME).toBe("SRP_A");
+    expect(initiate.input.AuthParameters.SRP_A).toBeTypeOf("string");
     expect(initiate.input.AuthParameters.DEVICE_KEY).toBeUndefined();
   });
 
@@ -134,13 +165,13 @@ describe("loginInitiate", () => {
     expect(store.savePending).not.toHaveBeenCalled();
   });
 
-  it("CUSTOM_CHALLENGE 以外のチャレンジが返ったら throw する", async () => {
+  it("CUSTOM_CHALLENGE / PASSWORD_VERIFIER 以外のチャレンジが返ったら throw する", async () => {
     fetchMock
       .mockResolvedValueOnce(cognitoOk({}))
-      .mockResolvedValueOnce(cognitoOk({ ChallengeName: "PASSWORD_VERIFIER" }));
+      .mockResolvedValueOnce(cognitoOk({ ChallengeName: "SMS_MFA" }));
 
     const store = makeStore();
-    await expect(loginInitiate(store, EMAIL)).rejects.toThrow(/Unexpected challenge: PASSWORD_VERIFIER/);
+    await expect(loginInitiate(store, EMAIL)).rejects.toThrow(/Unexpected challenge: SMS_MFA/);
     expect(store.savePending).not.toHaveBeenCalled();
   });
 
@@ -148,6 +179,121 @@ describe("loginInitiate", () => {
     const store = makeStore();
     await expect(loginInitiate(store, EMAIL, { clientId: "biz-client" })).rejects.toThrow(/Unsupported Cognito clientId/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // P2-2: initiate → PASSWORD_VERIFIER → CUSTOM_CHALLENGE 連鎖シナリオ
+  // (_aws_sdk_ref/CognitoUser.java:3057-3071, 3588-3662)
+  // ─────────────────────────────────────────────────────────────────────────
+  describe("P2-2: initiate→PASSWORD_VERIFIER→CUSTOM_CHALLENGE 連鎖", () => {
+    // PASSWORD_VERIFIER の ChallengeParameters フィールドは
+    // _aws_sdk_ref/CognitoUser.java:3594-3598 の読み取りから導出:
+    //   challengeParameters.get("USERNAME")         → userId
+    //   challengeParameters.get("USER_ID_FOR_SRP")  → SRP 計算用 userId
+    //   challengeParameters.get("SRP_B")            → サーバ公開値 B (hex)
+    //   challengeParameters.get("SALT")             → ソルト (hex)
+    //   challengeParameters.get("SECRET_BLOCK")     → base64 秘密ブロック
+    const PV_CHALLENGE_PARAMS = {
+      USERNAME: EMAIL,
+      USER_ID_FOR_SRP: EMAIL,
+      SRP_B: "1234abcd5678ef01",  // 任意の非ゼロ hex
+      SALT: "aabbccdd1122",
+      SECRET_BLOCK: Buffer.from("test-secret-block").toString("base64"),
+    };
+
+    it("InitiateAuth → PASSWORD_VERIFIER → RespondToAuthChallenge(PASSWORD_VERIFIER) → CUSTOM_CHALLENGE の 3 コール連鎖", async () => {
+      fetchMock
+        .mockResolvedValueOnce(cognitoOk({})) // SignUp
+        .mockResolvedValueOnce(cognitoOk({    // InitiateAuth → PASSWORD_VERIFIER
+          ChallengeName: "PASSWORD_VERIFIER",
+          Session: "sess-pv-1",
+          ChallengeParameters: PV_CHALLENGE_PARAMS,
+        }))
+        .mockResolvedValueOnce(cognitoOk({    // RespondToAuthChallenge → CUSTOM_CHALLENGE
+          ChallengeName: "CUSTOM_CHALLENGE",
+          Session: "sess-cc-1",
+          ChallengeParameters: { email: EMAIL },
+        }));
+
+      const store = makeStore();
+      const out = await loginInitiate(store, EMAIL);
+
+      // 3 コール: SignUp / InitiateAuth / RespondToAuthChallenge(PASSWORD_VERIFIER)
+      expect(cognitoOps()).toEqual(["SignUp", "InitiateAuth", "RespondToAuthChallenge"]);
+
+      const [, , pvResp] = cognitoCalls();
+      // RespondToAuthChallenge の ChallengeName が PASSWORD_VERIFIER であること
+      expect(pvResp.input.ChallengeName).toBe("PASSWORD_VERIFIER");
+      expect(pvResp.input.Session).toBe("sess-pv-1");
+      // ChallengeResponses の 4 フィールドが存在すること
+      // (_aws_sdk_ref/CognitoUser.java:3638-3644)
+      expect(pvResp.input.ChallengeResponses.PASSWORD_CLAIM_SECRET_BLOCK).toBe(PV_CHALLENGE_PARAMS.SECRET_BLOCK);
+      expect(pvResp.input.ChallengeResponses.PASSWORD_CLAIM_SIGNATURE).toBeTypeOf("string");
+      expect(pvResp.input.ChallengeResponses.TIMESTAMP).toBeTypeOf("string");
+      expect(pvResp.input.ChallengeResponses.USERNAME).toBe(EMAIL);
+      // DEVICE_KEY は initiate 時点で pending に device 情報がないため含まない
+      expect(pvResp.input.ChallengeResponses.DEVICE_KEY).toBeUndefined();
+
+      // 最終的に CUSTOM_CHALLENGE を受けて pending に保存されること
+      expect(out).toEqual({ challenge: "CUSTOM_CHALLENGE", params: { email: EMAIL } });
+      expect(store._peekPending()).toMatchObject({
+        clientId: CONSUMER_CLIENT_ID,
+        username: EMAIL,
+        session: "sess-cc-1",
+      });
+    });
+
+    it("PASSWORD_VERIFIER の後に CUSTOM_CHALLENGE 以外が来たら throw する", async () => {
+      fetchMock
+        .mockResolvedValueOnce(cognitoOk({})) // SignUp
+        .mockResolvedValueOnce(cognitoOk({    // InitiateAuth → PASSWORD_VERIFIER
+          ChallengeName: "PASSWORD_VERIFIER",
+          Session: "sess-pv-2",
+          ChallengeParameters: PV_CHALLENGE_PARAMS,
+        }))
+        .mockResolvedValueOnce(cognitoOk({    // RespondToAuthChallenge → 想定外チャレンジ
+          ChallengeName: "NEW_PASSWORD_REQUIRED",
+          Session: "sess-np",
+        }));
+
+      const store = makeStore();
+      await expect(loginInitiate(store, EMAIL)).rejects.toThrow(/Unexpected challenge after PASSWORD_VERIFIER/);
+      expect(store.savePending).not.toHaveBeenCalled();
+    });
+
+    it("SRP_B が N の倍数 (B mod N == 0) の場合は SRP error を throw する (_aws_sdk_ref/CognitoUser.java:3605-3608)", async () => {
+      // N_HEX は 3072-bit group prime。B = N (= 0 mod N) を送る。
+      const N_HEX =
+        "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1" +
+        "29024E088A67CC74020BBEA63B139B22514A08798E3404DD" +
+        "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245" +
+        "E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED" +
+        "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D" +
+        "C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F" +
+        "83655D23DCA3AD961C62F356208552BB9ED529077096966D" +
+        "670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B" +
+        "E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9" +
+        "DE2BCBF6955817183995497CEA956AE515D2261898FA0510" +
+        "15728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64" +
+        "ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7" +
+        "ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6B" +
+        "F12FFA06D98A0864D87602733EC86A64521F2B18177B200C" +
+        "BBE117577A615D6C770988C0BAD946E208E24FA074E5AB31" +
+        "43DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF";
+      fetchMock
+        .mockResolvedValueOnce(cognitoOk({})) // SignUp
+        .mockResolvedValueOnce(cognitoOk({    // InitiateAuth → PASSWORD_VERIFIER (悪性 B=N)
+          ChallengeName: "PASSWORD_VERIFIER",
+          Session: "sess-pv-bad",
+          ChallengeParameters: {
+            ...PV_CHALLENGE_PARAMS,
+            SRP_B: N_HEX, // B ≡ 0 (mod N)
+          },
+        }));
+
+      const store = makeStore();
+      await expect(loginInitiate(store, EMAIL)).rejects.toThrow(/SRP error, B cannot be zero/);
+    });
   });
 });
 
@@ -213,12 +359,19 @@ describe("loginVerify", () => {
       }))
       // ConfirmDevice: User Opt-In Pool 相当の UserConfirmationNecessary=true を返しても
       // 参照 SDK は remembered 化 (UpdateDeviceStatus) しない。
-      .mockResolvedValueOnce(cognitoOk({ UserConfirmationNecessary: true }));
+      .mockResolvedValueOnce(cognitoOk({ UserConfirmationNecessary: true }))
+      // P2-8: GetUser (nickname 自動設定 best-effort — nickname 設定済みを返すので UpdateUserAttributes は来ない)
+      .mockResolvedValueOnce(cognitoOk({
+        UserAttributes: [
+          { Name: "email", Value: EMAIL },
+          { Name: "nickname", Value: "existing" },
+        ],
+      }));
 
     const store = makeStore({ pending: PENDING });
     const tokens = await loginVerify(store, "123456");
 
-    expect(cognitoOps()).toEqual(["RespondToAuthChallenge", "ConfirmDevice"]);
+    expect(cognitoOps()).toEqual(["RespondToAuthChallenge", "ConfirmDevice", "GetUser"]);
     const confirm = cognitoCalls()[1];
     expect(confirm.input.AccessToken).toBe("at-1");
     expect(confirm.input.DeviceKey).toBe("dev-new");
@@ -259,6 +412,13 @@ describe("loginVerify", () => {
         .mockResolvedValueOnce(cognitoOk(SRP_CHALLENGE))
         .mockResolvedValueOnce(cognitoOk({
           AuthenticationResult: { IdToken: makeJwt(), AccessToken: "at-2", RefreshToken: "rt-2" },
+        }))
+        // P2-8: GetUser (nickname 自動設定 best-effort — nickname 設定済みを返すので UpdateUserAttributes は来ない)
+        .mockResolvedValueOnce(cognitoOk({
+          UserAttributes: [
+            { Name: "email", Value: EMAIL },
+            { Name: "nickname", Value: "existing" },
+          ],
         }));
 
       const store = makeStore({
@@ -267,7 +427,7 @@ describe("loginVerify", () => {
       });
       const tokens = await loginVerify(store, "123456");
 
-      expect(cognitoOps()).toEqual(["RespondToAuthChallenge", "RespondToAuthChallenge", "RespondToAuthChallenge"]);
+      expect(cognitoOps()).toEqual(["RespondToAuthChallenge", "RespondToAuthChallenge", "RespondToAuthChallenge", "GetUser"]);
       const [, srpA, verifier] = cognitoCalls();
       expect(srpA.input.ChallengeName).toBe("DEVICE_SRP_AUTH");
       expect(srpA.input.ChallengeResponses.DEVICE_KEY).toBe(CONFIRMED_DEVICE.deviceKey);
@@ -302,8 +462,11 @@ describe("loginVerify", () => {
       expect(store._peek().deviceKey).toBeNull();
       expect(store._peek().deviceGroupKey).toBeNull();
       expect(store._peek().devicePassword).toBeNull();
-      // 再開始の InitiateAuth は DEVICE_KEY 無し
-      expect(cognitoCalls()[3].input.AuthParameters).toEqual({ USERNAME: EMAIL });
+      // 再開始の InitiateAuth は SRP_A 付き 3 フィールド、DEVICE_KEY は無し (P2-2)
+      expect(cognitoCalls()[3].input.AuthParameters.USERNAME).toBe(EMAIL);
+      expect(cognitoCalls()[3].input.AuthParameters.CHALLENGE_NAME).toBe("SRP_A");
+      expect(cognitoCalls()[3].input.AuthParameters.SRP_A).toBeTypeOf("string");
+      expect(cognitoCalls()[3].input.AuthParameters.DEVICE_KEY).toBeUndefined();
       // pending は新 Session に更新済み (新コードで verify をやり直せる)
       expect(store._peekPending().session).toBe("sess-fresh");
     });

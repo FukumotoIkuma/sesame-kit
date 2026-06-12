@@ -8,14 +8,16 @@ import { withFileLock, writeSecretJson } from "./secure-fs.js";
  * 永続化されるトークン一式。auth.js が読み書きする形。
  * @typedef {object} StoredTokens
  * @property {string} [clientId] 取得に使った Cognito client ID
- * @property {string} idToken Cognito IdToken (JWT)
- * @property {string} [refreshToken] Cognito RefreshToken
+ * @property {string|null} idToken Cognito IdToken (JWT)。
+ *   null は refresh 失効時の「トークン 3 点のみ破棄・device 温存」save で使う
+ *   (P2-3: _aws_sdk_ref/CognitoUser.java:2703-2720 clearCachedTokens に相当)。
+ * @property {string|null} [refreshToken] Cognito RefreshToken
  * @property {string|null} [accessToken] Cognito AccessToken
  * @property {string|null} [deviceKey] 確定済みデバイスキー
  * @property {string|null} [deviceGroupKey] デバイスグループキー
  * @property {string|null} [devicePassword] デバイスパスワード (SRP 用)
  * @property {string|null} [username] ログインユーザー名 (email)
- * @property {string} [lastRefresh] 最終 refresh の ISO timestamp
+ * @property {string|null} [lastRefresh] 最終 refresh の ISO timestamp
  */
 
 /**
@@ -117,6 +119,13 @@ function tokenFreshnessMs(t) {
 //      refreshToken / 再発行済み idToken を巻き戻さないための核心ルール。
 //      新しさの同値 (typ. 同一スナップショット) や判定不能 (両者とも timestamp 無し)
 //      では incoming が全面的に勝つ — 従来の「save = 上書き」挙動を維持する。
+//   2a. 例外の例外 (P2-3): incoming.idToken === null (undefined ではなく明示 null) は
+//      「refresh 失効によるトークン 3 点破棄・device 温存」の意図を表す
+//      (_aws_sdk_ref/CognitoUser.java:2703-2720 clearCachedTokens に相当)。
+//      この場合は規則 2 の「ディスク側が新しければ復活」を適用せず、
+//      idToken/accessToken/refreshToken/lastRefresh の null を尊重する。
+//      これにより「失効後 device-only save → merge がディスクの古いトークンを復活」
+//      という競合を単一ロック内で防ぐ。
 //   3. deviceKey / deviceGroupKey / devicePassword は merge 保護の対象外 (常に
 //      incoming 優先)。refresh 失敗時に意図的に null 化して再ログインへ誘導する
 //      経路があり、「巻き戻り」と「意図的リセット」をフィールド値だけでは区別
@@ -131,6 +140,10 @@ function tokenFreshnessMs(t) {
  */
 function mergeStoredTokens(disk, incoming) {
   if (!disk) return incoming;
+  // 規則 2a: incoming.idToken が明示 null = refresh 失効による意図的破棄。
+  // ディスク側が新しくても復活させず、null をそのまま尊重する
+  // (_aws_sdk_ref/CognitoUser.java:2703-2720 clearCachedTokens の範囲に相当)。
+  if (incoming.idToken === null) return incoming;
   if (tokenFreshnessMs(disk) <= tokenFreshnessMs(incoming)) return incoming; // 規則 2 後段
   /** @type {StoredTokens} */
   const merged = { ...incoming };

@@ -979,7 +979,7 @@ export class SesameHub3 {
 
   /**
    * biometrics REST 用の Identity Pool credentials provider (SigV4 経路、P2-1/BIZ-07)。
-   * 公式の認可は SigV4 + x-api-key + appidentifyid (ApiClientConfigBuilder.kt:34-46) で、
+   * 公式の認可は SigV4 + x-api-key (ApiClientConfigBuilder.kt:34-46) で、
    * 旧 idToken Bearer は参照に存在しないため撤去した。provider はキャッシュを持つので
    * インスタンスで 1 つを共有する。
    * @returns {import("./aws-credentials.js").CredentialsProviderLike}
@@ -994,7 +994,9 @@ export class SesameHub3 {
   }
 
   /**
-   * biometrics 4 メソッド共通の transport 解決オプション (SigV4 + appidentifyid 永続化)。
+   * biometrics 4 メソッド共通の transport 解決オプション (SigV4 経路)。
+   * config / configStore は makeBiometricsTransport 側で無視される互換引数
+   * (/device/v1/biometrics に appidentifyid は付かないため — access.js makeBiometricsTransport 参照)。
    * @param {string} [baseUrl]
    * @param {import("./access.js").BiometricsTransport} [transport]
    */

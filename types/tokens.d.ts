@@ -41,13 +41,15 @@ export type StoredTokens = {
      */
     clientId?: string | undefined;
     /**
-     * Cognito IdToken (JWT)
+     * Cognito IdToken (JWT)。
+     * null は refresh 失効時の「トークン 3 点のみ破棄・device 温存」save で使う
+     * (P2-3: _aws_sdk_ref/CognitoUser.java:2703-2720 clearCachedTokens に相当)。
      */
-    idToken: string;
+    idToken: string | null;
     /**
      * Cognito RefreshToken
      */
-    refreshToken?: string | undefined;
+    refreshToken?: string | null | undefined;
     /**
      * Cognito AccessToken
      */
@@ -71,7 +73,7 @@ export type StoredTokens = {
     /**
      * 最終 refresh の ISO timestamp
      */
-    lastRefresh?: string | undefined;
+    lastRefresh?: string | null | undefined;
 };
 /**
  * login 途中 (CUSTOM_CHALLENGE 待ち) の一時状態。

@@ -104,3 +104,42 @@ describe("device SRP (server simulation)", () => {
     expect(ts).toBe("Wed Mar 4 02:03:04 UTC 2026");
   });
 });
+
+describe("SRP_B ≡ 0 (mod N) guard (device side)", () => {
+  // 参照: _aws_sdk_ref/CognitoUser.java:3686-3689 (deviceSrpAuthRequest)
+  //   final BigInteger srpB = new BigInteger(..., 16);
+  //   if (srpB.mod(AuthenticationHelper.N).equals(BigInteger.ZERO))
+  //     throw new CognitoInternalErrorException("SRP error, B cannot be zero");
+
+  const { N } = __srpTest;
+  const { a, A } = generateEphemeralA();
+  const v = generateDeviceVerifier(GROUP, DEVKEY);
+  const salt = BigInt("0x" + Buffer.from(v.salt, "base64").toString("hex"));
+
+  const baseArgs = {
+    deviceGroupKey: GROUP,
+    deviceKey: DEVKEY,
+    devicePassword: v.devicePassword,
+    salt,
+    a,
+    A,
+  };
+
+  it("rejects B = 0 with the canonical error message", () => {
+    expect(() =>
+      deviceAuthSecrets({ ...baseArgs, serverB: 0n }),
+    ).toThrow("SRP error, B cannot be zero");
+  });
+
+  it("rejects B = N (≡ 0 mod N)", () => {
+    expect(() =>
+      deviceAuthSecrets({ ...baseArgs, serverB: N }),
+    ).toThrow("SRP error, B cannot be zero");
+  });
+
+  it("rejects B = 2N (≡ 0 mod N)", () => {
+    expect(() =>
+      deviceAuthSecrets({ ...baseArgs, serverB: 2n * N }),
+    ).toThrow("SRP error, B cannot be zero");
+  });
+});
