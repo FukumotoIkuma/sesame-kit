@@ -6,6 +6,8 @@
 
 ## 実施状況(2026-06-12 更新)
 
+**v2 全 81 項目を Phase 1〜6 まで実装完了**(各 Phase 1 コミット、`refactor/r2-plan` ブランチ)。実装はワークフロー上の軽量エージェント(レーン分割)、監査(参照一次資料との突き合わせ・全ゲート)は統括が担当。完了時点のゲート: `typecheck` / `lint`(0 warning)/ `check:refs`(15/15)/ `build` 再生成ドリフト 0 / テスト **unit 1863 + e2e 356 全緑**(監査開始時 1571 + 319 から +329)。残件は §9 実機検証バックログ(V1〜V14、該当 API は `@experimental` 維持)と P5-14(workspace 分割・次 major)のみ。
+
 - **Phase 1(P1-1〜P1-8)実施済み**(Phase 1 コミット参照)。実装はワークフロー上の軽量エージェント、監査(参照突き合わせ・全ゲート)は統括が実施。
   - 付記: P1-4 で `devices.subscribeDevicesUpdate` の戻り値が `() => void` → `{unsubscribe, sendFrame}` に変更(ライブラリ公開面・experimental)。P1-7/P1-8 で RPC メソッド集合が変化(ble.scan 追加 = 199 メソッド、生体一覧 5 op の結果形が ack → records)。**いずれも P4-1 の CONTRACT_VERSION bump / changelog に記載すること**。
 - **Phase 2(P2-1〜P2-10)実施済み**(Phase 2 コミット参照)。`_aws_sdk_ref/`(AWSMobileClient 2.77.0)を in-repo 化し `npm run check:refs` で健全性検査を導入。P2-2 で InitiateAuth がアプリ形(SRP_A 付き)になり PASSWORD_VERIFIER ハンドラを実装(@experimental・§9 V13 実機検証待ち)。P2-3 でトークン失効時の後始末を device 温存に変更。
