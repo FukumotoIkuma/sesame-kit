@@ -91,6 +91,40 @@ function asErrMsg(e) {
   return m.replace(/\n|\r/g, "");
 }
 
+// debug ログに乗せる payload から資格情報フィールドを伏せる (debug 限定だが、apiKeyId /
+// token / 鍵素材が平文でログに残らないようにする — clear-text-logging 対策)。
+const SENSITIVE_LOG_KEYS = new Set([
+  "apiKeyId", "token", "idToken", "accessToken", "refreshToken",
+  "secretKey", "sk", "password", "devicePassword", "sign", "history", "secret",
+]);
+
+/**
+ * payload を JSON 文字列化する際に資格情報フィールドを "***" に伏せ、CR/LF も除去する。
+ * @param {unknown} payload
+ * @returns {string}
+ */
+function redactPayloadForLog(payload) {
+  const seen = new WeakSet();
+  /** @param {unknown} v @returns {unknown} */
+  const walk = (v) => {
+    if (!v || typeof v !== "object") return v;
+    if (seen.has(/** @type {object} */ (v))) return "[circular]";
+    seen.add(/** @type {object} */ (v));
+    if (Array.isArray(v)) return v.map(walk);
+    /** @type {Record<string, unknown>} */
+    const out = {};
+    for (const [k, val] of Object.entries(v)) {
+      out[k] = SENSITIVE_LOG_KEYS.has(k) ? "***" : walk(val);
+    }
+    return out;
+  };
+  try {
+    return JSON.stringify(walk(payload)).replace(/\n|\r/g, "");
+  } catch {
+    return "[unserializable payload]";
+  }
+}
+
 /**
  * Hub3WsClient のコンストラクタ設定。
  * @typedef {object} Hub3WsClientConfig
@@ -485,7 +519,7 @@ export class Hub3WsClient {
       this.log("non-JSON message:", text.slice(0, 200).replace(/\n|\r/g, ""));
       return;
     }
-    this.log("recv:", (text.length > 200 ? text.slice(0, 200) + "..." : text).replace(/\n|\r/g, ""));
+    this.log("recv:", redactPayloadForLog(msg).slice(0, 200)); // サーバ応答も資格情報を伏せる
     this.lastActiveTime = Date.now();
 
     // keepalive ack: success フィールド有無問わず pong timer をクリア (Review H-1:
@@ -554,7 +588,7 @@ export class Hub3WsClient {
   /** @param {WsFrame} payload */
   _sendOrQueue(payload) {
     if (this.ws && this.status === STATUS.OPEN) {
-      this.log("send:", JSON.stringify(payload).replace(/\n|\r/g, "")); // payload は呼び出し側入力
+      this.log("send:", redactPayloadForLog(payload)); // payload は呼び出し側入力 (資格情報は伏せる)
       try {
         this.ws.send(JSON.stringify(payload));
       } catch (e) {
@@ -562,7 +596,7 @@ export class Hub3WsClient {
         this.messageQueue.push({ payload, enqueuedAt: Date.now() });
       }
     } else {
-      this.log("queued (not open):", JSON.stringify(payload).replace(/\n|\r/g, ""));
+      this.log("queued (not open):", redactPayloadForLog(payload));
       this.messageQueue.push({ payload, enqueuedAt: Date.now() });
     }
   }
@@ -581,7 +615,7 @@ export class Hub3WsClient {
       const entry = this.messageQueue.shift();
       if (!entry) break;
       try {
-        this.log("flush:", JSON.stringify(entry.payload).replace(/\n|\r/g, ""));
+        this.log("flush:", redactPayloadForLog(entry.payload));
         this.ws.send(JSON.stringify(entry.payload));
       } catch (e) {
         this.log("flush failed, re-queueing:", asErrMsg(e));
