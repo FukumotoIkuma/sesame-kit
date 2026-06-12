@@ -52,6 +52,23 @@ export class SesameRpcError extends Error {
  */
 export { SesameRpcError as SesameError };
 
+// serve.token (ローカルの serve が生成するランダムトークン) はファイルから読み込むため、
+// 万一改竄された値が Authorization ヘッダや URL クエリに混入すると HTTP ヘッダ/URL
+// インジェクション (CRLF 注入・クエリ汚染) になりうる。token がネットワーク送出に使われる
+// 前に必ずこの検証を通し、想定文字種以外を拒否する (実インジェクション対策 +
+// CodeQL js/file-access-to-http のテイントバリア)。
+function sanitizeServeToken(raw) {
+  if (raw == null) return null;
+  const tok = String(raw).trim();
+  if (tok === "") return null;
+  // serve のトークンは URL-safe な英数字系 (base64url / hex 等)。制御文字・空白・改行を
+  // 1 つでも含む値は不正として拒否する (= ヘッダ/URL に注入されうる文字を遮断)。
+  if (!/^[\w.~+/=-]+$/.test(tok)) {
+    throw new SesameRpcError("serve.token の形式が不正です (制御文字や空白は許可されません)", "not_authenticated");
+  }
+  return tok;
+}
+
 // HTTP ステータス → SesameError.kind 写像 (出典: REFACTORING_PLAN.md P4-5/SURF-10)。
 // sdk/ts・sdk/python・clients/python と共通の正で、tests/fixtures/http-kind-map.json に固定。
 //   400/413/415→bad_params, 401/403→not_authenticated, 404→not_implemented,
@@ -199,6 +216,8 @@ class StreamTransport {
 class WsTransport {
   constructor(WS, url, token, useHeader) {
     this._ids = 0; this._pending = new Map(); this._onEvent = null; this._fatal = null;
+    // token はネットワーク送出前に形式検証する (ヘッダ/URL インジェクション対策)。
+    token = sanitizeServeToken(token);
     // ヘッダ送信可 (ws パッケージ) なら Authorization ヘッダ、不可 (ブラウザ) なら URL ?token=。
     this._ws = useHeader && token
       ? new WS(url, { headers: { authorization: `Bearer ${token}` } })
@@ -235,7 +254,8 @@ class WsTransport {
 }
 
 class HttpTransport {
-  constructor(base, token) { this._base = base; this._token = token; this._ids = 0; }
+  // token はネットワーク送出前に形式検証する (Authorization ヘッダ/URL インジェクション対策)。
+  constructor(base, token) { this._base = base; this._token = sanitizeServeToken(token); this._ids = 0; }
   _headers() { return this._token ? { "content-type": "application/json", authorization: `Bearer ${this._token}` } : { "content-type": "application/json" }; }
   _unauthorized() {
     return this._token

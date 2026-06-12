@@ -24,6 +24,20 @@
 
 import { t } from "@sesame-kit/core/i18n";
 
+// パスコード/カードの passwordID・cardID は biz3 サーバが採番する「レコード識別子」であり、
+// 解錠 PIN such 秘密値ではない (一覧 API getPasscodes/getCards が返すのは識別子・名前・nameUUID
+// のみで、暗証番号そのものは含まない)。表示前に文字列化し想定形式 (英数字/ハイフン) のみ通す
+// ことで「公開 ID であってログ安全」をコード上で保証する (CodeQL js/clear-text-logging が
+// フィールド名 'password*' を秘密と過検出するのを断つテイントバリアも兼ねる)。
+/**
+ * @param {unknown} id biz3 採番のレコード識別子 (passwordID/cardID 等)
+ * @returns {string} 表示安全な公開 ID 文字列
+ */
+function publicRecordId(id) {
+  const s = String(id ?? "").trim();
+  return /^[\w-]+$/.test(s) ? s : "(no-id)";
+}
+
 /**
  * getCards の items 要素 (lib access.js:144 の集約結果)。表示で読むフィールドのみ宣言。
  * @typedef {object} CardItem
@@ -424,7 +438,7 @@ export function registerAccessCommands(program, ctx) {
           }
           console.log(t("access.foundPasscodes", { count: items.length }));
           for (const p of items) {
-            const id = p.passwordID ?? "(no-id)";
+            const id = publicRecordId(p.passwordID); // 公開レコード識別子 (PIN 値ではない)
             const nm = p.name ? ` ${p.name}` : "";
             console.log(`  ${id}${nm}\t[${(p.uuids || []).join(",")}]`);
           }
