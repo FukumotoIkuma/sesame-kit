@@ -30,7 +30,7 @@
 // 応答モデル (useOperateIoT.js:6-43):
 //   応答も action='biz3OperateIoT'。message.op は『数値の cmdCode が echo されたもの』で、
 //   これをキーにディスパッチされる。よって transport の購読キーは `biz3OperateIoT:<cmdCode>`
-//   (transport.js:395 が `${msg.action}:${msg.op || ""}` を作る。数値 op は文字列化される)。
+//   (transport.js:527 が `${msg.action}:${msg.op || ""}` を作る。数値 op は文字列化される)。
 //   実データは message.data (あれば)。device 特定は message.UUID || message.touch_id。
 //   送信は fire-and-forget (sendCmd は応答を待たない) なので、応答が要るものは client.subscribe で受ける。
 

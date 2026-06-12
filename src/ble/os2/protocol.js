@@ -1,10 +1,10 @@
 // SESAME OS2 BLE プロトコル (SESAME2/3/4・初代 Bot・初代 Bike) — 純 JS のコア。
 //
 // 移植元 (1:1):
-//   - references_android/.../ble/os2/CHSesame2Device.kt   (login / register / mechStatus)
-//   - references_android/.../ble/os2/CHSesameBotDevice.kt  (bot login / mechStatus)
-//   - references_android/.../ble/os2/CHSesameBikeDevice.kt (bike login / mechStatus)
-//   - references_android/.../ble/os2/base/CHSesameOS2.kt   (SSM2Payload.toDataWithHeader)
+//   - _sesame_sdk_ref/sesame-sdk/.../ble/os2/CHSesame2Device.kt   (login / register / mechStatus)
+//   - _sesame_sdk_ref/sesame-sdk/.../ble/os2/CHSesameBotDevice.kt  (bot login / mechStatus)
+//   - _sesame_sdk_ref/sesame-sdk/.../ble/os2/CHSesameBikeDevice.kt (bike login / mechStatus)
+//   - _sesame_sdk_ref/sesame-sdk/.../ble/os2/base/CHSesameOS2.kt   (SSM2Payload.toDataWithHeader)
 //
 // OS3 (src/ble/protocol.js) との差分:
 //   - 送信フレームに **opCode を含む**: SSM2Payload.toDataWithHeader() = [opCode, itemCode] ++ data

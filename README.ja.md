@@ -24,9 +24,9 @@
 - **鍵なしの BLE デバイス発見**（`listNearbyDevices()` / `SesameBle.listNearby()`、`sesame ble scan` でも可）: 1 回のスキャンで近接 SESAME を `{ deviceUUID, productType, model, kind, isRegistered, advTagB1, isConnectable, rssi, localName, address, peripheral }` のリストで返します（`secretKey` 不要）。結果の `peripheral` を `SesameBle.fromDiscovery()` に渡せば再スキャンなしで接続できます（例: `isRegistered: false` の工場出荷デバイスを見つけて `registerOnce` に渡す）
 - **堅牢な BLE リンク**: 既定の `NobleTransport` は peripheral の切断イベントを購読してセッションへ伝播し、リンク断（相手側切断 / 圏外）時に処理中リクエストを **timeout を待たず即座に fail-fast** させます。write は数回の指数バックオフ付きリトライ後にリンク断とみなします（`CHSesameOS3.kt` `transmit` の「リトライ→最終的に切断」を移植）。MTU は CoreBluetooth が自動協商します（noble に能動的な `requestMtu` API はなく、SDK の iOS 経路と同じ挙動）
 - **BLE ペアリング**: 工場出荷デバイスを BLE で登録（ECDH ハンドシェイク + サーバ認証）し、その `secretKey` を取得 — OS3（`SesameBle.registerOnce()`）/ OS2（`SesameOS2Ble.registerOnce()`）
-- **生体・アクセス制御の BLE 登録**: Touch / Touch Pro / Face / Palm へのカード / 指紋 / 暗証番号 / 顔 / 掌紋の登録（`SesameBle#biometric`）。`registerDelegate` は登録以外のデバイス publish も配信します — Touch Pro `mechStatus`・電池電圧・子鍵スロット（`PUB_KEY_SESAME`）・スロット非サポートフラグ・BLE 送信出力。読み取り専用サブセットは CLI に `sesame ble ...` として配線済み（汎用 `sesame ble invoke` / `os2-invoke` と `ota` / `reset` / `wifi` / `position` も追加済み）で、登録 / 書き込み系は Node と `sesame serve` の `ble.invoke` からも呼べます
-- **SESAME Bike3 指紋の BLE 対応**: Bike3 の指紋の一覧 / 削除 / 改名・登録モードの取得 / 設定（`SesameBle#fingerPrint`）— Bike3 は Bike2（解錠）に指紋 capability を足した型なので、指紋サブセットのみを露出。読み取りは CLI、書き込みは Node と `ble.invoke` から到達できます
-- **SESAME Bot2 / Bot3 スクリプトの BLE 対応**: index 指定でスクリプト実行・アクティブスクリプトの切替・現在スクリプトの取得・名前一覧の取得・スクリプトの書き込み（`SesameBle#script`）— 読み取りは CLI、切替 / 書き込み / index 実行は Node と `ble.invoke` から到達できます
+- **生体・アクセス制御の BLE 登録**: Touch / Touch Pro / Face / Palm へのカード / 指紋 / 暗証番号 / 顔 / 掌紋の登録（`SesameBle#biometric`）。`registerDelegate` は登録以外のデバイス publish も配信します — Touch Pro `mechStatus`・電池電圧・子鍵スロット（`PUB_KEY_SESAME`）・スロット非サポートフラグ・BLE 送信出力。読み取り専用サブセットは CLI に `sesame ble ...` として配線済み（汎用 `sesame ble invoke` / `os2-invoke` と `ota` / `reset` / `wifi` / `position` も追加済み）で、登録 / 書き込み系は Node と `sesame serve` の型付き `ble.biometric.*` RPC メソッド（例: `ble.biometric.cardAdd`・`ble.biometric.passcodeAdd`）からも呼べます。`ble.invoke` は脱出口として併存します
+- **SESAME Bike3 指紋の BLE 対応**: Bike3 の指紋の一覧 / 削除 / 改名・登録モードの取得 / 設定（`SesameBle#fingerPrint`）— Bike3 は Bike2（解錠）に指紋 capability を足した型なので、指紋サブセットのみを露出。読み取りは CLI でも利用可能で、すべての op が型付き `ble.fingerPrint.*` RPC メソッド（例: `ble.fingerPrint.fingerPrints`・`ble.fingerPrint.fingerPrintDelete`）からも呼べます
+- **SESAME Bot2 / Bot3 スクリプトの BLE 対応**: index 指定でスクリプト実行・アクティブスクリプトの切替・現在スクリプトの取得・名前一覧の取得・スクリプトの書き込み（`SesameBle#script`）— 読み取り・index 実行（`sesame ble script-run`）・切替（`sesame ble script-select`）・書き込み（`sesame ble script-write`）はすべて CLI でも利用可能で、型付き `ble.script.*` RPC メソッド（例: `ble.script.click`・`ble.script.selectScript`）からも呼べます
 - **WifiModule2 の BLE 対応**: Wi-Fi プロビジョニングと子鍵登録（`SesameBle#wifi`）
 - **Hub3 の BLE 対応**: Wi-Fi プロビジョニング（SSID スキャン / SSID / パスワード）・子鍵の削除・接続種別（Wi-Fi / LTE）の読み出し（`SesameBle#hub3`）
 - **BLE 経由ファームウェア更新**（DFU / OTA）の開始コマンド: Hub3（`MOVE_TO`）/ WM2（`OPEN_OTA_SERVER`）。OS3 ロックは SDK と同じ「コマンド無し」経路（`SesameBle#updateFirmware`、CLI は `sesame ble ota`）。DFU バイナリ転送自体（Nordic DFU）は非同梱 — [既知の制限](#既知の制限)参照
@@ -62,7 +62,7 @@ cd sesame-kit && npm install && npm link
 
 ### 依存関係とセキュリティ方針
 
-本番依存ツリーは意図的に小さく保っています。`npm install sesame-kit` が引き込むのは次の 3 つだけです:
+本番依存ツリーは意図的に小さく保っています。`npm install sesame-kit` が引き込む必須 runtime 依存は次の 3 つです。加えて optional のネイティブパッケージ `@abandonware/noble`（後述）のビルドも試みます（失敗しても無視されます）:
 
 - `ws` — クラウド WebSocket transport（コア）
 - `commander` — CLI 引数パース（`sesame` bin のコア）
@@ -85,15 +85,21 @@ cd sesame-kit && npm install && npm link
 
 - `npx sesame-kit` / グローバルインストールの注意: npm は optional peer を自動導入しないため、gRPC / セッション TUI を使う場合は上記 extras を併せて入れてください（例: `npm i -g sesame-kit @grpc/grpc-js @grpc/proto-loader`）。他のコマンドはそのまま動きます。
 
-BLE 対応はネイティブパッケージ `@abandonware/noble`（`optionalDependencies` 掲載の**任意**依存）に依存します。クラウド / CLI / `sesame serve` 経路には**不要**で、ビルドに失敗しても（例: Bluetooth ツールチェーン無し）残りはインストールされ動作します。
+BLE 対応はネイティブパッケージ `@abandonware/noble`（`optionalDependencies` 掲載の**任意**依存）に依存します。npm はインストール時にビルドを試みますが、失敗した場合（例: Bluetooth ツールチェーン無し・`node-gyp` 前提条件が無い環境）はエラーが無視され、残りの kit はそのままインストールされ動作します。クラウド / CLI / `sesame serve` 経路には noble は**不要**です。
 
-ネイティブ BLE ツールチェーンは `node-gyp` を引き込み、これが従来は脆弱な `node-tar` の transitive コピーを連れてきていました。package.json の `overrides` でパッチ版に固定しています:
+ネイティブ BLE ツールチェーンは `node-gyp` を引き込み、これが従来は脆弱な `node-tar` および関連パッケージの transitive コピーを連れてきていました。package.json の `overrides` で 5 件のパッケージをパッチ版／現行 major に固定しています:
 
 ```json
-"overrides": { "tar": "^7.5.16" }
+"overrides": {
+  "@mapbox/node-pre-gyp": "^2.0.3",
+  "cacache":              "^20.0.1",
+  "make-fetch-happen":   "^15.0.6",
+  "node-gyp":            "^12.4.0",
+  "tar":                 "^7.5.16"
+}
 ```
 
-この 1 つの override で `npm audit --omit=dev` は脆弱性 **0** を報告します。パッチ版 `tar@^7.5.16` は `node-gyp` / `cacache` / `@mapbox/node-pre-gyp` が使う展開 API と互換のため、任意のネイティブビルドに影響しません。コア kit の本番（非 dev）依存に既知の advisory はありません。
+`tar@^7.5.16` がセキュリティ修正の核（アーカイブ展開 CVE へのパッチ）です。`node-gyp`・`cacache`・`make-fetch-happen`・`@mapbox/node-pre-gyp` は transitive の advisory を解消するため現行 major に引き上げています。5 件はいずれも任意のネイティブビルドが利用する API と互換です。これらの override により `npm audit --omit=dev` は脆弱性 **0** を報告します。コア kit の本番（非 dev）依存に既知の advisory はありません。
 
 ---
 
@@ -166,7 +172,7 @@ sesame login --json               # → stderr: {"error":"...","code":1}  exit�
 ## 言語非依存バックエンド (`sesame serve`)
 
 `sesame serve` は常駐 JSON-RPC 2.0 デーモンです。1 回ログインして WS 接続を保持したまま、何度でも op を実行し、
-イベントを push します。クラウド / Biz3 機能は型付き RPC として公開し、登録済み BLE 操作は `ble.invoke` / `ble.os2.invoke` から呼べます。
+イベントを push します。クラウド / Biz3 機能は型付き RPC として公開します。BLE 操作も型付きメソッドとして公開され、各 facade op が `ble.<op>` / `ble.os2.<op>`（例: `ble.script.click`・`ble.biometric.cardAdd`・`ble.hub3.setWifiSSID`）として名前付きパラメータで生成 SDK に現れます（合計 76 の型付き BLE メソッド、すべて `experimental`）。汎用の `ble.invoke` / `ble.os2.invoke` 文字列ディスパッチは脱出口として併存します。
 
 ```bash
 sesame serve                          # Unix socket のみ (既定。~/.config/sesame-kit/sesame.sock)
@@ -184,8 +190,8 @@ sesame serve --http 8080 --ws 8081 --grpc 50051   # ネットワーク経由 (to
 | WebSocket | 全言語 / ブラウザ (全二重) | `event.*` 通知 | token |
 | gRPC | 多言語の型付きスタブ生成 | `Subscribe` ストリーム | token (metadata) |
 
-- メソッドは `rpc.discover` で機械可読に全列挙します (OpenRPC。契約 1.2.0 時点で 135 メソッド)。param 名・必須・型は実コードから抽出済みです。
-- ロック: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`。加えて `lock.setAutolock` (experimental。`transport: "cloud" | "ble"` を受け、実機に効くのは BLE 経路のみ)。名前空間 op は `<ns>.<op>` で全公開します (`org.*` / `iot.*` / `access.*` / `ir.*` / `devices.*` / `config.sync*` / `ble.*` / `cloud.ping` …)。`access.registerPasscodes`・`ir.addRemoteToMatter`・型付き BLE ラッパー (`ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` / `ble.wifi.*` / `ble.invoke` / `ble.os2.*`) を含みます。
+- メソッドは `rpc.discover` で機械可読に全列挙します (OpenRPC。契約 1.2.0 時点で 202 メソッド)。param 名・必須・型は実コードから抽出済みです。
+- ロック: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`。加えて `lock.setAutolock` (experimental。`transport: "cloud" | "ble"` を受け、実機に効くのは BLE 経路のみ)。名前空間 op は `<ns>.<op>` で全公開します (`org.*` / `iot.*` / `access.*` / `ir.*` / `devices.*` / `config.sync*` / `ble.*` / `cloud.ping` …)。`access.registerPasscodes`・`ir.addRemoteToMatter`・型付き BLE op (`ble.script.*` / `ble.biometric.*` / `ble.fingerPrint.*` / `ble.remoteNano.*` / `ble.wifi.*` / `ble.hub3.*` / `ble.os2.*` とスタンドアロン op `ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` / `ble.history` / `ble.scan` / `ble.magnet` … — 合計 76 の型付き `ble.*` メソッド）を含みます。汎用の `ble.invoke` / `ble.os2.invoke` は任意の BLE op を文字列ディスパッチする脱出口 facade です。
 - イベント: `events.subscribe {topics:["lockState","deviceUpdate"]}` で以後 `event.<topic>` 通知が届きます。
 - エラーは `{error:{code, message, data:{kind}}}`。`kind` は `not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented` の 7 種です。
 
@@ -384,6 +390,7 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 - **Stripe SetupIntent の confirm。** 本 kit はカード情報を扱わない方針のため confirm を実装しません。「Stripe.js を動かせるクライアントが必須」という旧記載は技術的事実ではありません: confirm に必要なのは publishable key（biz3 では `references_web/src/env_config.js:5-7` にハードコード）と `sesame payment client-secret` で取得できる `client_secret` のみで、Stripe 公開 API（`POST /v1/payment_methods` → `POST /v1/setup_intents/{id}/confirm`）か Stripe.js で confirm し、得られた `payment_method` id を `payment.changeDefaultPayment` に渡せば完結します。周辺の Biz3 payment op (`payment.*`) はすべて公開しています。
 - **DFU バイナリ転送 (Nordic DFU)。** `SesameBle#updateFirmware` は SDK の開始コマンドのみを移植しています: Hub3 は `MOVE_TO(84)` (`CHHub3Device.kt:213-226`)、WM2 は `OPEN_OTA_SERVER(126)` (`CHWifiModule2Device.kt:450-458`)、OS3 ロックは SDK 自体が**コマンドを一切送らず**接続済みデバイスを外部 DFU ライブラリへ渡すだけです (`CHSesameOS3.kt:441-449`)。kit もこの no-op 経路を踏襲し、Nordic-DFU の転送実装は同梱しません。（旧 README の「OS3 ロックは `MOVE_TO` を送る」は誤りで、その分岐は Hub3 専用です。）
 - 予約スケジュールの**新規作成** op と、Android アプリ専用の付帯 REST（feed history・SNS subscribe・friend 等）は biz3 web 参照に存在せず、スコープ外です。
+- **OS2 mechStatus publish — 自動履歴読み出し（意図的逸脱）。** 公式 SDK（`CHSesame2Device.kt:543-553`）は、mechStatus publish を受信したときに `retCode != 0` または `target == Short.MIN_VALUE (-32768)` の場合、`readHistoryCommand` を自動発行してサーバへ POST します。kit では**この自動ドレインを実装しません**: 履歴の取得は、呼び出し元が明示的に `history()` を呼んだときのみ行われます（Node ライブラリ / `ble.history` RPC / `sesame <device> history` CLI）。これは意図的な設計判断です — 自動ドレインはポリシー（ログ・サーバ同期）をトランスポート層に結びつけてしまうため、kit はセッション層を純粋なプロトコル移植に留め、その判断を呼び出し元に委ねます。実際の影響は、明示呼び出しの間にデバイス側の履歴バッファが溜まることです。ロックの動作には影響しません。
 
 ### 実装済み・実機未検証
 

@@ -435,7 +435,7 @@ export class SesameBle {
      *
      * needAuthFromServer=true (かつ registerTransport 指定) のとき、initial token を
      * signGuestKey に渡してサーバ署名済み session token を取得する経路で login する
-     * (CHHub3Device.kt:163-174 token!=null / CHSesameOS3.kt:473-487)。登録済みだが
+     * (CHHub3Device.kt:167-178 token!=null / CHSesameOS3.kt:473-487)。登録済みだが
      * ゲスト鍵・期限付き鍵などで secretKey 単体では session を確立できないデバイス向け。
      * needAuthFromServer=false の通常デバイスは secretKey からローカルに session 鍵を導出する。
      */
@@ -446,7 +446,7 @@ export class SesameBle {
      * 工場出荷 (未登録) デバイスの初期ペアリング / 登録 (ECDH + サーバ認証)。
      * `registerMode: true` で構築した SesameBle で呼ぶ (secretKey 無し)。
      *
-     * フロー (CHHub3Device.kt:176-211): connect(register モード) → session.register() で
+     * フロー (CHHub3Device.kt:180-215): connect(register モード) → session.register() で
      * REGISTRATION ハンドシェイク → 確定した {deviceUUID, secretKey, productType, serverSecret} を返す。
      * 戻り値の secretKey を保存すれば、以降は通常の SesameBle({ secretKey }).connect() で操作できる。
      *

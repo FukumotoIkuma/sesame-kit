@@ -20,10 +20,10 @@ export function updateFirmware(session: import("./session.js").SesameBleSession)
     session: import("./session.js").SesameBleSession;
 };
 /**
- * (B) Hub3 の updateFirmwareBleOnly (CHHub3Device.kt:213-226)。
+ * (B) Hub3 の updateFirmwareBleOnly (CHHub3Device.kt:217-230)。
  *
  * MOVE_TO(84) を暗号化セッションで送り、resultCode==success ならデバイスを返す。進捗は
- * MOVE_TO(84) の publish で届く (CHHub3Device.kt:316-318)。onProgress を渡すと自動で購読し、
+ * MOVE_TO(84) の publish で届く (CHHub3Device.kt:320-322)。onProgress を渡すと自動で購読し、
  * 解決時に unsubscribe する (購読の所有権は呼び出し側に渡さない簡便 API)。
  *
  * 原典 Kotlin:
@@ -76,7 +76,7 @@ export function updateFirmwareWM2(session: import("./session.js").SesameBleSessi
     session: object;
 }>;
 /**
- * Hub3 / OS3 lock の MOVE_TO(84) 進捗 publish を購読する (CHHub3Device.kt:316-318)。
+ * Hub3 / OS3 lock の MOVE_TO(84) 進捗 publish を購読する (CHHub3Device.kt:320-322)。
  * updateFirmwareBleOnly が応答後に内部で unsubscribe するのに対し、こちらは購読の所有権を
  * 呼び出し側へ渡す版 (OTA 完了 100% まで進捗を取り続けたいとき)。
  *

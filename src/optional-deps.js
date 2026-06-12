@@ -6,9 +6,9 @@
 //   未導入環境では「何を npm i すれば良いか」を明示するエラーに変換する
 //   (黙った ERR_MODULE_NOT_FOUND は利用者に原因究明を強いるため)。
 //
-// 利用箇所: src/serve/framing/grpc.js (--grpc)。session UI (ink 系) の配線は
-//   cli.js の dynamic import 呼び出し側 (cli.js:1926 付近の catch) から本ヘルパーの
-//   案内に合流させる想定 (cli.js は別作業中のため統括へ申し送り)。
+// 利用箇所: src/serve/framing/grpc.js (--grpc)、src/cli/session.js (session-ui 遅延 import)。
+//   session UI (ink/react 等) の配線は cli/session.js:275-281 で rethrowMissingOptional を
+//   catch に足す形で実装済み (P5-1/P5-3 完了)。
 
 /**
  * モジュール解決失敗 (= 未インストール) かどうかの判定。

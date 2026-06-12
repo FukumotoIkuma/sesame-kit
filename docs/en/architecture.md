@@ -88,8 +88,8 @@ sesame-kit/
 │   ├── ts/sesame-client.ts       #   typed TS client (drift-gated; do not hand-edit)
 │   └── python/sesame_client.py   #   typed Python client (drift-gated; do not hand-edit)
 ├── clients/                # HAND-WRITTEN thin official clients (low-level; advanced/custom integrations)
-│   ├── python/sesame_client.py   #   UDS/stdio/HTTP/WS + event subscription, generic call() (zero deps)
-│   └── js/sesame-client.mjs      #   equivalent (Node 20+); see README for sdk/ vs clients/
+│   ├── python/sesame_client.py   #   UDS/stdio/HTTP + event subscription, generic call() (zero deps)
+│   └── js/sesame-client.mjs      #   UDS/HTTP/WebSocket + event subscription (Node 20+); see README for sdk/ vs clients/
 ├── vendor/
 │   └── biz3/constants/     # verbatim copy of biz3's import-zero constants (single source of truth)
 └── src/

@@ -67,7 +67,7 @@ ir.send                      [remote] key
 org.getEmployees             companyID
 access.registerCards         deviceUUID cards   # [experimental] bulk-register read IC cards (cloud DB)
 …
-135 methods.
+202 methods.
 ```
 
 Read the line for the method you want. Each line is `method  <required> [optional]`. For example, `device.history  deviceUUID [pageSize]` means **`deviceUUID` is required and `pageSize` is optional**.

@@ -566,7 +566,7 @@ export function webapiSendCmd(client, { apiKeyId, deviceId, cmd, sign, history }
 //   co/candyhouse/sesame/ble/os3/base/CHSesameOS3.kt:474-484 — signGuestKey 呼び出し:
 //     CHRemoveSignKeyRequest(deviceId.uppercase(), mSesameToken.toHexString(), secretKey)
 //     成功時 login(it.data) — つまり戻り値 String が session token (hex)。
-//   co/candyhouse/sesame/ble/os3/CHHub3Device.kt:183-186 — register 呼び出し:
+//   co/candyhouse/sesame/ble/os3/CHHub3Device.kt:187-190 — register 呼び出し:
 //     CHOS3RegisterReq(productModel.productType().toString(), serverSecret)
 //   co/candyhouse/sesame/server/dto/CHHistoryUploadRequest.kt:8 — リクエスト DTO:
 //     CHRemoveSignKeyRequest(deviceId, token, secretKey)  ← フィールド名そのまま
@@ -739,18 +739,18 @@ export async function signGuestKey(transport, { deviceUUID, tokenHex, secretKey 
 
 /**
  * registerSesame5 — OS3 (SESAME5 系) デバイスをサーバに登録する
- * (CHHub3Device.kt:183-186, CHAPIClientBiz.kt:193-195)。
+ * (CHHub3Device.kt:187-190, CHAPIClientBiz.kt:193-195)。
  *
  * パス: POST /device/v1/sesame5/{device_id}  (CHAPIClient.kt:84)
- *   ・device_id は CHHub3Device.kt:184 deviceId.toString() (大文字化なし。SDK 厳守)。
+ *   ・device_id は CHHub3Device.kt:188 deviceId.toString() (大文字化なし。SDK 厳守)。
  * リクエスト整形 (CHOS3RegisterReq, CHSS2RegisterReq.kt:5 → Gson キー {t, pk}):
  *   { t: <productType 文字列>, pk: <serverSecret> }
- *   ・t = productModel.productType().toString() (CHHub3Device.kt:185)
+ *   ・t = productModel.productType().toString() (CHHub3Device.kt:189)
  *     → 本 kit は model 名を crypto.js productTypeFromModelName で productType に解決し
  *       .toString() する (完了条件 4)。数値 productType を直接渡すことも許容。
  *   ・pk = serverSecret。SDK では serverSecret は register 時に新規生成される別値ではなく、
  *     その時点の BLE セッショントークン mSesameToken を hex 化した値そのもの
- *     (CHHub3Device.kt:182 `val serverSecret = mSesameToken.toHexString()`)。
+ *     (CHHub3Device.kt:186 `val serverSecret = mSesameToken.toHexString()`)。
  *     よって本関数が受け取る serverSecret は、signGuestKey が token として送る
  *     mSesameToken hex (L353) と同一カテゴリの値である (両者が値衝突して見えるのは正常)。
  *     本 kit はこの値を呼び出し側から受け取り、整形せずそのまま pk に乗せるだけ。
@@ -779,10 +779,10 @@ export async function registerSesame5(transport, { deviceUUID, productType, serv
   }
 
   const body = {
-    t: String(pt),     // CHHub3Device.kt:185 productType().toString()
-    pk: serverSecret,  // CHHub3Device.kt:182 serverSecret = mSesameToken.toHexString()
+    t: String(pt),     // CHHub3Device.kt:189 productType().toString()
+    pk: serverSecret,  // CHHub3Device.kt:186 serverSecret = mSesameToken.toHexString()
   };
-  // device_id は大文字化しない (CHHub3Device.kt:184 deviceId.toString())。
+  // device_id は大文字化しない (CHHub3Device.kt:188 deviceId.toString())。
   const path = `${REG_PATH_SESAME5}/${deviceUUID}`;
   const res = await transport({ method: "POST", path, body });
   // 非 2xx (4xx/5xx) はここで拒否。エラーボディを成功応答として誤採用しない。

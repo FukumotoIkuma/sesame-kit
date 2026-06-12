@@ -166,8 +166,8 @@ function assertHttpOk(res, op) {
  *
  * 互換 (非推奨): authorization / bearerToken / authorizationProvider は Authorization ヘッダを
  * そのまま付ける旧経路。参照 SDK に idToken Bearer の REST 認可は存在せず実 API Gateway
- * (IAM 認可) には拒否される見込みのため、SesameClient (client.js:921) が SigV4 へ移行する
- * までの互換注入口としてのみ残す。
+ * (IAM 認可) には拒否される。SesameHub3 (client.js) は SigV4 + x-api-key 経路
+ * (_biometricsTransportOpts) へ移行済みのため、本引数は互換受け入れのみで以後は無視される。
  *
  * @experimental SigV4 経路の実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
  *

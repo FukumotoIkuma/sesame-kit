@@ -441,7 +441,7 @@ describe("SesameBle facade", () => {
     }
   });
 
-  it("updateFirmware(hub_3) は MOVE_TO(84) を送る (CHHub3Device.kt:213-226 のデッドコード解消)", async () => {
+  it("updateFirmware(hub_3) は MOVE_TO(84) を送る (CHHub3Device.kt:217-230 のデッドコード解消)", async () => {
     // Hub3 が connect/login できる経路が無く到達不能だった HUB3 分岐が、connect 配線で到達可能に。
     const dev = new MockSesame();
     const ble = new SesameBle({ secretKey: SECRET, model: "hub_3", transport: dev });

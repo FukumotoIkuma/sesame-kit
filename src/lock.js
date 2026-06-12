@@ -44,7 +44,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  *
  * ack 相関 (P3-6): ack フレームには相関キーが無いため、subscribe (fan-out) で待つと並行
  * 2 コマンドが同じ最初の ack で両方解決して応答を取り違える。transport の `request()`
- * (transport.js:243-259 — key=`biz3TriggerLocker:` の **FIFO** 相関) を使い、送信順 =
+ * (transport.js:262 `request()` — key=`biz3TriggerLocker:` の **FIFO** 相関) を使い、送信順 =
  * 解決順を transport 層に保証させる。
  *
  * pubDeviceStateChange 補助解決の注記 (P3-4 で再検証):

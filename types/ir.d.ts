@@ -134,7 +134,7 @@ export function updateRemoteState(client: WsClient, { hub3DeviceId, uuid, state,
  * vendor (useRemoteCtrl.js:933-955 addRemoteToMatter) のフィールド 1:1:
  *   frame = { action, op:'addRemoteToMatter', hub3DeviceId, irDeviceType: irRemote.type,
  *             cmdOn, cmdOff, irDeviceUUID: irRemote.uuid, irDeviceName: irRemote.alias, companyID }
- * Matter ペアリング窓 (iot.js:466-490) の開放後に呼ぶことで、リモコンが Matter の
+ * Matter ペアリング窓 (iot.js `openMatterPairingWindow`) の開放後に呼ぶことで、リモコンが Matter の
  * On/Off デバイスとして見えるようになる (cmdOn/cmdOff は発射 command HEX)。
  *
  * @experimental 実機未検証 (参照: useRemoteCtrl.js:933-955)。

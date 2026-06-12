@@ -130,12 +130,14 @@ follow iii.
   `iot.removeSesameFromHub3` self-describes its params in `rpc.discover`.
 - ~~Stale `CONTRACT_VERSION` doc-comment ("79 method" vs 81 exposed)~~ →
   `src/serve/jsonrpc.js` keeps a per-version changelog; the registry exposes
-  135 methods at contract 1.2.0.
-- ~~`serve` exposes no BLE today (all RPC = cloud WS)~~ → registered BLE operations
-  are now exposed (`ble.invoke` / `ble.os2.invoke` generic facades + typed
-  `ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` /
-  `ble.wifi.*` / `ble.os2.register`), backed by the daemon host's Bluetooth
-  adapter; all experimental pending hardware verification.
+  202 methods at contract 1.2.0.
+- ~~`serve` exposes no BLE today (all RPC = cloud WS)~~ → 76 BLE operations are
+  now exposed as typed `ble.*` / `ble.os2.*` RPC methods — `ble.script.*` /
+  `ble.biometric.*` / `ble.fingerPrint.*` / `ble.remoteNano.*` / `ble.wifi.*` /
+  `ble.hub3.*` / `ble.os2.*` and standalone ops (`register` / `updateFirmware` /
+  `reset` / `position` / `history` / `scan` / `magnet` …) — plus the generic
+  `ble.invoke` / `ble.os2.invoke` escape-hatch facades; backed by the daemon
+  host's Bluetooth adapter; all experimental pending hardware verification.
 
 ## Open questions (not yet decided)
 

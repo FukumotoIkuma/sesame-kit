@@ -1,20 +1,20 @@
-/** scanWifiSSID: data 無し (CHHub3Device.kt:241 byteArrayOf())。結果は SSID_NOTIFY publish で届く。 */
+/** scanWifiSSID: data 無し (CHHub3Device.kt:245 byteArrayOf())。結果は SSID_NOTIFY publish で届く。 */
 export function scanWifiSSIDData(): Buffer<ArrayBuffer>;
 /**
- * setWifiSSID: data = SSID の UTF-8 bytes (CHHub3Device.kt:256 ssid.toByteArray())。
+ * setWifiSSID: data = SSID の UTF-8 bytes (CHHub3Device.kt:260 ssid.toByteArray())。
  * @param {string} ssid
  * @returns {Buffer}
  */
 export function setWifiSSIDData(ssid: string): Buffer;
 /**
- * setWifiPassword: data = パスワードの UTF-8 bytes (CHHub3Device.kt:247 password.toByteArray())。
+ * setWifiPassword: data = パスワードの UTF-8 bytes (CHHub3Device.kt:251 password.toByteArray())。
  * @param {string} password
  * @returns {Buffer}
  */
 export function setWifiPasswordData(password: string): Buffer;
 /**
  * removeSesame: data = dash 除去した UUID 文字列 (32hex) を **生バイトへ decode** した 16B
- * (CHHub3Device.kt:230-232 noDashUUID.hexStringToByteArray())。
+ * (CHHub3Device.kt:234-236 noDashUUID.hexStringToByteArray())。
  *
  * 注: WM2 の removeSesame (wm2.js) は「大文字 UUID 文字列の UTF-8 bytes」を送るが、Hub3 は
  *   「dash 除去 hex を decode した生 16B」を送る (SDK で経路が異なる)。混同しないこと。
@@ -30,7 +30,7 @@ export function removeSesameData(tag: string): Buffer;
  */
 export function networkTypeData(): Buffer<ArrayBuffer>;
 /**
- * SSID_NOTIFY(133) publish payload を解析 (CHHub3Device.kt:322-326)。
+ * SSID_NOTIFY(133) publish payload を解析 (CHHub3Device.kt:326-330)。
  *   ssidRssi = bytesToShort(payload[0], payload[1])  — 先頭 2B を short に
  *   ssidStr  = String(payload.drop(2))               — 残りを UTF-8 文字列
  *
@@ -68,7 +68,7 @@ export function parseNetworkType(payload: Buffer): {
     isLTEConnected: boolean;
 };
 /**
- * mechSetting(80) publish = Hub3 の Wi-Fi 設定 (SSID/パスワード)。CHHub3Device.kt:272-285 と 1:1。
+ * mechSetting(80) publish = Hub3 の Wi-Fi 設定 (SSID/パスワード)。CHHub3Device.kt:276-289 と 1:1。
  * payload 長で旧/新ファームを分岐:
  *   - 96B 未満 (旧 Hub3 ファーム、60B): SSID = payload[0..29] / パスワード = payload[30..59]
  *   - 96B 以上 (新 Hub3 ファーム):       SSID = payload[0..31] / パスワード = payload[32..95]
@@ -82,7 +82,7 @@ export function parseMechSetting(payload: Buffer): {
     wifiPassWord: string;
 };
 /**
- * PUB_KEY_SESAME(102) publish = Hub3 が保持する子 Sesame 鍵束 (CHHub3Device.kt:299-314)。
+ * PUB_KEY_SESAME(102) publish = Hub3 が保持する子 Sesame 鍵束 (CHHub3Device.kt:303-318)。
  * 23B チャンクに分割し、lock_status(chunk[22]) != 0 のものだけを {deviceUUID, index} で返す。
  *   ss5_id  = chunk[0..15]                                   (16B 生 UUID)
  *   ssmID   = ss5_id.toHexString().noHashtoUUID()            (ハイフン付き UUID 文字列)
@@ -137,25 +137,25 @@ export class Hub3Commands {
     /** 購読解除 (session の publish 中継を外す)。 */
     dispose(): void;
     /**
-     * 周辺 Wi-Fi SSID をスキャン (CHHub3Device.kt:238-244)。
+     * 周辺 Wi-Fi SSID をスキャン (CHHub3Device.kt:242-248)。
      * 結果は onPublish の {kind:"scanWifiSSID"} で逐次届く。
      */
     scanWifiSSID(): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /** Wi-Fi SSID を設定 (CHHub3Device.kt:255-265、HUB3_UPDATE_WIFI_SSID=136)。 @param {string} ssid */
+    /** Wi-Fi SSID を設定 (CHHub3Device.kt:259-269、HUB3_UPDATE_WIFI_SSID=136)。 @param {string} ssid */
     setWifiSSID(ssid: string): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
-    /** Wi-Fi パスワードを設定 (CHHub3Device.kt:246-253、HUB3_ITEM_CODE_WIFI_PASSWORD=135)。 @param {string} password */
+    /** Wi-Fi パスワードを設定 (CHHub3Device.kt:250-257、HUB3_ITEM_CODE_WIFI_PASSWORD=135)。 @param {string} password */
     setWifiPassword(password: string): Promise<{
         resultCode: number;
         payload: Buffer;
     }>;
     /**
-     * 子 Sesame を Hub3 から削除する (CHHub3Device.kt:228-236、REMOVE_SESAME=103)。
+     * 子 Sesame を Hub3 から削除する (CHHub3Device.kt:232-240、REMOVE_SESAME=103)。
      * data は dash 除去 UUID(32hex) を decode した生 16B (WM2 とは経路が異なる)。
      * @param {string} tag 削除対象の鍵タグ (UUID 文字列)。
      */

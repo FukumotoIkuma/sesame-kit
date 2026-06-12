@@ -96,7 +96,7 @@ export class SesameBleSession {
      *
      * サーバ認証 login (signLogin 指定時): isNeedAuthFromServer 相当。initial で得た token を
      *   signLogin(tokenHex) に渡して**サーバ署名済み session token (hex)** を取得し、それを session 鍵
-     *   として login する (CHHub3Device.kt:163-174 token!=null / CHSesameOS3.kt:473-487 の
+     *   として login する (CHHub3Device.kt:167-178 token!=null / CHSesameOS3.kt:473-487 の
      *   signGuestKey→login(it.data) 経路)。ゲスト鍵・期限付き鍵など secretKey 単体では session を
      *   確立できないデバイス向け。
      *
@@ -110,24 +110,24 @@ export class SesameBleSession {
     }): Promise<void>;
     /**
      * 工場出荷 (未登録) デバイスの初期ペアリング / 登録ハンドシェイク。
-     * secretKey を渡さずに構築した session で呼ぶ (CHHub3Device.kt:176-211)。
+     * secretKey を渡さずに構築した session で呼ぶ (CHHub3Device.kt:180-215)。
      *
-     * フロー (CHHub3Device.kt:176-211, CHSesameOS3.kt:468-492):
+     * フロー (CHHub3Device.kt:180-215, CHSesameOS3.kt:468-492):
      *   1. transport 接続 → device の initial(14) publish を待つ。secretKey 無しのため login せず
      *      ReadyToRegister へ遷移 (_handleInitial の分岐, CHSesameOS3.kt:468-491 isRegistered=false)。
      *   2. (任意) registerSesame5 をコール (CHHub3Device.kt:187-189: 失敗してもログのみで継続)。
      *   3. ECDH 鍵ペア (P-256) を生成し、生公開鍵 64B (X‖Y) を registrationData(pubK, ts) に乗せて
-     *      REGISTRATION(1) を **PLAINTEXT** 送出 (CHHub3Device.kt:191-194 / CHSesameOS3.kt:495-499)。
+     *      REGISTRATION(1) を **PLAINTEXT** 送出 (CHHub3Device.kt:194-198 / CHSesameOS3.kt:495-499)。
      *   4. response(7)+REGISTRATION(1)+resultCode+devicePubK(64B) を待つ。
-     *   5. ecdhSecretPre16(keyPair, devicePubK) = ECDH 共有秘密の先頭 16B (CHHub3Device.kt:197)。
-     *      secretKey(=wm2Key) = pre16 の hex で確定 (CHHub3Device.kt:198-200)。
-     *   6. sessionKey = deriveSessionKeyFromEcdh(pre16, token4) (CHHub3Device.kt:202-203)。
+     *   5. ecdhSecretPre16(keyPair, devicePubK) = ECDH 共有秘密の先頭 16B (CHHub3Device.kt:201)。
+     *      secretKey(=wm2Key) = pre16 の hex で確定 (CHHub3Device.kt:202-204)。
+     *   6. sessionKey = deriveSessionKeyFromEcdh(pre16, token4) (CHHub3Device.kt:206-207)。
      *      sault = 0x00 ++ token4 は CCM nonce 側 (ccmEncrypt/ccmDecrypt) が消費する。
      *      enc/decCount=0 で cipher を確立し、以降のコマンドは暗号化される。
      *      wm2 profile は鍵 = pre16 生 16B / sault = token4 / register data = pubK64 のみ
      *      (CHWifiModule2Device.kt:279-312。詳細はコンストラクタ JSDoc と protocol.js SESSION_PROFILES)。
      *   7. {deviceUUID, secretKey, productType, serverSecret(=token hex)} を返す
-     *      (CHHub3Device.kt:196-208。serverSecret は mSesameToken.toHexString())。
+     *      (CHHub3Device.kt:200-212。serverSecret は mSesameToken.toHexString())。
      *
      * @param {{deviceUUID?:string, productType?:(string|number),
      *          registerTransport?:(req:any)=>Promise<any>, nowMs?:number}} [opts]

@@ -21,7 +21,9 @@ sesame whoami                  # logged-in user info (biz3GetLoginUser); saves c
 sesame init                    # create the config directory and a config.json skeleton
 sesame setup                   # re-run the post-auth auto-import (companyID / locks / Hub3 IR)
 sesame migrate [srcDir]        # import a legacy .env / keys.json (tokens are NOT imported — run `sesame login`)
-sesame config                  # show settings (redacted)
+sesame config                  # show settings (redacted; alias for `config show`)
+sesame config path             # print the config directory path
+sesame config show             # print config.json / tokens.json (masked)
 sesame bootstrap               # restore a full app-login token backup from JSON on stdin
 sesame meta                    # show the Cognito config (region / userPoolId / clientId)
 sesame ping                    # check the cloud WS connection
@@ -209,13 +211,37 @@ sesame access cards enroll --device <uuid>                      # [experimental]
 sesame access cards clear --device <uuid>                       # delete all cards on the given device
 sesame access cards rm --json '[{"deviceID":"...","cardID":"..."}]'   # delete individually (no response)
 sesame access cards owner <cardID> [ownerSubUUID]               # assign an owner ('' to clear)
+sesame access cards name --json '{"cardID":"...","name":"...","cardNameUUID":"<v4>","stpDeviceUUID":"..."}'   # update card name (updateCardName; cardNameUUID must be UUIDv4)
+sesame access cards post --device <uuid> --json '[{"cardID":"...","nameUUID":"...","name":"...","cardType":0}]'   # register cards in DB (postCards; DB sync only, not firmware)
+
 sesame access passcodes ls --device <uuid>                      # list passcodes
 sesame access passcodes enroll --device <uuid>                  # [experimental] read passcodes over BLE (type on the keypad), bulk-register all
+sesame access passcodes rm --json '[{"deviceID":"...","passwordID":"..."}]'   # delete passcodes individually (no response)
+sesame access passcodes clear --device <uuid>                   # delete all passcodes on the given device
+sesame access passcodes name --json '{"stpDeviceUUID":"...","keyBoardPassCode":"...","keyBoardPassCodeNameUUID":"<v4>","name":"..."}'   # update passcode name (keyBoardPassCodeNameUUID must be UUIDv4)
+sesame access passcodes post --device <uuid> --json '[...]'     # register passcodes in DB (postPasscodes; DB sync only)
 ```
 
-> `rm` (delCards/delPasscodes) is **fire-and-forget**, like biz3: the reference registers no callback and ignores any response (`useManageAuthData.js:265-267`), so no completion is reported.
+> `rm` (delCards/delPasscodes) is **fire-and-forget**, like biz3: the reference registers no callback and ignores any response, so no completion is reported.
+
+> `name` (cards and passcodes): the `*NameUUID` field **must be a UUIDv4**. If you pass a non-v4 value, biz3 inserts a BLE pre-step before the DB update; the CLI does not do that pre-step, so always supply a fresh v4.
+
+> `post` (cards and passcodes): **DB sync only** — this writes the cloud DB record. Physical device enrollment goes through a separate BLE path (`access cards enroll` / `ble invoke`).
 
 > `enroll` (**experimental, hardware-unverified**) connects to the device over BLE, enters register mode, collects **every** card you tap / passcode you type (the notify stream carries multiple records), then bulk-registers them to the cloud DB in one call (`registerCards` → `postCards` for cards, `registerPasscodes` → `postPasscodes` for passcodes). Interactive: enroll, press Enter when done; non-interactive: `--timeout <sec>` (default 20). Phones read several entries per session — this brings the same to the CLI instead of one-at-a-time.
+
+### Biometrics (auth-data) — [experimental]
+
+Direct REST access to the biometrics endpoint (`/device/v1/biometrics`) using SigV4 authentication. These are low-level plumbing for fingerprint / face / palm / card / passcode raw data, as distinct from the higher-level `access cards` / `access passcodes` DB-sync ops.
+
+```bash
+sesame access auth-data post   --operation <op> --device-id <id> --items '<json array>'   # POST /device/v1/biometrics (postAuthenticationData)
+sesame access auth-data put    --operation <op> --device-id <id> --items '<json array>'   # PUT  /device/v1/biometrics (putAuthenticationData)
+sesame access auth-data delete --operation <op> --device-id <id> --items '<json array>'   # DELETE /device/v1/biometrics (deleteAuthenticationData)
+sesame access auth-data name   --kind <card|face|fingerPrint|palm|passcode> --json '{"stpDeviceUUID":"...","name":"...","nameUUID":"...","op":"...","cardID":"..."}'   # update biometric name (updateAuthenticationName)
+```
+
+> `--operation` is the biometrics operation string required by the biz3 REST API (e.g. `"insertCard"`, `"deleteCard"`). `--device-id` is the biometrics `deviceID` field (may differ from the SESAME device UUID). `--items` is a JSON array of biometric item objects.
 
 ---
 
@@ -276,10 +302,20 @@ sesame iot led --get --device <uuid> --secret <hex># get the current dimming lev
 sesame iot relay on  --device <uuid> --secret <hex># LTE relay open/close
 sesame iot firmware-update --device <uuid> --secret <hex> --wait 60
 sesame iot matter-code --device <uuid> --secret <hex>   # Matter pairing code
+sesame iot matter-open --device <uuid> --secret <hex>   # open Matter pairing window (cmdCode=153)
+sesame iot wifi-clear --device <uuid> --secret <hex>    # clear Hub3 saved WiFi settings (cmdCode=210; fire-and-forget)
+sesame iot add-sesame --hub3 <uuid> --secret <hex> --sesame <uuid> --ssm-sec <hex> --model sesame_5   # add a sub Sesame under Hub3 (cmdCode=101)
+sesame iot rm-sesame  --hub3 <uuid> --secret <hex> --sesame <uuid> --ssm-sec <hex> --model sesame_5   # remove a sub Sesame from Hub3 (cmdCode=103)
 sesame iot raw --topic <topic> --payload <hex> --cmd <n>   # [experimental] raw iot cmd escape hatch (RPC: iot.sendIotCmd / iot.sendIotCmdAwait)
 ```
 
 > `relay` is fire-and-forget: the Hub3 sends no acknowledgement, so a successful send is not a confirmed switch. The confirmed biz3 operation is `toggle` (`on` is kept as a compatibility alias for the same toggle op); there is no separate `off` command.
+
+> `matter-open` opens the Matter pairing window (statusCode=0 means success). Use `matter-code` first to obtain the QR/manual pairing code before opening the window.
+
+> `wifi-clear` clears the Hub3's saved WiFi credentials (fire-and-forget; statusCode is not confirmed).
+
+> `add-sesame` / `rm-sesame`: the payload is identical for both (same cmdCode structure: 101 add, 103 remove). `--hub3` is the parent Hub3 UUID (doubles as the MQTT topic root); `--sesame` / `--ssm-sec` identify the child device. `--nick <name>` is optional.
 
 ---
 
@@ -321,8 +357,8 @@ The `ble` command group exposes keyless scan, factory registration, read-focused
 
 ```bash
 sesame ble scan [--timeout <ms>]         # keyless nearby scan (no secretKey needed)
-sesame ble register <uuid> [--model <model>] [--save <name>] [--register-base-url <url>]
-sesame ble os2-register <uuid> [--model <model>]
+sesame ble register <uuid> [--model <model>] [--address <addr>] [--product-type <type>] [--save <name>] [--register-base-url <url>]
+sesame ble os2-register <uuid> [--model <model>] [--address <addr>] [--product-type <type>] [--ak <hex>] [--no-local-server-auth]
 sesame ble cards <device>                # list enrolled NFC cards (Touch / Touch Pro)
 sesame ble passcodes <device>            # list enrolled keypad passcodes (Touch / Touch Pro)
 sesame ble fingers <device>              # list enrolled fingerprints (Touch Pro / Bike3)
@@ -345,11 +381,16 @@ sesame ble position <device> <lock> <unlock>   # configure lock/unlock angles (c
 
 `<device>` is a config lock name or a deviceUUID. On the connect-based subcommands (everything except `scan`), `--secret <hex>` and `--model <model>` let you target a device that is not in your config locks, and `--timeout <ms>` sets the publish collection timeout (default 8000). `scan` is keyless and needs neither. For registered OS3 devices that require server-signed login, such as guest or time-limited keys, pass `--server-auth`. The register REST API host is resolved from `--register-base-url <url>` or `config.registerBaseUrl` (default: the official `https://app.candyhouse.co/prod`), and requests are SigV4-signed with Identity Pool credentials derived from the TokenStore created by `sesame login`.
 
+**`register` / `os2-register` flags:**
+- `--address <addr>`: override the BLE address / peripheral ID (useful when a UUID scan finds the wrong peripheral).
+- `--product-type <type>`: include a product type/model value in the registration result (for downstream tooling that needs it).
+- `os2-register` only — `--ak <hex>`: optional app register public key (AK) as hex, passed to the biz3 register endpoint. `--no-local-server-auth`: disable the local `getRegisterKey`-based register server adapter (falls back to direct biz3 registration).
+
 > These commands are the same BLE code paths as the library/RPC surface and are unit-tested but **not yet confirmed against real hardware**. The list/mode/script commands are read-only; enrollment and mode-set go through `ble invoke`, Node, or the BLE RPCs.
 
 **SESAME Bot scripts (台本).** A Bot2/Bot3 stores up to 10 scripts (action patterns); running script *N* sends item code `170+N` (`RUN_SCRIPT_0`..`RUN_SCRIPT_9`). The same `170+index` is used over BLE and over the cloud (the official app falls back to cloud with the identical code). Run any script by number three ways:
 > - **BLE**: `sesame ble script-run <device> <N>` (above), or in Node `ble.script.click(N)`.
-> - **Cloud**: `sesame rpc lock.click --scriptIndex N` (RPC), or in Node `hub.botClickScript(name, N)` / `hub.botClickScriptDevice({deviceUUID, secretKey, scriptIndex})`. Omitting `scriptIndex` clicks the *currently selected* script (cmd 89).
+> - **Cloud**: `sesame rpc lock.click --params '{"name":"front","scriptIndex":N}'` (RPC), or in Node `hub.botClickScript(name, N)` / `hub.botClickScriptDevice({deviceUUID, secretKey, scriptIndex})`. Omitting `scriptIndex` clicks the *currently selected* script (cmd 89).
 >
 > Note: `cmd=83` (unlock) triggering "script 1" is a firmware legacy alias and can only ever reach one script — the general path is `170+index`.
 

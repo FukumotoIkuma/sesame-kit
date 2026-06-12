@@ -30,12 +30,12 @@ import { hexToBuf, bufToHex, normalizeUuid } from "../crypto.js";
 const ITEM = ITEM_CODES;
 const STP_ITEM = STP_ITEM_CODES;
 
-// batchAdd の 1 パケット最大ペイロード長 (CHCardCapableImpl.kt:111 MAX_PAYLOAD_SIZE)。
+// batchAdd の 1 パケット最大ペイロード長 (CHCardCapableImpl.kt:99 MAX_PAYLOAD_SIZE)。
 const MAX_BATCH_PAYLOAD = 209;
-// batchAdd でパケット間に挟む待機 (CHCardCapableImpl.kt:150 sleep(4000))。
+// batchAdd でパケット間に挟む待機 (CHCardCapableImpl.kt:146 sleep(4000))。
 const BATCH_PACKET_DELAY_MS = 4000;
 
-// *Add の固定ヘッダ (CHCardCapableImpl.kt:103 / CHPassCodeCapableImpl.kt:48)。
+// *Add の固定ヘッダ (CHCardCapableImpl.kt:87 / CHPassCodeCapableImpl.kt:43)。
 const CARD_DATA_USED = 0xf0;       // CARD_DATA_USED / KB_DATA_USED
 const TYPE_CLOUD_BASE = 0x00;      // CARD_TYPE_CLOUD_BASE / KB_TYPE_CLOUD
 
@@ -82,7 +82,7 @@ function bytesToHex(buf) {
 
 /**
  * 末尾を指定バイトで size までパディング (既に size 以上なら切らずそのまま)。
- * SDK ByteArray.padEnd(size, pad) 相当 (CHCardCapableImpl.kt:103 id.padEnd(16,0x00))。
+ * SDK ByteArray.padEnd(size, pad) 相当 (CHCardCapableImpl.kt:87 id.padEnd(16,0x00))。
  * @param {Buffer} buf
  * @param {number} size
  * @param {number} [pad]
@@ -96,7 +96,7 @@ function padEnd(buf, size, pad = 0x00) {
 
 /**
  * Short.toReverseBytes() (DataExtention.kt:108-112) の符号なし版。
- * batchAdd の dataIndex/dataSize は Short を LE 2B 化したもの (CHCardCapableImpl.kt:117-118)。
+ * batchAdd の dataIndex/dataSize は Short を LE 2B 化したもの (CHCardCapableImpl.kt:114-115)。
  * 値域 0..65535 を LE 2B で詰める (batchAdd の長さは非負)。
  * @param {number} value
  * @returns {Buffer}
@@ -347,7 +347,7 @@ function divideArray23(buf) {
 // ---- card (CHCardCapableImpl.kt) ----
 
 /**
- * cardModeSet: data = [mode] (CHCardCapableImpl.kt:53)。
+ * cardModeSet: data = [mode] (CHCardCapableImpl.kt:49)。
  * @param {number} mode
  * @returns {Buffer}
  */
@@ -358,7 +358,7 @@ export function cardGetData() { return Buffer.alloc(0); }
 
 /**
  * cardAdd: data = [F0][00][idLen] ++ id.padEnd(16) ++ [nameLen] ++ name.padEnd(16)
- * (CHCardCapableImpl.kt:101-104)。id は raw bytes、hexName は UTF-8 文字列としてバイト化
+ * (CHCardCapableImpl.kt:83-91)。id は raw bytes、hexName は UTF-8 文字列としてバイト化
  * (SDK は hexName.toByteArray() = UTF-8。padEnd(16) で 16B 固定枠)。
  * @param {Buffer} id      カード UID 生バイト列
  * @param {string} hexName 名前 (UTF-8 文字列)
@@ -382,7 +382,7 @@ export function cardAddData(id, hexName) {
 export function cardDeleteData(cardID) { return hexToBytes(cardID); }
 
 /**
- * cardMove: data = [idLen] ++ id(hex→bytes) ++ touchProUUID(UTF-8) (CHCardCapableImpl.kt:71)。
+ * cardMove: data = [idLen] ++ id(hex→bytes) ++ touchProUUID(UTF-8) (CHCardCapableImpl.kt:72)。
  * @param {string} cardId       hex
  * @param {string} touchProUUID 移動先デバイスの UUID 文字列 (UTF-8)
  */
@@ -599,7 +599,7 @@ export function removeSesameData(tag, { keyType = 0x05 } = {}) {
 /**
  * batchAdd 1 パケットの data を組み立てる。
  *   data = dataIndex.toReverseBytes()(2B LE) ++ dataSize.toReverseBytes()(2B LE) ++ chunk
- * (CHCardCapableImpl.kt:117-122 / CHPassCodeCapableImpl.kt:73-78)。
+ * (CHCardCapableImpl.kt:113-121 / CHPassCodeCapableImpl.kt:69-77)。
  * chunk は全データ data[dataIndex .. dataIndex+chunkSize) で chunkSize = min(残り, 209)。
  *
  * @param {Buffer} data      全登録データ
@@ -1103,7 +1103,7 @@ export class BiometricCommands {
 
   /**
    * STP 分割転送による一括登録 (cardBatchAdd / passcodeBatchAdd 共通実体)。
-   * SDK CHCardCapableImpl.kt:106-160 / CHPassCodeCapableImpl.kt:52-114 を 1:1 で移植:
+   * SDK CHCardCapableImpl.kt:94-155 / CHPassCodeCapableImpl.kt:50-111 を 1:1 で移植:
    *   209B ずつに分割し、各パケットを [dataIndex(2B LE)][dataSize(2B LE)][chunk] で送る。
    *   1 パケットごとに送信完了を待ち (request の Promise が CountDownLatch 相当)、
    *   次パケットが残るなら 4 秒待つ。

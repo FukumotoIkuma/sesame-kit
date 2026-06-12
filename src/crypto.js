@@ -279,7 +279,7 @@ export function productTypeFromModelName(modelName) {
 //   → fixheader は SubjectPublicKeyInfo の固定 DER 前置。末尾 "...034200" の
 //     "04" が EC point の **uncompressed prefix**。remote はそこに続く 64B (X‖Y) の
 //     生バイト列 (prefix 無し)。よって Node では「04 + 64B」を computeSecret に渡すのと等価。
-//   co/candyhouse/sesame/ble/os3/CHHub3Device.kt:197 — ecdh().sliceArray(0..15)
+//   co/candyhouse/sesame/ble/os3/CHHub3Device.kt:201 — ecdh().sliceArray(0..15)
 //     → 共有秘密 (32B X 座標) の **先頭 16B** をペアリング secret として使用。
 //
 // Node の createECDH("prime256v1").computeSecret(uncompressedPoint) は ECDH の生出力
@@ -368,7 +368,7 @@ export function ecdhSharedSecret(keyPair, remotePubKey64) {
 
 /**
  * ECDH 共有秘密の先頭 16B を返す (初期ペアリング secret)。
- * CHHub3Device.kt:197 — ecdh().sliceArray(0..15)。
+ * CHHub3Device.kt:201 — ecdh().sliceArray(0..15)。
  *
  * 原典 Kotlin の sliceArray(0..15) は **copy** を作る。これに合わせ、ここでも
  * subarray (view) ではなく Buffer.from(...) で独立した 16B バッファを返す。
@@ -417,7 +417,7 @@ export function ecdhSecretPre16(keyPair, remotePubKey64) {
 //     localServerAuth 未指定なら従来どおり明示エラー)。
 //
 //   ★世代の明確化 (旧注記の訂正): getRegisterKey は **OS2 (SESAME2/3/4) 固有**の登録認証であり、
-//     呼び出し元も OS2 (CHSesame2Device) のみ。OS3 register (CHHub3Device.kt:176-211) は純 ECDH で
+//     呼び出し元も OS2 (CHSesame2Device) のみ。OS3 register (CHHub3Device.kt:180-215) は純 ECDH で
 //     getRegisterKey を使わない (一次資料で確認)。旧注記は「OS2 由来を OS3 register に流用する前提が
 //     未検証」と懸念していたが、実際には OS3 が本アルゴリズムを使わないため流用は発生しない。
 //     したがって配線は OS2 のみとし、検証も **OS2 実機 (SESAME2/3/4) register キャプチャ**で行う。

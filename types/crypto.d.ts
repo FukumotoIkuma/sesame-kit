@@ -116,7 +116,7 @@ export function ecdhSharedSecret(keyPair: import("node:crypto").ECDH | {
 }, remotePubKey64: Buffer | string): Buffer;
 /**
  * ECDH 共有秘密の先頭 16B を返す (初期ペアリング secret)。
- * CHHub3Device.kt:197 — ecdh().sliceArray(0..15)。
+ * CHHub3Device.kt:201 — ecdh().sliceArray(0..15)。
  *
  * 原典 Kotlin の sliceArray(0..15) は **copy** を作る。これに合わせ、ここでも
  * subarray (view) ではなく Buffer.from(...) で独立した 16B バッファを返す。

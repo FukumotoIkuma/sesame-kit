@@ -24,9 +24,9 @@
 - **BLE device discovery without keys** (`listNearbyDevices()` / `SesameBle.listNearby()`, also via `sesame ble scan`): one scan returns nearby SESAMEs as `{ deviceUUID, productType, model, kind, isRegistered, advTagB1, isConnectable, rssi, localName, address, peripheral }` — no `secretKey` needed. Pass an entry's `peripheral` to `SesameBle.fromDiscovery()` to connect without re-scanning (e.g. find a factory-reset device by `isRegistered: false` and hand it to `registerOnce`)
 - **Resilient BLE link**: the default `NobleTransport` subscribes to the peripheral disconnect event and propagates it to the session, so a dropped/out-of-range link **fails pending requests fast** instead of hanging until timeout; writes are retried a few times with exponential backoff before the link is treated as lost (ports the retry-then-disconnect behaviour of `CHSesameOS3.kt` `transmit`). MTU is auto-negotiated by CoreBluetooth (noble has no active `requestMtu`, matching the SDK's iOS path)
 - **BLE pairing**: register a factory-reset device over BLE (ECDH handshake + server auth) and get back its `secretKey` — OS3 (`SesameBle.registerOnce()`) and OS2 (`SesameOS2Ble.registerOnce()`)
-- **Biometric / access-control enrollment over BLE**: card / fingerprint / passcode / face / palm enroll on Touch / Touch Pro / Face / Palm (`SesameBle#biometric`); `registerDelegate` also surfaces the device's non-enroll publishes — Touch Pro `mechStatus`, battery voltage, child-key slots (`PUB_KEY_SESAME`), the unsupported-slot flag, and BLE TX power. The read-only subset is wired to `sesame ble ...` (plus the generic `sesame ble invoke` / `os2-invoke` and `ota` / `reset` / `wifi` / `position`); enroll/write operations are also available from Node and from `sesame serve` via `ble.invoke`.
-- **SESAME Bike3 fingerprint over BLE**: list / delete / rename fingerprints and get/set enroll mode on Bike3 (`SesameBle#fingerPrint`) — Bike3 is Bike2 (unlock) plus a fingerprint capability, so only the fingerprint subset is exposed. Reads are on the CLI; writes are available from Node and `ble.invoke`.
-- **SESAME Bot2 / Bot3 scripts over BLE**: run a script by index, select the active script, read the current script, list script names, and write a script (`SesameBle#script`) — reads are on the CLI; select / write / run-by-index are available from Node and `ble.invoke`.
+- **Biometric / access-control enrollment over BLE**: card / fingerprint / passcode / face / palm enroll on Touch / Touch Pro / Face / Palm (`SesameBle#biometric`); `registerDelegate` also surfaces the device's non-enroll publishes — Touch Pro `mechStatus`, battery voltage, child-key slots (`PUB_KEY_SESAME`), the unsupported-slot flag, and BLE TX power. The read-only subset is wired to `sesame ble ...` (plus the generic `sesame ble invoke` / `os2-invoke` and `ota` / `reset` / `wifi` / `position`); enroll/write operations are also available from Node and from `sesame serve` via the typed `ble.biometric.*` RPC methods (e.g. `ble.biometric.cardAdd`, `ble.biometric.passcodeAdd`); `ble.invoke` remains as an escape hatch.
+- **SESAME Bike3 fingerprint over BLE**: list / delete / rename fingerprints and get/set enroll mode on Bike3 (`SesameBle#fingerPrint`) — Bike3 is Bike2 (unlock) plus a fingerprint capability, so only the fingerprint subset is exposed. Reads are on the CLI; all ops are also available via the typed `ble.fingerPrint.*` RPC methods (e.g. `ble.fingerPrint.fingerPrints`, `ble.fingerPrint.fingerPrintDelete`).
+- **SESAME Bot2 / Bot3 scripts over BLE**: run a script by index, select the active script, read the current script, list script names, and write a script (`SesameBle#script`) — reads, run-by-index (`sesame ble script-run`), select (`sesame ble script-select`), and write (`sesame ble script-write`) are all on the CLI; they are also available via the typed `ble.script.*` RPC methods (e.g. `ble.script.click`, `ble.script.selectScript`).
 - **WifiModule2 over BLE**: Wi-Fi provisioning and child-key registration (`SesameBle#wifi`)
 - **Hub3 over BLE**: Wi-Fi provisioning (SSID scan / SSID / password), child-key removal, and network type (Wi-Fi / LTE) reads (`SesameBle#hub3`)
 - **Firmware update over BLE** (DFU / OTA) start commands: Hub3 (`MOVE_TO`) / WM2 (`OPEN_OTA_SERVER`); OS3 locks follow the SDK's no-command path (`SesameBle#updateFirmware`, also `sesame ble ota`). The DFU binary transfer itself (Nordic DFU) is not bundled — see [Known limitations](#known-limitations)
@@ -62,7 +62,7 @@ cd sesame-kit && npm install && npm link
 
 ### Dependencies & security posture
 
-The production dependency tree is intentionally small. `npm install sesame-kit` pulls in only:
+The production dependency tree is intentionally small. `npm install sesame-kit` pulls in three mandatory runtime dependencies, and also attempts to install one optional native dependency (`@abandonware/noble`, see below):
 
 - `ws` — cloud WebSocket transport (core)
 - `commander` — CLI argument parsing (core to the `sesame` bin)
@@ -85,15 +85,21 @@ These three stay in `dependencies` because the CLI and the cloud transport — t
 
 - Note for `npx sesame-kit` / global installs: npm does not auto-install optional peers, so the gRPC / session-TUI extras above must be installed alongside (e.g. `npm i -g sesame-kit @grpc/grpc-js @grpc/proto-loader`) if you want those two subcommands. All other commands work out of the box.
 
-BLE support depends on the **optional** native package `@abandonware/noble` (listed under `optionalDependencies`). The cloud / CLI / `sesame serve` paths do **not** require it — if it fails to build (e.g. no Bluetooth toolchain) the rest of the kit still installs and works.
+BLE support depends on the **optional** native package `@abandonware/noble` (listed under `optionalDependencies`). npm will attempt to build it during install; if the build fails (e.g. no Bluetooth toolchain or no `node-gyp` prerequisites) the failure is silently ignored and the rest of the kit still installs and works. The cloud / CLI / `sesame serve` paths do **not** require noble.
 
-The native BLE toolchain pulls in `node-gyp`, which historically dragged in vulnerable transitive copies of `node-tar`. We pin it to a patched release with a package.json `overrides` field:
+The native BLE toolchain pulls in `node-gyp`, which historically dragged in vulnerable transitive copies of `node-tar` and related packages. We pin five packages to patched / current-major releases with a package.json `overrides` field:
 
 ```json
-"overrides": { "tar": "^7.5.16" }
+"overrides": {
+  "@mapbox/node-pre-gyp": "^2.0.3",
+  "cacache":              "^20.0.1",
+  "make-fetch-happen":   "^15.0.6",
+  "node-gyp":            "^12.4.0",
+  "tar":                 "^7.5.16"
+}
 ```
 
-With this single override, `npm audit --omit=dev` reports **0** vulnerabilities. The patched `tar@^7.5.16` is API-compatible with the extraction surface `node-gyp` / `cacache` / `@mapbox/node-pre-gyp` use, so the optional native build is unaffected. Production (non-dev) dependencies of the core kit have no known advisories.
+`tar@^7.5.16` is the core security fix (patched archive-extraction CVEs). `node-gyp`, `cacache`, `make-fetch-happen`, and `@mapbox/node-pre-gyp` are pinned to their current major to eliminate transitive advisories they carried before. All five are API-compatible with the surfaces the optional native build uses. With these overrides, `npm audit --omit=dev` reports **0** vulnerabilities. Production (non-dev) dependencies of the core kit have no known advisories.
 
 ---
 
@@ -165,7 +171,7 @@ It is a SemVer for the machine contract; only breaking changes bump the major. C
 
 ## Language-agnostic backend (`sesame serve`)
 
-`sesame serve` is a long-running JSON-RPC 2.0 daemon. It logs in once, keeps the WS connection alive, runs ops repeatedly, and pushes events. Cloud/Biz3 features are exposed as typed RPC methods; registered BLE operations are available through `ble.invoke` / `ble.os2.invoke`.
+`sesame serve` is a long-running JSON-RPC 2.0 daemon. It logs in once, keeps the WS connection alive, runs ops repeatedly, and pushes events. Cloud/Biz3 features are exposed as typed RPC methods. BLE operations are also exposed as typed methods — each facade op appears as `ble.<op>` / `ble.os2.<op>` (e.g. `ble.script.click`, `ble.biometric.cardAdd`, `ble.hub3.setWifiSSID`) — 76 typed BLE methods in total (all `experimental`). The generic `ble.invoke` / `ble.os2.invoke` string-dispatch remains as an escape hatch.
 
 ```bash
 sesame serve                          # Unix socket only (default. ~/.config/sesame-kit/sesame.sock)
@@ -183,8 +189,8 @@ There are five framings over the same RPC catalog. Event streams use the transpo
 | WebSocket | any language / browser (full-duplex) | `event.*` notifications | token |
 | gRPC | typed stub generation for many languages | `Subscribe` stream | token (metadata) |
 
-- `rpc.discover` enumerates every method machine-readably (OpenRPC; 135 methods as of contract 1.2.0). Param names, requiredness, and types are extracted from the actual code.
-- Locks: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`, plus `lock.setAutolock` (experimental; takes `transport: "cloud" | "ble"` — only the BLE route takes effect on the device). Namespace ops are all exposed as `<ns>.<op>` (`org.*` / `iot.*` / `access.*` / `ir.*` / `devices.*` / `config.sync*` / `ble.*` / `cloud.ping` …), including `access.registerPasscodes`, `ir.addRemoteToMatter`, and the typed BLE wrappers (`ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` / `ble.wifi.*` / `ble.invoke` / `ble.os2.*`).
+- `rpc.discover` enumerates every method machine-readably (OpenRPC; 202 methods as of contract 1.2.0). Param names, requiredness, and types are extracted from the actual code.
+- Locks: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`, plus `lock.setAutolock` (experimental; takes `transport: "cloud" | "ble"` — only the BLE route takes effect on the device). Namespace ops are all exposed as `<ns>.<op>` (`org.*` / `iot.*` / `access.*` / `ir.*` / `devices.*` / `config.sync*` / `ble.*` / `cloud.ping` …), including `access.registerPasscodes`, `ir.addRemoteToMatter`, and the typed BLE ops (`ble.script.*` / `ble.biometric.*` / `ble.fingerPrint.*` / `ble.remoteNano.*` / `ble.wifi.*` / `ble.hub3.*` / `ble.os2.*` and standalone ops `ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` / `ble.history` / `ble.scan` / `ble.magnet` … — 76 typed `ble.*` methods total). The generic `ble.invoke` / `ble.os2.invoke` are escape-hatch facades for string-dispatching any BLE op.
 - Events: `events.subscribe {topics:["lockState","deviceUpdate"]}` then `event.<topic>` notifications arrive.
 - Errors are `{error:{code, message, data:{kind}}}`. `kind` is one of seven: `not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented`.
 
@@ -381,6 +387,7 @@ Three tiers: **verified** (confirmed against the real cloud / real devices), **n
 - **Stripe SetupIntent confirmation.** This kit does not handle card data, so it does not implement the confirm step. A Stripe.js-capable client is **not** technically required (the earlier claim here was wrong): confirming needs only the publishable key (hardcoded in biz3 at `references_web/src/env_config.js:5-7`) plus the `client_secret` from `sesame payment client-secret`, so you can confirm via the Stripe public API (`POST /v1/payment_methods` → `POST /v1/setup_intents/{id}/confirm`) or Stripe.js, then pass the resulting `payment_method` id to `payment.changeDefaultPayment`. The kit exposes all surrounding Biz3 payment ops (`payment.*`).
 - **DFU binary transfer (Nordic DFU).** `SesameBle#updateFirmware` ports the SDK's start commands only: Hub3 sends `MOVE_TO(84)` (`CHHub3Device.kt:213-226`), WM2 sends `OPEN_OTA_SERVER(126)` (`CHWifiModule2Device.kt:450-458`), and for OS3 locks the SDK sends **no command at all** (it hands the connected device to an external DFU library — `CHSesameOS3.kt:441-449`); the kit mirrors that no-op path and does not bundle a Nordic-DFU transfer implementation. (An earlier version of this README wrongly said the OS3-lock path sends `MOVE_TO`; that branch is Hub3-only.)
 - Schedule **creation** ops and the Android-app-only auxiliary REST calls (feed history, SNS subscribe, friends, …) do not exist in the biz3 web reference and are out of scope.
+- **OS2 mechStatus publish — automatic history drain (intentional difference).** The official SDK (`CHSesame2Device.kt:543-553`) automatically issues a `readHistoryCommand` when a mechStatus publish arrives with `retCode != 0` or `target == Short.MIN_VALUE (-32768)`, then POSTs the result to the server. kit **does not implement this automatic drain**: history is only read when your code explicitly calls `history()` (Node library / `ble.history` RPC / `sesame <device> history` CLI). This is an intentional design choice — auto-draining ties policy (logging, server sync) to the transport layer; kit keeps the session layer as a pure protocol port and leaves the decision to the caller. The practical effect is that device-side history accumulates between explicit calls; no lock functionality is affected.
 
 ### Implemented, but hardware-unverified
 

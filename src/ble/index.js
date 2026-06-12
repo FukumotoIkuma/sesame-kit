@@ -183,28 +183,28 @@ export const OS2_BLE_RPC_ALLOWLIST = Object.freeze([
  */
 const OS3_TOPLEVEL_RPC_OPS = {
   // history(): item=4、payload は履歴 1 件分の生バイト (先頭 4B が recordId)。読み取り系。
-  // src/ble/index.js:992 history()→session.readHistory() / session.js:569 / CHSesameOS3LockBase.kt:185-192
+  // history()→SesameBle.history()→session.readHistory() / SesameBleSession.readHistory() / CHSesameOS3LockBase.kt:185-192
   "history": { params: [], result: "raw", summary: "read one BLE history record (OS3, raw bytes; first 4B = recordId)" },
   // deleteHistory(historyPayload): item=18。引数は **history() が返した payload Buffer 全体**
   // (session が先頭 4B を recordId として切り出す)。recordId 数値ではない。送信系 (ack)。
-  // src/ble/index.js:999 deleteHistory(historyPayload) / session.js:582 / CHSesameOS3LockBase.kt:200-209
+  // SesameBle.deleteHistory()→session.deleteHistory() / SesameBleSession.deleteHistory() / CHSesameOS3LockBase.kt:200-209
   "deleteHistory": { params: [{ name: "historyPayload", type: "object", required: true, desc: "the payload Buffer returned by history() (first 4B = recordId); JSON {$buffer} / {type:'Buffer',data} accepted" }], result: "ack" },
   // getVersionTag(): item=5、Promise<string> を返す読み取り系。
-  // src/ble/index.js:985 getVersionTag()→session.getVersionTag() / session.js:556
+  // SesameBle.getVersionTag()→session.getVersionTag() / SesameBleSession.getVersionTag()
   "getVersionTag": { params: [], result: "raw", summary: "read firmware version tag string (OS3)" },
   // magnet(): item=17、CHResult<CHEmpty> を返す**コマンド** (磁力操作)。読み取りではなく ack。
-  // 空ペイロード送信、LOCK5 固有。src/ble/index.js:902 / CHSesame5Device.kt:118-126 / CHSesame5.kt:16
+  // 空ペイロード送信、LOCK5 固有。SesameBle.magnet() / CHSesame5Device.kt:118-126 / CHSesame5.kt:16
   "magnet": { params: [], result: "ack", summary: "send the magnet command (SESAME 5, LOCK5-only)" },
   // opSensorControl(seconds): item=92 OPS_CONTROL。引数は Int を 2B LE で送る Open Sensor 自動施錠
   // 秒数 (0..65535、0=無効)。boolean ではない。LOCK5 固有。
-  // src/ble/index.js:915 opSensorControl(seconds) / CHSesame5Device.kt:107-116 (isEnable: Int)
+  // SesameBle.opSensorControl(seconds) / CHSesame5Device.kt:107-116 (isEnable: Int)
   "opSensorControl": { params: [{ name: "seconds", type: "number", required: true, desc: "open-sensor auto-lock seconds (0..65535, 0 = disable)" }], result: "ack" },
   // sendAdvProductType(data): item=205 SET_ADV_PRODUCT_TYPE。引数 data (生バイト列 Buffer) が **必須**。
-  // 引数なしではない。LOCK5 固有。src/ble/index.js:928 sendAdvProductType(data) /
+  // 引数なしではない。LOCK5 固有。SesameBle.sendAdvProductType(data) /
   // CHSesame5Device.kt:85-94 sendAdvProductTypeCommand(data: ByteArray)
   "sendAdvProductType": { params: [{ name: "data", type: "object", required: true, desc: "raw advertised product-type bytes (Buffer); JSON {$buffer} / {type:'Buffer',data} accepted" }], result: "ack" },
   // setBleTxPower(txPower): item=206。引数は符号付き 1B (-128..127)。draft の "level" は誤名。
-  // OS3 LOCK5 / biometric のみ露出。src/ble/index.js:942 setBleTxPower(txPower) /
+  // OS3 LOCK5 / biometric のみ露出。SesameBle.setBleTxPower(txPower) /
   // CHSesameOS3LockBase.kt:62-71 setBleTxPower(txPower: Byte) / CHSesameBiometricDeviceImpl.kt:332-341
   "setBleTxPower": { params: [{ name: "txPower", type: "number", required: true, desc: "signed 1-byte BLE TX power (-128..127)" }], result: "ack" },
 };
@@ -832,13 +832,13 @@ export class SesameBle {
    *
    * needAuthFromServer=true (かつ registerTransport 指定) のとき、initial token を
    * signGuestKey に渡してサーバ署名済み session token を取得する経路で login する
-   * (CHHub3Device.kt:163-174 token!=null / CHSesameOS3.kt:473-487)。登録済みだが
+   * (CHHub3Device.kt:167-178 token!=null / CHSesameOS3.kt:473-487)。登録済みだが
    * ゲスト鍵・期限付き鍵などで secretKey 単体では session を確立できないデバイス向け。
    * needAuthFromServer=false の通常デバイスは secretKey からローカルに session 鍵を導出する。
    */
   async connect() {
     // login が失敗 (login timeout / signLogin throw / 非0 resultCode) すると、その時点で
-    // transport.connect() は既に実 GATT 接続を確立済み (transport.js:189)。失敗パスで
+    // transport.connect() は既に実 GATT 接続を確立済み (BleTransport.connect())。失敗パスで
     // disconnect しないと BLE 接続 + notify 購読がリークするため、必ずクリーンアップしてから
     // rethrow する (connectMany / use の失敗パスと対称)。disconnect 自体のエラーは握り潰す
     // (本来の login エラーを覆い隠さないため)。
@@ -876,7 +876,7 @@ export class SesameBle {
    * 工場出荷 (未登録) デバイスの初期ペアリング / 登録 (ECDH + サーバ認証)。
    * `registerMode: true` で構築した SesameBle で呼ぶ (secretKey 無し)。
    *
-   * フロー (CHHub3Device.kt:176-211): connect(register モード) → session.register() で
+   * フロー (CHHub3Device.kt:180-215): connect(register モード) → session.register() で
    * REGISTRATION ハンドシェイク → 確定した {deviceUUID, secretKey, productType, serverSecret} を返す。
    * 戻り値の secretKey を保存すれば、以降は通常の SesameBle({ secretKey }).connect() で操作できる。
    *
@@ -892,7 +892,7 @@ export class SesameBle {
     // (session.register の _secretKey ガードに到達する前に弾く)。
     if (!this._registerMode && this._secretKey) throw badRequest("ble.registerNeedsFactoryFacade");
     return this._session.register({
-      // session.register() は実行時に !deviceUUID を自前で reject する (session.js:213) ため undefined 流入は
+      // session.register() は実行時に !deviceUUID を自前で reject する (SesameBleSession.register() 先頭) ため undefined 流入は
       // 正規の制御フロー。session.register の opts.deviceUUID 契約が string 必須なのは過剰に厳しく、本来は
       // string|undefined であるべき (cross-file blocker: session.js は別エージェント所有)。invariant に従い絞る。
       deviceUUID: /** @type {string} */ (deviceUUID || this._deviceUUID),
@@ -1110,7 +1110,7 @@ export class SesameBle {
   static async registerOnce(opts = {}, fn) {
     const { productType, nowMs, ...ctorOpts } = opts;
     const ble = new SesameBle({ ...ctorOpts, registerMode: true });
-    // register() は内部で transport.connect() 済み (session.js:192) なので、その後の例外
+    // register() は内部で transport.connect() 済み (SesameBleSession.register() 内の transport.connect) なので、その後の例外
     // (registerTimeout / registerNotReady / device pubkey 長エラー / ECDH 失敗) でも実 GATT
     // 接続が開いたまま残る。ble 構築直後から try/finally で囲み、register の reject 時も含めて
     // 必ず close() する (connect() の失敗パスと対称・取りこぼし防止)。

@@ -14,10 +14,10 @@ do not edit `sesame_client.py` by hand; it is drift-gated against the schema
 >   `SesameClient(base_url, token=...)` with namespaced typed calls like
 >   `client.lock.unlock(name="front")`. No `.unix()` / `.http()` factories and no
 >   positional convenience methods.
-> - **The bundled thin client** (`clients/python`, hand-written, multi-transport
->   convenience) — factory constructors `SesameClient.unix()` / `.http()` /
->   `.stdio()`, positional convenience methods like `c.unlock("front")`, and
->   `c.call(method, **params)`. See the integration guide,
+> - **The bundled thin client** (`clients/python`, hand-written, multi-transport:
+>   Unix socket / stdio / HTTP) — factory constructors `SesameClient.unix()` /
+>   `.stdio()` / `.http()`, positional convenience methods like `c.unlock("front")`,
+>   and `c.call(method, **params)`. See the integration guide,
 >   [`docs/en/integration.md`](../../docs/en/integration.md) §4
 >   ([日本語](../../docs/ja/integration.md)).
 >
@@ -95,7 +95,7 @@ first, then your subscribed `event.<topic>` notifications.
 
 > This is the **generated, typed** SDK and is recommended for most users. A
 > separate **hand-written, low-level** thin client (multi-transport: Unix socket /
-> stdio / HTTP / WebSocket; a different, incompatible API despite sharing the
+> stdio / HTTP; a different, incompatible API despite sharing the
 > `sesame_client` / `SesameClient` name) ships at
 > [`clients/python/`](../../clients/python/) — use it for thin / multi-transport /
 > custom integrations. See the

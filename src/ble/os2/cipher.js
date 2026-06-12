@@ -1,7 +1,7 @@
 // SESAME OS2 BLE 暗号 (SESAME2/3/4・初代 Bot・初代 Bike)。
 //
 // 移植元 (1:1):
-//   - references_android/.../ble/os2/base/SesameOS2BleCipher.kt
+//   - _sesame_sdk_ref/sesame-sdk/.../ble/os2/base/SesameOS2BleCipher.kt
 //
 // OS3 (src/ble/protocol.js の ccmEncrypt/ccmDecrypt) との差分 (★最重要):
 //   - nonce  = counter(5B) ++ sessionToken(8B)            (OS3 は count(8B LE) ++ 0x00 ++ token(4B))

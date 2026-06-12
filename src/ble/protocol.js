@@ -1,8 +1,8 @@
 // SESAME BLE プロトコル — 純 JS のコア (OS 非依存・ゼロ追加依存)。
 //
-// 移植元 (1:1、行番号は調査仕様書準拠):
-//   - ESP32 C 実装: references_esp32/main/sesame/{ssm.c, ssm_cmd.c}, utils/{c_ccm.c, aes-cbc-cmac.c}
-//   - Android SDK : references_android/.../ble/{SesameProtocols.kt, SesameBleReceiver.kt},
+// 移植元 (1:1):
+//   - ESP32 C 実装: ssm.c / ssm_cmd.c / c_ccm.c / aes-cbc-cmac.c (未配置の補助資料 — references_esp32/ は gitignore 外)
+//   - Android SDK : _sesame_sdk_ref/sesame-sdk/.../ble/{SesameProtocols.kt, SesameBleReceiver.kt},
 //                   ble/os3/base/{CHSesameOS3.kt, SesameOS3BleCipher.kt}, open/devices/base/CHSesameOS3LockBase.kt
 //
 // 対象は SesameOS3 (SESAME 5 / 5 Pro / Touch 等)。OS2 (SESAME 3/4/Bot) は対象外 (鍵導出・nonce 長が別)。
@@ -99,8 +99,8 @@ const MAX_CHUNK_DATA = 19; // 20B パケット - ヘッダ1B (ssm.c:112-127)
 //   lock (既定): SESAME5 系ロック・Hub3・Bot2/Bike2/3・biometric (CHSesameOS3 基底のまま)
 //     - initial itemCode = 14 (SesameItemCode.initial)
 //     - login: 鍵 = CMAC(secretKey, token4)、payload = [LOGIN(2)] ++ 鍵[0:4] (CHSesameOS3LockBase.kt:109-120)
-//     - register data = pubK64 ++ timestamp4 (CHHub3Device.kt:191-194)、登録後鍵 = CMAC(pre16, token4)
-//     - CCM sault = 0x00 ++ token4 → nonce 13B (CHHub3Device.kt:170,203)
+//     - register data = pubK64 ++ timestamp4 (CHHub3Device.kt:194-199)、登録後鍵 = CMAC(pre16, token4)
+//     - CCM sault = 0x00 ++ token4 → nonce 13B (CHHub3Device.kt:174,207)
 //   wm2: WifiModule2 のみ (CHWifiModule2Device.kt)
 //     - initial itemCode = 13 (WM2ActionCode.INITIAL、kt:521-528/540)
 //     - login: 鍵 = secretKey **生 16B**、payload = [LOGIN_WM2(2)] ++ CMAC(secretKey, token4) **16B 全量**
@@ -145,14 +145,14 @@ export function deriveSessionKey(secretKey, token) {
 
 /**
  * 登録 (registration) 直後の sessionAuth 用セッション鍵を ECDH 共有秘密から導出する。
- *   sessionKey16 = AES-128-CMAC(ecdhSecretPre16, token4)   (CHHub3Device.kt:202-203)
+ *   sessionKey16 = AES-128-CMAC(ecdhSecretPre16, token4)   (CHHub3Device.kt:206-207)
  *
  * 通常 login (deriveSessionKey 上記) との分岐:
  *   - 通常 login : 鍵 = 既存の pre-shared secretKey (CMAC(secretKey, token), CHHub3Device.kt:168)。
- *   - register 直後: 鍵 = ECDH 共有秘密の先頭 16B (= crypto.js:ecdhSecretPre16, CHHub3Device.kt:163-174,197)。
+ *   - register 直後: 鍵 = ECDH 共有秘密の先頭 16B (= crypto.js:ecdhSecretPre16, CHHub3Device.kt:180-215,201)。
  *   どちらも CMAC の **メッセージは token4 (4B)** で共通、戻りは 16B。違いは CMAC の鍵だけ。
  *
- * sault も両者共通 (lock profile): sault = 0x00 ++ token4 (CHHub3Device.kt:170,203 /
+ * sault も両者共通 (lock profile): sault = 0x00 ++ token4 (CHHub3Device.kt:174,207 /
  * SesameOS3BleCipher.kt:8-19)。sault は CCM nonce の組み立て側 (ccmNonce(count, ccmSault(profile,
  * token4))) で消費するため、この鍵導出関数自体は sault を引数に取らない (session 確立後の暗号化は
  * ccmEncrypt/ccmDecrypt が担う)。
@@ -198,7 +198,7 @@ export function loginPayload(token16, profile = "lock") {
 
 /**
  * CCM nonce = count(8B LE) ++ sault。sault はプロファイル依存 (ccmSault):
- *   - lock: sault = 0x00 ++ token4 → nonce 13B (ssm.h:17-21 / CHHub3Device.kt:170,203)
+ *   - lock: sault = 0x00 ++ token4 → nonce 13B (ssm.h:17-21 / CHHub3Device.kt:174,207)
  *   - wm2 : sault = token4         → nonce 12B (CHWifiModule2Device.kt:297,317)
  * SesameOS3BleCipher.kt:13 nonce = encryptCounter.toBytes() (8B LE, DataExtention.kt:114-129) + sault。
  * @param {number|bigint} count
@@ -213,7 +213,7 @@ function ccmNonce(count, sault) {
 
 /**
  * CCM sault をプロファイルから組み立てる (SesameOS3BleCipher のコンストラクタ第 3 引数に相当)。
- *   - lock: "00" + mSesameToken (CHHub3Device.kt:170,203 / CHSesame5 系・Bot2/Bike2 も同形)
+ *   - lock: "00" + mSesameToken (CHHub3Device.kt:174,207 / CHSesame5 系・Bot2/Bike2 も同形)
  *   - wm2 : mSesameToken そのまま 4B — 0x00 を挟まない (CHWifiModule2Device.kt:297,317)
  * @param {"lock"|"wm2"} profile
  * @param {Buffer} token4 initial token (4B)
@@ -585,7 +585,7 @@ export function historyDeleteData(historyPayload) {
  *   REGISTRATION(1) を PLAINTEXT セグメント送出する形で本番フローに乗っている。
  *   登録フローの配線済み要素:
  *     (a) registrationData() = pubKey64(64B) ++ registrationTimestampBytes(4B) の組み立て
- *         (CHHub3Device.kt:193)。この関数の直下に実装済み。
+ *         (CHHub3Device.kt:197)。この関数の直下に実装済み。
  *     (b) ITEM.REGISTRATION(=1) を PLAINTEXT で送る session 経路 (session.js:226)。配線済み。
  *     (c) crypto.js の ECDH ブロック (ecdhSecretPre16) は session.register() (session.js:234)
  *         で device の返す公開鍵から共有秘密を導く形で接続済み。
@@ -593,7 +593,7 @@ export function historyDeleteData(historyPayload) {
  *   注: バイト列・ハンドシェイクは mock vector で単体/end-to-end テスト済みだが、**実機 OS3
  *   デバイスに対する検証は未了** (README の Known limitations 参照)。配線は完了している。
  *
- * 用途 (CHHub3Device.kt:193):
+ * 用途 (CHHub3Device.kt:197):
  *   registration payload = EccKey.getPubK()(64B) ++ currentTimeMillis().toUInt32ByteArray()(4B)
  * を plain セグメントで送る。
  *
@@ -643,7 +643,7 @@ export function registrationTimestampBytes(nowMs = Date.now()) {
 /**
  * REGISTRATION(1) コマンドの平文 data を組み立てる。
  *   data = EccKey.getPubK()(64B) ++ currentTimeMillis().toUInt32ByteArray()(4B) = 68B
- *   (CHHub3Device.kt:191-194)。
+ *   (CHHub3Device.kt:194-199)。
  *
  * これを buildSendFrame(ITEM.REGISTRATION, data) に通すと [01] ++ data = 69B フレームになり、
  * **PLAINTEXT セグメント** (SEG.PLAINTEXT) で送る (CHSesameOS3.kt:495-499: 送信フレームは
@@ -661,7 +661,7 @@ export function registrationTimestampBytes(nowMs = Date.now()) {
  *   から到達できる。mock vector でテスト済みだが**実機 OS3 検証は未了** (README 参照)。
  *
  * プロファイル分岐 (P1-6):
- *   - lock (既定): pubK64 ++ timestamp4 = 68B (CHHub3Device.kt:191-194 / CHSesameOS3LockBase.kt:93)
+ *   - lock (既定): pubK64 ++ timestamp4 = 68B (CHHub3Device.kt:194-199 / CHSesameOS3LockBase.kt:93)
  *   - wm2        : **pubK64 のみ** = 64B — timestamp を付けない
  *                  (CHWifiModule2Device.kt:290: sendCommand(SesameOS3Payload(REGISTER_WM2,
  *                   EccKey.getPubK().hexStringToByteArray()), plain) — data は公開鍵 64B のみ)

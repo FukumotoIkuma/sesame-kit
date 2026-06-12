@@ -126,7 +126,7 @@ export function parsePubKeySesame(data: Buffer, { isOpenSensor }?: {
     emptySlotCount: number;
 };
 /**
- * cardModeSet: data = [mode] (CHCardCapableImpl.kt:53)。
+ * cardModeSet: data = [mode] (CHCardCapableImpl.kt:49)。
  * @param {number} mode
  * @returns {Buffer}
  */
@@ -136,7 +136,7 @@ export function cardModeGetData(): Buffer<ArrayBuffer>;
 export function cardGetData(): Buffer<ArrayBuffer>;
 /**
  * cardAdd: data = [F0][00][idLen] ++ id.padEnd(16) ++ [nameLen] ++ name.padEnd(16)
- * (CHCardCapableImpl.kt:101-104)。id は raw bytes、hexName は UTF-8 文字列としてバイト化
+ * (CHCardCapableImpl.kt:83-91)。id は raw bytes、hexName は UTF-8 文字列としてバイト化
  * (SDK は hexName.toByteArray() = UTF-8。padEnd(16) で 16B 固定枠)。
  * @param {Buffer} id      カード UID 生バイト列
  * @param {string} hexName 名前 (UTF-8 文字列)
@@ -149,7 +149,7 @@ export function cardAddData(id: Buffer, hexName: string): Buffer<ArrayBuffer>;
  */
 export function cardDeleteData(cardID: string): Buffer;
 /**
- * cardMove: data = [idLen] ++ id(hex→bytes) ++ touchProUUID(UTF-8) (CHCardCapableImpl.kt:71)。
+ * cardMove: data = [idLen] ++ id(hex→bytes) ++ touchProUUID(UTF-8) (CHCardCapableImpl.kt:72)。
  * @param {string} cardId       hex
  * @param {string} touchProUUID 移動先デバイスの UUID 文字列 (UTF-8)
  */
@@ -290,7 +290,7 @@ export function removeSesameData(tag: string, { keyType }?: {
 /**
  * batchAdd 1 パケットの data を組み立てる。
  *   data = dataIndex.toReverseBytes()(2B LE) ++ dataSize.toReverseBytes()(2B LE) ++ chunk
- * (CHCardCapableImpl.kt:117-122 / CHPassCodeCapableImpl.kt:73-78)。
+ * (CHCardCapableImpl.kt:113-121 / CHPassCodeCapableImpl.kt:69-77)。
  * chunk は全データ data[dataIndex .. dataIndex+chunkSize) で chunkSize = min(残り, 209)。
  *
  * @param {Buffer} data      全登録データ

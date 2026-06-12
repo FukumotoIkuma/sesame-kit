@@ -168,7 +168,7 @@ export class SesameBleSession {
     // サーバ認証 login (isNeedAuthFromServer) 用の非同期 token 解決器。
     // connect({ signLogin }) で注入される。設定時は initial 受信で
     // deriveSessionKey(secretKey, token) を使わず signLogin(tokenHex) の戻り (hex) を
-    // session 鍵として login する (CHSesameOS3.kt:473-487 / CHHub3Device.kt:163-174 token!=null)。
+    // session 鍵として login する (CHSesameOS3.kt:473-487 / CHHub3Device.kt:167-178 token!=null)。
     /** @type {((tokenHex:string)=>Promise<string>)|null} */
     this._signLogin = null;
   }
@@ -214,7 +214,7 @@ export class SesameBleSession {
    *
    * サーバ認証 login (signLogin 指定時): isNeedAuthFromServer 相当。initial で得た token を
    *   signLogin(tokenHex) に渡して**サーバ署名済み session token (hex)** を取得し、それを session 鍵
-   *   として login する (CHHub3Device.kt:163-174 token!=null / CHSesameOS3.kt:473-487 の
+   *   として login する (CHHub3Device.kt:167-178 token!=null / CHSesameOS3.kt:473-487 の
    *   signGuestKey→login(it.data) 経路)。ゲスト鍵・期限付き鍵など secretKey 単体では session を
    *   確立できないデバイス向け。
    *
@@ -246,24 +246,24 @@ export class SesameBleSession {
 
   /**
    * 工場出荷 (未登録) デバイスの初期ペアリング / 登録ハンドシェイク。
-   * secretKey を渡さずに構築した session で呼ぶ (CHHub3Device.kt:176-211)。
+   * secretKey を渡さずに構築した session で呼ぶ (CHHub3Device.kt:180-215)。
    *
-   * フロー (CHHub3Device.kt:176-211, CHSesameOS3.kt:468-492):
+   * フロー (CHHub3Device.kt:180-215, CHSesameOS3.kt:468-492):
    *   1. transport 接続 → device の initial(14) publish を待つ。secretKey 無しのため login せず
    *      ReadyToRegister へ遷移 (_handleInitial の分岐, CHSesameOS3.kt:468-491 isRegistered=false)。
    *   2. (任意) registerSesame5 をコール (CHHub3Device.kt:187-189: 失敗してもログのみで継続)。
    *   3. ECDH 鍵ペア (P-256) を生成し、生公開鍵 64B (X‖Y) を registrationData(pubK, ts) に乗せて
-   *      REGISTRATION(1) を **PLAINTEXT** 送出 (CHHub3Device.kt:191-194 / CHSesameOS3.kt:495-499)。
+   *      REGISTRATION(1) を **PLAINTEXT** 送出 (CHHub3Device.kt:194-198 / CHSesameOS3.kt:495-499)。
    *   4. response(7)+REGISTRATION(1)+resultCode+devicePubK(64B) を待つ。
-   *   5. ecdhSecretPre16(keyPair, devicePubK) = ECDH 共有秘密の先頭 16B (CHHub3Device.kt:197)。
-   *      secretKey(=wm2Key) = pre16 の hex で確定 (CHHub3Device.kt:198-200)。
-   *   6. sessionKey = deriveSessionKeyFromEcdh(pre16, token4) (CHHub3Device.kt:202-203)。
+   *   5. ecdhSecretPre16(keyPair, devicePubK) = ECDH 共有秘密の先頭 16B (CHHub3Device.kt:201)。
+   *      secretKey(=wm2Key) = pre16 の hex で確定 (CHHub3Device.kt:202-204)。
+   *   6. sessionKey = deriveSessionKeyFromEcdh(pre16, token4) (CHHub3Device.kt:206-207)。
    *      sault = 0x00 ++ token4 は CCM nonce 側 (ccmEncrypt/ccmDecrypt) が消費する。
    *      enc/decCount=0 で cipher を確立し、以降のコマンドは暗号化される。
    *      wm2 profile は鍵 = pre16 生 16B / sault = token4 / register data = pubK64 のみ
    *      (CHWifiModule2Device.kt:279-312。詳細はコンストラクタ JSDoc と protocol.js SESSION_PROFILES)。
    *   7. {deviceUUID, secretKey, productType, serverSecret(=token hex)} を返す
-   *      (CHHub3Device.kt:196-208。serverSecret は mSesameToken.toHexString())。
+   *      (CHHub3Device.kt:200-212。serverSecret は mSesameToken.toHexString())。
    *
    * @param {{deviceUUID?:string, productType?:(string|number),
    *          registerTransport?:(req:any)=>Promise<any>, nowMs?:number}} [opts]
@@ -299,7 +299,7 @@ export class SesameBleSession {
       await readyPromise;
     }
 
-    // serverSecret = mSesameToken.toHexString() (CHHub3Device.kt:182)。
+    // serverSecret = mSesameToken.toHexString() (CHHub3Device.kt:186)。
     // ここまで来れば initial 受信済みで _token は必ず非 null (型のみ非 null 化)。
     const token = /** @type {Buffer} */ (this._token);
     const serverSecret = token.toString("hex");
@@ -333,14 +333,14 @@ export class SesameBleSession {
       this._registerWaiter = { resolve, reject, timer };
     });
     // wm2 profile の REGISTRATION data は pubK64 のみ (timestamp 無し、CHWifiModule2Device.kt:290)。
-    // lock は pubK64 ++ timestamp4 (CHHub3Device.kt:191-194)。分岐は registrationData が担う。
+    // lock は pubK64 ++ timestamp4 (CHHub3Device.kt:194-198)。分岐は registrationData が担う。
     this._sendPlain(buildSendFrame(ITEM.REGISTRATION, registrationData(pubK64, nowMs ?? Date.now(), this._profile)));
     const regPayload = await regPromise; // REGISTRATION 応答 payload (機種で長さが異なる)
 
     // 機種で応答 payload の構造が分かれる (プロファイル + 応答長で分岐):
     //   - wm2: payload[0..63] が device の生公開鍵 (CHWifiModule2Device.kt:295
     //     EccKey.ecdh(res.payload.sliceArray(0..63)))。
-    //   - 64B (Hub3 等): payload 全体が device の生公開鍵 (CHHub3Device.kt:197 で payload を
+    //   - 64B (Hub3 等): payload 全体が device の生公開鍵 (CHHub3Device.kt:201 で payload を
     //     そのまま ECDH に渡す)。
     //   - 67B (Bot2/Bot3/Bike2/Bike3): payload[0..2]=mechStatus(3B)、payload[3..66]=devicePubKey(64B)
     //     (CHSesameBot2Device.kt:216-218 / CHSesameBike2Device.kt:110-113 の catch 分岐)。
@@ -354,12 +354,12 @@ export class SesameBleSession {
     // 受ける) ため 64B のみ。SS5 は登録応答に同梱するため 77B、Bot/Bike は 3B mechStatus 同梱で 67B。
     const devicePubK = this._extractRegisterDevicePubK(regPayload);
 
-    // 5. ECDH 共有秘密の先頭 16B → secretKey(=wm2Key) = pre16 の hex (CHHub3Device.kt:197-200)。
+    // 5. ECDH 共有秘密の先頭 16B → secretKey(=wm2Key) = pre16 の hex (CHHub3Device.kt:201-204)。
     const pre16 = ecdhSecretPre16(keyPair, devicePubK);
     const secretKey = pre16.toString("hex");
 
     // 6. cipher 鍵 (enc/decCount=0 で確立) はプロファイルで分かれる:
-    //    - lock: sessionKey = CMAC(pre16, token4)、sault = 0x00 ++ token4 (CHHub3Device.kt:202-203)。
+    //    - lock: sessionKey = CMAC(pre16, token4)、sault = 0x00 ++ token4 (CHHub3Device.kt:206-207)。
     //    - wm2 : 鍵 = ecdhSecret_pre16 **生 16B**、sault = token4 (CHWifiModule2Device.kt:295-297:
     //      cipher = SesameOS3BleCipher("customDeviceName", ecdhSecret_pre16, mSesameToken!!))。
     //    sault は CCM nonce 側 (ccmEncrypt/ccmDecrypt の profile 引数) で消費。
@@ -375,7 +375,7 @@ export class SesameBleSession {
     // 機微中間値 (ECDH 共有 16B) を零クリア (crypto.js の機微値配慮方針と整合)。
     pre16.fill(0);
 
-    // 7. 登録結果を返す (CHHub3Device.kt:196-208)。
+    // 7. 登録結果を返す (CHHub3Device.kt:200-212)。
     return { deviceUUID, secretKey, productType, serverSecret };
   }
 
@@ -882,7 +882,7 @@ export class SesameBleSession {
    *
    *   - wm2 profile → payload[0..63] が device pubkey (64B 以上を要求し先頭 64B を採る。
    *           CHWifiModule2Device.kt:295 EccKey.ecdh(res.payload.sliceArray(0..63)))。
-   *   - 64B → payload 全体が device pubkey (Hub3 等。CHHub3Device.kt:197)。
+   *   - 64B → payload 全体が device pubkey (Hub3 等。CHHub3Device.kt:201)。
    *   - 67B → payload[0..2]=mechStatus(3B, CHSesameBot2MechStatus/CHSesameBike2MechStatus),
    *           [3..66]=devicePubKey(64B)
    *           (CHSesameBot2Device.kt:216-219 / CHSesameBike2Device.kt:110-113 の catch 分岐と 1:1。

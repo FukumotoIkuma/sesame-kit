@@ -17,7 +17,8 @@
 - **Phase 5(P5-1〜P5-13)実施済み**(Phase 5 コミット参照。P5-14 workspace 分割は次 major 据え置き)。エラー設計の乖離是正(serve 到達面の plain Error→typed SesameError、テーブル駆動回帰テスト)、registry.js 808 行モノリスを `src/serve/entries/*.js` 7 ファイルへ機械分割(挙動不変)、CLI→serve 結合を `src/ble/rpc-helpers.js` 葉モジュールへ細線化、UUID 正規化 14+3 箇所を crypto.js に統合、JWT claim 4 重実装統合、secure-fs stale lock を rename ベースで競合窓除去、i18n 完全性テスト、CI に SDK コンパイル検査、未使用 export 整理。
   - **統括修正**: P5-11 が tests/ を lint 対象化した結果、Phase 1〜5 で追加したテストの軽微な lint 違反(未使用 import/var 3 件・不要 biome-ignore)が露呈。実ゴミは削除し、テスト特有の正当パターン(リテラルキー・動的 namespace アクセス)は biome.jsonc の tests override で off にして完成させた(lint 0 warning/info)。
   - **申し送り(後方互換)**: P5-8 で偶発公開していた内部 API(`deriveIrOperation`/`PRODUCT_TYPE`/`AWS_REGION` 等)を d.ts から除去した。これらは本来非公開(experimental 相当)だが、外部利用者がいた場合は破壊的。次 major のリリースノートに記載すること。
-- Phase 6: 未着手。
+- **Phase 6(P6-1〜P6-9 + P3-26 繰越)実施済み**(Phase 6 コミット参照)。**v2 全 Phase 完了**。動かないコード例(rpc lock.click)の修正、ble.md の虚偽「専用 CLI 無し」訂正、メソッド数 stale(135→実測 202)・thin client トランスポート虚偽・overrides 記述の是正、commands.md 欠落コマンド追記、自リポ内 file:line 引用のシンボル名化と vendor 引用の行ズレ修正。
+  - **実測訂正**: 計画書の概算(ble.* 74 ops / config.* 4 ops)に対し docs は実測値(ble.* 76 ops / config.* 6 ops / 全 202 メソッド)を採用。計画書の概算値は指示時点のもので、docs が実装と一致すれば正(計画書側の数値は更新しない)。
 - v1 からの繰越: §9 実機検証バックログ V1〜V10(未実施・該当 API は `@experimental` 維持)、workspace 分割(次 major、P5-14)。
 
 **この文書の読み方**: 各項目は「初見の実装者が単独で着手できる」粒度で、対象 file:line・参照 file:line・修正手順・テスト・受け入れ基準を持つ。`R2:XXX-NN` は今回監査の所見 ID(複数監査が同一問題を検出した場合は §0.3 で統合済み)。**README・docs・コード内コメントの記述は本計画の根拠にしていない**。すべて参照実装の実コードで裏取りしてある。行番号は 2026-06-12 時点の HEAD(`6c939dd`)と参照 checkout に対するもの。
