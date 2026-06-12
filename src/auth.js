@@ -41,7 +41,7 @@
 // 状態は TokenStore (load/save/clear + loadPending/savePending/clearPending) に永続化を委譲。
 // CLI からは FileTokenStore、ライブラリ消費者は独自実装を渡せる。
 
-import { createHash, createHmac } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { hostname } from "node:os";
 import { cognitoCall } from "./cognito-http.js";
 import {
@@ -50,6 +50,7 @@ import {
   devicePasswordSignature,
   generateDeviceVerifier,
   generateEphemeralA,
+  srpPasswordSecrets,
 } from "./device-srp.js";
 import { SesameError, ERR } from "./errors.js";
 // i18n はエラーメッセージ文言の外出しだけに使用 (auth ロジックは不可侵)。
@@ -68,75 +69,13 @@ const DEFAULT_CLIENT_ID = CONSUMER_CLIENT_ID;
 // (_sesame_sdk_ref/app/.../LoginMailFG.kt:110)。本 kit は app をトレースする (§0.1)。
 const DUMMY_PASSWORD = "dummypwk";
 
-// ---------------------------------------------------------------------------
-// user SRP 用定数 (respondToPasswordVerifier 専用)。
-// _aws_sdk_ref/CognitoUser.java:4005-4058 (AuthenticationHelper 内クラス) の 1:1。
-// device-srp.js が保持する同一 N/G/K とは独立して定義し、エンコーディングを
-// Java の BigInteger.toByteArray() (符号バイト付き Big-endian) に合わせる。
-// ---------------------------------------------------------------------------
-
-// SRP-6a 3072-bit group prime (_aws_sdk_ref/CognitoUser.java:4005-4021)。
-const USER_SRP_N_HEX =
-  "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1" +
-  "29024E088A67CC74020BBEA63B139B22514A08798E3404DD" +
-  "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245" +
-  "E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED" +
-  "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D" +
-  "C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F" +
-  "83655D23DCA3AD961C62F356208552BB9ED529077096966D" +
-  "670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B" +
-  "E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9" +
-  "DE2BCBF6955817183995497CEA956AE515D2261898FA0510" +
-  "15728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64" +
-  "ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7" +
-  "ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6B" +
-  "F12FFA06D98A0864D87602733EC86A64521F2B18177B200C" +
-  "BBE117577A615D6C770988C0BAD946E208E24FA074E5AB31" +
-  "43DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF";
-const USER_SRP_N = BigInt("0x" + USER_SRP_N_HEX);
-const USER_SRP_G = 2n;
-
-// K = SHA256(N.toByteArray() | G.toByteArray())
-// _aws_sdk_ref/CognitoUser.java:4050-4054:
-//   messageDigest.update(N.toByteArray()); digest(GG.toByteArray())
-// Java の BigInteger.toByteArray() は最上位ビットが 1 のとき 0x00 を前置する (符号バイト)。
-// N は FFFF... で始まるため toByteArray() は [0x00, 0xFF, 0xFF, ...] の 385B になる。
-// G = 2 → toByteArray() = [0x02] の 1B。
-const USER_SRP_K = BigInt("0x" + createHash("sha256")
-  .update(Buffer.concat([Buffer.from([0x00]), Buffer.from(USER_SRP_N_HEX, "hex")])) // N.toByteArray() = 385B
-  .update(Buffer.from([2]))                                                           // G.toByteArray() = [0x02]
-  .digest("hex"));
-
-/**
- * BigInt → Java の BigInteger.toByteArray() 相当 (符号付き Big-endian hex)。
- * 最上位ビットが 1 なら 0x00 を前置 (padHex と同じ動作)。
- * @param {bigint} n
- * @returns {string} 偶数長 hex
- */
-function userSrpPadHex(n) {
-  let hex = n.toString(16);
-  if (hex.length % 2 === 1) hex = "0" + hex;
-  else if ("89abcdef".includes(hex[0].toLowerCase())) hex = "00" + hex;
-  return hex;
-}
-
-/**
- * モジュラ冪乗 (device-srp.js の modPow と同一)。
- * @param {bigint} base
- * @param {bigint} exp
- * @param {bigint} mod
- * @returns {bigint}
- */
-function userSrpModPow(base, exp, mod) {
-  let result = 1n;
-  base = ((base % mod) + mod) % mod;
-  while (exp > 0n) {
-    if (exp & 1n) result = (result * base) % mod;
-    exp >>= 1n;
-    base = (base * base) % mod;
-  }
-  return result;
-}
+// user SRP の数式 (N/G/K・modPow・padHex・HKDF・x/u/S 導出) は device-srp.js の
+// srpPasswordSecrets に単一実装として統合済み。respondToPasswordVerifier はそれを再利用し、
+// user 固有のワイヤ形 (PASSWORD_CLAIM_* / ChallengeResponses) と署名 HMAC のみをここに残す。
+// 統合の正当性: device SRP と user SRP は SRP-6a 3072-bit group で完全同型 (poolName/username の
+// 差のみ) であり、device-srp.js の padHex が Java BigInteger.toByteArray() の符号バイト規則と
+// バイト等価であることを 2026-06 監査で確認済み (旧 USER_SRP_K も device の K と一致する)。
+// 参照: _aws_sdk_ref/CognitoUser.java:4005-4096 (AuthenticationHelper 内クラス)。
 
 /**
  * catch 節の unknown を `{ name?, message? }` として安全に読むためのナロー化。
@@ -460,9 +399,12 @@ export async function loginInitiate(store, username, { clientId = DEFAULT_CLIENT
  * PASSWORD_VERIFIER チャレンジに user SRP で回答する。
  * _aws_sdk_ref/CognitoUser.java:3588-3662 (userSrpAuthRequest) の 1:1。
  *
- * 数式は device-srp.js の SRP 実装 (generateEphemeralA) と同一の SRP-6a 3072-bit group だが、
- * ハッシュ計算のエンコーディングを Java の BigInteger.toByteArray() (バイナリ連結) に
- * 合わせて独立実装している (_aws_sdk_ref/CognitoUser.java:4060-4096)。
+ * SRP-6a 3072-bit group の数式 (N/G/K・x/u/S・HKDF "Caldera Derived Key") は
+ * device-srp.js の srpPasswordSecrets に統合済み。device SRP とは poolName(USER_POOL_ID の
+ * "_" 以降)/username(USER_ID_FOR_SRP) の差のみで完全同型なため、それを引数で渡して再利用する。
+ * バイト等価の根拠: device-srp.js の padHex は Java BigInteger.toByteArray() の符号バイト規則と
+ * 一致 (2026-06 監査) し、x の hex-string 連結方式も toByteArray バイナリ連結とバイト等価。
+ * ここに残すのは user 固有のワイヤ形 (PASSWORD_CLAIM_* / ChallengeResponses) と署名 HMAC のみ。
  *
  * @param {object} args
  * @param {string} args.clientId
@@ -480,59 +422,22 @@ async function respondToPasswordVerifier({ clientId, session, challengeParameter
   const saltHex = challengeParameters.SALT || "";
   const secretBlockB64 = challengeParameters.SECRET_BLOCK || "";
 
-  // B mod N == 0 ガード (_aws_sdk_ref/CognitoUser.java:3605-3608)。
-  const serverB = BigInt("0x" + srpBHex);
-  if (serverB % USER_SRP_N === 0n) {
-    // P5-1 方針3: SRP 内部不変条件 (プログラマエラー/Cognito 異常)。serve 非到達。
-    throw new Error("SRP error, B cannot be zero");
-  }
-
   // poolName = USER_POOL_ID の "_" 以降 (_aws_sdk_ref/CognitoUser.java:3990-3994)。
   const poolName = USER_POOL_ID.includes("_") ? USER_POOL_ID.split("_").slice(1).join("_") : USER_POOL_ID;
 
-  // x = H(salt.toByteArray() | H(poolName | userId | ":" | password))
-  // _aws_sdk_ref/CognitoUser.java:4074-4083。
-  // Java は toByteArray() バイナリ連結で計算する (device-srp.js の hexHash とは異なる)。
-
-  // inner hash: SHA256(poolName | userId | ":" | password) — バイト列連結
-  // _aws_sdk_ref/CognitoUser.java:4075-4079
-  const innerHash = createHash("sha256")
-    .update(Buffer.from(poolName, "utf8"))
-    .update(Buffer.from(userIdForSRP, "utf8"))
-    .update(Buffer.from(":", "utf8"))
-    .update(Buffer.from(password, "utf8"))
-    .digest();
-
-  // outer hash: SHA256(salt.toByteArray() | innerHash)
-  // _aws_sdk_ref/CognitoUser.java:4081-4083。
-  // salt は hex 文字列 → padHex で BigInteger.toByteArray() 相当に変換。
-  const saltBuf = Buffer.from(userSrpPadHex(BigInt("0x" + saltHex)), "hex");
-  const x = BigInt("0x" + createHash("sha256").update(saltBuf).update(innerHash).digest("hex"));
-
-  // u = H(A.toByteArray() | B.toByteArray()) — バイナリ連結
-  // _aws_sdk_ref/CognitoUser.java:4066-4069。
-  const u = BigInt("0x" + createHash("sha256")
-    .update(Buffer.from(userSrpPadHex(A), "hex"))
-    .update(Buffer.from(userSrpPadHex(serverB), "hex"))
-    .digest("hex"));
-  // P5-1 方針3: SRP 内部不変条件 (プログラマエラー/Cognito 異常)。serve 非到達。
-  if (u === 0n) throw new Error("SRP error: u cannot be 0");
-
-  // S = (B - k * g^x) ^ (a + u*x) mod N
-  // _aws_sdk_ref/CognitoUser.java:4084-4085
-  const gModPowXN = userSrpModPow(USER_SRP_G, x, USER_SRP_N);
-  const base = ((serverB - USER_SRP_K * gModPowXN) % USER_SRP_N + USER_SRP_N) % USER_SRP_N;
-  const sValue = userSrpModPow(base, a + u * x, USER_SRP_N);
-
-  // HKDF: hkdf.init(s.toByteArray(), u.toByteArray()) → PRK = HMAC-SHA256(key=u, data=s)
-  // _aws_sdk_ref/CognitoUser.java:4093, _aws_sdk_ref/Hkdf.java:64-86
-  const sBuf = Buffer.from(userSrpPadHex(sValue), "hex");
-  const uBuf = Buffer.from(userSrpPadHex(u), "hex");
-  const prk = createHmac("sha256", uBuf).update(sBuf).digest();
-  // deriveKey("Caldera Derived Key", 16): T(1) = HMAC-SHA256(key=PRK, data=info||0x01)[0:16]
-  // _aws_sdk_ref/Hkdf.java:164-168
-  const infoBuf = Buffer.concat([Buffer.from("Caldera Derived Key", "utf8"), Buffer.from([1])]);
-  const hkdf = createHmac("sha256", prk).update(infoBuf).digest().subarray(0, 16);
+  // x/u/S/HKDF を共通コアで導出 (firstId=poolName, secondId=userId)。
+  // B≡0 (mod N) / u≡0 のガードは srpPasswordSecrets 内で行われ、いずれも
+  // "SRP error, B cannot be zero" / "SRP error, U cannot be 0" を throw する
+  // (_aws_sdk_ref/CognitoUser.java:3605-3608, 4066-4069, 4074-4085, 4093 / Hkdf.java:64-86,164-168)。
+  const { hkdf } = srpPasswordSecrets({
+    firstId: poolName,
+    secondId: userIdForSRP,
+    password,
+    serverB: BigInt("0x" + srpBHex),
+    salt: BigInt("0x" + saltHex),
+    a,
+    A,
+  });
 
   // 署名: HMAC-SHA256(hkdf, poolName | userId | secretBlock | timestamp)
   // _aws_sdk_ref/CognitoUser.java:3618-3633

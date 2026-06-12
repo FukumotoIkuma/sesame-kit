@@ -21,8 +21,55 @@ export function generateEphemeralA(): {
     A: bigint;
 };
 /**
+ * SRP-6a の共有鍵バンドル (x, u, S, HKDF) を導出する共通コア。
+ * device SRP / user SRP の数式は完全に同型で、差は「SRP 秘密の構成要素」
+ * (poolName+username あるいは deviceGroupKey+deviceKey) と「ハッシュ対象のユーザー名」
+ * のみ。本関数はその差を引数 firstId/secondId で吸収し、両者を単一実装に統合する。
+ *
+ * x       = H(padHex(salt) | H(firstId | secondId | ":" | password))
+ * u       = H(padHex(A) | padHex(B))
+ * S       = (B - k·g^x) ^ (a + u·x) mod N
+ * hkdf    = HKDF("Caldera Derived Key", 16)(ikm=padHex(S), salt=padHex(u))
+ *
+ * 参照: _aws_sdk_ref/CognitoUser.java:4060-4096 (AuthenticationHelper の
+ *   getPasswordAuthenticationKey)。device 版は amazon-cognito-identity-js の同型実装。
+ *
+ * バイト等価の根拠: passwordHash は sha256Hex (常に 64 hex = 32 byte) なので
+ *   Buffer.from(padHex(salt) + passwordHash, "hex") は
+ *   padHex(salt) のバイト列に inner-hash 32 byte を連結したものと一致する
+ *   (Java の salt.toByteArray() | innerHash と同じ並び)。
+ *
+ * @param {object} args
+ * @param {string} args.firstId  SRP 秘密の第1要素 (device: deviceGroupKey / user: poolName)
+ * @param {string} args.secondId SRP 秘密の第2要素 (device: deviceKey / user: username)
+ * @param {string} args.password 平文パスワード (device: devicePassword / user: ユーザーパスワード)
+ * @param {bigint} args.serverB サーバ公開値 B
+ * @param {bigint} args.salt
+ * @param {bigint} args.a クライアント秘密
+ * @param {bigint} args.A クライアント公開値
+ * @returns {{hkdf: Buffer, sValue: bigint, u: bigint, x: bigint}}
+ *   sValue/u/x はサーバ役シミュレーションや回帰テストでの検証用に返す。
+ */
+export function srpPasswordSecrets({ firstId, secondId, password, serverB, salt, a, A }: {
+    firstId: string;
+    secondId: string;
+    password: string;
+    serverB: bigint;
+    salt: bigint;
+    a: bigint;
+    A: bigint;
+}): {
+    hkdf: Buffer;
+    sValue: bigint;
+    u: bigint;
+    x: bigint;
+};
+/**
  * デバイスパスワード認証鍵 (HKDF 出力) を導出。amazon の getPasswordAuthenticationKey 相当。
  * deviceGroupKey/deviceKey はサーバ verifier 生成時と同じ "{group}{key}:{password}" を成す。
+ *
+ * 数式本体は srpPasswordSecrets に統合済み (device/user 単一実装)。本関数は device 固有の
+ * 引数名 (deviceGroupKey/deviceKey/devicePassword) を共通コアにマッピングする薄いラッパ。
  *
  * @param {object} args
  * @param {string} args.deviceGroupKey
