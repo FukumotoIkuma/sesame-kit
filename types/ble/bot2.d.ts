@@ -99,6 +99,14 @@ export const BOT_ACTION_TYPE: Readonly<{
  * click(index) はファサード SesameBle.click(tag) (CLICK 89) と棲み分ける。CLICK は従来通り残し、
  * 本クラスは index 指定 click と script 管理を担う。
  */
+/**
+ * `script` サブファサードの RPC 公開仕様 (SURF-08 段階3)。
+ * registry がこれを読み `ble.script.<op>` を型付き RPC/SDK メソッドとして自動展開する。
+ * params の **順序 = Bot2Commands メソッドの位置引数の順序**。result: "ack"=コマンド ack
+ * ({resultCode,resultName}) / "raw"=パース結果をそのまま返す。
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const SCRIPT_RPC_OPS: import("./index.js").BleRpcOpSpec;
 export class Bot2Commands {
     /**
      * @param {import("./session.js").SesameBleSession} session login 済み (request が使える) session

@@ -15,6 +15,18 @@ export const BLE_RPC_ALLOWLIST: readonly string[];
  */
 export const OS2_BLE_RPC_ALLOWLIST: readonly string[];
 /**
+ * OS3 ファサード (SesameBle) の全 op の RPC 公開仕様 (= 「BLE 版 NAMESPACE_OPS」)。
+ * 各サブファサード/トップレベルの `*_RPC_OPS` を集約する。これにより `ble.<op>` の全体が
+ * registry → openrpc/proto/SDK へ型付きで自動生成される (SURF-08 段階3)。すべて experimental。
+ * @type {BleRpcOpSpec}
+ */
+export const BLE_RPC_OPS: BleRpcOpSpec;
+/**
+ * OS2 ファサード (SesameOS2Ble) の全 op の RPC 公開仕様。
+ * @type {BleRpcOpSpec}
+ */
+export const OS2_BLE_RPC_OPS: BleRpcOpSpec;
+/**
  * biometric ゲッタが返す限定ビューの型。
  *
  * ★型は全 capability のメソッドを持つが、**実行時は bioCaps 集合内のメソッドだけが存在する**
@@ -35,8 +47,12 @@ export const OS2_BLE_RPC_ALLOWLIST: readonly string[];
  *   - setTriggerDelayTime: CHRemoteNanoCapable.kt:8 (送信 190)
  *   - insertSesame/removeSesame/setRadarSensitivity: CHSesameConnector (CHDeivceProtocols.kt:317-322)
  *   - registerDelegate: CHRemoteNanoCapable.registerEventDelegate 相当 (publish 191/201 等の受信結線)
+ * setTriggerDelayTime は BiometricCommands.setTriggerDelay へ委譲し、request の ack
+ * ({resultCode,payload}) をそのまま返す (SURF-08: `ble.remoteNano.setTriggerDelayTime` の
+ * "ack" RPC 契約が bleCommandAck で {resultCode,resultName} を組めるようにするため。送信系の
+ * BiometricCommands メソッドは ack を返す)。
  * @typedef {Pick<BiometricCommands, "insertSesame"|"removeSesame"|"setRadarSensitivity"|"registerDelegate">
- *   & {setTriggerDelayTime: (time:number)=>Promise<void>}} RemoteNanoView
+ *   & {setTriggerDelayTime: (time:number)=>Promise<{resultCode:number, payload:import("node:buffer").Buffer}>}} RemoteNanoView
  */
 /**
  * サーバ署名トランスポート (makeRegisterTransport の戻り)。signGuestKey / register に渡す。
@@ -600,6 +616,20 @@ export class SesameBle {
     }>;
 }
 /**
+ * BLE op の RPC 公開仕様 1 件 (SURF-08 段階3)。registry がこれを読み `ble.<op>` を
+ * 型付き RPC/SDK メソッドに自動展開する。`params` の順序 = ファサードメソッドの位置引数の順序。
+ */
+export type BleRpcOpSpec = Record<string, {
+    params: Array<{
+        name: string;
+        type: ("number" | "string" | "boolean" | "object" | "array");
+        required: boolean;
+        desc?: string;
+    }>;
+    result: ("ack" | "raw" | string);
+    summary?: string;
+}>;
+/**
  * biometric ゲッタが返す限定ビューの型。
  *
  * ★型は全 capability のメソッドを持つが、**実行時は bioCaps 集合内のメソッドだけが存在する**
@@ -614,9 +644,16 @@ export type BiometricView = Pick<BiometricCommands, "cardModeSet" | "cardModeGet
  *   - setTriggerDelayTime: CHRemoteNanoCapable.kt:8 (送信 190)
  *   - insertSesame/removeSesame/setRadarSensitivity: CHSesameConnector (CHDeivceProtocols.kt:317-322)
  *   - registerDelegate: CHRemoteNanoCapable.registerEventDelegate 相当 (publish 191/201 等の受信結線)
+ * setTriggerDelayTime は BiometricCommands.setTriggerDelay へ委譲し、request の ack
+ * ({resultCode,payload}) をそのまま返す (SURF-08: `ble.remoteNano.setTriggerDelayTime` の
+ * "ack" RPC 契約が bleCommandAck で {resultCode,resultName} を組めるようにするため。送信系の
+ * BiometricCommands メソッドは ack を返す)。
  */
 export type RemoteNanoView = Pick<BiometricCommands, "insertSesame" | "removeSesame" | "setRadarSensitivity" | "registerDelegate"> & {
-    setTriggerDelayTime: (time: number) => Promise<void>;
+    setTriggerDelayTime: (time: number) => Promise<{
+        resultCode: number;
+        payload: import("node:buffer").Buffer;
+    }>;
 };
 /**
  * サーバ署名トランスポート (makeRegisterTransport の戻り)。signGuestKey / register に渡す。

@@ -4,7 +4,7 @@
 
 > [日本語](../ja/integration.md) · [Docs index](./index.md)
 
-`sesame serve` is a long-running JSON-RPC 2.0 daemon. It signs in once, keeps the cloud connection alive, runs operations repeatedly, and pushes events. Cloud/Biz3 features are exposed as typed RPC methods; registered BLE operations are exposed through `ble.invoke` / `ble.os2.invoke`.
+`sesame serve` is a long-running JSON-RPC 2.0 daemon. It signs in once, keeps the cloud connection alive, runs operations repeatedly, and pushes events. Cloud/Biz3 features are exposed as typed RPC methods. BLE operations are also exposed as typed methods — each facade op appears as `ble.<op>` / `ble.os2.<op>` (e.g. `ble.script.click`, `ble.biometric.cardAdd`, `ble.hub3.setWifiSSID`) with named parameters in the generated SDKs (all `experimental`, not yet confirmed against real hardware). The generic `ble.invoke` / `ble.os2.invoke` string-dispatch remains as an escape hatch.
 
 ## 1. Sign in and start the daemon
 

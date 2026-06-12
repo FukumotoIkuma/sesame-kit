@@ -273,6 +273,8 @@ export class WifiModule2 {
         payload: Buffer;
     }>;
 }
+/** @type {import("./index.js").BleRpcOpSpec} */
+export const WM2_RPC_OPS: import("./index.js").BleRpcOpSpec;
 /**
  * insertSesames: data = allKey (子 Sesame の鍵束)。CHWifiModule2Device.kt:380-401 を 1:1 移植。
  *

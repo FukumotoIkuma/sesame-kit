@@ -4,7 +4,7 @@
 
 > [English](../en/integration.md) · [ドキュメント目次](./index.md)
 
-`sesame serve` は常駐する JSON-RPC 2.0 デーモンです。一度サインインするとクラウド接続を維持し続け、操作の実行とイベントの配信を繰り返します。クラウド / Biz3 機能は型付き RPC として公開し、登録済み BLE 操作は `ble.invoke` / `ble.os2.invoke` から呼べます。
+`sesame serve` は常駐する JSON-RPC 2.0 デーモンです。一度サインインするとクラウド接続を維持し続け、操作の実行とイベントの配信を繰り返します。クラウド / Biz3 機能は型付き RPC として公開します。BLE 操作も型付きメソッドとして公開され、各 facade op が `ble.<op>` / `ble.os2.<op>`(例: `ble.script.click`・`ble.biometric.cardAdd`・`ble.hub3.setWifiSSID`)として名前付きパラメータで生成 SDK に現れます(すべて `experimental`・実機未確認)。汎用の `ble.invoke` / `ble.os2.invoke` 文字列ディスパッチは脱出口として併存します。
 
 ## 1. サインインしてデーモンを起動
 

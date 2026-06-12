@@ -76,6 +76,69 @@ service Sesame {
   rpc PresetirSendIR (PresetirSendIRRequest) returns (JsonRpc);
   rpc PresetirEmitAir (PresetirEmitAirRequest) returns (JsonRpc);
   rpc PresetirEmitButton (PresetirEmitButtonRequest) returns (JsonRpc);
+  rpc BleScriptClick (BleScriptClickRequest) returns (JsonRpc);
+  rpc BleScriptSelectScript (BleScriptSelectScriptRequest) returns (JsonRpc);
+  rpc BleScriptSendClickScript (BleScriptSendClickScriptRequest) returns (JsonRpc);
+  rpc BleScriptGetCurrentScript (BleScriptGetCurrentScriptRequest) returns (JsonRpc);
+  rpc BleScriptGetScriptNameList (BleScriptGetScriptNameListRequest) returns (JsonRpc);
+  rpc BleBiometricCardModeSet (BleBiometricCardModeSetRequest) returns (JsonRpc);
+  rpc BleBiometricCardModeGet (BleBiometricCardModeGetRequest) returns (JsonRpc);
+  rpc BleBiometricCardGet (BleBiometricCardGetRequest) returns (JsonRpc);
+  rpc BleBiometricCardAdd (BleBiometricCardAddRequest) returns (JsonRpc);
+  rpc BleBiometricCardDelete (BleBiometricCardDeleteRequest) returns (JsonRpc);
+  rpc BleBiometricCardMove (BleBiometricCardMoveRequest) returns (JsonRpc);
+  rpc BleBiometricCardChange (BleBiometricCardChangeRequest) returns (JsonRpc);
+  rpc BleBiometricCardChangeValue (BleBiometricCardChangeValueRequest) returns (JsonRpc);
+  rpc BleBiometricPasscodeModeSet (BleBiometricPasscodeModeSetRequest) returns (JsonRpc);
+  rpc BleBiometricPasscodeModeGet (BleBiometricPasscodeModeGetRequest) returns (JsonRpc);
+  rpc BleBiometricPasscodeGet (BleBiometricPasscodeGetRequest) returns (JsonRpc);
+  rpc BleBiometricPasscodeAdd (BleBiometricPasscodeAddRequest) returns (JsonRpc);
+  rpc BleBiometricPasscodeDelete (BleBiometricPasscodeDeleteRequest) returns (JsonRpc);
+  rpc BleBiometricPasscodeMove (BleBiometricPasscodeMoveRequest) returns (JsonRpc);
+  rpc BleBiometricPasscodeChange (BleBiometricPasscodeChangeRequest) returns (JsonRpc);
+  rpc BleBiometricFaceModeSet (BleBiometricFaceModeSetRequest) returns (JsonRpc);
+  rpc BleBiometricFaceModeGet (BleBiometricFaceModeGetRequest) returns (JsonRpc);
+  rpc BleBiometricFaceListGet (BleBiometricFaceListGetRequest) returns (JsonRpc);
+  rpc BleBiometricFaceChange (BleBiometricFaceChangeRequest) returns (JsonRpc);
+  rpc BleBiometricFaceDelete (BleBiometricFaceDeleteRequest) returns (JsonRpc);
+  rpc BleBiometricPalmModeSet (BleBiometricPalmModeSetRequest) returns (JsonRpc);
+  rpc BleBiometricPalmModeGet (BleBiometricPalmModeGetRequest) returns (JsonRpc);
+  rpc BleBiometricPalmListGet (BleBiometricPalmListGetRequest) returns (JsonRpc);
+  rpc BleBiometricPalmDelete (BleBiometricPalmDeleteRequest) returns (JsonRpc);
+  rpc BleBiometricInsertSesame (BleBiometricInsertSesameRequest) returns (JsonRpc);
+  rpc BleBiometricRemoveSesame (BleBiometricRemoveSesameRequest) returns (JsonRpc);
+  rpc BleBiometricSetRadarSensitivity (BleBiometricSetRadarSensitivityRequest) returns (JsonRpc);
+  rpc BleFingerPrintFingerPrintModeSet (BleFingerPrintFingerPrintModeSetRequest) returns (JsonRpc);
+  rpc BleFingerPrintFingerPrintModeGet (BleFingerPrintFingerPrintModeGetRequest) returns (JsonRpc);
+  rpc BleFingerPrintFingerPrints (BleFingerPrintFingerPrintsRequest) returns (JsonRpc);
+  rpc BleFingerPrintFingerPrintDelete (BleFingerPrintFingerPrintDeleteRequest) returns (JsonRpc);
+  rpc BleFingerPrintFingerPrintChange (BleFingerPrintFingerPrintChangeRequest) returns (JsonRpc);
+  rpc BleRemoteNanoSetTriggerDelayTime (BleRemoteNanoSetTriggerDelayTimeRequest) returns (JsonRpc);
+  rpc BleRemoteNanoInsertSesame (BleRemoteNanoInsertSesameRequest) returns (JsonRpc);
+  rpc BleRemoteNanoRemoveSesame (BleRemoteNanoRemoveSesameRequest) returns (JsonRpc);
+  rpc BleRemoteNanoSetRadarSensitivity (BleRemoteNanoSetRadarSensitivityRequest) returns (JsonRpc);
+  rpc BleWifiInsertSesames (BleWifiInsertSesamesRequest) returns (JsonRpc);
+  rpc BleWifiRemoveSesame (BleWifiRemoveSesameRequest) returns (JsonRpc);
+  rpc BleWifiNetworkStatus (BleWifiNetworkStatusRequest) returns (JsonRpc);
+  rpc BleWifiReset (BleWifiResetRequest) returns (JsonRpc);
+  rpc BleHub3ScanWifiSSID (BleHub3ScanWifiSSIDRequest) returns (JsonRpc);
+  rpc BleHub3SetWifiSSID (BleHub3SetWifiSSIDRequest) returns (JsonRpc);
+  rpc BleHub3SetWifiPassword (BleHub3SetWifiPasswordRequest) returns (JsonRpc);
+  rpc BleHub3RemoveSesame (BleHub3RemoveSesameRequest) returns (JsonRpc);
+  rpc BleHub3NetworkType (BleHub3NetworkTypeRequest) returns (JsonRpc);
+  rpc BleHistory (BleHistoryRequest) returns (JsonRpc);
+  rpc BleDeleteHistory (BleDeleteHistoryRequest) returns (JsonRpc);
+  rpc BleGetVersionTag (BleGetVersionTagRequest) returns (JsonRpc);
+  rpc BleMagnet (BleMagnetRequest) returns (JsonRpc);
+  rpc BleOpSensorControl (BleOpSensorControlRequest) returns (JsonRpc);
+  rpc BleSendAdvProductType (BleSendAdvProductTypeRequest) returns (JsonRpc);
+  rpc BleSetBleTxPower (BleSetBleTxPowerRequest) returns (JsonRpc);
+  rpc BleOs2Autolock (BleOs2AutolockRequest) returns (JsonRpc);
+  rpc BleOs2DisableAutolock (BleOs2DisableAutolockRequest) returns (JsonRpc);
+  rpc BleOs2GetAutolock (BleOs2GetAutolockRequest) returns (JsonRpc);
+  rpc BleOs2History (BleOs2HistoryRequest) returns (JsonRpc);
+  rpc BleOs2VersionTag (BleOs2VersionTagRequest) returns (JsonRpc);
+  rpc BleOs2UpdateSetting (BleOs2UpdateSettingRequest) returns (JsonRpc);
   rpc Status (StatusRequest) returns (JsonRpc);
   rpc CloudPing (CloudPingRequest) returns (JsonRpc);
   rpc AccountWhoami (AccountWhoamiRequest) returns (JsonRpc);
@@ -523,6 +586,693 @@ message PresetirEmitButtonRequest {
   string buttonType = 5;
   string irDeviceUUID = 6;
   double timeoutMs = 7;
+}
+message BleScriptClickRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double index = 9;
+}
+message BleScriptSelectScriptRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double index = 9;
+}
+message BleScriptSendClickScriptRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double index = 9;
+  string script = 10;
+}
+message BleScriptGetCurrentScriptRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double index = 9;
+}
+message BleScriptGetScriptNameListRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleBiometricCardModeSetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double mode = 9;
+}
+message BleBiometricCardModeGetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleBiometricCardGetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleBiometricCardAddRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string id = 9;
+  string hexName = 10;
+}
+message BleBiometricCardDeleteRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string cardID = 9;
+}
+message BleBiometricCardMoveRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string cardId = 9;
+  string touchProUUID = 10;
+}
+message BleBiometricCardChangeRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string ID = 9;
+  string hexName = 10;
+}
+message BleBiometricCardChangeValueRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string ID = 9;
+  string newID = 10;
+}
+message BleBiometricPasscodeModeSetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double mode = 9;
+}
+message BleBiometricPasscodeModeGetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleBiometricPasscodeGetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleBiometricPasscodeAddRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string id = 9;
+  string hexName = 10;
+}
+message BleBiometricPasscodeDeleteRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string keyBoardPassCodeID = 9;
+}
+message BleBiometricPasscodeMoveRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string cardId = 9;
+  string touchProUUID = 10;
+}
+message BleBiometricPasscodeChangeRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string ID = 9;
+  string hexName = 10;
+}
+message BleBiometricFaceModeSetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double mode = 9;
+}
+message BleBiometricFaceModeGetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleBiometricFaceListGetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleBiometricFaceChangeRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string ID = 9;
+  string name = 10;
+}
+message BleBiometricFaceDeleteRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string faceID = 9;
+}
+message BleBiometricPalmModeSetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double mode = 9;
+}
+message BleBiometricPalmModeGetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleBiometricPalmListGetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleBiometricPalmDeleteRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string palmID = 9;
+}
+message BleBiometricInsertSesameRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string sesame = 9;
+}
+message BleBiometricRemoveSesameRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string tag = 9;
+  string opts = 10;
+}
+message BleBiometricSetRadarSensitivityRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string payload = 9;
+}
+message BleFingerPrintFingerPrintModeSetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double mode = 9;
+}
+message BleFingerPrintFingerPrintModeGetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleFingerPrintFingerPrintsRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleFingerPrintFingerPrintDeleteRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string fingerPrintID = 9;
+}
+message BleFingerPrintFingerPrintChangeRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string ID = 9;
+  string hexName = 10;
+}
+message BleRemoteNanoSetTriggerDelayTimeRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double time = 9;
+}
+message BleRemoteNanoInsertSesameRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string sesame = 9;
+}
+message BleRemoteNanoRemoveSesameRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string tag = 9;
+  string opts = 10;
+}
+message BleRemoteNanoSetRadarSensitivityRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string payload = 9;
+}
+message BleWifiInsertSesamesRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string sesameKey = 9;
+}
+message BleWifiRemoveSesameRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string sesameKeyTag = 9;
+}
+message BleWifiNetworkStatusRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleWifiResetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleHub3ScanWifiSSIDRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleHub3SetWifiSSIDRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string ssid = 9;
+}
+message BleHub3SetWifiPasswordRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string password = 9;
+}
+message BleHub3RemoveSesameRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string tag = 9;
+}
+message BleHub3NetworkTypeRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleHistoryRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleDeleteHistoryRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string historyPayload = 9;
+}
+message BleGetVersionTagRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleMagnetRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+}
+message BleOpSensorControlRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double seconds = 9;
+}
+message BleSendAdvProductTypeRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  string data = 9;
+}
+message BleSetBleTxPowerRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string model = 4;
+  double scanTimeoutMs = 5;
+  bool debug = 6;
+  bool needAuthFromServer = 7;
+  string registerBaseUrl = 8;
+  double txPower = 9;
+}
+message BleOs2AutolockRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string keyIndex = 4;
+  string ssmPublicKey = 5;
+  string model = 6;
+  double scanTimeoutMs = 7;
+  bool debug = 8;
+  double seconds = 9;
+  string tag = 10;
+}
+message BleOs2DisableAutolockRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string keyIndex = 4;
+  string ssmPublicKey = 5;
+  string model = 6;
+  double scanTimeoutMs = 7;
+  bool debug = 8;
+  string tag = 9;
+}
+message BleOs2GetAutolockRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string keyIndex = 4;
+  string ssmPublicKey = 5;
+  string model = 6;
+  double scanTimeoutMs = 7;
+  bool debug = 8;
+}
+message BleOs2HistoryRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string keyIndex = 4;
+  string ssmPublicKey = 5;
+  string model = 6;
+  double scanTimeoutMs = 7;
+  bool debug = 8;
+  string opts = 9;
+}
+message BleOs2VersionTagRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string keyIndex = 4;
+  string ssmPublicKey = 5;
+  string model = 6;
+  double scanTimeoutMs = 7;
+  bool debug = 8;
+}
+message BleOs2UpdateSettingRequest {
+  string deviceUUID = 1;
+  string address = 2;
+  string secretKey = 3;
+  string keyIndex = 4;
+  string ssmPublicKey = 5;
+  string model = 6;
+  double scanTimeoutMs = 7;
+  bool debug = 8;
+  string setting = 9;
+  string tag = 10;
 }
 message StatusRequest {
 }

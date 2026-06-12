@@ -156,6 +156,7 @@ declare namespace _default {
         "serve.sum.irMatchRemote": string;
         "serve.sum.irAddRemoteToMatter": string;
         "serve.sum.bleInvoke": string;
+        "serve.sum.bleGenericOp": string;
         "serve.sum.bleRegister": string;
         "serve.sum.bleOs2Invoke": string;
         "serve.sum.bleOs2Register": string;
@@ -355,6 +356,7 @@ declare namespace _default {
         "serve.sum.irMatchRemote": string;
         "serve.sum.irAddRemoteToMatter": string;
         "serve.sum.bleInvoke": string;
+        "serve.sum.bleGenericOp": string;
         "serve.sum.bleRegister": string;
         "serve.sum.bleOs2Invoke": string;
         "serve.sum.bleOs2Register": string;

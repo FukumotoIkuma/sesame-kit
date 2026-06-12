@@ -359,3 +359,41 @@ export class Hub3Commands {
     return this._session.request(UNVERIFIED.HUB3_ITEM_CODE_NETWORK_TYPE, networkTypeData());
   }
 }
+
+// --- SURF-08 段階3: Hub3 (Hub3Commands) サブファサードの RPC 公開仕様 ---
+//
+// registry がこれを読み `ble.hub3.<op>` を型付き RPC/SDK メソッドへ自動展開する
+// (bot2.js SCRIPT_RPC_OPS と同形式)。op パス第 1 セグメント = "hub3" は BLE_RPC_ALLOWLIST の
+// "hub3" と一致 (index.js の `hub3()` メソッド経由)。params の **順序 = Hub3Commands メソッドの
+// 位置引数順**。result: "ack"=コマンド ack ({resultCode,resultName}) / "raw"=パース結果そのまま。
+//
+// ★ invokePath は中間セグメント "hub3" を `value.call(target)` (引数なし) で解決する。hub3() は
+//   引数を取らない (companyId 不要 — Hub3 の Wi-Fi 設定は verification 文字列を組まない) ため、
+//   WM2 の connectWifi のような companyId 注入問題は無く、全 op を生成版で安全に呼べる。
+//
+// ★ 専用ハンドラとの重複: Hub3 専用の `ble.hub3.*` RPC は registry に **存在しない**
+//   (専用ハンドラは ble.wifi.* のみで、wifiViewOf 経由で WM2/Hub3 を判別する別 op パス)。
+//   よって Hub3 の全公開 op をここに載せて衝突しない。
+//
+// ここに載せる Hub3 op:
+//   scanWifiSSID / setWifiSSID / setWifiPassword / removeSesame / networkType。
+/** @type {import("./index.js").BleRpcOpSpec} */
+export const HUB3_RPC_OPS = {
+  // 周辺 Wi-Fi SSID スキャン (HUB3_ITEM_CODE_WIFI_SSID=131)。位置引数なし。結果は SSID_NOTIFY publish。
+  // CHHub3Device.kt:238-244。ack は送信受理のみ (SSID は publish 経由)。
+  "hub3.scanWifiSSID": { params: [], result: "ack", summary: "start a Wi-Fi SSID scan on the Hub3 (results arrive via publish)" },
+  // Wi-Fi SSID を設定 (HUB3_UPDATE_WIFI_SSID=136)。位置引数 0 = ssid。CHHub3Device.kt:255-265。
+  "hub3.setWifiSSID": { params: [{ name: "ssid", type: "string", required: true, desc: "Wi-Fi SSID to set on the Hub3" }], result: "ack", summary: "set the Hub3 Wi-Fi SSID" },
+  // Wi-Fi パスワードを設定 (HUB3_ITEM_CODE_WIFI_PASSWORD=135)。位置引数 0 = password。
+  // CHHub3Device.kt:246-253。
+  "hub3.setWifiPassword": { params: [{ name: "password", type: "string", required: true, desc: "Wi-Fi password to set on the Hub3" }], result: "ack", summary: "set the Hub3 Wi-Fi password" },
+  // 子 Sesame を Hub3 から削除 (REMOVE_SESAME=103)。位置引数 0 = tag (UUID 文字列、dash 除去 hex を
+  // 生 16B へ decode して送出 — WM2 とは経路が異なる)。CHHub3Device.kt:228-236。
+  "hub3.removeSesame": { params: [{ name: "tag", type: "string", required: true, desc: "child Sesame key tag (UUID string) to remove" }], result: "ack", summary: "remove a child Sesame key from the Hub3" },
+  // 接続種別 (Wi-Fi/LTE) を要求 (NETWORK_TYPE=209)。位置引数なし。状態は networkType publish で届く。
+  // ★ unverified / not in SDK: itemCode 209 は Android SDK に存在せず (SesameItemCode は 208 で終端、
+  //   SesameProtocols.kt:32-53)、CHHub3Device.kt に送受信ハンドラも無い。biz3 web の native ブリッジ
+  //   挙動 (references_web/src/components/MobileWifiModule.js:219-235) からの推定で BLE 経路自体が未確認。
+  //   実体は UNVERIFIED_ITEM_CODES を参照する @experimental 経路 (§9 V6)。
+  "hub3.networkType": { params: [], result: "ack", summary: "request the Hub3 connection type (Wi-Fi/LTE) (unverified, not in SDK)" },
+};

@@ -205,6 +205,21 @@ export function parseScriptNameList(buf) {
  * click(index) はファサード SesameBle.click(tag) (CLICK 89) と棲み分ける。CLICK は従来通り残し、
  * 本クラスは index 指定 click と script 管理を担う。
  */
+/**
+ * `script` サブファサードの RPC 公開仕様 (SURF-08 段階3)。
+ * registry がこれを読み `ble.script.<op>` を型付き RPC/SDK メソッドとして自動展開する。
+ * params の **順序 = Bot2Commands メソッドの位置引数の順序**。result: "ack"=コマンド ack
+ * ({resultCode,resultName}) / "raw"=パース結果をそのまま返す。
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const SCRIPT_RPC_OPS = {
+  "script.click": { params: [{ name: "index", type: "number", required: false, desc: "script number 0..9 to run (omit = plain click 89)" }], result: "ack" },
+  "script.selectScript": { params: [{ name: "index", type: "number", required: true, desc: "script slot to activate (0..9)" }], result: "ack" },
+  "script.sendClickScript": { params: [{ name: "index", type: "number", required: true, desc: "slot to write (0..9)" }, { name: "script", type: "object", required: true, desc: "{name, actions:[{action,time}]} or raw bytes" }], result: "ack" },
+  "script.getCurrentScript": { params: [{ name: "index", type: "number", required: false, desc: "slot to read (omit = currently selected)" }], result: "raw" },
+  "script.getScriptNameList": { params: [], result: "raw" },
+};
+
 export class Bot2Commands {
   /**
    * @param {import("./session.js").SesameBleSession} session login 済み (request が使える) session

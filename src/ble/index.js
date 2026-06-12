@@ -24,9 +24,14 @@ import {
 } from "./protocol.js";
 import { capabilitiesForModel, KIND } from "./devicemodel.js";
 import { BiometricCommands } from "./biometric.js";
-import { Bot2Commands } from "./bot2.js";
+import { Bot2Commands, SCRIPT_RPC_OPS } from "./bot2.js";
 import { WifiModule2, WM2_GATT } from "./wm2.js";
 import { Hub3Commands } from "./hub3.js";
+// SURF-08 段階3: 各 facade の RPC 公開仕様 (*_RPC_OPS) を集約して BLE_RPC_OPS を組む。
+// 未記述のものは空 {} プレースホルダ (担当エージェントが各 facade で実体を埋め、import に差し替える)。
+import { BIOMETRIC_RPC_OPS, FINGERPRINT_RPC_OPS, REMOTE_NANO_RPC_OPS } from "./biometric.js";
+import { WM2_RPC_OPS } from "./wm2.js";
+import { HUB3_RPC_OPS } from "./hub3.js";
 import { updateFirmware as dfuUpdateFirmware, updateFirmwareBleOnly, updateFirmwareWM2 } from "./dfu.js";
 
 import { scanSesames, listNearbyDevices, NobleTransport } from "./transport.js";
@@ -153,6 +158,103 @@ export const OS2_BLE_RPC_ALLOWLIST = Object.freeze([
 ]);
 
 /**
+ * BLE op の RPC 公開仕様 1 件 (SURF-08 段階3)。registry がこれを読み `ble.<op>` を
+ * 型付き RPC/SDK メソッドに自動展開する。`params` の順序 = ファサードメソッドの位置引数の順序。
+ * @typedef {Record<string, { params: Array<{name:string, type:("number"|"string"|"boolean"|"object"|"array"), required:boolean, desc?:string}>, result:("ack"|"raw"|string), summary?:string }>} BleRpcOpSpec
+ */
+
+/**
+ * OS3 トップレベル op (サブファサードに属さない SesameBle 直下メソッド) の RPC 公開仕様。
+ * 制御 verb (lock/unlock/click/toggle/autolock) と状態取得は cloud 側 lock.* / ble.invoke と
+ * 重複するため **載せない** (混乱回避)。ここは BLE 固有の書き込み/管理系のみ。
+ * configureLockPosition / reset / updateFirmware は専用 RPC (ble.position 等) が override する。
+ * @type {BleRpcOpSpec}
+ */
+const OS3_TOPLEVEL_RPC_OPS = {
+  // history(): item=4、payload は履歴 1 件分の生バイト (先頭 4B が recordId)。読み取り系。
+  // src/ble/index.js:992 history()→session.readHistory() / session.js:569 / CHSesameOS3LockBase.kt:185-192
+  "history": { params: [], result: "raw", summary: "read one BLE history record (OS3, raw bytes; first 4B = recordId)" },
+  // deleteHistory(historyPayload): item=18。引数は **history() が返した payload Buffer 全体**
+  // (session が先頭 4B を recordId として切り出す)。recordId 数値ではない。送信系 (ack)。
+  // src/ble/index.js:999 deleteHistory(historyPayload) / session.js:582 / CHSesameOS3LockBase.kt:200-209
+  "deleteHistory": { params: [{ name: "historyPayload", type: "object", required: true, desc: "the payload Buffer returned by history() (first 4B = recordId); JSON {$buffer} / {type:'Buffer',data} accepted" }], result: "ack" },
+  // getVersionTag(): item=5、Promise<string> を返す読み取り系。
+  // src/ble/index.js:985 getVersionTag()→session.getVersionTag() / session.js:556
+  "getVersionTag": { params: [], result: "raw", summary: "read firmware version tag string (OS3)" },
+  // magnet(): item=17、CHResult<CHEmpty> を返す**コマンド** (磁力操作)。読み取りではなく ack。
+  // 空ペイロード送信、LOCK5 固有。src/ble/index.js:902 / CHSesame5Device.kt:118-126 / CHSesame5.kt:16
+  "magnet": { params: [], result: "ack", summary: "send the magnet command (SESAME 5, LOCK5-only)" },
+  // opSensorControl(seconds): item=92 OPS_CONTROL。引数は Int を 2B LE で送る Open Sensor 自動施錠
+  // 秒数 (0..65535、0=無効)。boolean ではない。LOCK5 固有。
+  // src/ble/index.js:915 opSensorControl(seconds) / CHSesame5Device.kt:107-116 (isEnable: Int)
+  "opSensorControl": { params: [{ name: "seconds", type: "number", required: true, desc: "open-sensor auto-lock seconds (0..65535, 0 = disable)" }], result: "ack" },
+  // sendAdvProductType(data): item=205 SET_ADV_PRODUCT_TYPE。引数 data (生バイト列 Buffer) が **必須**。
+  // 引数なしではない。LOCK5 固有。src/ble/index.js:928 sendAdvProductType(data) /
+  // CHSesame5Device.kt:85-94 sendAdvProductTypeCommand(data: ByteArray)
+  "sendAdvProductType": { params: [{ name: "data", type: "object", required: true, desc: "raw advertised product-type bytes (Buffer); JSON {$buffer} / {type:'Buffer',data} accepted" }], result: "ack" },
+  // setBleTxPower(txPower): item=206。引数は符号付き 1B (-128..127)。draft の "level" は誤名。
+  // OS3 LOCK5 / biometric のみ露出。src/ble/index.js:942 setBleTxPower(txPower) /
+  // CHSesameOS3LockBase.kt:62-71 setBleTxPower(txPower: Byte) / CHSesameBiometricDeviceImpl.kt:332-341
+  "setBleTxPower": { params: [{ name: "txPower", type: "number", required: true, desc: "signed 1-byte BLE TX power (-128..127)" }], result: "ack" },
+};
+
+/**
+ * OS2 トップレベル op (SesameOS2Ble) の RPC 公開仕様。OS2 は autolock の read/update が
+ * 別メソッド。制御 verb は cloud lock.* と重複するため載せない。
+ * @type {BleRpcOpSpec}
+ */
+const OS2_TOPLEVEL_RPC_OPS = {
+  // autolock(seconds, tag): OP.update item=11、2B LE 秒数 ++ 履歴タグ。送信系 (ack)。
+  // tag は履歴に残す任意 Buffer (省略可)。src/ble/os2/index.js:191 / CHSesame2Device.kt:141
+  "autolock": { params: [
+    { name: "seconds", type: "number", required: true, desc: "auto-lock delay seconds (0..65535, 0 = disable)" },
+    { name: "tag", type: "object", required: false, desc: "optional history tag bytes (Buffer)" },
+  ], result: "ack" },
+  // disableAutolock(tag): autolock(0, tag) のショートカット。送信系。
+  // src/ble/os2/index.js:194 / CHSesame2Device.kt:150-152
+  "disableAutolock": { params: [{ name: "tag", type: "object", required: false, desc: "optional history tag bytes (Buffer)" }], result: "ack", summary: "disable auto-lock (= autolock(0)) (OS2)" },
+  // getAutolock(): OP.read item=11、Promise<number> (現在の秒数)。読み取り系。
+  // src/ble/os2/index.js:200 / CHSesame2Device.kt:157-160
+  "getAutolock": { params: [], result: "raw", summary: "read the current auto-lock seconds (OS2)" },
+  // history({ack}): OP.read item=4、Promise<Buffer> (履歴 1 バッチ生バイト)。読み取り系。
+  // ack=true (既定) は取得後デバイス側で消す挙動。opts はオプションオブジェクト 1 引数。
+  // src/ble/os2/index.js:236 history({ack=true}) / CHSesame2Device.kt:606-612
+  "history": { params: [{ name: "opts", type: "object", required: false, desc: "{ ack?: boolean } — ack=false reads without deleting on-device (default true)" }], result: "raw", summary: "read one BLE history batch (OS2, raw bytes)" },
+  // versionTag(): OP.read item=5、Promise<string>。読み取り系。
+  // src/ble/os2/index.js:211 / CHSesame2Device.kt:131-133
+  "versionTag": { params: [], result: "raw", summary: "read firmware version tag string (OS2)" },
+  // updateSetting(setting, tag): OP.update item=80 mechSetting。Bot1 の mech_setting を更新する送信系。
+  // setting は 7 フィールドの Bot1 設定オブジェクト (必須)、tag は履歴タグ (省略可)。Bot1 専用。
+  // src/ble/os2/index.js:267 updateSetting(setting, tag) / CHSesameBotDevice.kt:418-430
+  "updateSetting": { params: [
+    { name: "setting", type: "object", required: true, desc: "Bot1 mech setting object {userPrefDir, lockSec, unlockSec, clickLockSec, clickHoldSec, clickUnlockSec, buttonMode}" },
+    { name: "tag", type: "object", required: false, desc: "optional history tag bytes (Buffer)" },
+  ], result: "ack" },
+};
+
+/**
+ * OS3 ファサード (SesameBle) の全 op の RPC 公開仕様 (= 「BLE 版 NAMESPACE_OPS」)。
+ * 各サブファサード/トップレベルの `*_RPC_OPS` を集約する。これにより `ble.<op>` の全体が
+ * registry → openrpc/proto/SDK へ型付きで自動生成される (SURF-08 段階3)。すべて experimental。
+ * @type {BleRpcOpSpec}
+ */
+export const BLE_RPC_OPS = Object.freeze({
+  ...SCRIPT_RPC_OPS,
+  ...BIOMETRIC_RPC_OPS,
+  ...FINGERPRINT_RPC_OPS,
+  ...REMOTE_NANO_RPC_OPS,
+  ...WM2_RPC_OPS,
+  ...HUB3_RPC_OPS,
+  ...OS3_TOPLEVEL_RPC_OPS,
+});
+
+/**
+ * OS2 ファサード (SesameOS2Ble) の全 op の RPC 公開仕様。
+ * @type {BleRpcOpSpec}
+ */
+export const OS2_BLE_RPC_OPS = Object.freeze({ ...OS2_TOPLEVEL_RPC_OPS });
+
+/**
  * deviceUUID 正規化 (照合用)。
  * @param {string} u
  * @returns {string}
@@ -205,8 +307,12 @@ const BIO_VIEW_METHODS = Object.freeze({
  *   - setTriggerDelayTime: CHRemoteNanoCapable.kt:8 (送信 190)
  *   - insertSesame/removeSesame/setRadarSensitivity: CHSesameConnector (CHDeivceProtocols.kt:317-322)
  *   - registerDelegate: CHRemoteNanoCapable.registerEventDelegate 相当 (publish 191/201 等の受信結線)
+ * setTriggerDelayTime は BiometricCommands.setTriggerDelay へ委譲し、request の ack
+ * ({resultCode,payload}) をそのまま返す (SURF-08: `ble.remoteNano.setTriggerDelayTime` の
+ * "ack" RPC 契約が bleCommandAck で {resultCode,resultName} を組めるようにするため。送信系の
+ * BiometricCommands メソッドは ack を返す)。
  * @typedef {Pick<BiometricCommands, "insertSesame"|"removeSesame"|"setRadarSensitivity"|"registerDelegate">
- *   & {setTriggerDelayTime: (time:number)=>Promise<void>}} RemoteNanoView
+ *   & {setTriggerDelayTime: (time:number)=>Promise<{resultCode:number, payload:import("node:buffer").Buffer}>}} RemoteNanoView
  */
 
 /**

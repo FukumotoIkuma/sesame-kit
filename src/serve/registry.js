@@ -28,6 +28,7 @@ import * as presetir from "../presetir.js";
 import {
   SesameBle, SesameOS2Ble, createBleTransport,
   BLE_RPC_ALLOWLIST, OS2_BLE_RPC_ALLOWLIST, resultName,
+  BLE_RPC_OPS, OS2_BLE_RPC_OPS,
 } from "../ble/index.js";
 import { ITEM_CODES } from "../itemcodes.js";
 import { resolveRegisterTransport } from "../devices.js";
@@ -312,6 +313,94 @@ function bleUseOptsFromParams(hub, params) {
         })
       : undefined,
   };
+}
+
+// ---- SURF-08 段階3: BLE_RPC_OPS / OS2_BLE_RPC_OPS から ble.<op> を自動展開 ----
+// 各 facade が宣言した op 仕様 (params 順 = ファサードメソッドの位置引数順) を、型付きの
+// `ble.<op>` / `ble.os2.<op>` RPC に変換する。ハンドラは named params → 位置引数配列へ写像して
+// invokePath (fail-closed allowlist) を通す。すべて experimental (STABLE_METHODS 非掲載)。
+const BLE_SCHEMA_BY_TYPE = {
+  number: { type: "number" }, string: { type: "string" }, boolean: { type: "boolean" },
+  object: { type: "object" }, array: { type: "array" },
+};
+const BLE_GEN_TARGET = [
+  { name: "deviceUUID", required: false, schema: { type: "string" } },
+  { name: "address", required: false, schema: { type: "string" } },
+  { name: "secretKey", required: true, schema: { type: "string" } },
+  { name: "model", required: false, schema: { type: "string" } },
+  { name: "scanTimeoutMs", required: false, schema: { type: "number" } },
+  { name: "debug", required: false, schema: { type: "boolean" } },
+  { name: "needAuthFromServer", required: false, schema: { type: "boolean" } },
+  { name: "registerBaseUrl", required: false, schema: { type: "string" } },
+];
+const OS2_GEN_TARGET = [
+  { name: "deviceUUID", required: false, schema: { type: "string" } },
+  { name: "address", required: false, schema: { type: "string" } },
+  { name: "secretKey", required: true, schema: { type: "string" } },
+  { name: "keyIndex", required: true, schema: { type: "string" } },
+  { name: "ssmPublicKey", required: true, schema: { type: "string" } },
+  { name: "model", required: false, schema: { type: "string" } },
+  { name: "scanTimeoutMs", required: false, schema: { type: "number" } },
+  { name: "debug", required: false, schema: { type: "boolean" } },
+];
+
+/**
+ * SesameOS2Ble.use を params から組んで fn を実行する (ble.os2.invoke と同じ対象指定群)。
+ * @param {Record<string, any>} params
+ * @param {(ble:any)=>any} fn
+ */
+function os2UseRun(params, fn) {
+  need(params, ["secretKey", "keyIndex", "ssmPublicKey"]);
+  const transport = createBleTransport({
+    deviceUUID: params.deviceUUID, address: params.address,
+    debug: !!params.debug, scanTimeoutMs: params.scanTimeoutMs,
+  });
+  return SesameOS2Ble.use({
+    transport, deviceUUID: params.deviceUUID, secretKey: params.secretKey,
+    keyIndex: params.keyIndex, ssmPublicKey: params.ssmPublicKey,
+    model: params.model ?? null, debug: !!params.debug,
+  }, fn);
+}
+
+/**
+ * BLE_RPC_OPS / OS2_BLE_RPC_OPS の宣言から `ble.<op>` MethodEntry 群を生成する。
+ * @param {string} prefix "ble" | "ble.os2"
+ * @param {import("../ble/index.js").BleRpcOpSpec} ops
+ * @param {readonly string[]} allowlist 第 1 セグメント allowlist (fail-closed)
+ * @param {{ target: Array<any>, run: (hub: Hub, params: Record<string, any>, fn: (ble:any)=>any)=>Promise<any> }} cfg
+ * @returns {Record<string, MethodEntry>}
+ */
+function bleOpEntries(prefix, ops, allowlist, cfg) {
+  /** @type {Record<string, MethodEntry>} */
+  const out = {};
+  for (const [opPath, spec] of Object.entries(ops)) {
+    const specParams = Array.isArray(spec.params) ? spec.params : [];
+    const opParams = specParams.map((p) => ({
+      name: p.name, required: !!p.required, desc: p.desc,
+      schema: BLE_SCHEMA_BY_TYPE[p.type] || BLE_SCHEMA_BY_TYPE.object,
+    }));
+    const ackResult = spec.result === "ack";
+    out[`${prefix}.${opPath}`] = {
+      summary: spec.summary || t("serve.sum.bleGenericOp", { op: opPath }),
+      params: [...cfg.target, ...opParams],
+      result: ackResult ? "{ resultCode, resultName }"
+        : (typeof spec.result === "string" && spec.result !== "raw" ? spec.result : "BLE operation result"),
+      handler: async ({ hub, params }) => {
+        for (const p of opParams) {
+          // 0/false は有効値なので undefined/null のみ欠落扱い (need() は 0 も弾くため使わない)。
+          if (p.required && (params[p.name] === undefined || params[p.name] === null)) {
+            throw new RpcError(t("serve.missingParam", { k: p.name }), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+          }
+        }
+        const args = specParams.map((p) => params[p.name]);
+        return cfg.run(hub, params, async (ble) => {
+          const r = await invokePath(ble, opPath, args, allowlist);
+          return ackResult ? bleCommandAck(/** @type {{resultCode:number}} */ (r)) : r;
+        });
+      },
+    };
+  }
+  return out;
 }
 
 /**
@@ -1211,6 +1300,20 @@ export function buildRegistry() {
       });
     }
   }
+
+  // 1.5) BLE op を BLE_RPC_OPS / OS2_BLE_RPC_OPS から自動公開 (SURF-08 段階3)。
+  //   topLevelEntries より先に set し、専用ハンドラ (ble.updateFirmware / ble.wifi.* 等) が
+  //   override できるようにする (専用版は commandSent 分岐や companyId 解決を持つため)。
+  const bleGen = bleOpEntries("ble", BLE_RPC_OPS, BLE_RPC_ALLOWLIST, {
+    target: BLE_GEN_TARGET,
+    run: (hub, params, fn) => SesameBle.use(bleUseOptsFromParams(hub, params), fn),
+  });
+  for (const [name, entry] of Object.entries(bleGen)) reg.set(name, entry);
+  const os2Gen = bleOpEntries("ble.os2", OS2_BLE_RPC_OPS, OS2_BLE_RPC_ALLOWLIST, {
+    target: OS2_GEN_TARGET,
+    run: (_hub, params, fn) => os2UseRun(params, fn),
+  });
+  for (const [name, entry] of Object.entries(os2Gen)) reg.set(name, entry);
 
   // 2) 位置引数を持つ高レベル op の明示表。
   for (const [name, entry] of Object.entries(topLevelEntries())) reg.set(name, entry);

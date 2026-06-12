@@ -417,6 +417,8 @@
   3. **中期**: SesameBle ファサードのメソッド表(BLEP-05 で導入する bioCaps 含む)から registry エントリを自動生成する「BLE 版 NAMESPACE_OPS」を作り、手書き二重化を防ぐ。
 - **受け入れ基準**: §「能力マトリクス」の BLE 行から「△(invoke のみ)」が消える(または明示的に脱出口専用と docs 宣言される)。
 
+> **実施状況(2026-06-12、段階3 完了)**: 段階1・2 は Phase 4 で実施済み。**段階3(全 op の型付き SDK 化)も実装した** — 各 facade が `*_RPC_OPS` 宣言(`SCRIPT_RPC_OPS`/`BIOMETRIC_RPC_OPS`/`WM2_RPC_OPS`/`HUB3_RPC_OPS`/OS3・OS2 トップレベル)を export し、`src/ble/index.js` の `BLE_RPC_OPS`/`OS2_BLE_RPC_OPS` が集約、`src/serve/registry.js` の `bleOpEntries` が `ble.<op>`/`ble.os2.<op>` を**型付き RPC/SDK メソッド**に自動展開する(params 順 = ファサードの位置引数順、result=ack/raw)。RPC 総数 135→198。すべて experimental + 実機未検証。`ble.invoke` は脱出口として併存。これで biometric/script/wifi/hub3/remoteNano/OS2 の個別 op が openrpc/proto/TS・Py SDK に型付きで現れる。専用ハンドラ(`ble.updateFirmware`/`ble.wifi.*` 等、companyId 解決や commandSent 分岐を持つもの)は生成版を override。
+
 #### P4-2. ble.invoke の fail-open を allowlist 化〔ARCH-14 / Medium・セキュリティ〕
 - **対象**: [src/serve/registry.js:140-163](src/serve/registry.js:140)(`invokePath` — ブロックリストのみで facade 全公開面に到達可、getter は実行される)
 - **修正手順**: ble/index.js から `BLE_RPC_ALLOWLIST` を export し、invokePath 冒頭で第 1 セグメントを照合する fail-closed へ反転。否定ケーステストを追加。P4-1 の自動生成と同じ表を使う。

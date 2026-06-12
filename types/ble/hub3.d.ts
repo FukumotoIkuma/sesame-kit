@@ -178,5 +178,7 @@ export class Hub3Commands {
         payload: Buffer;
     }>;
 }
+/** @type {import("./index.js").BleRpcOpSpec} */
+export const HUB3_RPC_OPS: import("./index.js").BleRpcOpSpec;
 import { Buffer } from "node:buffer";
 //# sourceMappingURL=hub3.d.ts.map

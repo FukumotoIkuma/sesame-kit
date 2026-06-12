@@ -466,78 +466,164 @@ export class BiometricCommands {
     /**
      * 登録モード設定。応答後にデバイスが CARD_FIRST/NOTIFY/LAST を push する。
      * @param {number} mode
+     * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
-    cardModeSet(mode: number): Promise<void>;
+    cardModeSet(mode: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     cardModeGet(): Promise<number>;
-    cardGet(): Promise<void>;
-    /** @param {Buffer} id @param {string} hexName */
-    cardAdd(id: Buffer, hexName: string): Promise<void>;
-    /** @param {string} cardID */
-    cardDelete(cardID: string): Promise<void>;
-    /** @param {string} cardId @param {string} touchProUUID */
-    cardMove(cardId: string, touchProUUID: string): Promise<void>;
-    /** @param {string} ID @param {string} hexName */
-    cardChange(ID: string, hexName: string): Promise<void>;
-    /** @param {string} ID @param {string} newID */
-    cardChangeValue(ID: string, newID: string): Promise<void>;
+    /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardGet(): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {Buffer} id @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardAdd(id: Buffer, hexName: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} cardID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardDelete(cardID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} cardId @param {string} touchProUUID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardMove(cardId: string, touchProUUID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} ID @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardChange(ID: string, hexName: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} ID @param {string} newID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    cardChangeValue(ID: string, newID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * card の一括登録 (STP 分割転送)。STP_ITEM_CODE_CARDS_ADD で送る。
      * @param {Buffer} id @param {(current:number,total:number)=>void} [progress]
      */
     cardBatchAdd(id: Buffer, progress?: (current: number, total: number) => void): Promise<void>;
-    /** @param {number} mode */
-    fingerPrintModeSet(mode: number): Promise<void>;
+    /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    fingerPrintModeSet(mode: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     fingerPrintModeGet(): Promise<number>;
-    fingerPrints(): Promise<void>;
-    /** @param {string} fingerPrintID */
-    fingerPrintDelete(fingerPrintID: string): Promise<void>;
-    /** @param {string} ID @param {string} hexName */
-    fingerPrintChange(ID: string, hexName: string): Promise<void>;
-    /** @param {number} mode */
-    passcodeModeSet(mode: number): Promise<void>;
+    /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    fingerPrints(): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} fingerPrintID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    fingerPrintDelete(fingerPrintID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} ID @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    fingerPrintChange(ID: string, hexName: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeModeSet(mode: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     passcodeModeGet(): Promise<number>;
-    passcodeGet(): Promise<void>;
-    /** @param {Buffer} id @param {string} hexName */
-    passcodeAdd(id: Buffer, hexName: string): Promise<void>;
-    /** @param {string} keyBoardPassCodeID */
-    passcodeDelete(keyBoardPassCodeID: string): Promise<void>;
-    /** @param {string} cardId @param {string} touchProUUID */
-    passcodeMove(cardId: string, touchProUUID: string): Promise<void>;
-    /** @param {string} ID @param {string} hexName */
-    passcodeChange(ID: string, hexName: string): Promise<void>;
+    /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeGet(): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {Buffer} id @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeAdd(id: Buffer, hexName: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} keyBoardPassCodeID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeDelete(keyBoardPassCodeID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} cardId @param {string} touchProUUID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeMove(cardId: string, touchProUUID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} ID @param {string} hexName @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    passcodeChange(ID: string, hexName: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * passcode の一括登録 (STP 分割転送)。STP_ITEM_CODE_PASSCODES_ADD で送る。
      * @param {Buffer} data @param {(current:number,total:number)=>void} [progress]
      */
     passcodeBatchAdd(data: Buffer, progress?: (current: number, total: number) => void): Promise<void>;
-    /** @param {number} mode */
-    faceModeSet(mode: number): Promise<void>;
+    /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    faceModeSet(mode: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     faceModeGet(): Promise<number>;
-    faceListGet(): Promise<void>;
-    /** @param {string} ID @param {string} name */
-    faceChange(ID: string, name: string): Promise<void>;
-    /** @param {string} faceID */
-    faceDelete(faceID: string): Promise<void>;
-    /** @param {number} mode */
-    palmModeSet(mode: number): Promise<void>;
+    /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    faceListGet(): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} ID @param {string} name @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    faceChange(ID: string, name: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} faceID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    faceDelete(faceID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {number} mode @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    palmModeSet(mode: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     palmModeGet(): Promise<number>;
-    palmListGet(): Promise<void>;
-    /** @param {string} palmID */
-    palmDelete(palmID: string): Promise<void>;
+    /** @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    palmListGet(): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
+    /** @param {string} palmID @returns {Promise<{resultCode:number, payload:Buffer}>} */
+    palmDelete(palmID: string): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * Remote Nano のトリガ遅延秒を設定する (CHRemoteNanoCapableImpl.setTriggerDelayTime と 1:1)。
      * itemCode 190 + [time(UByte 1B)]。応答後にデバイスが TRIGGER_DELAYTIME(191) を push しうる
      * (publish は registerDelegate の onTriggerDelaySecondReceived で受ける)。
      * @param {number} time 0..255 (秒)
+     * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
-    setTriggerDelay(time: number): Promise<void>;
+    setTriggerDelay(time: number): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * Face のレーダー感度パラメータを設定する (CHDeviceConnectCapableImpl.setRadarSensitivity と 1:1)。
      * itemCode 200 + payload を無加工で送る。payload 構造は SDK 側でも不透明 (生バイト)。
      * 受信 (RADAR_PARAM_PUBLISH=201) は registerDelegate の onRadarReceive で生 payload を受ける。
      * @param {Buffer} payload レーダーパラメータの生バイト列
+     * @returns {Promise<{resultCode:number, payload:Buffer}>}
      */
-    setRadarSensitivity(payload: Buffer): Promise<void>;
+    setRadarSensitivity(payload: Buffer): Promise<{
+        resultCode: number;
+        payload: Buffer;
+    }>;
     /**
      * 子 Sesame の鍵を connector デバイスへ追加する (CHDeviceConnectCapableImpl.insertSesame と 1:1)。
      * OS3 子鍵は `{deviceUUID, secretKey}`、OS2 子鍵はそれに `sesame2PublicKey` を加えて渡す。
@@ -591,6 +677,46 @@ export class BiometricCommands {
     }): () => void;
 }
 export { STP_ITEM_CODES as STP_ITEM };
+/**
+ * `biometric` サブファサード (Touch / Touch Pro / Face / Palm の card/passcode/face/palm 登録 +
+ * connector 共通面) の RPC 公開仕様。
+ *
+ * 各 op の出典 (位置引数の意味・順序の裏取り):
+ *   card:     CHCardCapableImpl.kt:38-174 (cardModeGet/Set:38,49 / cardAdd:83 / cardDelete:60 /
+ *             cardMove:72 / cardChange:158 / cardChangeValue:169)
+ *   passcode: CHPassCodeCapableImpl.kt:27-130 (keyBoardPassCode* — modeGet/Set:27,33 / add:39 /
+ *             delete:113 / move:119 / change:130)
+ *   face:     CHFaceCapableImpl.kt:22-51 (faceModeSet:22 / faceModeGet:29 / faceListGet:39 /
+ *             faceChange:45 / faceDelete:51)
+ *   palm:     CHPalmCapableImpl.kt:19-42 (palmModeSet:19 / palmModeGet:26 / palmListGet:36 / palmDelete:42)
+ *   connect:  CHDeviceConnectCapableImpl.kt:23-95 (insertSesame:23 / removeSesame:52 / setRadarSensitivity:89)
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const BIOMETRIC_RPC_OPS: import("./index.js").BleRpcOpSpec;
+/**
+ * `fingerPrint` サブファサード (SESAME Bike3 の指紋登録、CHFingerPrintCapable) の RPC 公開仕様。
+ * Bike3 は card/passcode/face/palm を持たず指紋のみ。registerDelegate は除外 (publish 購読の
+ * ローカルコールバック登録)。
+ *
+ * 出典: CHFingerPrintCapableImpl.kt:20-64 (fingerPrintModeGet:20 / fingerPrintModeSet:31 /
+ *   fingerPrintDelete:42 / fingerPrints:53 / fingerPrintsChange:64)。
+ * ※ ファサード公開名は `fingerPrintChange` (SDK の fingerPrintsChange に対応、index.js fingerPrint ゲッタ)。
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const FINGERPRINT_RPC_OPS: import("./index.js").BleRpcOpSpec;
+/**
+ * `remoteNano` サブファサード (Remote / Remote Nano 専用面、connector 共通面 + trigger delay) の
+ * RPC 公開仕様。registerDelegate は除外 (publish 購読のローカルコールバック登録)。
+ *
+ * ★ 公開名 `setTriggerDelayTime` は SDK CHRemoteNanoCapable.kt:8 と 1:1 (index.js remoteNano ゲッタが
+ *   BiometricCommands.setTriggerDelay へ委譲)。読み出しコマンドは SDK に無い (現在値は
+ *   TRIGGER_DELAYTIME(191) publish が運び registerDelegate で受ける) ため getTriggerDelay 等は無い。
+ *
+ * 出典: CHRemoteNanoCapableImpl.kt:19-28 (setTriggerDelayTime) /
+ *   CHDeviceConnectCapableImpl.kt:23-95 (insertSesame:23 / removeSesame:52 / setRadarSensitivity:89)。
+ * @type {import("./index.js").BleRpcOpSpec}
+ */
+export const REMOTE_NANO_RPC_OPS: import("./index.js").BleRpcOpSpec;
 /**
  * publish パケット 1 件 (session.onPublish が渡す {opCode, itemCode, body})。
  */

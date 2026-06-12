@@ -477,3 +477,46 @@ export class WifiModule2 {
     return res;
   }
 }
+
+// --- SURF-08 段階3: WM2 (WifiModule2) サブファサードの RPC 公開仕様 ---
+//
+// registry がこれを読み `ble.wifi.<op>` を型付き RPC/SDK メソッドへ自動展開する
+// (bot2.js SCRIPT_RPC_OPS と同形式)。op パス第 1 セグメント = "wifi" は BLE_RPC_ALLOWLIST の
+// "wifi" と一致 (index.js の `wifi({companyId})` メソッド経由)。params の **順序 =
+// WifiModule2 メソッドの位置引数順**。result: "ack"=コマンド ack ({resultCode,resultName}) /
+// "raw"=パース結果をそのまま返す。
+//
+// ★ invokePath は中間セグメント "wifi" を `value.call(target)` (= 引数なし呼び出し) で解決するため、
+//   生成版では ble.wifi() が companyId なしで呼ばれる (= 既定 companyId)。companyId を要する
+//   connectWifi は専用ハンドラ (ble.wifi.connect。wifiViewOf が WM2_API_GATEWAY_CLIENT_ID を注入)
+//   に委ね、ここからは **除外** する。
+//
+// ★ 専用ハンドラと重複する 4 op は **含めない** (推奨):
+//     scanWifiSSID  → 専用 ble.wifi.scan       (collectWifiScan で publish を収集して SSID 一覧化)
+//     setWifiSSID   → 専用 ble.wifi.setSsid
+//     setWifiPassword → 専用 ble.wifi.setPassword
+//     connectWifi   → 専用 ble.wifi.connect     (companyId 解決 + Hub3/WM2 判別)
+//   生成版 (ble.wifi.scanWifiSSID 等) は専用版とは別名なので override されず **共存** してしまい、
+//   同一機能の RPC が 2 つ並んで利用者を混乱させる (専用版は companyId 注入や publish 収集の
+//   特殊ロジックを持ち、こちらが正)。よって専用ハンドラのある op はここに載せない。
+//
+// ここに載せるのは「専用ハンドラの無い残りの WM2 op」:
+//   insertSesames / removeSesame / networkStatus / reset。
+/** @type {import("./index.js").BleRpcOpSpec} */
+export const WM2_RPC_OPS = {
+  // 子 Sesame 鍵を WM2 に登録 (ADD_SESAME=8)。位置引数 0 = sesameKey
+  // ({deviceUUID, secretKey, sesame2PublicKey?, deviceModel?})。CHWifiModule2Device.kt:380-401。
+  "wifi.insertSesames": { params: [{ name: "sesameKey", type: "object", required: true, desc: "child Sesame key {deviceUUID, secretKey, sesame2PublicKey?, deviceModel?}" }], result: "ack", summary: "register a child Sesame key on the WM2" },
+  // 子 Sesame 鍵を WM2 から削除 (DELETE_SESAME=7)。位置引数 0 = sesameKeyTag (大文字 UTF-8 で送出)。
+  // CHWifiModule2Device.kt:411-417。
+  "wifi.removeSesame": { params: [{ name: "sesameKeyTag", type: "string", required: true, desc: "child Sesame key tag (UUID string) to remove" }], result: "ack", summary: "remove a child Sesame key from the WM2" },
+  // network 状態を要求 (NETWORK_STATUS=6 を空 data で送信)。位置引数なし。
+  // ★ unverified / not in SDK: SDK に NETWORK_STATUS の送信(要求)経路は存在せず (kt は受信のみ、
+  //   CHWifiModule2.kt:30-39 に対応 API 無し)、空 data 要求は kit 独自の発明でデバイス応答は未保証。
+  //   受信だけ必要なら onPublish の {kind:"networkStatus"} を購読する (デバイスが自発 publish)。
+  "wifi.networkStatus": { params: [], result: "ack", summary: "request WM2 network status (experimental)" },
+  // WM2 を工場出荷状態へリセット (RESET_WM2=18)。位置引数 0 = opts ({timeoutMs?})。RPC では opts を
+  // 公開せず引数なしで既定動作 (成功時 session 破棄)。CHWifiModule2Device.kt:437-448。
+  // (ble.resetWifiModule2 は OS3 トップレベルの別経路。こちらは wifi サブファサード直の reset。)
+  "wifi.reset": { params: [], result: "ack", summary: "factory-reset the WM2 (drops the session on success)" },
+};
