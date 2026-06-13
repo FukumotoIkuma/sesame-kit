@@ -140,7 +140,8 @@ jobs:
         run: npm ci
 
       - name: Pack @sesame-kit/core tarball
-        run: npm pack -w packages/core --pack-destination /tmp/core-pack
+        # npm pack は --pack-destination を自動作成しないので先に mkdir する。
+        run: mkdir -p /tmp/core-pack && npm pack -w packages/core --pack-destination /tmp/core-pack
 
       - name: Install core tarball in isolation (no workspace hoisting)
         run: |
