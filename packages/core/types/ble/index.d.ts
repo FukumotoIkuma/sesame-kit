@@ -209,7 +209,7 @@ export class SesameBle {
         cloud: string[];
         ble: string[];
         ops: string[];
-        mechKind: string | null;
+        mechKind: "os3lock" | "os3bot" | "os2lock" | "os2bot" | "os2bike" | null;
         bleSupported: boolean;
         biometric: boolean;
         bioCaps: readonly string[];

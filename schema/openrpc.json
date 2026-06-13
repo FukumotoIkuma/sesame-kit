@@ -2,20 +2,20 @@
   "openrpc": "1.2.6",
   "info": {
     "title": "sesame serve",
-    "version": "1.3.0",
-    "x-apiVersion": "1.3.0",
-    "x-contractVersion": "1.3.0",
-    "description": "Language-agnostic JSON-RPC backend for SESAME control"
+    "version": "1.4.0",
+    "x-apiVersion": "1.4.0",
+    "x-contractVersion": "1.4.0",
+    "description": "serve.openrpc.description"
   },
   "methods": [
     {
       "name": "rpc.discover",
-      "summary": "machine-readable OpenRPC description of this daemon",
+      "summary": "serve.sum.rpcDiscover",
       "params": [],
       "result": {
         "name": "result",
         "schema": {
-          "description": "OpenRPC document",
+          "description": "serve.result.openrpc",
           "type": "object"
         }
       },
@@ -24,7 +24,7 @@
     },
     {
       "name": "schedule.getScheduleList",
-      "summary": "getScheduleList of schedule (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "subUUID",
@@ -46,7 +46,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -55,7 +55,7 @@
     },
     {
       "name": "schedule.cancelSchedule",
-      "summary": "cancelSchedule of schedule (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "subUUID",
@@ -85,7 +85,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -94,7 +94,7 @@
     },
     {
       "name": "org.getEmployees",
-      "summary": "getEmployees of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -124,7 +124,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -133,7 +133,7 @@
     },
     {
       "name": "org.getCurrentUserInfo",
-      "summary": "getCurrentUserInfo of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "timeoutMs",
@@ -147,7 +147,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -156,7 +156,7 @@
     },
     {
       "name": "org.addEmployees",
-      "summary": "addEmployees of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "items",
@@ -181,7 +181,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -190,7 +190,7 @@
     },
     {
       "name": "org.updateEmployee",
-      "summary": "updateEmployee of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -220,7 +220,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -229,7 +229,7 @@
     },
     {
       "name": "org.removeEmployees",
-      "summary": "removeEmployees of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "items",
@@ -254,7 +254,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -263,7 +263,7 @@
     },
     {
       "name": "org.reorderEmployees",
-      "summary": "reorderEmployees of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "items",
@@ -288,7 +288,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -297,7 +297,7 @@
     },
     {
       "name": "org.queryByCS",
-      "summary": "queryByCS of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "keyword",
@@ -327,7 +327,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -336,7 +336,7 @@
     },
     {
       "name": "org.confirmQueryByCS",
-      "summary": "confirmQueryByCS of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "email",
@@ -358,7 +358,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -367,7 +367,7 @@
     },
     {
       "name": "org.getEmployeeGroups",
-      "summary": "getEmployeeGroups of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -389,7 +389,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -398,7 +398,7 @@
     },
     {
       "name": "org.addEmployeeGroup",
-      "summary": "addEmployeeGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -428,7 +428,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -437,7 +437,7 @@
     },
     {
       "name": "org.updateEmployeeGroup",
-      "summary": "updateEmployeeGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -467,7 +467,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -476,7 +476,7 @@
     },
     {
       "name": "org.removeEmployeeGroups",
-      "summary": "removeEmployeeGroups of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -506,7 +506,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -515,7 +515,7 @@
     },
     {
       "name": "org.getEmployeeGroupBindDeviceGroup",
-      "summary": "getEmployeeGroupBindDeviceGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "gid",
@@ -537,7 +537,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -546,7 +546,7 @@
     },
     {
       "name": "org.addEmployeeInGroup",
-      "summary": "addEmployeeInGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -592,7 +592,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -601,7 +601,7 @@
     },
     {
       "name": "org.removeEmployeeInGroup",
-      "summary": "removeEmployeeInGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -650,7 +650,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -659,7 +659,7 @@
     },
     {
       "name": "org.removeEmployeeGroupBindDeviceGroup",
-      "summary": "removeEmployeeGroupBindDeviceGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -689,7 +689,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -698,7 +698,7 @@
     },
     {
       "name": "org.getTags",
-      "summary": "getTags of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -720,7 +720,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -729,7 +729,7 @@
     },
     {
       "name": "org.postTag",
-      "summary": "postTag of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -759,7 +759,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -768,7 +768,7 @@
     },
     {
       "name": "org.removeTag",
-      "summary": "removeTag of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -798,7 +798,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -807,7 +807,7 @@
     },
     {
       "name": "org.getDeviceGroups",
-      "summary": "getDeviceGroups of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -829,7 +829,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -838,7 +838,7 @@
     },
     {
       "name": "org.addDeviceGroup",
-      "summary": "addDeviceGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -879,7 +879,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -888,7 +888,7 @@
     },
     {
       "name": "org.updateDeviceGroup",
-      "summary": "updateDeviceGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -918,7 +918,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -927,7 +927,7 @@
     },
     {
       "name": "org.removeDeviceGroups",
-      "summary": "removeDeviceGroups of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -960,7 +960,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -969,7 +969,7 @@
     },
     {
       "name": "org.addDeviceInGroup",
-      "summary": "addDeviceInGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -1015,7 +1015,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1024,7 +1024,7 @@
     },
     {
       "name": "org.removeDeviceInGroup",
-      "summary": "removeDeviceInGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -1073,7 +1073,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1082,7 +1082,7 @@
     },
     {
       "name": "org.getDeviceGroupBindUserGroup",
-      "summary": "getDeviceGroupBindUserGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "gid",
@@ -1104,7 +1104,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1113,7 +1113,7 @@
     },
     {
       "name": "org.removeDeviceGroupBindUserGroup",
-      "summary": "removeDeviceGroupBindUserGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -1143,7 +1143,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1152,7 +1152,7 @@
     },
     {
       "name": "org.shareDeviceKeysToEmployees",
-      "summary": "shareDeviceKeysToEmployees of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "items",
@@ -1177,7 +1177,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1186,7 +1186,7 @@
     },
     {
       "name": "org.shareDeviceGroupKeysToEmployeeGroup",
-      "summary": "shareDeviceGroupKeysToEmployeeGroup of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -1216,7 +1216,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1225,7 +1225,7 @@
     },
     {
       "name": "org.getEmployeeDeviceKeys",
-      "summary": "getEmployeeDeviceKeys of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "subUUID",
@@ -1247,7 +1247,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1256,7 +1256,7 @@
     },
     {
       "name": "org.removeEmployeeDeviceKey",
-      "summary": "removeEmployeeDeviceKey of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "data",
@@ -1278,7 +1278,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1287,7 +1287,7 @@
     },
     {
       "name": "org.updateGuestKeyTag",
-      "summary": "updateGuestKeyTag of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "data",
@@ -1309,7 +1309,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1318,7 +1318,7 @@
     },
     {
       "name": "org.generateGuestQR",
-      "summary": "generateGuestQR of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "data",
@@ -1340,7 +1340,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1349,7 +1349,7 @@
     },
     {
       "name": "org.getDeviceEmployeeKeys",
-      "summary": "getDeviceEmployeeKeys of org (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -1387,7 +1387,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1396,7 +1396,7 @@
     },
     {
       "name": "company.getCompanies",
-      "summary": "getCompanies of company (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "timeoutMs",
@@ -1410,7 +1410,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1419,7 +1419,7 @@
     },
     {
       "name": "company.updateCompanyName",
-      "summary": "updateCompanyName of company (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -1449,7 +1449,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1458,7 +1458,7 @@
     },
     {
       "name": "company.addCompany",
-      "summary": "addCompany of company (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "name",
@@ -1496,7 +1496,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1505,7 +1505,7 @@
     },
     {
       "name": "company.getPaymentConfig",
-      "summary": "getPaymentConfig of company (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "companyID",
@@ -1527,7 +1527,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1536,7 +1536,7 @@
     },
     {
       "name": "payment.getPaymentMethods",
-      "summary": "getPaymentMethods of payment (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "customerId",
@@ -1566,7 +1566,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1575,7 +1575,7 @@
     },
     {
       "name": "payment.getClientSecret",
-      "summary": "getClientSecret of payment (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "customerId",
@@ -1605,7 +1605,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1614,7 +1614,7 @@
     },
     {
       "name": "payment.changeDefaultPayment",
-      "summary": "changeDefaultPayment of payment (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "customerId",
@@ -1652,7 +1652,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1661,7 +1661,7 @@
     },
     {
       "name": "payment.removePayment",
-      "summary": "removePayment of payment (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "customerId",
@@ -1699,7 +1699,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1708,7 +1708,7 @@
     },
     {
       "name": "payment.payUpdateLevel",
-      "summary": "payUpdateLevel of payment (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "customerId",
@@ -1778,7 +1778,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1787,7 +1787,7 @@
     },
     {
       "name": "payment.getDevApiInfo",
-      "summary": "getDevApiInfo of payment (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "customerId",
@@ -1833,7 +1833,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1842,7 +1842,7 @@
     },
     {
       "name": "access.getCards",
-      "summary": "getCards of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceUUIDs",
@@ -1883,7 +1883,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1892,7 +1892,7 @@
     },
     {
       "name": "access.getPasscodes",
-      "summary": "getPasscodes of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceUUIDs",
@@ -1933,7 +1933,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1942,7 +1942,7 @@
     },
     {
       "name": "access.postCards",
-      "summary": "postCards of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -1975,7 +1975,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -1984,7 +1984,7 @@
     },
     {
       "name": "access.postPasscodes",
-      "summary": "postPasscodes of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -2017,7 +2017,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2026,7 +2026,7 @@
     },
     {
       "name": "access.delCards",
-      "summary": "delCards of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "items",
@@ -2043,7 +2043,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2052,7 +2052,7 @@
     },
     {
       "name": "access.delPasscodes",
-      "summary": "delPasscodes of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "items",
@@ -2069,7 +2069,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2078,7 +2078,7 @@
     },
     {
       "name": "access.clearCards",
-      "summary": "clearCards of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -2100,7 +2100,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2109,7 +2109,7 @@
     },
     {
       "name": "access.clearPasscodes",
-      "summary": "clearPasscodes of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -2131,7 +2131,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2140,7 +2140,7 @@
     },
     {
       "name": "access.updateCardName",
-      "summary": "updateCardName of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "item",
@@ -2162,7 +2162,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2171,7 +2171,7 @@
     },
     {
       "name": "access.updatePasscodeName",
-      "summary": "updatePasscodeName of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "item",
@@ -2193,7 +2193,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2202,7 +2202,7 @@
     },
     {
       "name": "access.updateCardOwner",
-      "summary": "updateCardOwner of access (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "item",
@@ -2240,7 +2240,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2249,7 +2249,7 @@
     },
     {
       "name": "iot.sendIotCmd",
-      "summary": "sendIotCmd of iot (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "topic",
@@ -2279,7 +2279,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2288,7 +2288,7 @@
     },
     {
       "name": "iot.sendIotCmdAwait",
-      "summary": "sendIotCmdAwait of iot (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "topic",
@@ -2334,7 +2334,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2343,7 +2343,7 @@
     },
     {
       "name": "iot.setHub3LedDuty",
-      "summary": "setHub3LedDuty of iot (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceId",
@@ -2397,7 +2397,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2406,7 +2406,7 @@
     },
     {
       "name": "iot.hub3RelaySwitch",
-      "summary": "hub3RelaySwitch of iot (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceId",
@@ -2444,7 +2444,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2453,7 +2453,7 @@
     },
     {
       "name": "iot.addSesameToHub3",
-      "summary": "addSesameToHub3 of iot (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "hub3Id",
@@ -2515,7 +2515,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2524,7 +2524,7 @@
     },
     {
       "name": "iot.removeSesameFromHub3",
-      "summary": "removeSesameFromHub3 of iot (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "hub3Id",
@@ -2586,7 +2586,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2595,7 +2595,7 @@
     },
     {
       "name": "iot.startFirmwareUpdate",
-      "summary": "startFirmwareUpdate of iot (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceId",
@@ -2625,7 +2625,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2634,7 +2634,7 @@
     },
     {
       "name": "iot.clearHub3WifiSsid",
-      "summary": "clearHub3WifiSsid of iot (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceId",
@@ -2664,7 +2664,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2673,7 +2673,7 @@
     },
     {
       "name": "iot.getMatterPairingCode",
-      "summary": "getMatterPairingCode of iot (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceId",
@@ -2711,7 +2711,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2720,7 +2720,7 @@
     },
     {
       "name": "iot.openMatterPairingWindow",
-      "summary": "openMatterPairingWindow of iot (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceId",
@@ -2758,7 +2758,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2767,7 +2767,7 @@
     },
     {
       "name": "presetir.sendIR",
-      "summary": "sendIR of presetir (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceId",
@@ -2837,7 +2837,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2846,7 +2846,7 @@
     },
     {
       "name": "presetir.emitAir",
-      "summary": "emitAir of presetir (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceId",
@@ -2956,7 +2956,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -2965,7 +2965,7 @@
     },
     {
       "name": "presetir.emitButton",
-      "summary": "emitButton of presetir (auto-exposed)",
+      "summary": "serve.sum.nsOp",
       "params": [
         {
           "name": "deviceId",
@@ -3027,7 +3027,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "op response",
+          "description": "serve.result.opResponse",
           "type": "object"
         }
       },
@@ -3036,7 +3036,7 @@
     },
     {
       "name": "ble.script.click",
-      "summary": "[experimental] BLE op script.click (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -3123,7 +3123,7 @@
     },
     {
       "name": "ble.script.selectScript",
-      "summary": "[experimental] BLE op script.selectScript (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -3210,7 +3210,7 @@
     },
     {
       "name": "ble.script.sendClickScript",
-      "summary": "[experimental] BLE op script.sendClickScript (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -3305,7 +3305,7 @@
     },
     {
       "name": "ble.script.getCurrentScript",
-      "summary": "[experimental] BLE op script.getCurrentScript (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -3392,7 +3392,7 @@
     },
     {
       "name": "ble.script.getScriptNameList",
-      "summary": "[experimental] BLE op script.getScriptNameList (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -3471,7 +3471,7 @@
     },
     {
       "name": "ble.biometric.cardModeSet",
-      "summary": "[experimental] BLE op biometric.cardModeSet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -3558,7 +3558,7 @@
     },
     {
       "name": "ble.biometric.cardModeGet",
-      "summary": "[experimental] BLE op biometric.cardModeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -3637,7 +3637,7 @@
     },
     {
       "name": "ble.biometric.cardGet",
-      "summary": "[experimental] retrieve the registered card list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
+      "summary": "serve.sum.bleBioListGet",
       "params": [
         {
           "name": "deviceUUID",
@@ -3706,7 +3706,7 @@
         {
           "name": "collectMs",
           "required": false,
-          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "description": "serve.desc.bleCollectMs",
           "schema": {
             "type": "number"
           }
@@ -3749,7 +3749,7 @@
     },
     {
       "name": "ble.biometric.cardAdd",
-      "summary": "[experimental] BLE op biometric.cardAdd (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -3844,7 +3844,7 @@
     },
     {
       "name": "ble.biometric.cardDelete",
-      "summary": "[experimental] BLE op biometric.cardDelete (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -3931,7 +3931,7 @@
     },
     {
       "name": "ble.biometric.cardMove",
-      "summary": "[experimental] BLE op biometric.cardMove (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -4026,7 +4026,7 @@
     },
     {
       "name": "ble.biometric.cardChange",
-      "summary": "[experimental] BLE op biometric.cardChange (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -4121,7 +4121,7 @@
     },
     {
       "name": "ble.biometric.cardChangeValue",
-      "summary": "[experimental] BLE op biometric.cardChangeValue (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -4216,7 +4216,7 @@
     },
     {
       "name": "ble.biometric.passcodeModeSet",
-      "summary": "[experimental] BLE op biometric.passcodeModeSet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -4303,7 +4303,7 @@
     },
     {
       "name": "ble.biometric.passcodeModeGet",
-      "summary": "[experimental] BLE op biometric.passcodeModeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -4382,7 +4382,7 @@
     },
     {
       "name": "ble.biometric.passcodeGet",
-      "summary": "[experimental] retrieve the registered passcode list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
+      "summary": "serve.sum.bleBioListGet",
       "params": [
         {
           "name": "deviceUUID",
@@ -4451,7 +4451,7 @@
         {
           "name": "collectMs",
           "required": false,
-          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "description": "serve.desc.bleCollectMs",
           "schema": {
             "type": "number"
           }
@@ -4494,7 +4494,7 @@
     },
     {
       "name": "ble.biometric.passcodeAdd",
-      "summary": "[experimental] BLE op biometric.passcodeAdd (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -4589,7 +4589,7 @@
     },
     {
       "name": "ble.biometric.passcodeDelete",
-      "summary": "[experimental] BLE op biometric.passcodeDelete (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -4676,7 +4676,7 @@
     },
     {
       "name": "ble.biometric.passcodeMove",
-      "summary": "[experimental] BLE op biometric.passcodeMove (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -4771,7 +4771,7 @@
     },
     {
       "name": "ble.biometric.passcodeChange",
-      "summary": "[experimental] BLE op biometric.passcodeChange (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -4866,7 +4866,7 @@
     },
     {
       "name": "ble.biometric.faceModeSet",
-      "summary": "[experimental] BLE op biometric.faceModeSet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -4953,7 +4953,7 @@
     },
     {
       "name": "ble.biometric.faceModeGet",
-      "summary": "[experimental] BLE op biometric.faceModeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -5032,7 +5032,7 @@
     },
     {
       "name": "ble.biometric.faceListGet",
-      "summary": "[experimental] retrieve the registered face list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
+      "summary": "serve.sum.bleBioListGet",
       "params": [
         {
           "name": "deviceUUID",
@@ -5101,7 +5101,7 @@
         {
           "name": "collectMs",
           "required": false,
-          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "description": "serve.desc.bleCollectMs",
           "schema": {
             "type": "number"
           }
@@ -5130,7 +5130,7 @@
     },
     {
       "name": "ble.biometric.faceChange",
-      "summary": "[experimental] BLE op biometric.faceChange (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -5225,7 +5225,7 @@
     },
     {
       "name": "ble.biometric.faceDelete",
-      "summary": "[experimental] BLE op biometric.faceDelete (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -5312,7 +5312,7 @@
     },
     {
       "name": "ble.biometric.palmModeSet",
-      "summary": "[experimental] BLE op biometric.palmModeSet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -5399,7 +5399,7 @@
     },
     {
       "name": "ble.biometric.palmModeGet",
-      "summary": "[experimental] BLE op biometric.palmModeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -5478,7 +5478,7 @@
     },
     {
       "name": "ble.biometric.palmListGet",
-      "summary": "[experimental] retrieve the registered palm list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
+      "summary": "serve.sum.bleBioListGet",
       "params": [
         {
           "name": "deviceUUID",
@@ -5547,7 +5547,7 @@
         {
           "name": "collectMs",
           "required": false,
-          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "description": "serve.desc.bleCollectMs",
           "schema": {
             "type": "number"
           }
@@ -5576,7 +5576,7 @@
     },
     {
       "name": "ble.biometric.palmDelete",
-      "summary": "[experimental] BLE op biometric.palmDelete (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -5663,7 +5663,7 @@
     },
     {
       "name": "ble.biometric.insertSesame",
-      "summary": "[experimental] BLE op biometric.insertSesame (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -5750,7 +5750,7 @@
     },
     {
       "name": "ble.biometric.removeSesame",
-      "summary": "[experimental] BLE op biometric.removeSesame (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -5845,7 +5845,7 @@
     },
     {
       "name": "ble.biometric.setRadarSensitivity",
-      "summary": "[experimental] BLE op biometric.setRadarSensitivity (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -5932,7 +5932,7 @@
     },
     {
       "name": "ble.fingerPrint.fingerPrintModeSet",
-      "summary": "[experimental] BLE op fingerPrint.fingerPrintModeSet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -6019,7 +6019,7 @@
     },
     {
       "name": "ble.fingerPrint.fingerPrintModeGet",
-      "summary": "[experimental] BLE op fingerPrint.fingerPrintModeGet (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -6098,7 +6098,7 @@
     },
     {
       "name": "ble.fingerPrint.fingerPrints",
-      "summary": "[experimental] retrieve the registered finger list over BLE (collectBiometricList: GET → FIRST→NOTIFY×N→LAST publish collection)",
+      "summary": "serve.sum.bleBioListGet",
       "params": [
         {
           "name": "deviceUUID",
@@ -6167,7 +6167,7 @@
         {
           "name": "collectMs",
           "required": false,
-          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "description": "serve.desc.bleCollectMs",
           "schema": {
             "type": "number"
           }
@@ -6210,7 +6210,7 @@
     },
     {
       "name": "ble.fingerPrint.fingerPrintDelete",
-      "summary": "[experimental] BLE op fingerPrint.fingerPrintDelete (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -6297,7 +6297,7 @@
     },
     {
       "name": "ble.fingerPrint.fingerPrintChange",
-      "summary": "[experimental] BLE op fingerPrint.fingerPrintChange (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -6392,7 +6392,7 @@
     },
     {
       "name": "ble.remoteNano.setTriggerDelayTime",
-      "summary": "[experimental] BLE op remoteNano.setTriggerDelayTime (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -6479,7 +6479,7 @@
     },
     {
       "name": "ble.remoteNano.insertSesame",
-      "summary": "[experimental] BLE op remoteNano.insertSesame (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -6566,7 +6566,7 @@
     },
     {
       "name": "ble.remoteNano.removeSesame",
-      "summary": "[experimental] BLE op remoteNano.removeSesame (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -6661,7 +6661,7 @@
     },
     {
       "name": "ble.remoteNano.setRadarSensitivity",
-      "summary": "[experimental] BLE op remoteNano.setRadarSensitivity (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -7499,7 +7499,7 @@
     },
     {
       "name": "ble.deleteHistory",
-      "summary": "[experimental] BLE op deleteHistory (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -7744,7 +7744,7 @@
     },
     {
       "name": "ble.opSensorControl",
-      "summary": "[experimental] BLE op opSensorControl (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -7831,7 +7831,7 @@
     },
     {
       "name": "ble.sendAdvProductType",
-      "summary": "[experimental] BLE op sendAdvProductType (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -7918,7 +7918,7 @@
     },
     {
       "name": "ble.setBleTxPower",
-      "summary": "[experimental] BLE op setBleTxPower (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -8005,7 +8005,7 @@
     },
     {
       "name": "ble.os2.autolock",
-      "summary": "[experimental] BLE op autolock (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -8432,7 +8432,7 @@
     },
     {
       "name": "ble.os2.updateSetting",
-      "summary": "[experimental] BLE op updateSetting (auto-generated typed wrapper; not yet confirmed against real hardware)",
+      "summary": "serve.sum.bleGenericOp",
       "params": [
         {
           "name": "deviceUUID",
@@ -8701,7 +8701,7 @@
     },
     {
       "name": "status",
-      "summary": "daemon status (connection/auth/user/contract version)",
+      "summary": "serve.sum.status",
       "params": [],
       "result": {
         "name": "result",
@@ -8744,7 +8744,7 @@
     },
     {
       "name": "cloud.ping",
-      "summary": "verify cloud liveness with one biz3KeepAlive round-trip",
+      "summary": "serve.sum.cloudPing",
       "params": [],
       "result": {
         "name": "result",
@@ -8758,12 +8758,12 @@
     },
     {
       "name": "account.whoami",
-      "summary": "logged-in user info (biz3GetLoginUser)",
+      "summary": "serve.sum.whoami",
       "params": [],
       "result": {
         "name": "result",
         "schema": {
-          "description": "customerInfo etc.",
+          "description": "serve.result.customerInfo",
           "type": "object",
           "properties": {
             "customerInfo": {
@@ -8826,12 +8826,12 @@
     },
     {
       "name": "lock.lock",
-      "summary": "lock",
+      "summary": "serve.sum.lockLock",
       "params": [
         {
           "name": "name",
           "required": false,
-          "description": "lock name in config (not needed when deviceUUID is given)",
+          "description": "serve.desc.lockNameParam",
           "schema": {
             "type": "string"
           }
@@ -8839,7 +8839,7 @@
         {
           "name": "deviceUUID",
           "required": false,
-          "description": "deviceUUID to specify directly",
+          "description": "serve.desc.deviceUUIDParam",
           "schema": {
             "type": "string"
           }
@@ -8847,7 +8847,7 @@
         {
           "name": "secretKey",
           "required": false,
-          "description": "32-hex shared key when deviceUUID is given",
+          "description": "serve.desc.secretKeyParam",
           "schema": {
             "type": "string"
           }
@@ -8856,7 +8856,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "state push",
+          "description": "serve.result.statePush",
           "type": "object",
           "properties": {
             "action": {
@@ -8888,12 +8888,12 @@
     },
     {
       "name": "lock.unlock",
-      "summary": "unlock",
+      "summary": "serve.sum.lockUnlock",
       "params": [
         {
           "name": "name",
           "required": false,
-          "description": "lock name in config (not needed when deviceUUID is given)",
+          "description": "serve.desc.lockNameParam",
           "schema": {
             "type": "string"
           }
@@ -8901,7 +8901,7 @@
         {
           "name": "deviceUUID",
           "required": false,
-          "description": "deviceUUID to specify directly",
+          "description": "serve.desc.deviceUUIDParam",
           "schema": {
             "type": "string"
           }
@@ -8909,7 +8909,7 @@
         {
           "name": "secretKey",
           "required": false,
-          "description": "32-hex shared key when deviceUUID is given",
+          "description": "serve.desc.secretKeyParam",
           "schema": {
             "type": "string"
           }
@@ -8918,7 +8918,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "state push",
+          "description": "serve.result.statePush",
           "type": "object",
           "properties": {
             "action": {
@@ -8950,12 +8950,12 @@
     },
     {
       "name": "lock.toggle",
-      "summary": "toggle",
+      "summary": "serve.sum.lockToggle",
       "params": [
         {
           "name": "name",
           "required": false,
-          "description": "lock name in config (not needed when deviceUUID is given)",
+          "description": "serve.desc.lockNameParam",
           "schema": {
             "type": "string"
           }
@@ -8963,7 +8963,7 @@
         {
           "name": "deviceUUID",
           "required": false,
-          "description": "deviceUUID to specify directly",
+          "description": "serve.desc.deviceUUIDParam",
           "schema": {
             "type": "string"
           }
@@ -8971,7 +8971,7 @@
         {
           "name": "secretKey",
           "required": false,
-          "description": "32-hex shared key when deviceUUID is given",
+          "description": "serve.desc.secretKeyParam",
           "schema": {
             "type": "string"
           }
@@ -8980,7 +8980,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "state push",
+          "description": "serve.result.statePush",
           "type": "object",
           "properties": {
             "action": {
@@ -9012,12 +9012,12 @@
     },
     {
       "name": "lock.click",
-      "summary": "Bot click",
+      "summary": "serve.sum.lockClick",
       "params": [
         {
           "name": "name",
           "required": false,
-          "description": "lock name in config (not needed when deviceUUID is given)",
+          "description": "serve.desc.lockNameParam",
           "schema": {
             "type": "string"
           }
@@ -9025,7 +9025,7 @@
         {
           "name": "deviceUUID",
           "required": false,
-          "description": "deviceUUID to specify directly",
+          "description": "serve.desc.deviceUUIDParam",
           "schema": {
             "type": "string"
           }
@@ -9033,7 +9033,7 @@
         {
           "name": "secretKey",
           "required": false,
-          "description": "32-hex shared key when deviceUUID is given",
+          "description": "serve.desc.secretKeyParam",
           "schema": {
             "type": "string"
           }
@@ -9041,7 +9041,7 @@
         {
           "name": "scriptIndex",
           "required": false,
-          "description": "Bot2/Bot3 script number 0..9 to run (omit = click the selected script)",
+          "description": "serve.desc.lockScriptIndex",
           "schema": {
             "type": "number"
           }
@@ -9050,7 +9050,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "state push",
+          "description": "serve.result.statePush",
           "type": "object",
           "properties": {
             "action": {
@@ -9082,12 +9082,12 @@
     },
     {
       "name": "lock.setAutolock",
-      "summary": "set autolock seconds. transport:\"cloud\" (default) is unverified on real hardware (ack only); transport:\"ble\" sends ItemCode 11 over BLE and is the reliable path",
+      "summary": "serve.sum.lockSetAutolock",
       "params": [
         {
           "name": "name",
           "required": false,
-          "description": "lock name in config (not needed when deviceUUID is given)",
+          "description": "serve.desc.lockNameParam",
           "schema": {
             "type": "string"
           }
@@ -9095,7 +9095,7 @@
         {
           "name": "deviceUUID",
           "required": false,
-          "description": "deviceUUID to specify directly",
+          "description": "serve.desc.deviceUUIDParam",
           "schema": {
             "type": "string"
           }
@@ -9103,7 +9103,7 @@
         {
           "name": "secretKey",
           "required": false,
-          "description": "32-hex shared key when deviceUUID is given",
+          "description": "serve.desc.secretKeyParam",
           "schema": {
             "type": "string"
           }
@@ -9111,7 +9111,7 @@
         {
           "name": "seconds",
           "required": true,
-          "description": "0..65535 (0 = disable)",
+          "description": "serve.desc.autolockSeconds",
           "schema": {
             "type": "number"
           }
@@ -9127,7 +9127,7 @@
         {
           "name": "transport",
           "required": false,
-          "description": "\"cloud\" (default; unverified on real hardware) or \"ble\" (reliable; needs deviceUUID/secretKey/model)",
+          "description": "serve.desc.autolockTransport",
           "schema": {
             "type": "string",
             "enum": [
@@ -9181,12 +9181,12 @@
     },
     {
       "name": "lock.status",
-      "summary": "current device state (lock state/battery)",
+      "summary": "serve.sum.lockStatus",
       "params": [
         {
           "name": "deviceUUID",
           "required": true,
-          "description": "target deviceUUID",
+          "description": "serve.desc.targetDeviceUUID",
           "schema": {
             "type": "string"
           }
@@ -9231,7 +9231,7 @@
     },
     {
       "name": "devices.list",
-      "summary": "all SESAME devices (includes secretKey)",
+      "summary": "serve.sum.devicesList",
       "params": [],
       "result": {
         "name": "result",
@@ -9274,7 +9274,7 @@
     },
     {
       "name": "devices.userList",
-      "summary": "personal user device list (biz3 getUserDevice)",
+      "summary": "serve.sum.devicesUserList",
       "params": [],
       "result": {
         "name": "result",
@@ -9288,12 +9288,12 @@
     },
     {
       "name": "devices.add",
-      "summary": "add devices to the company (biz3ManageDevice/add; items = QR-derived key objects)",
+      "summary": "serve.sum.devicesAdd",
       "params": [
         {
           "name": "items",
           "required": true,
-          "description": "QR-derived device key objects to add (biz3ManageDevice/add items)",
+          "description": "serve.desc.devicesAddItems",
           "schema": {
             "type": "array",
             "items": {
@@ -9314,12 +9314,12 @@
     },
     {
       "name": "devices.reorder",
-      "summary": "reorder company devices (biz3ManageDevice/reorderDevices; rank = -index is assigned)",
+      "summary": "serve.sum.devicesReorder",
       "params": [
         {
           "name": "items",
           "required": true,
-          "description": "device objects in the desired order (rank = -index is assigned)",
+          "description": "serve.desc.devicesReorderItems",
           "schema": {
             "type": "array",
             "items": {
@@ -9340,12 +9340,12 @@
     },
     {
       "name": "devices.notifyStatus",
-      "summary": "per-device push-notification settings (biz3ManageDevice/notifyList)",
+      "summary": "serve.sum.devicesNotifyStatus",
       "params": [
         {
           "name": "pushToken",
           "required": true,
-          "description": "mobile push token (FCM etc.; carried in the biz3 notify frame)",
+          "description": "serve.desc.pushToken",
           "schema": {
             "type": "string"
           }
@@ -9374,12 +9374,12 @@
     },
     {
       "name": "devices.notifyManage",
-      "summary": "switch push notification for one device (biz3ManageDevice/notifyManage)",
+      "summary": "serve.sum.devicesNotifyManage",
       "params": [
         {
           "name": "pushToken",
           "required": true,
-          "description": "mobile push token (FCM etc.; carried in the biz3 notify frame)",
+          "description": "serve.desc.pushToken",
           "schema": {
             "type": "string"
           }
@@ -9395,7 +9395,7 @@
         {
           "name": "enablePush",
           "required": true,
-          "description": "1/0 or boolean",
+          "description": "serve.desc.enablePush",
           "schema": {
             "type": "boolean"
           }
@@ -9413,7 +9413,7 @@
     },
     {
       "name": "devices.switchRecharge",
-      "summary": "switch rechargeable-battery mode (biz3ManageDevice/switchRecharge)",
+      "summary": "serve.sum.devicesSwitchRecharge",
       "params": [
         {
           "name": "deviceUUID",
@@ -9444,12 +9444,12 @@
     },
     {
       "name": "access.registerCards",
-      "summary": "[experimental] register read IC cards to the cloud DB (per-record updateCardName)",
+      "summary": "serve.sum.accessRegisterCards",
       "params": [
         {
           "name": "deviceUUID",
           "required": true,
-          "description": "target deviceUUID",
+          "description": "serve.desc.targetDeviceUUID",
           "schema": {
             "type": "string"
           }
@@ -9457,7 +9457,7 @@
         {
           "name": "cards",
           "required": true,
-          "description": "card records to register: [{cardID, cardName, cardType, nameUUID?}, ...] (nameUUID = firmware-assigned, from BLE enroll)",
+          "description": "serve.desc.registerCardsCards",
           "schema": {
             "type": "array",
             "items": {
@@ -9478,12 +9478,12 @@
     },
     {
       "name": "access.registerPasscodes",
-      "summary": "[experimental] register read passcodes to the cloud DB (postPasscodes; symmetric with access.registerCards)",
+      "summary": "serve.sum.accessRegisterPasscodes",
       "params": [
         {
           "name": "deviceUUID",
           "required": true,
-          "description": "target deviceUUID",
+          "description": "serve.desc.targetDeviceUUID",
           "schema": {
             "type": "string"
           }
@@ -9491,7 +9491,7 @@
         {
           "name": "passcodes",
           "required": true,
-          "description": "passcode records to register: [{cardID|passwordID, cardName|name, nameUUID?}, ...] (nameUUID = firmware-assigned, from BLE enroll)",
+          "description": "serve.desc.registerPasscodesRecords",
           "schema": {
             "type": "array",
             "items": {
@@ -9512,7 +9512,7 @@
     },
     {
       "name": "device.history",
-      "summary": "open/close history",
+      "summary": "serve.sum.deviceHistory",
       "params": [
         {
           "name": "deviceUUID",
@@ -9533,7 +9533,7 @@
         {
           "name": "lastKey",
           "required": false,
-          "description": "paging cursor: timestamp of the last record of the previous page (DeviceHistory.js:37-44)",
+          "description": "serve.desc.historyLastKey",
           "schema": {
             "type": "number"
           }
@@ -9584,7 +9584,7 @@
     },
     {
       "name": "device.battery",
-      "summary": "battery history",
+      "summary": "serve.sum.deviceBattery",
       "params": [
         {
           "name": "deviceUUID",
@@ -9605,7 +9605,7 @@
         {
           "name": "lastEvaluatedKey",
           "required": false,
-          "description": "paging cursor: lastEvaluatedKey object returned by the previous device.battery page",
+          "description": "serve.desc.batteryLastEvaluatedKey",
           "schema": {
             "type": "object"
           }
@@ -9658,12 +9658,12 @@
     },
     {
       "name": "device.hideHistory",
-      "summary": "hide (soft-delete) one open/close history entry",
+      "summary": "serve.sum.deviceHideHistory",
       "params": [
         {
           "name": "deviceUUID",
           "required": true,
-          "description": "target deviceUUID",
+          "description": "serve.desc.targetDeviceUUID",
           "schema": {
             "type": "string"
           }
@@ -9671,7 +9671,7 @@
         {
           "name": "timestamp",
           "required": true,
-          "description": "timestamp of the history record to hide (from device.history)",
+          "description": "serve.desc.historyTimestamp",
           "schema": {
             "type": "number"
           }
@@ -9689,12 +9689,12 @@
     },
     {
       "name": "device.hideBattery",
-      "summary": "hide (soft-delete) one battery history entry",
+      "summary": "serve.sum.deviceHideBattery",
       "params": [
         {
           "name": "deviceUUID",
           "required": true,
-          "description": "target deviceUUID",
+          "description": "serve.desc.targetDeviceUUID",
           "schema": {
             "type": "string"
           }
@@ -9702,7 +9702,7 @@
         {
           "name": "timestampSecond",
           "required": true,
-          "description": "ts (second) of the battery record to hide (from device.battery)",
+          "description": "serve.desc.batteryTimestamp",
           "schema": {
             "type": "number"
           }
@@ -9720,7 +9720,7 @@
     },
     {
       "name": "device.rename",
-      "summary": "rename a device",
+      "summary": "serve.sum.deviceRename",
       "params": [
         {
           "name": "deviceUUID",
@@ -9751,7 +9751,7 @@
     },
     {
       "name": "device.delete",
-      "summary": "delete a device from the company",
+      "summary": "serve.sum.deviceDelete",
       "params": [
         {
           "name": "deviceUUID",
@@ -9774,7 +9774,7 @@
     },
     {
       "name": "firmware.list",
-      "summary": "available firmware list",
+      "summary": "serve.sum.firmwareList",
       "params": [],
       "result": {
         "name": "result",
@@ -9788,12 +9788,12 @@
     },
     {
       "name": "config.syncLocks",
-      "summary": "[experimental] import locks from the device list into the daemon config (writes config.json)",
+      "summary": "serve.sum.configSyncLocks",
       "params": [
         {
           "name": "prune",
           "required": false,
-          "description": "also remove config entries that no longer exist in the device list",
+          "description": "serve.desc.syncPrune",
           "schema": {
             "type": "boolean"
           }
@@ -9811,12 +9811,12 @@
     },
     {
       "name": "config.syncHub3s",
-      "summary": "[experimental] import Hub3s from the device list into the daemon config (writes config.json)",
+      "summary": "serve.sum.configSyncHub3s",
       "params": [
         {
           "name": "prune",
           "required": false,
-          "description": "also remove config entries that no longer exist in the device list",
+          "description": "serve.desc.syncPrune",
           "schema": {
             "type": "boolean"
           }
@@ -9834,7 +9834,7 @@
     },
     {
       "name": "config.syncRemotes",
-      "summary": "[experimental] import Hub3s + IR remotes from the device list into the daemon config (writes config.json)",
+      "summary": "serve.sum.configSyncRemotes",
       "params": [],
       "result": {
         "name": "result",
@@ -9848,12 +9848,12 @@
     },
     {
       "name": "config.syncRemoteKeys",
-      "summary": "[experimental] fetch one remote's keys from the server and write them back to the daemon config",
+      "summary": "serve.sum.configSyncRemoteKeys",
       "params": [
         {
           "name": "remote",
           "required": false,
-          "description": "remote name in config (default remote when omitted)",
+          "description": "serve.desc.syncRemoteName",
           "schema": {
             "type": "string"
           }
@@ -9871,12 +9871,12 @@
     },
     {
       "name": "config.syncRemotesFromServer",
-      "summary": "[experimental] import IR remotes from the server's getRemoteList into the daemon config (writes config.json; alt to sync-from-devices)",
+      "summary": "serve.sum.configSyncRemotesFromServer",
       "params": [
         {
           "name": "hub3",
           "required": true,
-          "description": "hub3 name in config (the Hub3 these remotes belong to)",
+          "description": "serve.desc.configSyncRemotesFromServerHub3",
           "schema": {
             "type": "string"
           }
@@ -9884,7 +9884,7 @@
         {
           "name": "irType",
           "required": true,
-          "description": "irType to fetch (e.g. 49152=AC, 8192=TV)",
+          "description": "serve.desc.configSyncRemotesFromServerIrType",
           "schema": {
             "type": "number"
           }
@@ -9902,7 +9902,7 @@
     },
     {
       "name": "config.listRemoteCandidates",
-      "summary": "[experimental] list remotes under all Hub3 from the device state (read-only, no config write; used by remote add SDK flow)",
+      "summary": "serve.sum.configListRemoteCandidates",
       "params": [],
       "result": {
         "name": "result",
@@ -9916,12 +9916,12 @@
     },
     {
       "name": "webapi.invoke",
-      "summary": "call a biz3 WebAPI proxy function (apiKeyId from config when omitted)",
+      "summary": "serve.sum.webapiInvoke",
       "params": [
         {
           "name": "func",
           "required": true,
-          "description": "WebAPI function name",
+          "description": "serve.desc.webapiFunc",
           "schema": {
             "type": "string"
           }
@@ -9929,7 +9929,7 @@
         {
           "name": "query",
           "required": false,
-          "description": "query object (optional)",
+          "description": "serve.desc.webapiQuery",
           "schema": {
             "type": "object"
           }
@@ -9937,7 +9937,7 @@
         {
           "name": "body",
           "required": false,
-          "description": "request body object (optional)",
+          "description": "serve.desc.webapiBody",
           "schema": {
             "type": "object"
           }
@@ -9945,7 +9945,7 @@
         {
           "name": "apiKeyId",
           "required": false,
-          "description": "API key id (falls back to config apiKeyId)",
+          "description": "serve.desc.webapiApiKeyId",
           "schema": {
             "type": "string"
           }
@@ -9963,7 +9963,7 @@
     },
     {
       "name": "webapi.deviceState",
-      "summary": "WebAPI proxy: device shadow state",
+      "summary": "serve.sum.webapiDeviceState",
       "params": [
         {
           "name": "deviceId",
@@ -9994,7 +9994,7 @@
     },
     {
       "name": "webapi.deviceHistory",
-      "summary": "WebAPI proxy: device history",
+      "summary": "serve.sum.webapiDeviceHistory",
       "params": [
         {
           "name": "deviceId",
@@ -10049,7 +10049,7 @@
     },
     {
       "name": "webapi.sendCmd",
-      "summary": "WebAPI proxy: send a lock command",
+      "summary": "serve.sum.webapiSendCmd",
       "params": [
         {
           "name": "deviceId",
@@ -10104,12 +10104,12 @@
     },
     {
       "name": "ir.send",
-      "summary": "send an IR remote key",
+      "summary": "serve.sum.irSend",
       "params": [
         {
           "name": "remote",
           "required": false,
-          "description": "remote name (default when omitted)",
+          "description": "serve.desc.irRemote",
           "schema": {
             "type": "string"
           }
@@ -10117,7 +10117,7 @@
         {
           "name": "key",
           "required": true,
-          "description": "key name or keyUUID",
+          "description": "serve.desc.irKey",
           "schema": {
             "type": "string"
           }
@@ -10126,7 +10126,7 @@
       "result": {
         "name": "result",
         "schema": {
-          "description": "send response",
+          "description": "serve.result.sendResponse",
           "type": "object"
         }
       },
@@ -10135,7 +10135,7 @@
     },
     {
       "name": "ir.listKeys",
-      "summary": "learned keys of a remote (config name, or direct hub3DeviceId+irDeviceUUID)",
+      "summary": "serve.sum.irListKeys",
       "params": [
         {
           "name": "remote",
@@ -10148,7 +10148,7 @@
         {
           "name": "hub3DeviceId",
           "required": false,
-          "description": "direct target: Hub3 deviceUUID (config-independent; pass together with irDeviceUUID)",
+          "description": "serve.desc.irListKeysHub3DeviceId",
           "schema": {
             "type": "string"
           }
@@ -10156,7 +10156,7 @@
         {
           "name": "irDeviceUUID",
           "required": false,
-          "description": "direct target: IR remote UUID (config-independent; pass together with hub3DeviceId)",
+          "description": "serve.desc.irListKeysIrDeviceUUID",
           "schema": {
             "type": "string"
           }
@@ -10174,7 +10174,7 @@
     },
     {
       "name": "ir.learn",
-      "summary": "learn one IR key into a configured remote",
+      "summary": "serve.sum.irLearn",
       "params": [
         {
           "name": "remote",
@@ -10213,7 +10213,7 @@
     },
     {
       "name": "ir.listRemotes",
-      "summary": "list registered IR remotes by type",
+      "summary": "serve.sum.irListRemotes",
       "params": [
         {
           "name": "type",
@@ -10252,7 +10252,7 @@
     },
     {
       "name": "ir.searchRemotes",
-      "summary": "search preset IR remotes",
+      "summary": "serve.sum.irSearchRemotes",
       "params": [
         {
           "name": "type",
@@ -10283,7 +10283,7 @@
     },
     {
       "name": "ir.addRemote",
-      "summary": "add an IR remote object on the server",
+      "summary": "serve.sum.irAddRemote",
       "params": [
         {
           "name": "remote",
@@ -10306,7 +10306,7 @@
     },
     {
       "name": "ir.deleteRemote",
-      "summary": "delete a configured IR remote on the server",
+      "summary": "serve.sum.irDeleteRemote",
       "params": [
         {
           "name": "remote",
@@ -10329,7 +10329,7 @@
     },
     {
       "name": "ir.renameRemote",
-      "summary": "rename an IR remote alias",
+      "summary": "serve.sum.irRenameRemote",
       "params": [
         {
           "name": "remote",
@@ -10360,7 +10360,7 @@
     },
     {
       "name": "ir.deleteKey",
-      "summary": "delete one IR key",
+      "summary": "serve.sum.irDeleteKey",
       "params": [
         {
           "name": "remote",
@@ -10391,7 +10391,7 @@
     },
     {
       "name": "ir.renameKey",
-      "summary": "rename one IR key",
+      "summary": "serve.sum.irRenameKey",
       "params": [
         {
           "name": "remote",
@@ -10430,7 +10430,7 @@
     },
     {
       "name": "ir.getMode",
-      "summary": "get Hub3 IR mode",
+      "summary": "serve.sum.irGetMode",
       "params": [
         {
           "name": "hub3",
@@ -10453,7 +10453,7 @@
     },
     {
       "name": "ir.setMode",
-      "summary": "set Hub3 IR mode",
+      "summary": "serve.sum.irSetMode",
       "params": [
         {
           "name": "hub3",
@@ -10484,7 +10484,7 @@
     },
     {
       "name": "ir.matchRemote",
-      "summary": "match learned IR data against preset remotes",
+      "summary": "serve.sum.irMatchRemote",
       "params": [
         {
           "name": "irData",
@@ -10523,7 +10523,7 @@
     },
     {
       "name": "ir.addRemoteToMatter",
-      "summary": "register an IR remote as a Matter on/off device on Hub3 (experimental, untested on real hardware)",
+      "summary": "serve.sum.irAddRemoteToMatter",
       "params": [
         {
           "name": "hub3DeviceId",
@@ -10536,7 +10536,7 @@
         {
           "name": "irDeviceType",
           "required": true,
-          "description": "IR remote type (irRemote.type, e.g. 49152=AC)",
+          "description": "serve.desc.irDeviceType",
           "schema": {
             "type": "number"
           }
@@ -10544,7 +10544,7 @@
         {
           "name": "cmdOn",
           "required": true,
-          "description": "ON command HEX emitted when Matter switches the device on",
+          "description": "serve.desc.matterCmdOn",
           "schema": {
             "type": "string"
           }
@@ -10552,7 +10552,7 @@
         {
           "name": "cmdOff",
           "required": true,
-          "description": "OFF command HEX emitted when Matter switches the device off",
+          "description": "serve.desc.matterCmdOff",
           "schema": {
             "type": "string"
           }
@@ -10586,7 +10586,7 @@
     },
     {
       "name": "access.postAuthenticationData",
-      "summary": "Kotlin SDK biometric credential sync: postAuthenticationData",
+      "summary": "serve.sum.accessPostAuthData",
       "params": [
         {
           "name": "operation",
@@ -10633,7 +10633,7 @@
     },
     {
       "name": "access.putAuthenticationData",
-      "summary": "Kotlin SDK biometric credential sync: putAuthenticationData",
+      "summary": "serve.sum.accessPutAuthData",
       "params": [
         {
           "name": "operation",
@@ -10680,7 +10680,7 @@
     },
     {
       "name": "access.deleteAuthenticationData",
-      "summary": "Kotlin SDK biometric credential sync: deleteAuthenticationData",
+      "summary": "serve.sum.accessDeleteAuthData",
       "params": [
         {
           "name": "operation",
@@ -10727,7 +10727,7 @@
     },
     {
       "name": "access.updateAuthenticationName",
-      "summary": "Kotlin SDK biometric credential sync: updateAuthenticationName",
+      "summary": "serve.sum.accessUpdateAuthName",
       "params": [
         {
           "name": "request",
@@ -10909,13 +10909,146 @@
       "x-provenance": "unverified"
     },
     {
+      "name": "keystore.list",
+      "summary": "GET /device/list — 個人アカウント鍵ストア全件取得 (@experimental §9 V15)",
+      "params": [
+        {
+          "name": "appIdentifyId",
+          "required": false,
+          "description": "appidentifyid ヘッダ値 (省略時は自動生成)",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "CHUserKey[] (deviceUUID/deviceModel/keyIndex/secretKey/sesame2PublicKey/deviceName/keyLevel)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "keystore.put",
+      "summary": "PUT /device — 個人アカウント鍵ストアへ鍵を追加・更新 (@experimental §9 V15)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceModel",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyIndex",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "secretKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sesame2PublicKey",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceName",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keyLevel",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "appIdentifyId",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "server response (any)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
+      "name": "keystore.remove",
+      "summary": "DELETE /device — 個人アカウント鍵ストアから鍵を削除 (@experimental §9 V15)",
+      "params": [
+        {
+          "name": "deviceUUID",
+          "required": true,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "appIdentifyId",
+          "required": false,
+          "description": "",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "description": "server response (any)",
+          "type": "object"
+        }
+      },
+      "x-stability": "experimental",
+      "x-provenance": "unverified"
+    },
+    {
       "name": "ble.scan",
-      "summary": "[experimental] scan for nearby SESAME devices over BLE (no key required; returns deviceUUID/model/kind/isRegistered/rssi per device)",
+      "summary": "serve.sum.bleScan",
       "params": [
         {
           "name": "scanTimeoutMs",
           "required": false,
-          "description": "scan duration in ms (default: transport default ~8000)",
+          "description": "serve.desc.bleScanTimeoutMs",
           "schema": {
             "type": "number"
           }
@@ -10923,7 +11056,7 @@
         {
           "name": "includeUnknown",
           "required": false,
-          "description": "include devices whose productType is not recognized (default: false)",
+          "description": "serve.desc.bleScanIncludeUnknown",
           "schema": {
             "type": "boolean"
           }
@@ -10993,7 +11126,7 @@
     },
     {
       "name": "ble.invoke",
-      "summary": "invoke a registered OS3 BLE operation through the daemon host Bluetooth adapter",
+      "summary": "serve.sum.bleInvoke",
       "params": [
         {
           "name": "op",
@@ -11088,7 +11221,7 @@
     },
     {
       "name": "ble.updateFirmware",
-      "summary": "start BLE firmware update (WM2: OPEN_OTA_SERVER / Hub3: MOVE_TO / OS3 locks: no command sent, SDK no-op path)",
+      "summary": "serve.sum.bleUpdateFirmware",
       "params": [
         {
           "name": "deviceUUID",
@@ -11191,7 +11324,7 @@
     },
     {
       "name": "ble.reset",
-      "summary": "factory-reset an OS3 device over BLE (destructive: invalidates its keys)",
+      "summary": "serve.sum.bleReset",
       "params": [
         {
           "name": "deviceUUID",
@@ -11282,7 +11415,7 @@
     },
     {
       "name": "ble.position",
-      "summary": "configure lock/unlock angles over BLE (configureLockPosition; OS3 Sesame5/6-family locks)",
+      "summary": "serve.sum.blePosition",
       "params": [
         {
           "name": "deviceUUID",
@@ -11351,7 +11484,7 @@
         {
           "name": "lockPosition",
           "required": true,
-          "description": "lock angle (signed 16-bit integer)",
+          "description": "serve.desc.blePositionLock",
           "schema": {
             "type": "number"
           }
@@ -11359,7 +11492,7 @@
         {
           "name": "unlockPosition",
           "required": true,
-          "description": "unlock angle (signed 16-bit integer)",
+          "description": "serve.desc.blePositionUnlock",
           "schema": {
             "type": "number"
           }
@@ -11389,7 +11522,7 @@
     },
     {
       "name": "ble.wifi.scan",
-      "summary": "scan nearby Wi-Fi SSIDs via WM2/Hub3 BLE (kind auto-detected from model)",
+      "summary": "serve.sum.bleWifiScan",
       "params": [
         {
           "name": "deviceUUID",
@@ -11418,7 +11551,7 @@
         {
           "name": "model",
           "required": true,
-          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "description": "serve.desc.bleModelWifi",
           "schema": {
             "type": "string"
           }
@@ -11458,7 +11591,7 @@
         {
           "name": "companyId",
           "required": false,
-          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "description": "serve.desc.bleCompanyId",
           "schema": {
             "type": "string"
           }
@@ -11466,7 +11599,7 @@
         {
           "name": "collectMs",
           "required": false,
-          "description": "how long to collect publishes in ms (default 8000; Hub3 Wi-Fi scan finishes early on the SSID_LAST marker)",
+          "description": "serve.desc.bleCollectMs",
           "schema": {
             "type": "number"
           }
@@ -11507,7 +11640,7 @@
     },
     {
       "name": "ble.wifi.setSsid",
-      "summary": "set Wi-Fi SSID via WM2/Hub3 BLE (kind auto-detected from model)",
+      "summary": "serve.sum.bleWifiSetSsid",
       "params": [
         {
           "name": "deviceUUID",
@@ -11536,7 +11669,7 @@
         {
           "name": "model",
           "required": true,
-          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "description": "serve.desc.bleModelWifi",
           "schema": {
             "type": "string"
           }
@@ -11584,7 +11717,7 @@
         {
           "name": "companyId",
           "required": false,
-          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "description": "serve.desc.bleCompanyId",
           "schema": {
             "type": "string"
           }
@@ -11614,7 +11747,7 @@
     },
     {
       "name": "ble.wifi.setPassword",
-      "summary": "set Wi-Fi password via WM2/Hub3 BLE (kind auto-detected from model)",
+      "summary": "serve.sum.bleWifiSetPassword",
       "params": [
         {
           "name": "deviceUUID",
@@ -11643,7 +11776,7 @@
         {
           "name": "model",
           "required": true,
-          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "description": "serve.desc.bleModelWifi",
           "schema": {
             "type": "string"
           }
@@ -11691,7 +11824,7 @@
         {
           "name": "companyId",
           "required": false,
-          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "description": "serve.desc.bleCompanyId",
           "schema": {
             "type": "string"
           }
@@ -11721,7 +11854,7 @@
     },
     {
       "name": "ble.wifi.connect",
-      "summary": "connect WM2 to the configured Wi-Fi (CONNECT_WIFI; WM2 only)",
+      "summary": "serve.sum.bleWifiConnect",
       "params": [
         {
           "name": "deviceUUID",
@@ -11750,7 +11883,7 @@
         {
           "name": "model",
           "required": true,
-          "description": "device model (required: decides WM2 [dedicated GATT] vs Hub3 command set)",
+          "description": "serve.desc.bleModelWifi",
           "schema": {
             "type": "string"
           }
@@ -11790,7 +11923,7 @@
         {
           "name": "companyId",
           "required": false,
-          "description": "WM2 connect verification companyId (default: API_GATEWAY_CLIENT_ID from app.properties)",
+          "description": "serve.desc.bleCompanyId",
           "schema": {
             "type": "string"
           }
@@ -11820,7 +11953,7 @@
     },
     {
       "name": "ble.register",
-      "summary": "register a factory-reset OS3 BLE device through the daemon host Bluetooth adapter",
+      "summary": "serve.sum.bleRegister",
       "params": [
         {
           "name": "deviceUUID",
@@ -11899,7 +12032,7 @@
     },
     {
       "name": "ble.os2.invoke",
-      "summary": "invoke a registered OS2 BLE operation through the daemon host Bluetooth adapter",
+      "summary": "serve.sum.bleOs2Invoke",
       "params": [
         {
           "name": "op",
@@ -11994,7 +12127,7 @@
     },
     {
       "name": "ble.os2.register",
-      "summary": "register a factory-reset OS2 BLE device through the daemon host Bluetooth adapter",
+      "summary": "serve.sum.bleOs2Register",
       "params": [
         {
           "name": "deviceUUID",
@@ -12073,12 +12206,12 @@
     },
     {
       "name": "events.subscribe",
-      "summary": "subscribe to events (topics: lockState/deviceUpdate/deviceListChanged). event.<topic> notifications follow",
+      "summary": "serve.sum.eventsSubscribe",
       "params": [
         {
           "name": "topics",
           "required": true,
-          "description": "topic array to subscribe (lockState/deviceUpdate/deviceListChanged)",
+          "description": "serve.desc.subscribeTopics",
           "schema": {
             "type": "array",
             "items": {
@@ -12115,7 +12248,7 @@
     },
     {
       "name": "events.unsubscribe",
-      "summary": "unsubscribe from events",
+      "summary": "serve.sum.eventsUnsubscribe",
       "params": [
         {
           "name": "topics",
@@ -12159,25 +12292,25 @@
   "x-events": [
     {
       "name": "event.lockState",
-      "description": "lock state change push (events.subscribe lockState)",
+      "description": "serve.event.lockState",
       "x-stability": "stable",
       "x-provenance": "app-core"
     },
     {
       "name": "event.deviceUpdate",
-      "description": "device state update push (events.subscribe deviceUpdate)",
+      "description": "serve.event.deviceUpdate",
       "x-stability": "stable",
       "x-provenance": "app-core"
     },
     {
       "name": "event.deviceListChanged",
-      "description": "device-list change push (key sharing / device add-remove; biz3 pubUserDeviceChange)",
+      "description": "serve.event.deviceListChanged",
       "x-stability": "experimental",
       "x-provenance": "unverified"
     },
     {
       "name": "event.ready",
-      "description": "connection-ready notification sent once on every persistent connection (stdio/socket/ws/SSE/gRPC Subscribe)",
+      "description": "serve.event.ready",
       "x-stability": "stable",
       "x-provenance": "local"
     }

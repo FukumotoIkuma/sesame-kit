@@ -33,8 +33,8 @@
     "build:sdk:ts": "node scripts/gen-sdk-ts.mjs",
     "build:sdk:py": "node scripts/gen-sdk-py.mjs",
     "build:sdk": "node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
-    "typecheck:sdk": "tsc -p sdk/ts/tsconfig.json",
-    "check:sdk:py": "python3 -B -m py_compile sdk/python/sesame_client.py",
+    "typecheck:sdk": "tsc -p packages/kit/sdk/ts/tsconfig.json",
+    "check:sdk:py": "python3 -B -m py_compile packages/kit/sdk/python/sesame_client.py",
     "check:refs": "node scripts/check-refs.mjs",
     "build": "npm run build:types && node scripts/gen-rpc-schema.mjs && node scripts/gen-grpc-proto.mjs && node scripts/gen-openrpc.mjs && node scripts/gen-sdk-ts.mjs && node scripts/gen-sdk-py.mjs",
     "release": "bash scripts/release.sh"

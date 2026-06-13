@@ -23,6 +23,7 @@
 //   ctx.parseJson(raw, hint) : --json 文字列を JSON.parse (失敗時 die(...,2))。
 
 import { t } from "@sesame-kit/core/i18n";
+import { isUuidV4 } from "@sesame-kit/core/crypto";
 
 // パスコード/カードの passwordID・cardID は biz3 サーバが採番する「レコード識別子」であり、
 // 解錠 PIN such 秘密値ではない (一覧 API getPasscodes/getCards が返すのは識別子・名前・nameUUID
@@ -321,6 +322,20 @@ export function registerAccessCommands(program, ctx) {
         }
         const item = ctx.parseJson(subOpts.json, "item");
         if (item === undefined) return;
+        // P3-9: 非 v4 nameUUID の警告。
+        // biz3 updateItemName (useManageAuthData.js:438-471) は isUUIDV4(uuidValue) を判定し、
+        // 非 v4 なら BLE SSM_OS3_CARD_CHANGE(107) で v4 UUID をファームに書き込んだ後に更新する。
+        // kit はオプトイン (BLE composite は別途必要)。非 v4 検出時は警告のみで処理継続。
+        // @experimental 実機未検証 (参照: useManageAuthData.js:438-471)。§9 V17。
+        const nameUUID = item.cardNameUUID ?? item.nameUUID;
+        if (nameUUID && !isUuidV4(nameUUID)) {
+          console.error(
+            `[sesame] Warning: cardNameUUID "${nameUUID}" is not UUID v4. ` +
+            "biz3 would run BLE SSM_OS3_CARD_CHANGE(107) to assign a v4 UUID first. " +
+            "Run BLE cardChange with a new v4 UUID if your firmware requires it " +
+            "(ref: useManageAuthData.js:438-471).",
+          );
+        }
         const resp = await hub.access.updateCardName({ item });
         ctx.out(opts.json, () => {
           console.log(t("access.cards.nameUpdated", { cardID: item.cardID ?? "?" }));

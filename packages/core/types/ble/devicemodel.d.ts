@@ -33,7 +33,7 @@ export function kindForModel(model: string | null | undefined): string;
  *   - fingerprint : Bike3 の指紋登録 API を持つか (BIKE3 kind のみ true)
  *   - hubProvisioning: Hub3 の BLE プロビジョニング API を持つか (HUB3 kind のみ true)
  * @param {string|null|undefined} model
- * @returns {{kind:string, os:number, cloud:string[], ble:string[], ops:string[], mechKind:string|null, bleSupported:boolean, biometric:boolean, bioCaps:readonly string[], isOpenSensor:boolean, isRemote:boolean, wifiProvisioning:boolean, hubProvisioning:boolean, script:boolean, fingerprint:boolean, label:string}}
+ * @returns {{kind:string, os:number, cloud:string[], ble:string[], ops:string[], mechKind:"os3lock"|"os3bot"|"os2lock"|"os2bot"|"os2bike"|null, bleSupported:boolean, biometric:boolean, bioCaps:readonly string[], isOpenSensor:boolean, isRemote:boolean, wifiProvisioning:boolean, hubProvisioning:boolean, script:boolean, fingerprint:boolean, label:string}}
  */
 export function capabilitiesForModel(model: string | null | undefined): {
     kind: string;
@@ -41,7 +41,7 @@ export function capabilitiesForModel(model: string | null | undefined): {
     cloud: string[];
     ble: string[];
     ops: string[];
-    mechKind: string | null;
+    mechKind: "os3lock" | "os3bot" | "os2lock" | "os2bot" | "os2bike" | null;
     bleSupported: boolean;
     biometric: boolean;
     bioCaps: readonly string[];
@@ -166,7 +166,7 @@ export type Caps = {
     /**
      * mechStatus の解釈方法
      */
-    mechKind: "os3lock" | "os3bot" | "os2lock" | "os2bot" | null;
+    mechKind: "os3lock" | "os3bot" | "os2lock" | "os2bot" | "os2bike" | null;
     /**
      * 表示用の種別名
      */

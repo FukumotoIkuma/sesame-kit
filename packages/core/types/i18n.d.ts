@@ -1,3 +1,15 @@
+/**
+ * 追加カタログを登録する。kit 等の消費者が CLI/serve 専用文言を追記するために使う。
+ * area は `{ en: Record<string,string>, ja: Record<string,string> }` の形。
+ * 既存のキーと重複していた場合は TypeError を投げる(誤登録の早期検出)。
+ *
+ * @param {string} areaName 重複エラーメッセージ用の識別名 (例: "cli", "serve")
+ * @param {{ en: Record<string,string>, ja: Record<string,string> }} area
+ */
+export function registerCatalog(areaName: string, area: {
+    en: Record<string, string>;
+    ja: Record<string, string>;
+}): void;
 /** @param {string} [loc] */
 export function setLocale(loc?: string): void;
 /** @returns {Locale} */

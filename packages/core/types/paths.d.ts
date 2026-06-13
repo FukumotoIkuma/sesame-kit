@@ -1,5 +1,26 @@
 /**
+ * 現在のプロセスが win32 上で動作しているかを返す。
+ * テストで process.platform を stub するため関数化している。
+ * @returns {boolean}
+ */
+export function _isWin32(): boolean;
+/**
+ * Windows 環境で sesame-kit が起動された場合に警告を 1 回だけ出力する。
+ * - 設定パス (XDG / POSIX 前提) が Windows の %APPDATA% に非対応。
+ * - tokens.json / config.json の 0600 パーミッション保護が Windows 非対応
+ *   (secure-fs が mode degrade を自認している)。
+ * テスト用に export しているが、公開 API ではない。
+ * @internal
+ */
+export function _warnIfWin32(): void;
+/**
+ * テスト用: _win32WarnEmitted フラグをリセットする。
+ * @internal
+ */
+export function _resetWin32WarnState(): void;
+/**
  * 設定ディレクトリの絶対パスを解決する。
+ * Windows (win32) では起動時に警告を 1 回出力する (サポート対象外)。
  * @param {string} [overrideDir] 明示指定された設定ディレクトリ (CLI --config-dir)
  * @returns {string} 設定ディレクトリの絶対パス
  */

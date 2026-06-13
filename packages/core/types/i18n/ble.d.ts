@@ -35,6 +35,7 @@ declare namespace _default {
         "ble.alreadyConnected": string;
         "ble.bleResultFailed": string;
         "ble.hintInvalidSig": string;
+        "ble.needServerAuthNoTransport": string;
         "ble.hintNotFound": string;
         "ble.hintBusy": string;
         "ble.loginTimeout": string;
@@ -199,6 +200,7 @@ declare namespace _default {
         "ble.alreadyConnected": string;
         "ble.bleResultFailed": string;
         "ble.hintInvalidSig": string;
+        "ble.needServerAuthNoTransport": string;
         "ble.hintNotFound": string;
         "ble.hintBusy": string;
         "ble.loginTimeout": string;

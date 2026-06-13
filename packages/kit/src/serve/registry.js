@@ -48,7 +48,7 @@ import { authEntries } from "./entries/auth.js";
 import { configEntries } from "./entries/config.js";
 import { lockEntries } from "./entries/lock.js";
 import { irEntries } from "./entries/ir.js";
-import { deviceEntriesPre, webapiEntries, accessAuthEntries } from "./entries/device.js";
+import { deviceEntriesPre, webapiEntries, accessAuthEntries, keyStoreEntries } from "./entries/device.js";
 import { bleEntries } from "./entries/ble.js";
 import { eventsEntries } from "./entries/events.js";
 
@@ -339,6 +339,7 @@ export function buildRegistry() {
   for (const [name, entry] of Object.entries(webapiEntries())) reg.set(name, entry);
   for (const [name, entry] of Object.entries(irEntries())) reg.set(name, entry);
   for (const [name, entry] of Object.entries(accessAuthEntries())) reg.set(name, entry);
+  for (const [name, entry] of Object.entries(keyStoreEntries())) reg.set(name, entry);
   for (const [name, entry] of Object.entries(bleEntries(fullBleHelpers))) reg.set(name, entry);
 
   // 3) events (entries/events.js へ分割済み — P5-2)。

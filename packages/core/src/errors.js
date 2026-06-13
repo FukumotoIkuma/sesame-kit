@@ -2,7 +2,7 @@
 //
 // ドメイン失敗を機械可読な `code` で分類して投げる。これにより:
 //   - ライブラリ直利用者は `err.code` で分岐できる (localized message を parse しない)。
-//   - serve 層 (src/serve/jsonrpc.js) は `code` を JSON-RPC の `error.data.kind` へ写像できる。
+//   - serve 層 (packages/kit/src/serve/framing/*.js) は `code` を JSON-RPC の `error.data.kind` へ写像できる。
 // 層分けのため、ライブラリは serve の RpcError/KIND に依存しない (依存方向は serve → lib)。
 //
 // ---- エラー設計の方針 (P5-5 / ARCH-09) ----
@@ -34,6 +34,14 @@ export const ERR = Object.freeze({
   REJECTED: "rejected",             // 上流クラウドが明示的に失敗を返した (data.upstreamCode)
   BAD_REQUEST: "bad_request",       // 呼び出し側の不正 (引数欠落/不明な名前など)
   UNAUTHENTICATED: "unauthenticated", // 未ログイン/トークン失効
+  // BLE アダプタ層エラー (P5-5 / R3:ARCH-10)。すべて retryable=false。
+  // serve 写像: kind=rejected (BLE_NO_ADAPTER/BLE_UNAUTHORIZED/BLE_UNSUPPORTED/BLE_POWERED_OFF)
+  // または kind=timeout (BLE_INIT_TIMEOUT)。errorFromThrow の SESAME_TO_RPC を参照。
+  BLE_NO_ADAPTER: "ble_no_adapter",          // noble 未導入 / BLE ハードウェア不在
+  BLE_UNAUTHORIZED: "ble_unauthorized",      // Bluetooth 権限なし (macOS entitlement)
+  BLE_UNSUPPORTED: "ble_unsupported",        // Bluetooth 非対応ハードウェア/プラットフォーム
+  BLE_POWERED_OFF: "ble_powered_off",        // Bluetooth がオフ
+  BLE_INIT_TIMEOUT: "ble_init_timeout",      // Bluetooth 初期化タイムアウト (retryable=true)
 });
 
 export class SesameError extends Error {

@@ -2,9 +2,9 @@
 
 A typed client for the self-hosted `sesame serve` daemon (JSON-RPC over HTTP),
 **zero dependencies** (stdlib `urllib`). **Generated** from
-[`schema/openrpc.json`](../../schema/openrpc.json) by `npm run build:sdk:py` —
+[`schema/openrpc.json`](../../../../schema/openrpc.json) by `npm run build:sdk:py` —
 do not edit `sesame_client.py` by hand; it is drift-gated against the schema
-(`tests/sdk-py-contract.test.js`).
+(`packages/kit/tests/sdk-py-contract.test.js`).
 
 > **Two Python clients ship with sesame-kit, and they share the module name
 > `sesame_client` and the class name `SesameClient` — but their APIs are
@@ -18,8 +18,8 @@ do not edit `sesame_client.py` by hand; it is drift-gated against the schema
 >   Unix socket / stdio / HTTP) — factory constructors `SesameClient.unix()` /
 >   `.stdio()` / `.http()`, positional convenience methods like `c.unlock("front")`,
 >   and `c.call(method, **params)`. See the integration guide,
->   [`docs/en/integration.md`](../../docs/en/integration.md) §4
->   ([日本語](../../docs/ja/integration.md)).
+>   [`docs/en/integration.md`](../../../../docs/en/integration.md) §4
+>   ([日本語](../../../../docs/ja/integration.md)).
 >
 > Because both resolve `from sesame_client import SesameClient`, the examples
 > below only work against this generated SDK; copy-pasting them against the
@@ -75,7 +75,7 @@ except SesameRpcError as e:
 
 Methods whose docstring says `@experimental` are outside the API SemVer
 guarantee (see `docs/api-stability.md`). Only the `stable` surface
-(`lock.*`, `devices.list`, `device.history`/`battery`, `status`,
+(`lock.*`(`setAutolock` を除く), `devices.list`, `device.history`/`battery`, `status`,
 `account.whoami`, `events.*`) is covered by `API_VERSION`.
 
 ## Events
@@ -99,7 +99,7 @@ first, then your subscribed `event.<topic>` notifications.
 > `sesame_client` / `SesameClient` name) ships at
 > [`clients/python/`](../../clients/python/) — use it for thin / multi-transport /
 > custom integrations. See the
-> [repository README](../../README.md#which-should-i-use--sdk-vs-clients) for the
+> [repository README](../../../../README.md#which-should-i-use--sdk-vs-clients) for the
 > full "which should I use?" guidance and the integration guide
-> ([`docs/en/integration.md`](../../docs/en/integration.md) §4).
+> ([`docs/en/integration.md`](../../../../docs/en/integration.md) §4).
 > Calls go to `POST {base_url}/rpc`; events to `GET {base_url}/events` (SSE).

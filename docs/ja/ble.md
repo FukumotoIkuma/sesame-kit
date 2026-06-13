@@ -50,7 +50,7 @@ sesame ble position <device> <lock> <unlock>          # 施錠 / 解錠角度を
 
 `<device>` は config のロック名か deviceUUID です。接続を伴うサブコマンドは `--secret <hex>` / `--model <model>`（config のロックに無いデバイスを対象にする）と `--timeout <ms>`（publish 収集タイムアウト・既定 8000）を受け付けます。`scan` は鍵なしです。`invoke` と `os2-invoke` は `--address <address>`（peripheral ID 上書き）も受け付けます。
 
-専用 CLI コマンドが**ない**のは、生体・アクセス制御の**登録書き込み**（カード / 暗証番号 / 指紋 / 顔 / 掌紋の追加 / 削除 / 改名・モード設定）と Bike3 指紋の書き込み操作（fingerPrintChange / fingerPrintDelete / fingerPrintModeSet）のみです。これらの書き込み操作は Node と `sesame serve` の `ble.invoke` / `ble.os2.invoke` から同じメソッド名で呼べます。JSON-RPC のバイト列引数は `{"type":"Buffer","data":[...]}` または `{"$buffer":"...","encoding":"hex"}` で渡せます。ペアリング / 登録は `sesame ble register`、`sesame ble os2-register`、`ble.register`、`ble.os2.register` からも利用できます。`sesame ble` コマンド・BLE RPC・ライブラリ呼び出しは同じコード経路で、ユニットテスト済みですが**実機未確認**です。
+専用 CLI コマンドが**ない** BLE 操作の主な例として、生体・アクセス制御の**登録書き込み**（カード / 暗証番号 / 指紋 / 顔 / 掌紋の追加 / 削除 / 改名・モード設定）と Bike3 指紋の書き込み操作（fingerPrintChange / fingerPrintDelete / fingerPrintModeSet）があります。また、magnet / opSensorControl / setBleTxPower / sendAdvProductType・実機履歴の読み出し・削除・WM2 と Hub3 の子鍵登録（insertSesames / removeSesame）なども `ble invoke` / `ble.os2.invoke` 経由のみです。これらの操作は Node と `sesame serve` の `ble.invoke` / `ble.os2.invoke` から同じメソッド名で呼べます。JSON-RPC のバイト列引数は `{"type":"Buffer","data":[...]}` または `{"$buffer":"...","encoding":"hex"}` で渡せます。ペアリング / 登録は `sesame ble register`、`sesame ble os2-register`、`ble.register`、`ble.os2.register` からも利用できます。`sesame ble` コマンド・BLE RPC・ライブラリ呼び出しは同じコード経路で、ユニットテスト済みですが**実機未確認**です。
 
 ## デバイス型ごとの能力（公式 SesameSDK に準拠）
 
@@ -118,7 +118,7 @@ BLE を起動できない場合、CLI は無言クラッシュせず、わかり
 ## ライブラリとして
 
 ```js
-import { SesameBle } from "sesame-kit";   // or: import { ble } from "sesame-kit"
+import { SesameBle } from "@sesame-kit/core";   // or: import { ble } from "@sesame-kit/core"
 
 await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
   await lock.unlock();
@@ -232,7 +232,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "bike_3" }, async (bike) => 
 
 実装は同一 session 上で `BiometricCommands` の指紋メソッド（itemCode 115〜122）を再利用し、ゲッタは指紋 5 メソッド + `registerDelegate` に面を絞るだけです。ユニットテスト済みですが**実機未確認**です。
 
-これはアクセス制御管理の「デバイス側 / ファームウェア書き込み」側です。クラウド DB 同期側（`postCards` / `delPasscodes` …）は `sesame-kit/access` にあり、公式 biz3 の設計では BLE で実機を先に書き換え、その ack コールバックでサーバ DB を追従させる 2 段構造です。
+これはアクセス制御管理の「デバイス側 / ファームウェア書き込み」側です。クラウド DB 同期側（`postCards` / `delPasscodes` …）は `@sesame-kit/core/access` にあり、公式 biz3 の設計では BLE で実機を先に書き換え、その ack コールバックでサーバ DB を追従させる 2 段構造です。
 
 この 2 段は、BLE=実機 / cloud=DB の責務分担を崩さない最小限のブリッジで実結線します。BLE 側は `bio.onEnroll(onEnrolled, { card, passcode })`（または単体 delegate の `ble.createEnrollCollector({ onEnrolled })`）が 1 登録セッション分（`*_FIRST` → `*_NOTIFY`(×N) → `*_LAST` の publish 窓）を 1 バッチ `{ kind, records }` に集約します。cloud 側は `access.syncEnrolledCards(client, { deviceUUID, records })` / `access.syncEnrolledPasscodes(...)` がそのレコードを写像して `postCards` / `postPasscodes` へ委譲します（新しい WS op は増やしません。`access.enrolledToCardList(records)` が純粋な変換器）。生体層は `access` を import せず、同期するかは呼び出し側が `onEnrolled` 内で決めます:
 
@@ -261,7 +261,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "wm_2" }, async (dev) => {
   await wifi.setWifiSSID("my-ap");
   await wifi.setWifiPassword("secret");
   await wifi.connectWifi();                  // companyId + deviceUUID から verification を生成
-  wifi.networkStatus();                      // 状態は { kind: "networkStatus", isNet, isIot, ... } で届く
+  // networkStatus は受信専用 — onPublish の { kind: "networkStatus", isNet, isIot, ... } で届く
 
   // 子 SESAME 鍵を WM2 に登録（その鍵で WM2 が中継できるようにする）/ 削除する。
   await wifi.insertSesames({ deviceUUID: childUUID, secretKey: childSecret, sesame2PublicKey, deviceModel });
@@ -274,7 +274,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "wm_2" }, async (dev) => {
 });
 ```
 
-WM2 コマンドは `WM2ActionCode` enum（`src/itemcodes.js` の `WM2_ACTION` / `WM2_ACTION_CODES`）で送られます。これは `SesameItemCode` とは別の数値空間で、生体の `StpItemCode` と同じ隔離方針です。純関数の data builder / publish parser（`setWifiSSIDData`・`parseWM2Publish` など）も `sesame-kit/ble`（`ble.wm2.*`）から export されており、独自結線に利用できます。
+WM2 コマンドは `WM2ActionCode` enum（`src/itemcodes.js` の `WM2_ACTION` / `WM2_ACTION_CODES`）で送られます。これは `SesameItemCode` とは別の数値空間で、生体の `StpItemCode` と同じ隔離方針です。純関数の data builder / publish parser（`setWifiSSIDData`・`parseWM2Publish` など）も `@sesame-kit/core/ble`（`ble.wm2.*`）から export されており、独自結線に利用できます。
 
 ### Wi-Fi プロビジョニング・接続種別（Hub3）
 
@@ -297,7 +297,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
 });
 ```
 
-Hub3 は BLE のロック制御 op を持ちませんが、共通の OS3 経路は継承します。`connect`/`login`・`register`（`SesameBle.register()`）・`reset()`（`Reset(104)`）・`updateFirmware()`（`MOVE_TO(84)`、後述）はいずれも動作します。純関数の data builder / publish parser（`setWifiSSIDData`・`parseHub3Publish`・`parseNetworkType` など）も `sesame-kit/ble`（`ble.hub3.*`）から export されており、独自結線に利用できます。**実機未確認**です。特に `networkType` 経路（item code 209、要求・publish の両方と `[wifi 1B][lte 1B]` という payload 解釈）は **Android SDK に一次ソースが無く**、biz3 web の native ブリッジからの推定です（確証が得られなければ削除を検討）。
+Hub3 は BLE のロック制御 op を持ちませんが、共通の OS3 経路は継承します。`connect`/`login`・`register`（`SesameBle.register()`）・`reset()`（`Reset(104)`）・`updateFirmware()`（`MOVE_TO(84)`、後述）はいずれも動作します。純関数の data builder / publish parser（`setWifiSSIDData`・`parseHub3Publish`・`parseNetworkType` など）も `@sesame-kit/core/ble`（`ble.hub3.*`）から export されており、独自結線に利用できます。**実機未確認**です。特に `networkType` 経路（item code 209、要求・publish の両方と `[wifi 1B][lte 1B]` という payload 解釈）は **Android SDK に一次ソースが無く**、biz3 web の native ブリッジからの推定です（確証が得られなければ削除を検討）。
 
 ### BLE 経由ファームウェア更新（DFU / OTA）
 
@@ -309,14 +309,14 @@ await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
 });
 ```
 
-ファサードは OTA サーバ起動（コマンド応答）の時点で内部の進捗購読を解除します。100% 完了まで進捗を取り続けたい場合は `ble.onMoveToOtaProgress(session, cb)`（Hub3）または `ble.onWM2OtaProgress(session, cb)`（WM2）を直接購読してください。純ロジック層（`updateFirmware` / `updateFirmwareBleOnly` / `updateFirmwareWM2`）も `sesame-kit/ble`（`ble.dfu.*`）から export されており、独自結線に利用できます。実際の DFU バイナリ転送は別 GATT サービスで外部 DFU ライブラリが行い、この層は OTA サーバの起動と進捗報告のみを担当します。
+ファサードは OTA サーバ起動（コマンド応答）の時点で内部の進捗購読を解除します。100% 完了まで進捗を取り続けたい場合は `ble.onMoveToOtaProgress(session, cb)`（Hub3）または `ble.onWM2OtaProgress(session, cb)`（WM2）を直接購読してください。純ロジック層（`updateFirmware` / `updateFirmwareBleOnly` / `updateFirmwareWM2`）も `@sesame-kit/core/ble`（`ble.dfu.*`）から export されており、独自結線に利用できます。実際の DFU バイナリ転送は別 GATT サービスで外部 DFU ライブラリが行い、この層は OTA サーバの起動と進捗報告のみを担当します。
 
 ### OS2 デバイス（SESAME 2 / 3 / 4・Bot1・Bike1）
 
 OS2 デバイスは OS3 とは**別の BLE プロトコル**を話します。login がデバイス公開鍵との ECDH で session 鍵を導出するため、`secretKey` だけでは足りません。専用ファサード `SesameOS2Ble` を使い、操作面は OS3 版と揃えてあります。
 
 ```js
-import { SesameOS2Ble, ble } from "sesame-kit";
+import { SesameOS2Ble, ble } from "@sesame-kit/core";
 const { createBleTransport } = ble;                    // OS2 は transport の明示注入が必要
 
 await SesameOS2Ble.use(
@@ -367,7 +367,7 @@ sesame ble os2-register <scanで得たuuid> --model sesame_3 --json
 同じフローは `sesame serve` の `ble.register` / `ble.os2.register` からも呼べます。
 
 ```js
-import { SesameBle } from "sesame-kit";
+import { SesameBle } from "@sesame-kit/core";
 
 const key = await SesameBle.registerOnce(
   { deviceUUID: "<advertise から得た uuid>", model: "sesame_5" },
@@ -386,7 +386,7 @@ await SesameBle.use({ deviceUUID: key.deviceUUID, secretKey: key.secretKey }, (l
 近接 SESAME を **`secretKey` なしで** 1 回のスキャンから列挙できます。以下はすべて BLE アドバタイズだけから判る情報です（SDK の `CHBleManager` の `chDeviceMap` 構築に対応）。
 
 ```js
-import { SesameBle } from "sesame-kit";
+import { SesameBle } from "@sesame-kit/core";
 
 // 1 回のスキャン → 型付き発見結果。secretKey 不要。
 const found = await SesameBle.listNearby({ timeoutMs: 8000 });
@@ -405,7 +405,7 @@ await lock.connect();
 const key = SesameBle.fromDiscovery(entry, { registerMode: true });
 ```
 
-`SesameBle.listNearby(opts)` は `listNearbyDevices()`（`sesame-kit/ble` からも export）の薄いファサードです。`scanSesames()`（`deviceUUID → peripheral` の Map のみ）と違い、アドバタイズから判る属性を機種付きで返します。`isRegistered: false` は `registerOnce` に渡せる工場出荷デバイスを示します。`SesameBle.fromDiscovery(entry, opts)` は entry の `peripheral` を再利用するため、`connect()` がスキャンを省略します（`connectMany` と同じ高速パス）。
+`SesameBle.listNearby(opts)` は `listNearbyDevices()`（`@sesame-kit/core/ble` からも export）の薄いファサードです。`scanSesames()`（`deviceUUID → peripheral` の Map のみ）と違い、アドバタイズから判る属性を機種付きで返します。`isRegistered: false` は `registerOnce` に渡せる工場出荷デバイスを示します。`SesameBle.fromDiscovery(entry, opts)` は entry の `peripheral` を再利用するため、`connect()` がスキャンを省略します（`connectMany` と同じ高速パス）。
 
 ### 1 回のスキャンで複数ロックに接続
 

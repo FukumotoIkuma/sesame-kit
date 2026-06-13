@@ -56,14 +56,19 @@ export function updateDeviceName(client: WsClient, { subUUID, deviceUUID, device
     deviceName: string;
 }): Promise<import("./transport.js").WsMessage>;
 /**
- * デバイスを company から削除。items=[{deviceUUID,...}]
+ * デバイスを company から削除。items=[{deviceUUID, subUUID}, ...] の素通し。
+ * items 形は呼び出し側 (client.js#deleteDevice) が組み立てる。
+ * 参照 (items の正準形): references_web/src/components/MobileRemoveDevice.js:58-64 —
+ *   removeSesameDevices([{ deviceUUID, subUUID }], ...)。
+ * useManageDevice.js:228-237 は items を素通しするため、ここも素通し。
  * @param {WsClient} client
- * @param {{companyID: string, items: Array<{deviceUUID: string}>}} p
+ * @param {{companyID: string, items: Array<{deviceUUID: string, subUUID?: string}>}} p
  */
 export function deleteDevices(client: WsClient, { companyID, items }: {
     companyID: string;
     items: Array<{
         deviceUUID: string;
+        subUUID?: string;
     }>;
 }): Promise<import("./transport.js").WsMessage>;
 /**
@@ -251,9 +256,9 @@ export function listFirmware(client: WsClient): Promise<any[]>;
  * func 例: 'webapi_ssm_shadow_get', 'webapi_history_get', 'webapi_cmd_send'。
  * apiKeyId は別途 biz3 の dev console で発行されたもの。
  *
- * P3-10: vendor (useDeveloper.js:46-58) は query/body を渡さない呼び出しでキー自体を省く。
- * query は省略時キー脱落 (undefined → JSON.stringify で除去)、body も同様。
- * 空オブジェクト {} を常時送る旧実装は 1:1 逸脱のため条件スプレッドに修正。
+ * P3-1: vendor (useDeveloper.js:46-58) は `body = {}` をデフォルト引数で常時送信する。
+ * query は undefined のとき JSON.stringify で脱落するため条件スプレッド。
+ * 正: body は `body ?? {}` で常時送信、query のみ条件スプレッド。
  *
  * @param {WsClient} client
  * @param {{func:string, apiKeyId:string, query?:object, body?:object}} p
@@ -378,6 +383,105 @@ export function resolveRegisterTransport({ baseUrl, config, configStore, tokenSt
     required?: boolean;
 }): RegisterTransport;
 /**
+ * 個人アカウント鍵ストア REST API の transport を作る。
+ * register transport との違い: appidentifyid ヘッダを付ける
+ * (CHAPIClient.kt:29-46 の GET /device/list, PUT /device, DELETE /device は全て
+ * @Parameter(name="appidentifyid") あり — 参照の per-op 表参照)。
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ *
+ * @param {{baseUrl?:string,
+ *          tokenStore?:import("./tokens.js").TokenStore,
+ *          credentialsProvider?:import("./aws-credentials.js").CredentialsProviderLike,
+ *          appIdentifyId?:string|null,
+ *          config?:import("./aws-credentials.js").AppIdConfigLike|null,
+ *          configStore?:import("./aws-credentials.js").AppIdConfigStoreLike|null,
+ *          apiKey?:string,
+ *          fetchImpl?:typeof globalThis.fetch}} [opts]
+ * @returns {RegisterTransport}
+ */
+export function makeKeyStoreTransport({ baseUrl, tokenStore, credentialsProvider, appIdentifyId, config, configStore, apiKey, fetchImpl, }?: {
+    baseUrl?: string;
+    tokenStore?: import("./tokens.js").TokenStore;
+    credentialsProvider?: import("./aws-credentials.js").CredentialsProviderLike;
+    appIdentifyId?: string | null;
+    config?: import("./aws-credentials.js").AppIdConfigLike | null;
+    configStore?: import("./aws-credentials.js").AppIdConfigStoreLike | null;
+    apiKey?: string;
+    fetchImpl?: typeof globalThis.fetch;
+}): RegisterTransport;
+/**
+ * デバイス状態情報 (参照: _sesame_sdk_ref/sesame-sdk/.../CHUserKey.kt:49-57)。
+ * getDevicesList の応答に含まれる。putKey では通常省略される。
+ *
+ * @typedef {Object} StateInfo
+ * @property {number|null} [batteryPercentage] - バッテリー残量 (%)
+ * @property {string|null} [CHSesame2Status]   - デバイスステータス文字列
+ * @property {string|null} [currentFwVer]      - 現在のファームウェアバージョン
+ * @property {string|null} [latestFwVer]       - 最新のファームウェアバージョン
+ * @property {number|null} [timestamp]         - 最終更新 epoch (ms)
+ * @property {boolean|null} [wm2State]         - WM2 接続状態
+ * @property {object[]|null} [remoteList]      - IR リモート一覧
+ * @property {object[]|null} [scriptList]      - Bot スクリプト一覧
+ */
+/**
+ * CHUserKey 形 (鍵ストアのエントリ。CHAPIClient.kt / CHUserKey.kt から導出)。
+ * 参照: _sesame_sdk_ref/sesame-sdk/.../CHUserKey.kt:36-47
+ *
+ * @typedef {Object} CHUserKey
+ * @property {string} deviceUUID   — デバイスの UUID
+ * @property {string} deviceModel  — モデル名 (例 "sesame_5")
+ * @property {string} keyIndex     — 鍵インデックス (hex)
+ * @property {string} secretKey    — 共通鍵 (32hex)
+ * @property {string} sesame2PublicKey — 公開鍵 (hex)
+ * @property {string|null} [deviceName] - ニックネーム
+ * @property {number} keyLevel     - アクセスレベル
+ * @property {number|null} [rank]  - 並び順 (nullable)
+ * @property {string} [subUUID]    - 所有者の subUUID
+ * @property {StateInfo} [stateInfo] - デバイス状態情報 (参照: CHUserKey.kt:46)
+ */
+/**
+ * GET /device/list — 個人アカウントの鍵ストア全件取得。
+ * (CHAPIClient.kt:36-39, CHAPIClientBiz.kt:105-106)
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * 実機未検証 (参照: CHAPIClient.kt:36-39)
+ *
+ * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。
+ * @returns {Promise<CHUserKey[]>} 鍵ストア全件 (CHUserKey 配列)。
+ */
+export function getDevicesList(transport: RegisterTransport): Promise<CHUserKey[]>;
+/**
+ * PUT /device — 個人アカウント鍵ストアへの鍵追加・更新。
+ * (CHAPIClient.kt:29-33, CHAPIClientBiz.kt:102-103, ScanQRcodeFG.kt:342-348)
+ *
+ * body は CHUserKey 形オブジェクト (Gson 直列化 → JSON object)。
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * 実機未検証 (参照: CHAPIClient.kt:29-33)
+ *
+ * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。
+ * @param {CHUserKey} key CHUserKey 形オブジェクト
+ * @returns {Promise<any>} サーバ応答
+ */
+export function putKey(transport: RegisterTransport, key: CHUserKey): Promise<any>;
+/**
+ * DELETE /device — 個人アカウント鍵ストアから鍵を削除。
+ * (CHAPIClient.kt:42-46, CHAPIClientBiz.kt:108-109, CHDeviceViewModel.kt:565-571)
+ *
+ * body は deviceUUID の JSON 文字列リテラル (Kotlin `body: String` → Gson → `"<uuid>"`)。
+ * 参照: CHAPIClientBiz.kt:109 `cHApiClient.removeKey(identifyId(), keyId)` で keyId は
+ * `targetDevice.deviceId.toString()` (CHDeviceViewModel.kt:567)。
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * 実機未検証 (参照: CHAPIClient.kt:42-46)
+ *
+ * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。
+ * @param {string} deviceUUID 削除するデバイスの UUID
+ * @returns {Promise<any>} サーバ応答
+ */
+export function removeKey(transport: RegisterTransport, deviceUUID: string): Promise<any>;
+/**
  * guestKeysSign — 既存登録済みデバイスの再ログイン時に session token を取得する
  * (CHSesameOS3.kt:474-484, CHAPIClientBiz.kt:143-144)。
  *
@@ -428,6 +532,90 @@ export function registerSesame5(transport: RegisterTransport, { deviceUUID, prod
     productType: (string | number);
     serverSecret: string;
 }): Promise<any>;
+/**
+ * デバイス状態情報 (参照: _sesame_sdk_ref/sesame-sdk/.../CHUserKey.kt:49-57)。
+ * getDevicesList の応答に含まれる。putKey では通常省略される。
+ */
+export type StateInfo = {
+    /**
+     * - バッテリー残量 (%)
+     */
+    batteryPercentage?: number | null | undefined;
+    /**
+     * - デバイスステータス文字列
+     */
+    CHSesame2Status?: string | null | undefined;
+    /**
+     * - 現在のファームウェアバージョン
+     */
+    currentFwVer?: string | null | undefined;
+    /**
+     * - 最新のファームウェアバージョン
+     */
+    latestFwVer?: string | null | undefined;
+    /**
+     * - 最終更新 epoch (ms)
+     */
+    timestamp?: number | null | undefined;
+    /**
+     * - WM2 接続状態
+     */
+    wm2State?: boolean | null | undefined;
+    /**
+     * - IR リモート一覧
+     */
+    remoteList?: object[] | null | undefined;
+    /**
+     * - Bot スクリプト一覧
+     */
+    scriptList?: object[] | null | undefined;
+};
+/**
+ * CHUserKey 形 (鍵ストアのエントリ。CHAPIClient.kt / CHUserKey.kt から導出)。
+ * 参照: _sesame_sdk_ref/sesame-sdk/.../CHUserKey.kt:36-47
+ */
+export type CHUserKey = {
+    /**
+     * — デバイスの UUID
+     */
+    deviceUUID: string;
+    /**
+     * — モデル名 (例 "sesame_5")
+     */
+    deviceModel: string;
+    /**
+     * — 鍵インデックス (hex)
+     */
+    keyIndex: string;
+    /**
+     * — 共通鍵 (32hex)
+     */
+    secretKey: string;
+    /**
+     * — 公開鍵 (hex)
+     */
+    sesame2PublicKey: string;
+    /**
+     * - ニックネーム
+     */
+    deviceName?: string | null | undefined;
+    /**
+     * - アクセスレベル
+     */
+    keyLevel: number;
+    /**
+     * - 並び順 (nullable)
+     */
+    rank?: number | null | undefined;
+    /**
+     * - 所有者の subUUID
+     */
+    subUUID?: string | undefined;
+    /**
+     * - デバイス状態情報 (参照: CHUserKey.kt:46)
+     */
+    stateInfo?: StateInfo | undefined;
+};
 /**
  * 下位 WS トランスポート。完全な型は transport.js の Hub3WsClient。
  */

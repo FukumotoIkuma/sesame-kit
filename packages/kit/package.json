@@ -5,7 +5,6 @@
   "author": "Ikuma Fukumoto",
   "license": "MIT",
   "type": "module",
-  "main": "./src/cli.js",
   "exports": {
     "./client": {
       "types": "./clients/js/sesame-client.d.ts",
@@ -18,8 +17,8 @@
   "files": [
     "bin/",
     "src/",
-    "types/",
     "clients/",
+    "sdk/",
     "!**/__pycache__",
     "!**/*.pyc"
   ],

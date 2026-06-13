@@ -382,6 +382,12 @@ service Sesame {
   // experimental (unverified)
   rpc AccessUpdateAuthenticationName (AccessUpdateAuthenticationNameRequest) returns (JsonRpc);
   // experimental (unverified)
+  rpc KeystoreList (KeystoreListRequest) returns (JsonRpc);
+  // experimental (unverified)
+  rpc KeystorePut (KeystorePutRequest) returns (JsonRpc);
+  // experimental (unverified)
+  rpc KeystoreRemove (KeystoreRemoveRequest) returns (JsonRpc);
+  // experimental (unverified)
   rpc BleScan (BleScanRequest) returns (JsonRpc);
   // experimental (unverified)
   rpc BleInvoke (BleInvokeRequest) returns (JsonRpc);
@@ -414,256 +420,256 @@ service Sesame {
 message RpcDiscoverRequest {
 }
 message ScheduleGetScheduleListRequest {
-  string subUUID = 1;
-  double timeoutMs = 2;
+  optional string subUUID = 1;
+  optional double timeoutMs = 2;
 }
 message ScheduleCancelScheduleRequest {
-  string subUUID = 1;
-  string scheduleId = 2;
-  double timeoutMs = 3;
+  optional string subUUID = 1;
+  optional string scheduleId = 2;
+  optional double timeoutMs = 3;
 }
 message OrgGetEmployeesRequest {
-  string companyID = 1;
-  double timeoutMs = 2;
-  bool partialOnTimeout = 3;
+  optional string companyID = 1;
+  optional double timeoutMs = 2;
+  optional bool partialOnTimeout = 3;
 }
 message OrgGetCurrentUserInfoRequest {
-  double timeoutMs = 1;
+  optional double timeoutMs = 1;
 }
 message OrgAddEmployeesRequest {
   string items = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message OrgUpdateEmployeeRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string data = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgRemoveEmployeesRequest {
   string items = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message OrgReorderEmployeesRequest {
   string items = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message OrgQueryByCSRequest {
   string keyword = 1;
-  double timeoutMs = 2;
-  bool partialOnTimeout = 3;
+  optional double timeoutMs = 2;
+  optional bool partialOnTimeout = 3;
 }
 message OrgConfirmQueryByCSRequest {
   string email = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message OrgGetEmployeeGroupsRequest {
-  string companyID = 1;
-  double timeoutMs = 2;
+  optional string companyID = 1;
+  optional double timeoutMs = 2;
 }
 message OrgAddEmployeeGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string item = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgUpdateEmployeeGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string item = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgRemoveEmployeeGroupsRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string gids = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgGetEmployeeGroupBindDeviceGroupRequest {
   string gid = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message OrgAddEmployeeInGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string gid = 2;
   string uuids = 3;
   string items = 4;
-  double timeoutMs = 5;
+  optional double timeoutMs = 5;
 }
 message OrgRemoveEmployeeInGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string gid = 2;
   string uuids = 3;
   string items = 4;
-  double timeoutMs = 5;
+  optional double timeoutMs = 5;
 }
 message OrgRemoveEmployeeGroupBindDeviceGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string data = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgGetTagsRequest {
-  string companyID = 1;
-  double timeoutMs = 2;
+  optional string companyID = 1;
+  optional double timeoutMs = 2;
 }
 message OrgPostTagRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string data = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgRemoveTagRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string data = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgGetDeviceGroupsRequest {
-  string companyID = 1;
-  double timeoutMs = 2;
+  optional string companyID = 1;
+  optional double timeoutMs = 2;
 }
 message OrgAddDeviceGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string name = 2;
   repeated string uuids = 3;
-  double timeoutMs = 4;
+  optional double timeoutMs = 4;
 }
 message OrgUpdateDeviceGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string item = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgRemoveDeviceGroupsRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string groupIds = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgAddDeviceInGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string gid = 2;
   string uuids = 3;
   string items = 4;
-  double timeoutMs = 5;
+  optional double timeoutMs = 5;
 }
 message OrgRemoveDeviceInGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string gid = 2;
   string uuids = 3;
   string items = 4;
-  double timeoutMs = 5;
+  optional double timeoutMs = 5;
 }
 message OrgGetDeviceGroupBindUserGroupRequest {
   string gid = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message OrgRemoveDeviceGroupBindUserGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string data = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgShareDeviceKeysToEmployeesRequest {
   string items = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message OrgShareDeviceGroupKeysToEmployeeGroupRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string item = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message OrgGetEmployeeDeviceKeysRequest {
-  string subUUID = 1;
-  double timeoutMs = 2;
+  optional string subUUID = 1;
+  optional double timeoutMs = 2;
 }
 message OrgRemoveEmployeeDeviceKeyRequest {
   string data = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message OrgUpdateGuestKeyTagRequest {
   string data = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message OrgGenerateGuestQRRequest {
   string data = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message OrgGetDeviceEmployeeKeysRequest {
   string deviceUUID = 1;
-  string companyID = 2;
-  double limit = 3;
-  double timeoutMs = 4;
+  optional string companyID = 2;
+  optional double limit = 3;
+  optional double timeoutMs = 4;
 }
 message CompanyGetCompaniesRequest {
-  double timeoutMs = 1;
+  optional double timeoutMs = 1;
 }
 message CompanyUpdateCompanyNameRequest {
-  string companyID = 1;
+  optional string companyID = 1;
   string name = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message CompanyAddCompanyRequest {
   string name = 1;
   string employeeEmail = 2;
-  string subUUID = 3;
-  double timeoutMs = 4;
+  optional string subUUID = 3;
+  optional double timeoutMs = 4;
 }
 message CompanyGetPaymentConfigRequest {
-  string companyID = 1;
-  double timeoutMs = 2;
+  optional string companyID = 1;
+  optional double timeoutMs = 2;
 }
 message PaymentGetPaymentMethodsRequest {
-  string customerId = 1;
-  string companyID = 2;
-  double timeoutMs = 3;
+  optional string customerId = 1;
+  optional string companyID = 2;
+  optional double timeoutMs = 3;
 }
 message PaymentGetClientSecretRequest {
-  string customerId = 1;
-  string companyID = 2;
-  double timeoutMs = 3;
+  optional string customerId = 1;
+  optional string companyID = 2;
+  optional double timeoutMs = 3;
 }
 message PaymentChangeDefaultPaymentRequest {
-  string customerId = 1;
-  string companyID = 2;
-  string defaultPaymentMethod = 3;
-  double timeoutMs = 4;
+  optional string customerId = 1;
+  optional string companyID = 2;
+  optional string defaultPaymentMethod = 3;
+  optional double timeoutMs = 4;
 }
 message PaymentRemovePaymentRequest {
-  string customerId = 1;
-  string companyID = 2;
-  string paymentId = 3;
-  double timeoutMs = 4;
+  optional string customerId = 1;
+  optional string companyID = 2;
+  optional string paymentId = 3;
+  optional double timeoutMs = 4;
 }
 message PaymentPayUpdateLevelRequest {
-  string customerId = 1;
-  string companyID = 2;
-  string subId = 3;
-  string subscriptionId = 4;
-  double level = 5;
-  bool isUpgrade = 6;
-  bool isCancel = 7;
-  double timeoutMs = 8;
+  optional string customerId = 1;
+  optional string companyID = 2;
+  optional string subId = 3;
+  optional string subscriptionId = 4;
+  optional double level = 5;
+  optional bool isUpgrade = 6;
+  optional bool isCancel = 7;
+  optional double timeoutMs = 8;
 }
 message PaymentGetDevApiInfoRequest {
-  string customerId = 1;
-  string companyID = 2;
-  string email = 3;
-  bool update = 4;
-  double timeoutMs = 5;
+  optional string customerId = 1;
+  optional string companyID = 2;
+  optional string email = 3;
+  optional bool update = 4;
+  optional double timeoutMs = 5;
 }
 message AccessGetCardsRequest {
   repeated string deviceUUIDs = 1;
-  double timeoutMs = 2;
-  double graceMs = 3;
-  bool partialOnTimeout = 4;
+  optional double timeoutMs = 2;
+  optional double graceMs = 3;
+  optional bool partialOnTimeout = 4;
 }
 message AccessGetPasscodesRequest {
   repeated string deviceUUIDs = 1;
-  double timeoutMs = 2;
-  double graceMs = 3;
-  bool partialOnTimeout = 4;
+  optional double timeoutMs = 2;
+  optional double graceMs = 3;
+  optional bool partialOnTimeout = 4;
 }
 message AccessPostCardsRequest {
   string deviceUUID = 1;
   string list = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message AccessPostPasscodesRequest {
   string deviceUUID = 1;
   string list = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message AccessDelCardsRequest {
   string items = 1;
@@ -673,827 +679,827 @@ message AccessDelPasscodesRequest {
 }
 message AccessClearCardsRequest {
   string deviceUUID = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message AccessClearPasscodesRequest {
   string deviceUUID = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message AccessUpdateCardNameRequest {
   string item = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message AccessUpdatePasscodeNameRequest {
   string item = 1;
-  double timeoutMs = 2;
+  optional double timeoutMs = 2;
 }
 message AccessUpdateCardOwnerRequest {
-  string item = 1;
-  string cardID = 2;
-  string ownerSubUUID = 3;
-  double timeoutMs = 4;
+  optional string item = 1;
+  optional string cardID = 2;
+  optional string ownerSubUUID = 3;
+  optional double timeoutMs = 4;
 }
 message IotSendIotCmdRequest {
   string topic = 1;
   string payload = 2;
-  string op = 3;
+  optional string op = 3;
 }
 message IotSendIotCmdAwaitRequest {
   string topic = 1;
   string payload = 2;
   double cmd = 3;
-  string deviceId = 4;
-  double timeoutMs = 5;
+  optional string deviceId = 4;
+  optional double timeoutMs = 5;
 }
 message IotSetHub3LedDutyRequest {
   string deviceId = 1;
   string secretKey = 2;
-  string hub3Id = 3;
+  optional string hub3Id = 3;
   double op = 4;
   double duty = 5;
-  double timeoutMs = 6;
+  optional double timeoutMs = 6;
 }
 message IotHub3RelaySwitchRequest {
   string deviceId = 1;
   string secretKey = 2;
-  string hub3Id = 3;
-  double op = 4;
+  optional string hub3Id = 3;
+  optional double op = 4;
 }
 message IotAddSesameToHub3Request {
   string hub3Id = 1;
   string secretKey = 2;
   string sesameId = 3;
   string ssmSecKa = 4;
-  string nickName = 5;
+  optional string nickName = 5;
   string deviceModel = 6;
-  double timeoutMs = 7;
+  optional double timeoutMs = 7;
 }
 message IotRemoveSesameFromHub3Request {
   string hub3Id = 1;
   string secretKey = 2;
   string sesameId = 3;
   string ssmSecKa = 4;
-  string nickName = 5;
+  optional string nickName = 5;
   string deviceModel = 6;
-  double timeoutMs = 7;
+  optional double timeoutMs = 7;
 }
 message IotStartFirmwareUpdateRequest {
   string deviceId = 1;
-  string hub3Id = 2;
+  optional string hub3Id = 2;
   string secretKey = 3;
 }
 message IotClearHub3WifiSsidRequest {
   string deviceId = 1;
   string secretKey = 2;
-  string hub3Id = 3;
+  optional string hub3Id = 3;
 }
 message IotGetMatterPairingCodeRequest {
   string deviceId = 1;
   string secretKey = 2;
-  string hub3Id = 3;
-  double timeoutMs = 4;
+  optional string hub3Id = 3;
+  optional double timeoutMs = 4;
 }
 message IotOpenMatterPairingWindowRequest {
   string deviceId = 1;
   string secretKey = 2;
-  string hub3Id = 3;
-  double timeoutMs = 4;
+  optional string hub3Id = 3;
+  optional double timeoutMs = 4;
 }
 message PresetirSendIRRequest {
-  string deviceId = 1;
-  string hub3DeviceId = 2;
+  optional string deviceId = 1;
+  optional string hub3DeviceId = 2;
   string command = 3;
   double irType = 4;
-  string companyID = 5;
-  string irDeviceUUID = 6;
-  string operation = 7;
-  double timeoutMs = 8;
+  optional string companyID = 5;
+  optional string irDeviceUUID = 6;
+  optional string operation = 7;
+  optional double timeoutMs = 8;
 }
 message PresetirEmitAirRequest {
   string deviceId = 1;
-  string companyID = 2;
+  optional string companyID = 2;
   double code = 3;
-  string irDeviceUUID = 4;
-  double timeoutMs = 5;
-  string savedState = 6;
-  bool power = 7;
-  double temperature = 8;
-  double mode = 9;
-  double fanSpeed = 10;
-  double windDirection = 11;
-  bool autoSwing = 12;
-  string keyType = 13;
+  optional string irDeviceUUID = 4;
+  optional double timeoutMs = 5;
+  optional string savedState = 6;
+  optional bool power = 7;
+  optional double temperature = 8;
+  optional double mode = 9;
+  optional double fanSpeed = 10;
+  optional double windDirection = 11;
+  optional bool autoSwing = 12;
+  optional string keyType = 13;
 }
 message PresetirEmitButtonRequest {
   string deviceId = 1;
-  string companyID = 2;
+  optional string companyID = 2;
   double code = 3;
   double irType = 4;
   string buttonType = 5;
-  string irDeviceUUID = 6;
-  double timeoutMs = 7;
+  optional string irDeviceUUID = 6;
+  optional double timeoutMs = 7;
 }
 message BleScriptClickRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
-  double index = 9;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
+  optional double index = 9;
 }
 message BleScriptSelectScriptRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double index = 9;
 }
 message BleScriptSendClickScriptRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double index = 9;
   string script = 10;
 }
 message BleScriptGetCurrentScriptRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
-  double index = 9;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
+  optional double index = 9;
 }
 message BleScriptGetScriptNameListRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleBiometricCardModeSetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double mode = 9;
 }
 message BleBiometricCardModeGetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleBiometricCardGetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
-  double collectMs = 9;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
+  optional double collectMs = 9;
 }
 message BleBiometricCardAddRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string id = 9;
   string hexName = 10;
 }
 message BleBiometricCardDeleteRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string cardID = 9;
 }
 message BleBiometricCardMoveRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string cardId = 9;
   string touchProUUID = 10;
 }
 message BleBiometricCardChangeRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string ID = 9;
   string hexName = 10;
 }
 message BleBiometricCardChangeValueRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string ID = 9;
   string newID = 10;
 }
 message BleBiometricPasscodeModeSetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double mode = 9;
 }
 message BleBiometricPasscodeModeGetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleBiometricPasscodeGetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
-  double collectMs = 9;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
+  optional double collectMs = 9;
 }
 message BleBiometricPasscodeAddRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string id = 9;
   string hexName = 10;
 }
 message BleBiometricPasscodeDeleteRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string keyBoardPassCodeID = 9;
 }
 message BleBiometricPasscodeMoveRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string cardId = 9;
   string touchProUUID = 10;
 }
 message BleBiometricPasscodeChangeRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string ID = 9;
   string hexName = 10;
 }
 message BleBiometricFaceModeSetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double mode = 9;
 }
 message BleBiometricFaceModeGetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleBiometricFaceListGetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
-  double collectMs = 9;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
+  optional double collectMs = 9;
 }
 message BleBiometricFaceChangeRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string ID = 9;
   string name = 10;
 }
 message BleBiometricFaceDeleteRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string faceID = 9;
 }
 message BleBiometricPalmModeSetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double mode = 9;
 }
 message BleBiometricPalmModeGetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleBiometricPalmListGetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
-  double collectMs = 9;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
+  optional double collectMs = 9;
 }
 message BleBiometricPalmDeleteRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string palmID = 9;
 }
 message BleBiometricInsertSesameRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string sesame = 9;
 }
 message BleBiometricRemoveSesameRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string tag = 9;
-  string opts = 10;
+  optional string opts = 10;
 }
 message BleBiometricSetRadarSensitivityRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string payload = 9;
 }
 message BleFingerPrintFingerPrintModeSetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double mode = 9;
 }
 message BleFingerPrintFingerPrintModeGetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleFingerPrintFingerPrintsRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
-  double collectMs = 9;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
+  optional double collectMs = 9;
 }
 message BleFingerPrintFingerPrintDeleteRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string fingerPrintID = 9;
 }
 message BleFingerPrintFingerPrintChangeRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string ID = 9;
   string hexName = 10;
 }
 message BleRemoteNanoSetTriggerDelayTimeRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double time = 9;
 }
 message BleRemoteNanoInsertSesameRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string sesame = 9;
 }
 message BleRemoteNanoRemoveSesameRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string tag = 9;
-  string opts = 10;
+  optional string opts = 10;
 }
 message BleRemoteNanoSetRadarSensitivityRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string payload = 9;
 }
 message BleWifiInsertSesamesRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string sesameKey = 9;
 }
 message BleWifiRemoveSesameRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string sesameKeyTag = 9;
 }
 message BleWifiResetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleHub3ScanWifiSSIDRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleHub3SetWifiSSIDRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string ssid = 9;
 }
 message BleHub3SetWifiPasswordRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string password = 9;
 }
 message BleHub3RemoveSesameRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string tag = 9;
 }
 message BleHub3NetworkTypeRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleHistoryRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleDeleteHistoryRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string historyPayload = 9;
 }
 message BleGetVersionTagRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleMagnetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleOpSensorControlRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double seconds = 9;
 }
 message BleSendAdvProductTypeRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string data = 9;
 }
 message BleSetBleTxPowerRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double txPower = 9;
 }
 message BleOs2AutolockRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string keyIndex = 4;
   string ssmPublicKey = 5;
-  string model = 6;
-  double scanTimeoutMs = 7;
-  bool debug = 8;
+  optional string model = 6;
+  optional double scanTimeoutMs = 7;
+  optional bool debug = 8;
   double seconds = 9;
-  string tag = 10;
+  optional string tag = 10;
 }
 message BleOs2DisableAutolockRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string keyIndex = 4;
   string ssmPublicKey = 5;
-  string model = 6;
-  double scanTimeoutMs = 7;
-  bool debug = 8;
-  string tag = 9;
+  optional string model = 6;
+  optional double scanTimeoutMs = 7;
+  optional bool debug = 8;
+  optional string tag = 9;
 }
 message BleOs2GetAutolockRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string keyIndex = 4;
   string ssmPublicKey = 5;
-  string model = 6;
-  double scanTimeoutMs = 7;
-  bool debug = 8;
+  optional string model = 6;
+  optional double scanTimeoutMs = 7;
+  optional bool debug = 8;
 }
 message BleOs2HistoryRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string keyIndex = 4;
   string ssmPublicKey = 5;
-  string model = 6;
-  double scanTimeoutMs = 7;
-  bool debug = 8;
-  string opts = 9;
+  optional string model = 6;
+  optional double scanTimeoutMs = 7;
+  optional bool debug = 8;
+  optional string opts = 9;
 }
 message BleOs2VersionTagRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string keyIndex = 4;
   string ssmPublicKey = 5;
-  string model = 6;
-  double scanTimeoutMs = 7;
-  bool debug = 8;
+  optional string model = 6;
+  optional double scanTimeoutMs = 7;
+  optional bool debug = 8;
 }
 message BleOs2UpdateSettingRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string keyIndex = 4;
   string ssmPublicKey = 5;
-  string model = 6;
-  double scanTimeoutMs = 7;
-  bool debug = 8;
+  optional string model = 6;
+  optional double scanTimeoutMs = 7;
+  optional bool debug = 8;
   string setting = 9;
-  string tag = 10;
+  optional string tag = 10;
 }
 message BleOs2ResetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string keyIndex = 4;
   string ssmPublicKey = 5;
-  string model = 6;
-  double scanTimeoutMs = 7;
-  bool debug = 8;
+  optional string model = 6;
+  optional double scanTimeoutMs = 7;
+  optional bool debug = 8;
 }
 message BleOs2ConfigureLockPositionRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string keyIndex = 4;
   string ssmPublicKey = 5;
-  string model = 6;
-  double scanTimeoutMs = 7;
-  bool debug = 8;
+  optional string model = 6;
+  optional double scanTimeoutMs = 7;
+  optional bool debug = 8;
   double lockDeg = 9;
   double unlockDeg = 10;
 }
@@ -1504,37 +1510,37 @@ message CloudPingRequest {
 message AccountWhoamiRequest {
 }
 message LockLockRequest {
-  string name = 1;
-  string deviceUUID = 2;
-  string secretKey = 3;
+  optional string name = 1;
+  optional string deviceUUID = 2;
+  optional string secretKey = 3;
 }
 message LockUnlockRequest {
-  string name = 1;
-  string deviceUUID = 2;
-  string secretKey = 3;
+  optional string name = 1;
+  optional string deviceUUID = 2;
+  optional string secretKey = 3;
 }
 message LockToggleRequest {
-  string name = 1;
-  string deviceUUID = 2;
-  string secretKey = 3;
+  optional string name = 1;
+  optional string deviceUUID = 2;
+  optional string secretKey = 3;
 }
 message LockClickRequest {
-  string name = 1;
-  string deviceUUID = 2;
-  string secretKey = 3;
-  double scriptIndex = 4;
+  optional string name = 1;
+  optional string deviceUUID = 2;
+  optional string secretKey = 3;
+  optional double scriptIndex = 4;
 }
 message LockSetAutolockRequest {
-  string name = 1;
-  string deviceUUID = 2;
-  string secretKey = 3;
+  optional string name = 1;
+  optional string deviceUUID = 2;
+  optional string secretKey = 3;
   double seconds = 4;
-  double timeoutMs = 5;
-  string transport = 6;
-  string address = 7;
-  string model = 8;
-  double scanTimeoutMs = 9;
-  bool debug = 10;
+  optional double timeoutMs = 5;
+  optional string transport = 6;
+  optional string address = 7;
+  optional string model = 8;
+  optional double scanTimeoutMs = 9;
+  optional bool debug = 10;
 }
 message LockStatusRequest {
   string deviceUUID = 1;
@@ -1572,13 +1578,13 @@ message AccessRegisterPasscodesRequest {
 }
 message DeviceHistoryRequest {
   string deviceUUID = 1;
-  double pageSize = 2;
-  double lastKey = 3;
+  optional double pageSize = 2;
+  optional double lastKey = 3;
 }
 message DeviceBatteryRequest {
   string deviceUUID = 1;
-  double pageSize = 2;
-  string lastEvaluatedKey = 3;
+  optional double pageSize = 2;
+  optional string lastEvaluatedKey = 3;
 }
 message DeviceHideHistoryRequest {
   string deviceUUID = 1;
@@ -1598,15 +1604,15 @@ message DeviceDeleteRequest {
 message FirmwareListRequest {
 }
 message ConfigSyncLocksRequest {
-  bool prune = 1;
+  optional bool prune = 1;
 }
 message ConfigSyncHub3sRequest {
-  bool prune = 1;
+  optional bool prune = 1;
 }
 message ConfigSyncRemotesRequest {
 }
 message ConfigSyncRemoteKeysRequest {
-  string remote = 1;
+  optional string remote = 1;
 }
 message ConfigSyncRemotesFromServerRequest {
   string hub3 = 1;
@@ -1616,46 +1622,46 @@ message ConfigListRemoteCandidatesRequest {
 }
 message WebapiInvokeRequest {
   string func = 1;
-  string query = 2;
-  string body = 3;
-  string apiKeyId = 4;
+  optional string query = 2;
+  optional string body = 3;
+  optional string apiKeyId = 4;
 }
 message WebapiDeviceStateRequest {
   string deviceId = 1;
-  string apiKeyId = 2;
+  optional string apiKeyId = 2;
 }
 message WebapiDeviceHistoryRequest {
   string deviceId = 1;
-  double page = 2;
-  double lg = 3;
-  bool isBiz = 4;
-  string apiKeyId = 5;
+  optional double page = 2;
+  optional double lg = 3;
+  optional bool isBiz = 4;
+  optional string apiKeyId = 5;
 }
 message WebapiSendCmdRequest {
   string deviceId = 1;
   double cmd = 2;
   string sign = 3;
   string history = 4;
-  string apiKeyId = 5;
+  optional string apiKeyId = 5;
 }
 message IrSendRequest {
-  string remote = 1;
+  optional string remote = 1;
   string key = 2;
 }
 message IrListKeysRequest {
-  string remote = 1;
-  string hub3DeviceId = 2;
-  string irDeviceUUID = 3;
+  optional string remote = 1;
+  optional string hub3DeviceId = 2;
+  optional string irDeviceUUID = 3;
 }
 message IrLearnRequest {
   string remote = 1;
   string key = 2;
-  double timeoutMs = 3;
+  optional double timeoutMs = 3;
 }
 message IrListRemotesRequest {
   double type = 1;
-  double page = 2;
-  double pageSize = 3;
+  optional double page = 2;
+  optional double pageSize = 3;
 }
 message IrSearchRemotesRequest {
   double type = 1;
@@ -1681,16 +1687,16 @@ message IrRenameKeyRequest {
   string newName = 3;
 }
 message IrGetModeRequest {
-  string hub3 = 1;
+  optional string hub3 = 1;
 }
 message IrSetModeRequest {
-  string hub3 = 1;
+  optional string hub3 = 1;
   double mode = 2;
 }
 message IrMatchRemoteRequest {
   string irData = 1;
   double irType = 2;
-  string brandName = 3;
+  optional string brandName = 3;
 }
 message IrAddRemoteToMatterRequest {
   string hub3DeviceId = 1;
@@ -1704,170 +1710,187 @@ message AccessPostAuthenticationDataRequest {
   string operation = 1;
   string deviceID = 2;
   string items = 3;
-  string baseUrl = 4;
+  optional string baseUrl = 4;
 }
 message AccessPutAuthenticationDataRequest {
   string operation = 1;
   string deviceID = 2;
   string items = 3;
-  string baseUrl = 4;
+  optional string baseUrl = 4;
 }
 message AccessDeleteAuthenticationDataRequest {
   string operation = 1;
   string deviceID = 2;
   string items = 3;
-  string baseUrl = 4;
+  optional string baseUrl = 4;
 }
 message AccessUpdateAuthenticationNameRequest {
-  string request = 1;
-  string kind = 2;
-  string baseUrl = 3;
-  string subUUID = 4;
-  string stpDeviceUUID = 5;
-  string name = 6;
-  double timestamp = 7;
-  double type = 8;
-  double cardType = 9;
-  string nameUUID = 10;
-  string cardNameUUID = 11;
-  string faceNameUUID = 12;
-  string fingerPrintNameUUID = 13;
-  string palmNameUUID = 14;
-  string keyBoardPassCodeNameUUID = 15;
-  string cardID = 16;
-  string faceID = 17;
-  string fingerPrintID = 18;
-  string palmID = 19;
-  string keyBoardPassCode = 20;
-  string op = 21;
+  optional string request = 1;
+  optional string kind = 2;
+  optional string baseUrl = 3;
+  optional string subUUID = 4;
+  optional string stpDeviceUUID = 5;
+  optional string name = 6;
+  optional double timestamp = 7;
+  optional double type = 8;
+  optional double cardType = 9;
+  optional string nameUUID = 10;
+  optional string cardNameUUID = 11;
+  optional string faceNameUUID = 12;
+  optional string fingerPrintNameUUID = 13;
+  optional string palmNameUUID = 14;
+  optional string keyBoardPassCodeNameUUID = 15;
+  optional string cardID = 16;
+  optional string faceID = 17;
+  optional string fingerPrintID = 18;
+  optional string palmID = 19;
+  optional string keyBoardPassCode = 20;
+  optional string op = 21;
+}
+message KeystoreListRequest {
+  optional string appIdentifyId = 1;
+}
+message KeystorePutRequest {
+  string deviceUUID = 1;
+  string deviceModel = 2;
+  string keyIndex = 3;
+  string secretKey = 4;
+  string sesame2PublicKey = 5;
+  optional string deviceName = 6;
+  double keyLevel = 7;
+  optional string appIdentifyId = 8;
+}
+message KeystoreRemoveRequest {
+  string deviceUUID = 1;
+  optional string appIdentifyId = 2;
 }
 message BleScanRequest {
-  double scanTimeoutMs = 1;
-  bool includeUnknown = 2;
+  optional double scanTimeoutMs = 1;
+  optional bool includeUnknown = 2;
 }
 message BleInvokeRequest {
   string op = 1;
-  string args = 2;
-  string deviceUUID = 3;
-  string address = 4;
+  optional string args = 2;
+  optional string deviceUUID = 3;
+  optional string address = 4;
   string secretKey = 5;
-  string model = 6;
-  double scanTimeoutMs = 7;
-  bool debug = 8;
-  bool needAuthFromServer = 9;
-  string registerBaseUrl = 10;
+  optional string model = 6;
+  optional double scanTimeoutMs = 7;
+  optional bool debug = 8;
+  optional bool needAuthFromServer = 9;
+  optional string registerBaseUrl = 10;
 }
 message BleUpdateFirmwareRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
-  double timeoutMs = 9;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
+  optional double timeoutMs = 9;
 }
 message BleResetRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
 }
 message BlePositionRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
-  string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional string model = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   double lockPosition = 9;
   double unlockPosition = 10;
 }
 message BleWifiScanRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
-  string companyId = 9;
-  double collectMs = 10;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
+  optional string companyId = 9;
+  optional double collectMs = 10;
 }
 message BleWifiSetSsidRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string ssid = 9;
-  string companyId = 10;
+  optional string companyId = 10;
 }
 message BleWifiSetPasswordRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
   string password = 9;
-  string companyId = 10;
+  optional string companyId = 10;
 }
 message BleWifiConnectRequest {
-  string deviceUUID = 1;
-  string address = 2;
+  optional string deviceUUID = 1;
+  optional string address = 2;
   string secretKey = 3;
   string model = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool needAuthFromServer = 7;
-  string registerBaseUrl = 8;
-  string companyId = 9;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool needAuthFromServer = 7;
+  optional string registerBaseUrl = 8;
+  optional string companyId = 9;
 }
 message BleRegisterRequest {
   string deviceUUID = 1;
-  string address = 2;
-  string model = 3;
-  string productType = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  double nowMs = 7;
-  string registerBaseUrl = 8;
+  optional string address = 2;
+  optional string model = 3;
+  optional string productType = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional double nowMs = 7;
+  optional string registerBaseUrl = 8;
 }
 message BleOs2InvokeRequest {
   string op = 1;
-  string args = 2;
-  string deviceUUID = 3;
-  string address = 4;
+  optional string args = 2;
+  optional string deviceUUID = 3;
+  optional string address = 4;
   string secretKey = 5;
   string keyIndex = 6;
   string ssmPublicKey = 7;
-  string model = 8;
-  double scanTimeoutMs = 9;
-  bool debug = 10;
+  optional string model = 8;
+  optional double scanTimeoutMs = 9;
+  optional bool debug = 10;
 }
 message BleOs2RegisterRequest {
   string deviceUUID = 1;
-  string address = 2;
-  string model = 3;
-  string productType = 4;
-  double scanTimeoutMs = 5;
-  bool debug = 6;
-  bool localServerAuth = 7;
-  string ak = 8;
+  optional string address = 2;
+  optional string model = 3;
+  optional string productType = 4;
+  optional double scanTimeoutMs = 5;
+  optional bool debug = 6;
+  optional bool localServerAuth = 7;
+  optional string ak = 8;
 }
 
 message SubReq { string token = 1; repeated string topics = 2; }

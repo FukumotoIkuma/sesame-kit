@@ -47,6 +47,17 @@
 
 要件は Node.js 20 以上です (CI と一致 / ESM・`node:` プロトコルを使用)。
 
+> **注（publish 準備中）:** `@sesame-kit/core` は現在 npm に未公開（試すと E404）で、npm 上の `sesame-kit` 最新は分割前の 0.6.1 であり依存構成も異なります。0.6.2+ がリリースされるまでは、**下記の git clone + workspace 手順をお使いください**。両パッケージ publish 後にこの注記を撤去します。
+
+ソースから（現在の推奨手順）:
+
+```bash
+git clone https://github.com/FukumotoIkuma/sesame-kit.git
+cd sesame-kit && npm install   # workspace install で @sesame-kit/core ↔ sesame-kit を結線
+```
+
+publish 後（0.6.2+）:
+
 ```bash
 npm install -g sesame-kit       # グローバル CLI: `sesame ...`（+ `sesame serve` デーモン）
 npx sesame-kit --help           # インストールせず実行
@@ -57,13 +68,6 @@ npm install @sesame-kit/core    # プロジェクトにライブラリとして�
 
 - **`@sesame-kit/core`** — ライブラリ本体（BLE + クラウド転送・認証・暗号・デバイス管理）。アプリ内利用はこれを import します（`import { SesameHub3 } from "@sesame-kit/core"`）。
 - **`sesame-kit`** — `sesame` CLI・`sesame serve` JSON-RPC デーモン・同梱の薄いクライアント。`@sesame-kit/core` に依存します。インストールすると core も推移的に入り、`sesame-kit/client` は同梱 JS クライアントを指します。
-
-ソースから:
-
-```bash
-git clone https://github.com/FukumotoIkuma/sesame-kit.git
-cd sesame-kit && npm install   # workspace install で @sesame-kit/core ↔ sesame-kit を結線
-```
 
 ### 依存関係とセキュリティ方針
 
@@ -169,7 +173,7 @@ sesame login --json               # → stderr: {"error":"...","code":1}  exit�
 ```
 
 出力 JSON の形は各コマンド固有です。互換性の判定には契約バージョンを使います:
-常駐デーモンの `status` が返す `contractVersion`、または `rpc.discover` の `info["x-contractVersion"]`。
+常駐デーモンの `status` が返す `apiVersion`、または `rpc.discover` の `info["x-apiVersion"]`（旧称 `contractVersion` / `x-contractVersion` はエイリアスとして残っています）。
 機械契約の SemVer で、破壊的変更でのみ major が上がります。消費者は major を pin して fail-fast できます。
 
 ---
@@ -195,7 +199,7 @@ sesame serve --http 8080 --ws 8081 --grpc 50051   # ネットワーク経由 (to
 | WebSocket | 全言語 / ブラウザ (全二重) | `event.*` 通知 | token |
 | gRPC | 多言語の型付きスタブ生成 | `Subscribe` ストリーム | token (metadata) |
 
-- メソッドは `rpc.discover` で機械可読に全列挙します (OpenRPC。契約 1.2.0 時点で 202 メソッド)。param 名・必須・型は実コードから抽出済みです。
+- メソッドは `rpc.discover` で機械可読に全列挙します (OpenRPC。契約 1.4.0 時点で 205 メソッド)。param 名・必須・型は実コードから抽出済みです。
 - ロック: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`。加えて `lock.setAutolock` (experimental。`transport: "cloud" | "ble"` を受け、実機に効くのは BLE 経路のみ)。名前空間 op は `<ns>.<op>` で全公開します (`org.*` / `iot.*` / `access.*` / `ir.*` / `devices.*` / `config.sync*` / `ble.*` / `cloud.ping` …)。`access.registerPasscodes`・`ir.addRemoteToMatter`・型付き BLE op (`ble.script.*` / `ble.biometric.*` / `ble.fingerPrint.*` / `ble.remoteNano.*` / `ble.wifi.*` / `ble.hub3.*` / `ble.os2.*` とスタンドアロン op `ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` / `ble.history` / `ble.scan` / `ble.magnet` … — 合計 76 の型付き `ble.*` メソッド）を含みます。汎用の `ble.invoke` / `ble.os2.invoke` は任意の BLE op を文字列ディスパッチする脱出口 facade です。
 - イベント: `events.subscribe {topics:["lockState","deviceUpdate"]}` で以後 `event.<topic>` 通知が届きます。
 - エラーは `{error:{code, message, data:{kind}}}`。`kind` は `not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented` の 7 種です。
@@ -281,7 +285,7 @@ gRPC は型付きです。`packages/kit/src/serve/sesame.proto` が op ごとに
 
 JSON-RPC のサーフェスは**バージョン管理された機械可読な契約**として公開しており、安全に上に積めます:
 
-- [`schema/openrpc.json`](./schema/openrpc.json) — 公開 OpenRPC ドキュメント（`rpc.discover` でも取得可）。各メソッド/イベントに `x-stability`（`stable` / `experimental`）と `x-provenance`、`apiVersion`（SemVer）は `status` / `rpc.discover` に。CI の drift gate で実装と常に一致。
+- [`schema/openrpc.json`](./schema/openrpc.json) — 公開 OpenRPC ドキュメント（`rpc.discover` でも取得可）。各メソッド/イベントに `x-stability`（`stable` / `experimental`）と `x-provenance`、`apiVersion`（SemVer。1.4.0）は `status` / `rpc.discover` に。CI の drift gate で実装と常に一致。
 - **スキーマから生成された型付き SDK** — [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts)（`client.lock.unlock({ name })`）と [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py)（`client.lock.unlock(name=...)`、依存ゼロ）。いずれも `SesameRpcError` が `kind` / `retryable` を公開。再生成は `npm run build:sdk`。
 - **安定性:** API SemVer が守るのは `stable` コア — 13 メソッド: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.click` / `lock.status`（注: `lock.setAutolock` は **experimental**）、`devices.list`、`device.history` / `device.battery`、`status`、`rpc.discover`、`account.whoami`、`events.subscribe` / `events.unsubscribe` — のみ。`experimental` は予告なく変わり得ます。[docs/api-stability.md](./docs/api-stability.md) 参照。
 - **エラー**は構造化: メッセージ文字列でなく `error.data.kind`（`not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented`）と `error.data.retryable` で分岐。
@@ -383,6 +387,16 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 
 3 つの層に分けて記載します: **検証済み**（実クラウド / 実機で確認済み）、**設計上の非実装**、**実装済み・実機未検証**（公式 SDK / biz3 ソースから 1:1 で移植しユニット + mock end-to-end テストで検証済みだが、実機・実 API Gateway では未確認）。
 
+### 動作プラットフォーム
+
+**macOS と Linux のみ対応しています。** Windows (`win32`) は**サポート対象外**です:
+
+- 設定ディレクトリの解決（`paths.js`）が XDG / POSIX 規約（`~/.config/sesame-kit`）を前提にしています。`%APPDATA%` へのマッピングは実装されていないため、Windows では誤ったパスが使用されます。
+- `tokens.json` や `config.json` など秘密鍵を含むファイルへの `0600` パーミッション保護が Windows では無効です（Windows は NTFS ACL を使用し、POSIX の mode bit は機能しないため、OS レベルのアクセス制御が掛かりません）。
+- `sesame serve` の既定トランスポートは Unix domain socket（`sesame.sock`）であり、POSIX 専用です。
+
+Windows 上で起動すると、1 プロセスにつき 1 回だけ stderr に警告を出力して継続します（ベストエフォート）が、上記の制限が適用されます。Windows サポートのロードマップは [docs/platform-roadmap.md](./docs/platform-roadmap.md) を参照してください。
+
 ### 検証済みの挙動
 
 - Hub3 IR には、自己学習リモコン (`learnEmit`) とプリセット HXD command の 2 経路があります。学習ボタンは `sesame ir learn` / `sesame remote`、プリセット command はプリセットの `remote.code` と `remote.type` を指定して `sesame preset-ir`（または `presetir.*` RPC/Node namespace）から使います。
@@ -395,7 +409,8 @@ config スキーマと「単一 `devices{}` に保存する」設計は [docs/ja
 - **Stripe SetupIntent の confirm。** 本 kit はカード情報を扱わない方針のため confirm を実装しません。「Stripe.js を動かせるクライアントが必須」という旧記載は技術的事実ではありません: confirm に必要なのは publishable key（biz3 では `references_web/src/env_config.js:5-7` にハードコード）と `sesame payment client-secret` で取得できる `client_secret` のみで、Stripe 公開 API（`POST /v1/payment_methods` → `POST /v1/setup_intents/{id}/confirm`）か Stripe.js で confirm し、得られた `payment_method` id を `payment.changeDefaultPayment` に渡せば完結します。周辺の Biz3 payment op (`payment.*`) はすべて公開しています。
 - **DFU バイナリ転送 (Nordic DFU)。** `SesameBle#updateFirmware` は SDK の開始コマンドのみを移植しています: Hub3 は `MOVE_TO(84)` (`CHHub3Device.kt:213-226`)、WM2 は `OPEN_OTA_SERVER(126)` (`CHWifiModule2Device.kt:450-458`)、OS3 ロックは SDK 自体が**コマンドを一切送らず**接続済みデバイスを外部 DFU ライブラリへ渡すだけです (`CHSesameOS3.kt:441-449`)。kit もこの no-op 経路を踏襲し、Nordic-DFU の転送実装は同梱しません。（旧 README の「OS3 ロックは `MOVE_TO` を送る」は誤りで、その分岐は Hub3 専用です。）
 - 予約スケジュールの**新規作成** op と、Android アプリ専用の付帯 REST（feed history・SNS subscribe・friend 等）は biz3 web 参照に存在せず、スコープ外です。
-- **OS2 mechStatus publish — 自動履歴読み出し（意図的逸脱）。** 公式 SDK（`CHSesame2Device.kt:543-553`）は、mechStatus publish を受信したときに `retCode != 0` または `target == Short.MIN_VALUE (-32768)` の場合、`readHistoryCommand` を自動発行してサーバへ POST します。kit では**この自動ドレインを実装しません**: 履歴の取得は、呼び出し元が明示的に `history()` を呼んだときのみ行われます（Node ライブラリ / `ble.history` RPC / `sesame <device> history` CLI）。これは意図的な設計判断です — 自動ドレインはポリシー（ログ・サーバ同期）をトランスポート層に結びつけてしまうため、kit はセッション層を純粋なプロトコル移植に留め、その判断を呼び出し元に委ねます。実際の影響は、明示呼び出しの間にデバイス側の履歴バッファが溜まることです。ロックの動作には影響しません。
+- **OS2 mechStatus publish — 自動履歴読み出し（意図的逸脱）。** 公式 SDK（`CHSesame2Device.kt:543-553`）は、mechStatus publish を受信したときに `retCode != 0` または `target == Short.MIN_VALUE (-32768)` の場合、`readHistoryCommand` を自動発行してサーバへ POST します。kit では**この自動ドレインを実装しません**: 履歴の取得は、呼び出し元が明示的に `history()` を呼んだときのみ行われます（Node ライブラリ / `ble.history` RPC / `sesame ble os2-invoke <device> history` CLI）。これは意図的な設計判断です — 自動ドレインはポリシー（ログ・サーバ同期）をトランスポート層に結びつけてしまうため、kit はセッション層を純粋なプロトコル移植に留め、その判断を呼び出し元に委ねます。実際の影響は、明示呼び出しの間にデバイス側の履歴バッファが溜まることです。ロックの動作には影響しません。
+- **OS3 ロック — 広告トリガによる自動履歴ドレイン（意図的逸脱）。** 公式 SDK（`CHSesameOS3LockBase.kt:42-58, 185-209`）は、login 済み状態で広告（`adv_tag_b1`）を受信するたびに `readHistory` を自動発行し、サーバへ POST 成功後に 1 件削除するドレインループを実行します。kit では OS2 と同様に**この自動ドレインを実装しません**: サーバ POST 部分はアプリ専用テレメトリ REST（§10-6 確定非実装）であり、ドレインループもセッション層の外に委ねます。履歴の取得は、呼び出し元が明示的に `sesame ble invoke <device> history` / `ble.history` RPC / Node の `history()` を呼んだときのみ行われます。
 
 ### 実装済み・実機未検証
 

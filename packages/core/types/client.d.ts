@@ -465,6 +465,9 @@ export class SesameHub3 {
     renameDevice(deviceUUID: string, deviceName: string): Promise<import("./transport.js").WsMessage>;
     /**
      * company から指定 UUID のデバイスを削除。
+     * items に subUUID (操作者UUID) を必ず同送する。
+     * 参照: references_web/src/components/MobileRemoveDevice.js:58-64 —
+     *   removeSesameDevices([{ deviceUUID, subUUID }], ...) と subUUID を常時同送。
      * @param {string} deviceUUID
      */
     deleteDevice(deviceUUID: string): Promise<import("./transport.js").WsMessage>;
@@ -566,6 +569,41 @@ export class SesameHub3 {
         timestampSecond: number;
     }): Promise<import("./transport.js").WsMessage>;
     listFirmware(): Promise<any[]>;
+    /**
+     * GET /device/list — 個人アカウント鍵ストア全件取得。
+     *
+     * @experimental 実機未検証 (参照: CHAPIClient.kt:36-39) §9 V15
+     *
+     * @param {{appIdentifyId?: string|null}} [opts]
+     * @returns {Promise<import("./devices.js").CHUserKey[]>}
+     */
+    keyStoreList({ appIdentifyId }?: {
+        appIdentifyId?: string | null;
+    }): Promise<import("./devices.js").CHUserKey[]>;
+    /**
+     * PUT /device — 個人アカウント鍵ストアへ鍵を追加・更新。
+     *
+     * @experimental 実機未検証 (参照: CHAPIClient.kt:29-33) §9 V15
+     *
+     * @param {import("./devices.js").CHUserKey} key
+     * @param {{appIdentifyId?: string|null}} [opts]
+     * @returns {Promise<any>}
+     */
+    keyStorePut(key: import("./devices.js").CHUserKey, { appIdentifyId }?: {
+        appIdentifyId?: string | null;
+    }): Promise<any>;
+    /**
+     * DELETE /device — 個人アカウント鍵ストアから鍵を削除。
+     *
+     * @experimental 実機未検証 (参照: CHAPIClient.kt:42-46) §9 V15
+     *
+     * @param {string} deviceUUID
+     * @param {{appIdentifyId?: string|null}} [opts]
+     * @returns {Promise<any>}
+     */
+    keyStoreRemove(deviceUUID: string, { appIdentifyId }?: {
+        appIdentifyId?: string | null;
+    }): Promise<any>;
     /**
      * WebAPI proxy 経由で REST API を叩く。apiKeyId は config 側に保存。
      * @param {{ func: string, query?: object, body?: object, apiKeyId?: string }} args

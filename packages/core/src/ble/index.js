@@ -4,7 +4,7 @@
 // クラウドでは不可だった設定系 (autolock 等) も BLE なら本体に反映される。
 //
 // 使い方 (高レベル):
-//   import { SesameBle } from "sesame-kit";        // もしくは: import { ble } from "sesame-kit"
+//   import { SesameBle } from "@sesame-kit/core";        // もしくは: import { ble } from "@sesame-kit/core"
 //   await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
 //     await lock.unlock();
 //     await lock.autolock(30);              // ← クラウド不可・BLE 可
@@ -449,7 +449,14 @@ export class SesameBle {
     this._deviceUUID = deviceUUID;
     this._registerMode = registerMode;
     this._secretKey = secretKey;
-    this._needAuthFromServer = !!needAuthFromServer;
+    // P4-1: guest 鍵の sentinel 自動判定 (CHBaseDevice.kt:115 — isNeedAuthFromServer = it.secretKey.contains("000000"))。
+    // 呼び出し元が needAuthFromServer を明示しない場合、secretKey に "000000" が含まれれば自動で
+    // server-auth モードを有効化する (SDK と同条件)。明示指定はそのまま尊重する。
+    // @experimental guest/期限付き鍵の sentinel 自動判定。実機未検証 (参照: CHBaseDevice.kt:115)。
+    const callerSetNeedAuth = "needAuthFromServer" in opts;
+    const sentinelDetected = !callerSetNeedAuth && !registerMode && !!secretKey && String(secretKey).includes("000000");
+    this._needAuthFromServer = !!needAuthFromServer || sentinelDetected;
+    this._sentinelDetected = sentinelDetected; // connect() でのエラー案内に使う
     this._registerTransport = registerTransport;
     this._debug = debug;
     /** @type {BiometricView|null} bioCaps 限定ビューの遅延生成キャッシュ (biometric ゲッタ)。 */
@@ -852,6 +859,13 @@ export class SesameBle {
     // disconnect しないと BLE 接続 + notify 購読がリークするため、必ずクリーンアップしてから
     // rethrow する (connectMany / use の失敗パスと対称)。disconnect 自体のエラーは握り潰す
     // (本来の login エラーを覆い隠さないため)。
+    //
+    // P4-1: sentinel 検出時に registerTransport が無ければ接続を試みず明示エラーを返す。
+    // transport 接続前に弾くことで「接続成功→login 失敗→cryptic エラー」の流れを防ぐ。
+    // @experimental 実機未検証 (参照: CHBaseDevice.kt:115 / CHSesameOS3.kt:468-491)。
+    if (this._sentinelDetected && typeof this._registerTransport !== "function") {
+      throw badRequest("ble.needServerAuthNoTransport");
+    }
     try {
       if (this._needAuthFromServer) {
         if (typeof this._registerTransport !== "function") throw badRequest("ble.needAuthRequiresTransport");

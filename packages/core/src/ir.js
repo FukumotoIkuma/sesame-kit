@@ -34,7 +34,7 @@
 //     useRemoteCtrl.js:228 (どちらも 0xFE00 を学習リモコンの type として扱う)。
 //     値の一覧と出所は crypto.js の IR_TYPE コメントにも記載。
 
-import { generateUUID } from "./crypto.js";
+import { generateUUID, normalizeUuid } from "./crypto.js";
 import { ACTION_TYPES } from "./vendor/biz3/constants/messageConstants.js";
 import { assertSuccess, rejected, timeoutError, badRequest } from "./util.js";
 import { t } from "./i18n.js";
@@ -391,8 +391,12 @@ export async function subscribeIRData(client, { deviceId, companyID }) {
 
   /** @type {Set<(msg: any) => void>} */
   const listeners = new Set();
+  // ★ 独自追加: 多デバイス購読の利便のため deviceId フィルタを維持するが、
+  //   大文字小文字・ハイフン差を吸収するため normalizeUuid 同士で比較する。
+  //   参照 (useRemoteCtrl.js:306-333) は全購読者へ配布しフィルタを持たない。
+  const normalDeviceId = normalizeUuid(deviceId);
   const unsub = client.subscribe(`${ACTION}:subscribeIRDataRsp`, (msg) => {
-    if (msg?.deviceId && msg.deviceId !== deviceId) return;
+    if (msg?.deviceId && normalizeUuid(msg.deviceId) !== normalDeviceId) return;
     for (const fn of listeners) {
       try { fn(msg); } catch { /* ignore */ }
     }
@@ -427,8 +431,12 @@ export async function subscribeIRMode(client, { deviceId, companyID }) {
   if (!ack.success) throw rejected(t("domain.ir.subscribeIRModeFailed", { detail: ack.message || JSON.stringify(ack) }), { upstreamCode: ack?.code ?? null });
   /** @type {Set<(msg: any) => void>} */
   const listeners = new Set();
+  // ★ 独自追加: 多デバイス購読の利便のため deviceId フィルタを維持するが、
+  //   大文字小文字・ハイフン差を吸収するため normalizeUuid 同士で比較する。
+  //   参照 (useRemoteCtrl.js:306-333) は全購読者へ配布しフィルタを持たない。
+  const normalDeviceIdMode = normalizeUuid(deviceId);
   const unsub = client.subscribe(`${ACTION}:subscribeIRModeRsp`, (msg) => {
-    if (msg?.deviceId && msg.deviceId !== deviceId) return;
+    if (msg?.deviceId && normalizeUuid(msg.deviceId) !== normalDeviceIdMode) return;
     for (const fn of listeners) {
       try { fn(msg); } catch { /* ignore */ }
     }

@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { homedir } from "node:os";
 import { resolve, sep, isAbsolute } from "node:path";
-import { configPaths, resolveConfigDir } from "../../src/paths.js";
+import {
+  configPaths,
+  resolveConfigDir,
+  _warnIfWin32,
+  _resetWin32WarnState,
+} from "../../src/paths.js";
 
 const APP_DIRNAME = "sesame-kit";
 
@@ -270,6 +275,160 @@ describe("configPaths", () => {
       // 4. 全解除 → ~/.config フォールバック
       vi.stubEnv("XDG_CONFIG_HOME", undefined);
       expect(configPaths().dir).toBe(resolve(homedir(), ".config", APP_DIRNAME));
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P5-7: Windows プラットフォーム分岐テーブル
+//
+// 方針: Windows (win32) はサポート対象外。
+//   - 設定パス (XDG / POSIX 前提) が %APPDATA% 非対応。
+//   - tokens.json 等の 0600 パーミッション保護が非対応 (secure-fs が mode degrade を自認)。
+// _isWin32() / _warnIfWin32() / _resetWin32WarnState() はテスト用 internal export。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("win32 プラットフォーム分岐 (P5-7)", () => {
+  // process.platform は read-only なので vi.stubGlobal で Object.defineProperty を使う。
+  // 代わりに _isWin32() が process.platform を読む薄いラッパなので、
+  // それを vi.spyOn で差し替えることで安全に win32 をシミュレートする。
+  // (paths.js モジュール自体を vi.mock せず、エクスポート関数だけ spy することで
+  //  resolveConfigDir / configPaths の挙動を実際に通す)
+
+  // テスト間で warn フラグが汚染しないよう beforeEach でリセット。
+  beforeEach(() => {
+    _resetWin32WarnState();
+    clearRelevantEnv();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  describe("非 win32 環境 (macOS / Linux) では警告が出ない", () => {
+    it("_isWin32() が false のとき _warnIfWin32() は console.error を呼ばない", () => {
+      // テストホストが非 win32 であることを明示的に確認する。
+      // process.platform が実際に win32 でないなら _isWin32() = false。
+      if (process.platform === "win32") {
+        // このテスト自体が win32 上で動く場合はスキップ (CI/CD では起きないが念のため)。
+        return;
+      }
+      const errSpy = vi.spyOn(console, "error");
+      _warnIfWin32();
+      expect(errSpy).not.toHaveBeenCalled();
+    });
+
+    it("非 win32 で resolveConfigDir を呼んでも console.error は出ない", () => {
+      if (process.platform === "win32") return;
+      const errSpy = vi.spyOn(console, "error");
+      resolveConfigDir("/tmp/x");
+      expect(errSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("win32 シミュレート: _warnIfWin32() の単体挙動", () => {
+    // win32 のシミュレートは process.platform を Object.defineProperty で一時上書きする方式を採用。
+    // ESM の live binding の都合で vi.spyOn での named export 差し替えは機能しないため、
+    // _isWin32() が `process.platform` を直接読む設計を活かしてここで差し替える。
+
+    /** process.platform を win32 に差し替えてコールバックを実行し、必ず元に戻す。 */
+    function withWin32(fn) {
+      const orig = process.platform;
+      Object.defineProperty(process, "platform", {
+        value: "win32",
+        writable: true,
+        configurable: true,
+      });
+      try {
+        return fn();
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: orig,
+          writable: true,
+          configurable: true,
+        });
+      }
+    }
+
+    it("win32 のとき console.error に '[sesame-kit] Windows is not supported' を含むメッセージを出す", () => {
+      withWin32(() => {
+        const errSpy = vi.spyOn(console, "error");
+        _resetWin32WarnState();
+        errSpy.mockClear();
+
+        _warnIfWin32();
+
+        expect(errSpy).toHaveBeenCalledOnce();
+        const msg = errSpy.mock.calls[0][0];
+        expect(msg).toContain("[sesame-kit] Windows is not supported");
+        expect(msg).toContain("0600");
+        expect(msg).toContain("docs/platform-roadmap.md");
+      });
+    });
+
+    it("win32 で _warnIfWin32() を 2 回呼んでも console.error は 1 回だけ", () => {
+      withWin32(() => {
+        const errSpy = vi.spyOn(console, "error");
+        _resetWin32WarnState();
+        errSpy.mockClear();
+
+        _warnIfWin32();
+        _warnIfWin32();
+
+        expect(errSpy).toHaveBeenCalledOnce();
+      });
+    });
+
+    it("win32 で resolveConfigDir を複数回呼んでも console.error は 1 回だけ (フラグで制御)", () => {
+      withWin32(() => {
+        const errSpy = vi.spyOn(console, "error");
+        _resetWin32WarnState();
+        errSpy.mockClear();
+
+        resolveConfigDir("/tmp/first");
+        resolveConfigDir("/tmp/second");
+        configPaths("/tmp/third");
+
+        // resolveConfigDir が内部で _warnIfWin32() を呼ぶが、フラグが 1 回目でセットされるので
+        // console.error は 1 回だけのはず。
+        expect(errSpy).toHaveBeenCalledOnce();
+      });
+    });
+
+    it("win32 でも configPaths のパス計算ロジック自体は変わらない (警告のみで動作は続行)", () => {
+      withWin32(() => {
+        const errSpy = vi.spyOn(console, "error");
+        _resetWin32WarnState();
+        errSpy.mockClear();
+        vi.stubEnv("SESAME_KIT_HOME", undefined);
+        vi.stubEnv("XDG_CONFIG_HOME", undefined);
+
+        const paths = configPaths("/tmp/win32-cfg");
+
+        // 警告が 1 回出る
+        expect(errSpy).toHaveBeenCalledOnce();
+        // パス計算は通常どおり
+        expect(paths.dir).toBe(resolve("/tmp/win32-cfg"));
+        expect(paths.config).toBe(resolve("/tmp/win32-cfg", "config.json"));
+        expect(paths.tokens).toBe(resolve("/tmp/win32-cfg", "tokens.json"));
+      });
+    });
+
+    it("_resetWin32WarnState() でフラグがリセットされ、再度警告が出る", () => {
+      withWin32(() => {
+        const errSpy = vi.spyOn(console, "error");
+        _resetWin32WarnState();
+        errSpy.mockClear();
+
+        _warnIfWin32(); // 1 回目
+        expect(errSpy).toHaveBeenCalledOnce();
+
+        _resetWin32WarnState(); // リセット
+        errSpy.mockClear();
+
+        _warnIfWin32(); // 2 回目 (リセット後なので再び出る)
+        expect(errSpy).toHaveBeenCalledOnce();
+      });
     });
   });
 });

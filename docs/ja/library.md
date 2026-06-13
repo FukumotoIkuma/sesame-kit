@@ -9,7 +9,7 @@
 ## `use()` ヘルパ (auto connect/close)
 
 ```js
-import { SesameHub3 } from "sesame-kit";
+import { SesameHub3 } from "@sesame-kit/core";
 
 await SesameHub3.use(async (hub) => {
   await hub.unlock("front");
@@ -99,7 +99,7 @@ await SesameHub3.use(async (hub) => {
 ## 名前ベースの古い API (config 必須)
 
 ```js
-import { SesameHub3 } from "sesame-kit";
+import { SesameHub3 } from "@sesame-kit/core";
 
 const hub = await SesameHub3.fromConfig();
 await hub.connect();
@@ -116,7 +116,7 @@ try {
 
 ## 低レベル import (transport / op 関数 / crypto を直接)
 
-メインエントリ (`"sesame-kit"`) から取れるもの:
+メインエントリ (`"@sesame-kit/core"`) から取れるもの:
 
 ```js
 import {
@@ -125,20 +125,20 @@ import {
   triggerLock, lockLock, lockUnlock, lockToggle, botClick,  // lock 個別関数 (named export)
   ir, devices, crypto, lock, auth,  // ← これらは namespace export (オブジェクト)
   FileTokenStore, ConfigStore, configPaths,
-} from "sesame-kit";
+} from "@sesame-kit/core";
 
 // namespace は メソッドをドット経由で呼ぶ:
 crypto.cmacTime("...");          // ✅ メインから取れるのは namespace の crypto
 auth.getValidIdToken(store);     // ✅ 同上
-// ⚠️ import { cmacTime } from "sesame-kit" は不可 (cmacTime は crypto namespace の中)
+// ⚠️ import { cmacTime } from "@sesame-kit/core" は不可 (cmacTime は crypto namespace の中)
 ```
 
 個別関数を named import したい場合はサブパス (`package.json` の exports map) から:
 
 ```js
-import { cmacTime } from "sesame-kit/crypto";   // ✅ サブパスなら named でOK
-import { learnIRKey } from "sesame-kit/ir";
-import { lockLock } from "sesame-kit/lock";
+import { cmacTime } from "@sesame-kit/core/crypto";   // ✅ サブパスなら named でOK
+import { learnIRKey } from "@sesame-kit/core/ir";
+import { lockLock } from "@sesame-kit/core/lock";
 ```
 
 ## エラー処理: message ではなく `err.code` で分岐する
@@ -146,7 +146,7 @@ import { lockLock } from "sesame-kit/lock";
 ライブラリが throw するエラーの **message はロケール依存**です (CLI と同じ i18n 層を通るため、`--lang` / `config.uiLang` で文言が変わります)。機械的な分岐には `SesameError` の構造化フィールドを使ってください:
 
 ```js
-import { SesameError } from "sesame-kit";
+import { SesameError } from "@sesame-kit/core";
 
 try {
   await hub.unlock("front");
@@ -165,10 +165,10 @@ try {
 ## TypeScript
 
 `.d.ts` 型定義を同梱しています (`types/`、JSDoc から `tsc` で生成)。`moduleResolution: "node16" / "nodenext" / "bundler"` で
-パッケージ名 import (`from "sesame-kit"` / `"sesame-kit/crypto"` 等) すれば型が効きます:
+パッケージ名 import (`from "@sesame-kit/core"` / `"@sesame-kit/core/crypto"` 等) すれば型が効きます:
 
 ```ts
-import { SesameHub3 } from "sesame-kit";
+import { SesameHub3 } from "@sesame-kit/core";
 await SesameHub3.use(async (hub) => {
   await hub.unlockDevice({ deviceUUID: "...", secretKey: "..." });  // 引数が型チェックされる
 });

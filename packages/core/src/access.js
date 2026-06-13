@@ -37,7 +37,7 @@
 import { ACTION_TYPES } from "./vendor/biz3/constants/messageConstants.js";
 import { assertSuccess, subscribeChunks, timeoutError, badRequest, rejected } from "./util.js";
 import { t } from "./i18n.js";
-import { generateUUID } from "./crypto.js";
+import { generateUUID, isUuidV4 } from "./crypto.js";
 import {
   makeCognitoCredentialsProvider,
   makeApiGatewayTransport,
@@ -915,6 +915,22 @@ export async function syncEnrolledCards(client, { deviceUUID, records, list, tim
   if (items.length === 0) return null;
   const responses = [];
   for (const it of items) {
+    // P3-9: 非 v4 nameUUID の警告。
+    // biz3 updateItemName (useManageAuthData.js:438-471) は isUUIDV4(uuidValue) を必ず判定し、
+    // 非 v4 なら BLE SSM_OS3_CARD_CHANGE(107) で新規 v4 UUID をファームに書き込んだ後に
+    // その v4 で WS 更新する二段 composite を行う。
+    // kit はオプトイン (BLE 接続が別途必要な高コスト op のため素通し仕様を維持)。
+    // 呼び出し側が BLE 経路で cardChange を完了させた上で新 v4 nameUUID を渡すこと。
+    // @experimental 実機未検証 (参照: useManageAuthData.js:438-471)。§9 V17。
+    if (it.nameUUID && !isUuidV4(it.nameUUID)) {
+      // stderr に警告を出す (プロセスを止めない)。BLE composite は呼び出し側責務。
+      process.stderr.write(
+        `[syncEnrolledCards] cardID=${it.cardID} nameUUID=${it.nameUUID} is not UUID v4. ` +
+        "biz3 would run BLE SSM_OS3_CARD_CHANGE(107) first to assign a v4 UUID. " +
+        "Complete BLE cardChange and pass the new v4 nameUUID to updateCardName if needed " +
+        "(ref: useManageAuthData.js:438-471).\n",
+      );
+    }
     responses.push(await updateCardName(client, {
       item: {
         cardID: it.cardID,

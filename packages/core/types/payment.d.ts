@@ -34,16 +34,23 @@ export function getClientSecret(client: import("./transport.js").Hub3WsClient, p
  * biz3 changeDefaultPay (useStripeInfo.js:240-252):
  * { action:'biz3ManagePayment', customerId, defaultPaymentMethod, op:'changeDefaultPayment' }
  *
+ * 応答: vendor (useStripeInfo.js:123-135) は `message.reqContext.defaultPaymentMethod` を
+ * 読む。応答の実体は `reqContext` にあるため、戻り値に `reqContext` を含める。
+ * 参照: references_web/src/api/useStripeInfo.js:123-135
+ *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{customerId?:string, companyID?:string, defaultPaymentMethod?:string, timeoutMs?:number}} params
- * @returns {Promise<object|null>}
+ * @returns {Promise<{data: object|null, reqContext: any}>}
  */
 export function changeDefaultPayment(client: import("./transport.js").Hub3WsClient, params?: {
     customerId?: string;
     companyID?: string;
     defaultPaymentMethod?: string;
     timeoutMs?: number;
-}): Promise<object | null>;
+}): Promise<{
+    data: object | null;
+    reqContext: any;
+}>;
 /**
  * Remove a Stripe payment method.
  *

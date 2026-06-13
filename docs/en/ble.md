@@ -50,7 +50,7 @@ sesame ble position <device> <lock> <unlock>          # configure lock/unlock an
 
 `<device>` is a config lock name or a deviceUUID; the connect-based subcommands accept `--secret <hex>` / `--model <model>` (to target a device not in your config locks) and `--timeout <ms>` (publish collection timeout, default 8000). `scan` is keyless. `invoke` and `os2-invoke` also accept `--address <address>` for peripheral ID override.
 
-The only BLE operations that do **not** have a dedicated CLI command are biometric/access-control **enrollment writes** (add/delete/rename, mode-set for cards/passcodes/fingerprints/faces/palms), and Bike3 fingerprint write operations (fingerPrintChange / fingerPrintDelete / fingerPrintModeSet). These write operations are reachable from Node and through `sesame serve` with `ble.invoke` / `ble.os2.invoke` using the same method names. Binary JSON-RPC arguments may be sent as `{"type":"Buffer","data":[...]}` or `{"$buffer":"...","encoding":"hex"}`. Pairing/registration is also available through `sesame ble register`, `sesame ble os2-register`, `ble.register`, and `ble.os2.register`. The `sesame ble` commands, BLE RPC, and library calls share the same code paths and are unit-tested but **not yet confirmed against real hardware**.
+BLE operations that do **not** have a dedicated CLI command (reachable via `sesame ble invoke` / `ble.invoke` or from Node) include: biometric/access-control **enrollment writes** (add/delete/rename, mode-set for cards/passcodes/fingerprints/faces/palms), Bike3 fingerprint write operations (fingerPrintChange / fingerPrintDelete / fingerPrintModeSet), and lower-level device ops such as `magnet`, `opSensorControl`, `setBleTxPower`, `sendAdvProductType`, on-device history read/delete (`history` / `deleteHistory`), WM2 `insertSesames` / `removeSesame`, and Hub3 child-key provisioning (`insertSesames`). These are reachable from Node and through `sesame serve` with `ble.invoke` / `ble.os2.invoke` using the same method names. Binary JSON-RPC arguments may be sent as `{"type":"Buffer","data":[...]}` or `{"$buffer":"...","encoding":"hex"}`. Pairing/registration is also available through `sesame ble register`, `sesame ble os2-register`, `ble.register`, and `ble.os2.register`. The `sesame ble` commands, BLE RPC, and library calls share the same code paths and are unit-tested but **not yet confirmed against real hardware**.
 
 ## Capabilities by device type (follows the official SesameSDK)
 
@@ -118,7 +118,7 @@ The message tells you which case you hit:
 ## As a library
 
 ```js
-import { SesameBle } from "sesame-kit";   // or: import { ble } from "sesame-kit"
+import { SesameBle } from "@sesame-kit/core";   // or: import { ble } from "@sesame-kit/core"
 
 await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
   await lock.unlock();
@@ -205,7 +205,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "ssm_touch" }, async (touch)
 
 These read-side handlers are unit-tested but **not yet confirmed against real hardware**.
 
-The card / passcode **bulk** add (`cardBatchAdd` / `passcodeBatchAdd`) is sent under the `StpItemCode` enum (`STP_ITEM_CODES` in `src/itemcodes.js`: cards 182/183, passcodes 184/185), which is a separate number space from `SesameItemCode` — the same isolation pattern as `WM2_ACTION_CODES`.
+The card / passcode **bulk** add (`cardBatchAdd` / `passcodeBatchAdd`) is sent under the `StpItemCode` enum (`STP_ITEM_CODES` in `itemcodes.js`: cards 182/183, passcodes 184/185), which is a separate number space from `SesameItemCode` — the same isolation pattern as `WM2_ACTION_CODES`.
 
 ### Bike3 fingerprint (`lock.fingerPrint`)
 
@@ -232,7 +232,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "bike_3" }, async (bike) => 
 
 The implementation reuses the same `BiometricCommands` fingerprint methods (item codes 115–122) over the shared session; the getter just narrows the surface to the five fingerprint methods plus `registerDelegate`. Unit-tested but **not yet confirmed against real hardware**.
 
-This is the device-side / firmware write half of access-control management. The cloud DB-sync half (`postCards` / `delPasscodes` / …) lives in `sesame-kit/access`; the official biz3 design writes the device over BLE first, then syncs the server DB in the BLE ack callback (a 2-stage flow).
+This is the device-side / firmware write half of access-control management. The cloud DB-sync half (`postCards` / `delPasscodes` / …) lives in `@sesame-kit/core/access`; the official biz3 design writes the device over BLE first, then syncs the server DB in the BLE ack callback (a 2-stage flow).
 
 The two halves are wired by an explicit, minimal bridge that keeps the BLE = device / cloud = DB split intact. On the BLE side, `bio.onEnroll(onEnrolled, { card, passcode })` (or the standalone `ble.createEnrollCollector({ onEnrolled })` delegate) aggregates one enrollment session — the `*_FIRST` → `*_NOTIFY`(×N) → `*_LAST` publish window — into a single batch `{ kind, records }`. On the cloud side, `access.syncEnrolledCards(client, { deviceUUID, records })` / `access.syncEnrolledPasscodes(...)` map those records and delegate to `postCards` / `postPasscodes` (no new WS op is introduced; `access.enrolledToCardList(records)` is the pure mapper). The biometric layer never imports `access` — the caller decides whether to sync inside `onEnrolled`:
 
@@ -261,7 +261,8 @@ await SesameBle.use({ deviceUUID, secretKey, model: "wm_2" }, async (dev) => {
   await wifi.setWifiSSID("my-ap");
   await wifi.setWifiPassword("secret");
   await wifi.connectWifi();                  // uses companyId + deviceUUID to build the verification
-  wifi.networkStatus();                      // status arrives as { kind: "networkStatus", isNet, isIot, ... }
+  // networkStatus is receive-only (no send command). The WM2 pushes it automatically;
+  // subscribe via onPublish and check for { kind: "networkStatus", isNet, isIot, ... }.
 
   // Provision a child SESAME key into the WM2 (so it can relay that lock), or remove it.
   await wifi.insertSesames({ deviceUUID: childUUID, secretKey: childSecret, sesame2PublicKey, deviceModel });
@@ -274,7 +275,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "wm_2" }, async (dev) => {
 });
 ```
 
-WM2 commands ride the `WM2ActionCode` enum (`WM2_ACTION` / `WM2_ACTION_CODES` in `src/itemcodes.js`), a separate number space from `SesameItemCode` — the same isolation pattern as the biometric `StpItemCode`. The pure data builders and publish parsers (`setWifiSSIDData`, `parseWM2Publish`, …) are also exported from `sesame-kit/ble` (`ble.wm2.*`) for custom wiring.
+WM2 commands ride the `WM2ActionCode` enum (`WM2_ACTION` / `WM2_ACTION_CODES` in `itemcodes.js`), a separate number space from `SesameItemCode` — the same isolation pattern as the biometric `StpItemCode`. The pure data builders and publish parsers (`setWifiSSIDData`, `parseWM2Publish`, …) are also exported from `@sesame-kit/core/ble` (`ble.wm2.*`) for custom wiring.
 
 ### Wi-Fi provisioning & network type (Hub3)
 
@@ -297,7 +298,7 @@ await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
 });
 ```
 
-Hub3 has no BLE lock-control ops, but it does inherit the shared OS3 paths: `connect`/`login`, `register` (`SesameBle.register()`), `reset()` (`Reset(104)`), and `updateFirmware()` (`MOVE_TO(84)`, see below) all work. The pure data builders and publish parsers (`setWifiSSIDData`, `parseHub3Publish`, `parseNetworkType`, …) are also exported from `sesame-kit/ble` (`ble.hub3.*`) for custom wiring. **Not yet confirmed against real hardware.** The whole `networkType` path (item code 209, request *and* publish, and the `[wifi 1B][lte 1B]` payload guess) has **no primary source in the Android SDK** — it is inferred from the biz3 web native bridge and may be removed if it cannot be confirmed.
+Hub3 has no BLE lock-control ops, but it does inherit the shared OS3 paths: `connect`/`login`, `register` (`SesameBle.register()`), `reset()` (`Reset(104)`), and `updateFirmware()` (`MOVE_TO(84)`, see below) all work. The pure data builders and publish parsers (`setWifiSSIDData`, `parseHub3Publish`, `parseNetworkType`, …) are also exported from `@sesame-kit/core/ble` (`ble.hub3.*`) for custom wiring. **Not yet confirmed against real hardware.** The whole `networkType` path (item code 209, request *and* publish, and the `[wifi 1B][lte 1B]` payload guess) has **no primary source in the Android SDK** — it is inferred from the biz3 web native bridge and may be removed if it cannot be confirmed.
 
 ### Firmware update over BLE (DFU / OTA)
 
@@ -309,14 +310,14 @@ await SesameBle.use({ deviceUUID, secretKey, model: "hub_3" }, async (dev) => {
 });
 ```
 
-The facade unsubscribes its internal progress listener once the OTA server is up (the command response). To keep receiving progress all the way to 100 %, subscribe directly via `ble.onMoveToOtaProgress(session, cb)` (Hub3) or `ble.onWM2OtaProgress(session, cb)` (WM2). The pure logic layer (`updateFirmware` / `updateFirmwareBleOnly` / `updateFirmwareWM2`) is also exported from `sesame-kit/ble` (`ble.dfu.*`) for custom wiring. The actual DFU binary transfer is handled by an external DFU library on a separate GATT service; this layer only starts the OTA server and reports progress.
+The facade unsubscribes its internal progress listener once the OTA server is up (the command response). To keep receiving progress all the way to 100 %, subscribe directly via `ble.onMoveToOtaProgress(session, cb)` (Hub3) or `ble.onWM2OtaProgress(session, cb)` (WM2). The pure logic layer (`updateFirmware` / `updateFirmwareBleOnly` / `updateFirmwareWM2`) is also exported from `@sesame-kit/core/ble` (`ble.dfu.*`) for custom wiring. The actual DFU binary transfer is handled by an external DFU library on a separate GATT service; this layer only starts the OTA server and reports progress.
 
 ### OS2 devices (SESAME 2 / 3 / 4, Bot1, Bike1)
 
 OS2 devices speak a **different BLE protocol** from OS3 — login derives the session key from an ECDH against the device's public key, so it needs more than a `secretKey`. They use a separate facade, `SesameOS2Ble`, with the same operation surface as the OS3 one:
 
 ```js
-import { SesameOS2Ble, ble } from "sesame-kit";
+import { SesameOS2Ble, ble } from "@sesame-kit/core";
 const { createBleTransport } = ble;                    // OS2 needs an explicit transport injected
 
 await SesameOS2Ble.use(
@@ -367,7 +368,7 @@ sesame ble os2-register <uuid-from-scan> --model sesame_3 --json
 The same flows are available from `sesame serve` as `ble.register` and `ble.os2.register`.
 
 ```js
-import { SesameBle } from "sesame-kit";
+import { SesameBle } from "@sesame-kit/core";
 
 const key = await SesameBle.registerOnce(
   { deviceUUID: "<uuid from advertise>", model: "sesame_5" },
@@ -386,7 +387,7 @@ The README's [BLE pairing / registration](../../README.md#ble-pairing--registrat
 You can enumerate nearby SESAMEs from a single scan **without any `secretKey`** — everything below comes from the BLE advertisement alone (corresponds to `CHBleManager`'s `chDeviceMap` construction in the SDK).
 
 ```js
-import { SesameBle } from "sesame-kit";
+import { SesameBle } from "@sesame-kit/core";
 
 // One scan → typed discovery results. No secretKey required.
 const found = await SesameBle.listNearby({ timeoutMs: 8000 });
@@ -405,7 +406,7 @@ await lock.connect();
 const key = SesameBle.fromDiscovery(entry, { registerMode: true });
 ```
 
-`SesameBle.listNearby(opts)` is a thin facade over `listNearbyDevices()` (also exported from `sesame-kit/ble`); unlike `scanSesames()` (which returns only a `deviceUUID → peripheral` map), it returns the model-tagged attributes derivable from the advertisement. `isRegistered: false` flags a factory-reset device you can pass to `registerOnce`. `SesameBle.fromDiscovery(entry, opts)` reuses the entry's `peripheral`, so `connect()` skips the scan (the same fast path `connectMany` uses).
+`SesameBle.listNearby(opts)` is a thin facade over `listNearbyDevices()` (also exported from `@sesame-kit/core/ble`); unlike `scanSesames()` (which returns only a `deviceUUID → peripheral` map), it returns the model-tagged attributes derivable from the advertisement. `isRegistered: false` flags a factory-reset device you can pass to `registerOnce`. `SesameBle.fromDiscovery(entry, opts)` reuses the entry's `peripheral`, so `connect()` skips the scan (the same fast path `connectMany` uses).
 
 ### Connecting to multiple locks in one scan
 

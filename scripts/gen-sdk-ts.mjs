@@ -1,4 +1,4 @@
-// schema/openrpc.json から型付き TypeScript SDK を生成する (sdk/ts/sesame-client.ts)。
+// schema/openrpc.json から型付き TypeScript SDK を生成する (packages/kit/sdk/ts/sesame-client.ts)。
 //
 // スキーマ駆動: 公開契約 (drift gate 済) を唯一の入力にして SDK を機械生成する。
 // メソッド追加/変更は build:openrpc → build:sdk で SDK に伝播し、drift gate が同期を担保する。
@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SPEC = resolve(ROOT, "schema", "openrpc.json");
-const OUT = resolve(ROOT, "sdk", "ts", "sesame-client.ts");
+const OUT = resolve(ROOT, "packages", "kit", "sdk", "ts", "sesame-client.ts");
 
 /** OpenRPC param schema → TS 型 (不明は unknown。嘘の型を主張しない)。 */
 function tsType(schema) {

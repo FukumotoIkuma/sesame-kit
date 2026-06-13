@@ -54,7 +54,7 @@ promise:
    - **offline replay** (`node scripts/canary-upstream.mjs --replay`) — **runs in
      CI, no creds.** Validates recorded vendor-response samples in
      `tests/fixtures/upstream/*.json` against the **same** stable schemas
-     (`src/serve/result-schemas.js`) the live canary asserts against, and exits
+     (`packages/kit/src/serve/result-schemas.js`) the live canary asserts against, and exits
      non-zero on mismatch. This catches the "someone loosened a stable schema so it
      no longer matches a real vendor response" class of drift without live access.
      Fixtures are synthetic-but-schema-valid samples; refresh them from a live run
@@ -65,10 +65,16 @@ promise:
 
 ### Provenance (first-class)
 
-Each contract element should carry where its shape came from and how sure we are —
-e.g. `verified-live` / `biz3-source-ref:<path>` / `unverified`. This formalizes the
-informal `未確認` comments. **`x-stability` is derived from provenance**, so the
-confidence we hold internally and the promise we make externally stay consistent.
+Each contract element carries where its shape came from and how sure we are.
+The implementation uses three provenance values (source: `packages/kit/src/serve/stability.js`):
+
+- `"local"` — produced entirely by the daemon itself (e.g. `status`, `rpc.discover`, lifecycle events like `event.ready`); independent of the vendor cloud.
+- `"app-core"` — the method's behavior and shape are derived from a **load-bearing path in the official app** (verified against the biz3 / Android SDK sources; vendor is very unlikely to break it).
+- `"unverified"` — the shape is inferred or only partly confirmed against the vendor; may change without notice.
+
+Stable methods are a subset of `{local, app-core}`. Experimental methods are `unverified` (or `app-core` methods not yet promoted to stable). This formalizes the informal `未確認` comments and keeps internal confidence consistent with the external promise. **`x-stability` is derived from provenance**, so the two always agree.
+
+> Earlier drafts of this document listed example values `verified-live` / `biz3-source-ref:<path>` / `unverified` — those were design-time placeholders. The implementation vocabulary is `local` / `app-core` / `unverified`.
 
 ## Model: two tiers
 
@@ -87,8 +93,8 @@ provably solid**; ship breadth as **experimental** rather than over-committing.
 ## Transport / dependency reality (applies to all methods)
 
 - The daemon backs cloud/Biz3 RPC methods with **one resident cloud-WS client**
-  (`SesameHub3`). BLE operations are exposed as **76 typed `ble.*` / `ble.os2.*`
-  RPC methods** — `ble.script.*` / `ble.biometric.*` / `ble.fingerPrint.*` /
+  (`SesameHub3`). BLE operations are exposed as **76 `ble.*` / `ble.os2.*`
+  RPC methods** (74 typed + 2 generic escape-hatch facades) — `ble.script.*` / `ble.biometric.*` / `ble.fingerPrint.*` /
   `ble.remoteNano.*` / `ble.wifi.*` / `ble.hub3.*` / `ble.os2.*` and standalone
   ops (`ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` /
   `ble.history` / `ble.scan` / `ble.magnet` …). The generic
@@ -102,7 +108,7 @@ provably solid**; ship breadth as **experimental** rather than over-committing.
 
 ## Stable 1.0 surface (core)
 
-**13 methods + 3 events** (the single source is `src/serve/stability.js`, locked
+**13 methods + 3 events** (the single source is `packages/kit/src/serve/stability.js`, locked
 against the live registry by `tests/serve-stability.test.js` / `tests/provenance.test.js`).
 This is the only surface the platform commits to at 1.0. Each qualifies under the
 stable test above: **load-bearing in the official app** (vendor unlikely to break)
@@ -111,7 +117,7 @@ stable test above: **load-bearing in the official app** (vendor unlikely to brea
 ### Meta
 | Method | Description |
 |---|---|
-| `status` | Daemon/cloud status: `{connected, authState, subUUID, apiVersion}` |
+| `status` | Daemon/cloud status: `{connected, authState, subUUID, apiVersion, contractVersion}` (note: `contractVersion` is a deprecated alias for `apiVersion` kept for backward compatibility) |
 | `rpc.discover` | OpenRPC document (incl. per-method `x-stability`, events) |
 | `account.whoami` | Logged-in customer info |
 
@@ -173,7 +179,7 @@ explicit range validation, rather than reusing the current raw escape hatches.
 
 ## Experimental namespaces (excluded from 1.0 guarantee)
 
-The registry exposes **202 methods** in total (contract 1.2.0); everything outside
+The registry exposes **205 methods** in total (contract 1.4.0); everything outside
 the 13 stable methods stays **experimental** — broad cloud/business features, many
 with explicitly unverified response shapes (`未確認` notes in source):
 
@@ -192,7 +198,7 @@ with explicitly unverified response shapes (`未確認` notes in source):
   (hideHistory / hideBattery / rename / delete)
 - `config.sync*` (4 ops), `config.list*` (2 ops), `webapi.*` (4 ops), `firmware.list`, `cloud.ping`,
   `lock.setAutolock` (cloud/BLE `transport` param; only BLE takes effect on-device)
-- `ble.*` (76 ops: `invoke` / `os2.invoke` generic facades plus typed wrappers —
+- `ble.*` (76 ops: 74 typed wrappers + `invoke` / `os2.invoke` generic facades —
   `ble.script.*` / `ble.biometric.*` / `ble.fingerPrint.*` / `ble.remoteNano.*` /
   `ble.wifi.*` / `ble.hub3.*` / `ble.os2.*` and standalone ops register /
   os2.register / updateFirmware / reset / position / history / scan / magnet …)
@@ -225,7 +231,7 @@ JSON-RPC 2.0 errors carry a structured, machine-readable `data.kind`:
 - `rejected` carries `data.upstreamCode` (the vendor cloud's failure code;
   provenance = upstream).
 - Library throws are typed (`SesameError` with a machine `code`); the serve
-  boundary maps `code` → `kind` (`src/errors.js` → `src/serve/jsonrpc.js`), so
+  boundary maps `code` → `kind` (`packages/core/src/errors.js` → `packages/core/src/jsonrpc.js`), so
   domain failures no longer collapse to `internal`.
 - `data` never echoes inbound params (avoids leaking `secretKey`).
 - Transport failures are classified by **structured code**, not error-string
@@ -240,13 +246,13 @@ Tracked here so the stable tier is honest when it freezes. All five original
 issues are now addressed:
 
 1. **Domain errors collapse to `internal`.** *(addressed — stable lock path in
-   1.1.0, remaining namespaces since)* — `src/errors.js` (`SesameError` + machine
+   1.1.0, remaining namespaces since)* — `packages/core/src/errors.js` (`SesameError` + machine
    `code`) is mapped at the serve boundary to `kind` + `data.retryable`; `lock.*`
    and the lock-resolution path emit `rejected`/`connection_lost`/`timeout`/
    `bad_params` instead of `internal`. The experimental namespace ops
    (`org`/`iot`/`company`/`access`/`devices`/`schedule`/`presetir`/`sharekey`/
    `account`/`ir`) now also throw `SesameError` via the shared `badRequest` /
-   `rejected` / `timeout` helpers (`src/util.js`), so caller-input validation maps
+   `rejected` / `timeout` helpers (`packages/core/src/util.js`), so caller-input validation maps
    to `bad_params`, explicit upstream failures to `rejected` (with
    `data.upstreamCode`), and paged-push waits to `timeout` — no longer `internal`.
 2. **`event.ready` advertised but never emitted.** *(addressed — contract 1.2.0)*
@@ -259,8 +265,8 @@ issues are now addressed:
    `iot.removeSesameFromHub3` now self-describes its full param list in
    `rpc.discover` / `schema/openrpc.json`.)*
 4. **Stale `CONTRACT_VERSION` doc-comment** ("79 method" vs 81 exposed).
-   *(addressed — `src/serve/jsonrpc.js` now keeps a per-version changelog
-   (1.0.0 / 1.1.0 / 1.2.0); the registry exposes 202 methods at 1.2.0.)*
+   *(addressed — `packages/core/src/jsonrpc.js` now keeps a per-version changelog
+   (1.0.0 / 1.1.0 / 1.2.0 / 1.3.0 / 1.4.0); the registry exposes 205 methods at contract 1.4.0.)*
 5. **`apiVersion` separation.** *(addressed — 1.1.0)* The API surface is versioned
    independently from the package version and exposed as `apiVersion` in `status`
    and `rpc.discover` (`contractVersion` / `x-contractVersion` kept as deprecated

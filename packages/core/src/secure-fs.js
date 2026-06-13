@@ -191,12 +191,18 @@ export function withFileLock(path, fn, opts = {}) {
   // lock ファイル自体も設定ディレクトリ内に作るので、親を 0700 で用意しておく
   ensureSecureDir(dirname(path));
   const deadline = Date.now() + timeoutMs;
+  // P5-3: 取得成功時に lock ファイルの inode 番号を保持する。解放時に現 lock の ino と照合し、
+  // 一致する場合のみ unlink する。不一致 = 保持中に別プロセスが stale 奪取して新鮮な lock を
+  // 書き直した (ino が変わっている) ため、そちらの lock は解放しない (二重保持防止)。
+  let acquiredIno = -1;
   for (;;) {
     try {
       // "wx" = O_WRONLY | O_CREAT | O_EXCL — 既存なら EEXIST (原子的な取得)
       const fd = openSync(lockPath, "wx", SECRET_FILE_MODE);
       try {
         writeSync(fd, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }) + "\n");
+        // P5-3: fd を close する前に fstat して ino を記録する (open→fstat = 同一 inode の保証)。
+        acquiredIno = fstatSync(fd).ino;
       } finally {
         closeSync(fd);
       }
@@ -249,7 +255,22 @@ export function withFileLock(path, fn, opts = {}) {
   try {
     return fn();
   } finally {
-    // 異常系でも必ず解放する。万一 unlink に失敗しても stale 回収で詰まらない。
-    try { unlinkSync(lockPath); } catch { /* best-effort */ }
+    // P5-3: 解放は「自分が取得したロック」に限定する。
+    // 保持中にプロセスが suspend されるなど stale 閾値を超えた場合、別プロセス (P2) が
+    // stale 奪取して新鮮な lock を書き直す。その後このプロセスが復帰して finally に来たとき、
+    // lockPath が指すのは P2 の新鮮な lock (ino が異なる)。無条件 unlink すると P2 の lock が
+    // 消え、P3 が O_EXCL 取得して P2 と P3 の二重保持 → tokens.json の lost-update になる。
+    // ino 照合により「奪取済み = 自分のロックではない」と判定して unlink をスキップする。
+    // 万一 statSync が失敗した場合は安全側に倒してスキップ (既に誰かが unlink 済みの可能性)。
+    try {
+      if (acquiredIno >= 0) {
+        let currentIno;
+        try { currentIno = statSync(lockPath).ino; } catch { /* ENOENT 等: ino 不明 → スキップ */ }
+        if (currentIno === acquiredIno) {
+          try { unlinkSync(lockPath); } catch { /* best-effort */ }
+        }
+        // currentIno !== acquiredIno (または statSync 失敗): 奪取済みか既に消された → 何もしない
+      }
+    } catch { /* safety net: 解放エラーは stale 回収で詰まらない */ }
   }
 }

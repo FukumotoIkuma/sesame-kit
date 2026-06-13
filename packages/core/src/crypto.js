@@ -155,6 +155,64 @@ export function normalizeUuid(s) {
 }
 
 /**
+ * パスコード (PIN コード) 各桁を 2 桁 hex に変換してファームウェア識別可能 ID へ整形する。
+ * biz3 formatPasscodeID の 1:1 移植 (biz3utils.js:262-267):
+ *   "123" → "010203"  (各桁 → 2 桁 hex 大文字)
+ *   "0"   → "00"
+ *
+ * 利用場面: `access.postPasscodes` / `biometric.passcodeAdd` に渡す `passwordID` の形式。
+ * 素の PIN 文字列をそのまま渡すとファームウェアが認識しないため、この変換が必要。
+ * 変換自体は呼び出し側オプトイン (postPasscodes の素通し仕様は参照と一致するため変えない)。
+ * 参照: references_web/src/utils/biz3utils.js:262-267
+ *
+ * @param {string|number} password PIN コード (文字列 or 数値)。各文字が 1 桁として扱われる。
+ * @returns {string} 2 桁 hex の連結大文字列 (例: "123" → "010203")
+ */
+export function formatPasscodeID(password) {
+  // biz3utils.js:263: Array.from(password.toString())
+  //                       .map(num => ('0' + parseInt(num,10).toString(16)).slice(-2))
+  //                       .join('').toUpperCase()
+  return Array.from(String(password))
+    .map((num) => ("0" + parseInt(num, 10).toString(16)).slice(-2))
+    .join("")
+    .toUpperCase();
+}
+
+/**
+ * tag (nameUUID) が UUID v4 形式かどうかを判定する。
+ * biz3 isUUIDV4 の 1:1 移植 (biz3utils.js:435-453):
+ *   - 16B バイナリ (Buffer or hex 文字列から変換)
+ *   - version byte (byte[6] & 0xf0) === 0x40
+ *   - variant byte (byte[8] & 0xc0) === 0x80
+ *
+ * 用途: nameUUID が非 v4 の場合、BLE SSM_OS3_CARD_CHANGE(107) / SSM_OS3_PASSCODE_CHANGE(123)
+ * で新規 v4 を書き込む二段 composite が必要かを判定する (useManageAuthData.js:438-471)。
+ *
+ * @experimental 実機未検証 (参照: references_web/src/utils/biz3utils.js:435-453)。
+ *   §9 V17 にファームウェア採番 nameUUID の v4 性を登録。
+ *
+ * @param {string|Buffer|Uint8Array|null|undefined} tag UUID 文字列 (ハイフン有無不問) または Buffer/Uint8Array
+ * @returns {boolean}
+ */
+export function isUuidV4(tag) {
+  // biz3utils.js:436: if (!tag) return false
+  if (!tag) return false;
+  let tagBuffer = /** @type {Buffer} */ (/** @type {unknown} */ (tag));
+  if (typeof tagBuffer === "string") {
+    // biz3utils.js:441: Buffer.from(tag.replace(/-/g,''), 'hex')
+    tagBuffer = Buffer.from(/** @type {string} */ (tag).replace(/-/g, ""), "hex");
+  }
+  // biz3utils.js:443: if (tagBuffer.length !== 16) return false
+  // @ts-expect-error — tagBuffer は let 再代入後 TS が型を narrowing できず Uint8Array instanceof が TS2358 になるため抑制。
+  if (!Buffer.isBuffer(tagBuffer) && !(tagBuffer instanceof Uint8Array)) return false;
+  if (tagBuffer.length !== 16) return false;
+  // biz3utils.js:446-452: version === 0x40 && variant === 0x80
+  const version = tagBuffer[6] & 0xf0;
+  const variant = tagBuffer[8] & 0xc0;
+  return version === 0x40 && variant === 0x80;
+}
+
+/**
  * 32桁 hex 文字列をハイフン付き UUID 文字列に整形する。
  *
  * 参照: `DataExtention.kt:41-46` (noHashtoUUID) — hex を 8-4-4-4-12 に区切る純粋整形。

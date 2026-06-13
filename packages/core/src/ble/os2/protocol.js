@@ -459,24 +459,31 @@ export const MECH_STATE = Object.freeze({ LOCKED: "locked", UNLOCKED: "unlocked"
  * 施錠/解錠/中間は isInLockRange / isInUnlockRange の 2 ビットで判定する
  * (CHSesame2Device.kt:551 / CHSesameBikeDevice.kt:299: lock / unlock / else=moved)。
  *
- * Bot1 固有意味論 (kind="os2bot", P3-24 / R2:BLE2-15):
- *   - state は 2 値のみ: isInLockRange → LOCKED、else → UNLOCKED (MOVED は出ない)。
- *     出典: CHSesameBotDevice.kt:303 / :346 —
- *       `deviceStatus = if (isInLockRange) CHDeviceStatus.Locked else CHDeviceStatus.Unlocked`
- *   - isStop は motorStatus 由来で上書き計算される (CHSesameBotDevice.kt:286-293 / :334-344):
- *       motorStatus 0 (noPower) → true
- *       motorStatus 1 (forward)  → false
- *       motorStatus 2 (hold)     → true
- *       motorStatus 3 (backward) → false
- *       else                     → false
- *     (CHSesameBot.kt:28 の flags-based isStop はクラス初期値であり、
- *      CHSesameBotDevice.kt:286-293 の when ブロックで必ず上書きされる)
+ * kind 3 値化 (P4-2):
+ *   - kind="os2bot"  : Bot1 固有意味論 (P3-24 / R2:BLE2-15)。
+ *       state は 2 値のみ: isInLockRange → LOCKED、else → UNLOCKED (MOVED は出ない)。
+ *       出典: CHSesameBotDevice.kt:303 / :346 —
+ *         `deviceStatus = if (isInLockRange) CHDeviceStatus.Locked else CHDeviceStatus.Unlocked`
+ *       isStop は motorStatus 由来で上書き計算される (CHSesameBotDevice.kt:286-293 / :334-344):
+ *         motorStatus 0 (noPower) → true
+ *         motorStatus 1 (forward)  → false
+ *         motorStatus 2 (hold)     → true
+ *         motorStatus 3 (backward) → false
+ *         else                     → false
+ *       (CHSesameBot.kt:28 の flags-based isStop はクラス初期値であり、
+ *        CHSesameBotDevice.kt:286-293 の when ブロックで必ず上書きされる)
+ *   - kind="os2bike" : Bike1 固有。isStop は flags bit0 由来 (CHSesameBotMechStatus と同クラス利用。
+ *       出典: CHSesameBot.kt:28 `isStop: Boolean? = (flags and 1 == 0)` /
+ *             CHSesameBikeDevice.kt:296 Bike1 は CHSesameBotMechStatus を使う)。
+ *   - 既定 (os2lock / kind 未指定) : Sesame2/3/4。**isStop = null**。
+ *       出典: CHSesame2.kt:40 `override var isStop: Boolean? = null` — SDK が明示的に null。
+ *       flags bit0 の意味論は一次資料がないため null で公開するのが 1:1 移植として正しい。
  *
  * @param {Buffer} buf mech_status_t (8B。Kotlin は data[7] まで読む固定レイアウト)
- * @param {{kind?: string}} [opts] オプション。kind="os2bot" で Bot1 固有意味論を適用。
+ * @param {{kind?: string}} [opts] オプション。kind="os2bot"/"os2bike" で固有意味論を適用。
  * @returns {{state:string, isInLockRange:boolean, isInUnlockRange:boolean, isBatteryCritical:boolean,
  *            target:number|null, position:number|null, targetDeg:number|null, positionDeg:number,
- *            batteryRaw:number, retCode:number, flags:number, motorStatus:number, isStop:boolean}}
+ *            batteryRaw:number, retCode:number, flags:number, motorStatus:number, isStop:boolean|null}}
  */
 export function parseMechStatus(buf, { kind } = {}) {
   if (!Buffer.isBuffer(buf)) throw new Error("mechStatus must be a Buffer");
@@ -500,13 +507,21 @@ export function parseMechStatus(buf, { kind } = {}) {
     ? MECH_STATE.LOCKED
     : (isBot || isInUnlockRange ? MECH_STATE.UNLOCKED : MECH_STATE.MOVED);
 
-  // Bot1 固有: isStop は motorStatus 由来 (CHSesameBotDevice.kt:286-293, :334-344)。
-  // flags-based isStop (CHSesameBot.kt:28) はクラス初期値であり、
-  // when(motorStatus) ブロックで必ず上書きされるため、Bot では flags を使わない。
-  // Sesame2/Bike/その他は従来どおり flags bit0 == 0 で判定。
+  const isBike = kind === "os2bike";
+
+  // isStop の 3 値化 (P4-2):
+  //   os2bot  : motorStatus 由来 (CHSesameBotDevice.kt:286-293, :334-344)。
+  //             flags-based (CHSesameBot.kt:28) はクラス初期値で when ブロックで必ず上書きされる。
+  //   os2bike : flags bit0 由来 (CHSesameBot.kt:28 — Bike1 は CHSesameBotMechStatus クラスを使う。
+  //             出典: CHSesameBikeDevice.kt:296 / CHSesameBot.kt:28)。
+  //   既定 (os2lock): null — SDK が明示的に null (CHSesame2.kt:40: `isStop: Boolean? = null`)。
+  //             flags bit0 のロックでの意味論は一次資料なし。参照を捏造しない。
+  /** @type {boolean|null} */
   const isStop = isBot
     ? (motorStatus === 0 || motorStatus === 2)  // noPower=0/hold=2 → true; forward=1/backward=3 → false; else false
-    : (flags & 0b0000_0001) === 0;              // CHSesameBot.kt:28 / Sesame2 既定
+    : isBike
+      ? (flags & 0b0000_0001) === 0             // CHSesameBot.kt:28: (flags and 1 == 0)
+      : null;                                   // os2lock (Sesame2/3/4): CHSesame2.kt:40 = null
 
   return {
     state,

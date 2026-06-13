@@ -16,8 +16,8 @@
 //   replay : node scripts/canary-upstream.mjs --replay   (オフライン。CI 既定)
 //
 // 終了コード: 0 = drift 無し / 1 = drift 検出 (または live のエラー) / 2 = 設定未存在 (live のみ)。
-import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync, readdirSync, realpathSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { RESULT_SCHEMAS } from "../packages/kit/src/serve/result-schemas.js";
 
@@ -182,9 +182,15 @@ function finish(against, source) {
   console.log("✅ no upstream drift detected.");
 }
 
-const replay = process.argv.includes("--replay");
-if (replay) {
-  runReplay();
-} else {
-  runLive().catch((e) => { console.error("canary error:", e?.message || e); process.exit(1); });
+// main ガード: import 副作用を隔離し、直接実行時のみ生体クラウド通信を実行する。
+// 規範 11 参照 (REFACTORING_PLAN.md §0.1)。他のスクリプト (gen-grpc-proto.mjs 等) が手本。
+export { runReplay, runLive, finish, validate };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  const replay = process.argv.includes("--replay");
+  if (replay) {
+    runReplay();
+  } else {
+    runLive().catch((e) => { console.error("canary error:", e?.message || e); process.exit(1); });
+  }
 }

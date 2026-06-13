@@ -138,6 +138,7 @@ sesame ir remote-add-matter              # register an IR remote as a Matter on/
 ```bash
 sesame hub3 sync-from-devices    # import your Hub3(s)
 sesame remote sync-from-devices  # import remotes (Hub3 + irType auto-detected) and their keys
+sesame remote sync-from-server <hub3> <irType>   # import remotes from the server for a specific Hub3 and irType
 sesame remote ls                 # list configured remotes
 sesame remote set-default ac     # default remote used by a bare `sesame send <key>`
 ```
@@ -419,7 +420,7 @@ The operation set differs by device type. The SDK defines capabilities asymmetri
 Usable as a library too:
 
 ```js
-import { SesameBle } from "sesame-kit";   // or: import { ble } from "sesame-kit"
+import { SesameBle } from "@sesame-kit/core";   // or: import { ble } from "@sesame-kit/core"
 await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
   await lock.unlock();
   await lock.autolock(30);

@@ -24,6 +24,8 @@ import { GATT, COMPANY_ID } from "./protocol.js";
 import { PRODUCT_TYPES, KIND } from "./devicemodel.js";
 // UUID 正規化・hex→UUID 変換は crypto.js に統合 (REFACTORING_PLAN P5-4)。
 import { normalizeUuid, hexToUuid } from "../crypto.js";
+// BLE アダプタ層の SesameError 体系化 (P5-5 / R3:ARCH-10)。
+import { SesameError, ERR } from "../errors.js";
 
 // 既定 GATT は SESAME ロック (protocol.js fd81 系)。WM2 のように別サービス UUID で discover/
 // subscribe する必要があるデバイスは、createBleTransport/NobleTransport/scanSesames に
@@ -326,21 +328,25 @@ function probeBleAvailability() {
 }
 
 /**
- * ネイティブ abort を検知したときに投げる、導線付きエラーを組み立てる。
+ * ネイティブ abort を検知したときに投げる、導線付き SesameError を組み立てる。
  * macOS は Bluetooth 権限 (entitlement) 不足が最頻なので BLE_UNAUTHORIZED、それ以外
  * (Linux/RPi/headless: アダプタ無し・権限不足) は BLE_UNSUPPORTED にマップする。
  * いずれも waitPoweredOn の既存 i18n 文言を流用し、abort 由来の追加ヒントを添える。
+ * P5-5 (R3:ARCH-10): 旧実装は plain Error + .code 後付け (SesameError 体系外)。
+ * ライブラリ利用者が instanceof SesameError で拾えるよう SesameError に変更。
+ * @returns {SesameError}
  */
-/** @returns {CodedError} */
 function bleAbortError() {
   if (process.platform === "darwin") {
-    const e = /** @type {CodedError} */ (new Error(`${t("ble.bluetoothUnauthorized")} ${t("ble.nativeAbortHint")}`));
-    e.code = "BLE_UNAUTHORIZED"; // CLI 側で設定ペインを開く判定に使う (waitPoweredOn と同じ)
-    return e;
+    return new SesameError(
+      `${t("ble.bluetoothUnauthorized")} ${t("ble.nativeAbortHint")}`,
+      { code: ERR.BLE_UNAUTHORIZED, retryable: false },
+    );
   }
-  const e = /** @type {CodedError} */ (new Error(`${t("ble.bluetoothUnsupported")} ${t("ble.nativeAbortHint")}`));
-  e.code = "BLE_UNSUPPORTED";
-  return e;
+  return new SesameError(
+    `${t("ble.bluetoothUnsupported")} ${t("ble.nativeAbortHint")}`,
+    { code: ERR.BLE_UNSUPPORTED, retryable: false },
+  );
 }
 
 /**
@@ -354,9 +360,8 @@ function bleAbortError() {
 function loadNoble() {
   const probe = probeBleAvailability();
   if (probe.kind === "noAdapter") {
-    const err = /** @type {CodedError} */ (new Error(t("ble.noAdapter", { cause: probe.cause })));
-    err.code = "BLE_NO_ADAPTER";
-    throw err;
+    // P5-5: SesameError に変更 (旧: plain Error + .code 後付け)。
+    throw new SesameError(t("ble.noAdapter", { cause: probe.cause }), { code: ERR.BLE_NO_ADAPTER, retryable: false });
   }
   if (probe.kind === "aborted") {
     // 本プロセスで state を触れば同じ SIGABRT で無言クラッシュする。触る前に導線付きで止める。
@@ -372,9 +377,8 @@ function loadNoble() {
   } catch (e) {
     // MODULE_NOT_FOUND の message は require stack を含むので 1 行目だけ拾う。
     const cause = String(/** @type {{message?:string}} */ (e)?.message || e).split("\n")[0];
-    const err = /** @type {CodedError} */ (new Error(t("ble.noAdapter", { cause })));
-    err.code = "BLE_NO_ADAPTER";
-    throw err;
+    // P5-5: SesameError に変更 (旧: plain Error + .code 後付け)。
+    throw new SesameError(t("ble.noAdapter", { cause }), { code: ERR.BLE_NO_ADAPTER, retryable: false });
   }
 }
 
@@ -387,11 +391,11 @@ function loadNoble() {
 function waitPoweredOn(noble, log = () => {}) {
   return new Promise((resolve, reject) => {
     if (noble.state === "poweredOn") return resolve();
+    // P5-5: すべて SesameError に変更 (旧: plain Error + .code 後付け)。
+    // CLI は err.code (= ERR.BLE_* 文字列) で設定ペイン表示等を判定する (旧 "BLE_UNAUTHORIZED" と同値)。
     const to = setTimeout(() => {
       noble.removeListener("stateChange", onState);
-      const e = /** @type {CodedError} */ (new Error(t("ble.bluetoothInitTimeout")));
-      e.code = "BLE_INIT_TIMEOUT";
-      reject(e);
+      reject(new SesameError(t("ble.bluetoothInitTimeout"), { code: ERR.BLE_INIT_TIMEOUT, retryable: true }));
     }, 10_000);
     /** @param {string} state */
     const onState = (state) => {
@@ -399,21 +403,15 @@ function waitPoweredOn(noble, log = () => {}) {
       if (state === "poweredOn") { clearTimeout(to); noble.removeListener("stateChange", onState); resolve(); }
       else if (state === "unauthorized") {
         clearTimeout(to); noble.removeListener("stateChange", onState);
-        const e = /** @type {CodedError} */ (new Error(t("ble.bluetoothUnauthorized")));
-        e.code = "BLE_UNAUTHORIZED"; // CLI 側で設定ペインを開く判定に使う
-        reject(e);
+        reject(new SesameError(t("ble.bluetoothUnauthorized"), { code: ERR.BLE_UNAUTHORIZED, retryable: false }));
       }
       else if (state === "poweredOff") {
         clearTimeout(to); noble.removeListener("stateChange", onState);
-        const e = /** @type {CodedError} */ (new Error(t("ble.bluetoothPoweredOff")));
-        e.code = "BLE_POWERED_OFF";
-        reject(e);
+        reject(new SesameError(t("ble.bluetoothPoweredOff"), { code: ERR.BLE_POWERED_OFF, retryable: false }));
       }
       else if (state === "unsupported") {
         clearTimeout(to); noble.removeListener("stateChange", onState);
-        const e = /** @type {CodedError} */ (new Error(t("ble.bluetoothUnsupported")));
-        e.code = "BLE_UNSUPPORTED";
-        reject(e);
+        reject(new SesameError(t("ble.bluetoothUnsupported"), { code: ERR.BLE_UNSUPPORTED, retryable: false }));
       }
     };
     noble.on("stateChange", onState);

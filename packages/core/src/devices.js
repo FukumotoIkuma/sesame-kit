@@ -17,6 +17,7 @@ import { getValidIdToken } from "./auth.js";
 import {
   makeCognitoCredentialsProvider,
   makeApiGatewayTransport,
+  resolveAppIdentifyId,
   DEFAULT_CH_API_BASE_URL,
 } from "./aws-credentials.js";
 
@@ -147,9 +148,13 @@ export async function updateDeviceName(client, { subUUID, deviceUUID, deviceName
 }
 
 /**
- * デバイスを company から削除。items=[{deviceUUID,...}]
+ * デバイスを company から削除。items=[{deviceUUID, subUUID}, ...] の素通し。
+ * items 形は呼び出し側 (client.js#deleteDevice) が組み立てる。
+ * 参照 (items の正準形): references_web/src/components/MobileRemoveDevice.js:58-64 —
+ *   removeSesameDevices([{ deviceUUID, subUUID }], ...)。
+ * useManageDevice.js:228-237 は items を素通しするため、ここも素通し。
  * @param {WsClient} client
- * @param {{companyID: string, items: Array<{deviceUUID: string}>}} p
+ * @param {{companyID: string, items: Array<{deviceUUID: string, subUUID?: string}>}} p
  */
 export async function deleteDevices(client, { companyID, items }) {
   const resp = await client.request(
@@ -466,9 +471,9 @@ export async function listFirmware(client) {
  * func 例: 'webapi_ssm_shadow_get', 'webapi_history_get', 'webapi_cmd_send'。
  * apiKeyId は別途 biz3 の dev console で発行されたもの。
  *
- * P3-10: vendor (useDeveloper.js:46-58) は query/body を渡さない呼び出しでキー自体を省く。
- * query は省略時キー脱落 (undefined → JSON.stringify で除去)、body も同様。
- * 空オブジェクト {} を常時送る旧実装は 1:1 逸脱のため条件スプレッドに修正。
+ * P3-1: vendor (useDeveloper.js:46-58) は `body = {}` をデフォルト引数で常時送信する。
+ * query は undefined のとき JSON.stringify で脱落するため条件スプレッド。
+ * 正: body は `body ?? {}` で常時送信、query のみ条件スプレッド。
  *
  * @param {WsClient} client
  * @param {{func:string, apiKeyId:string, query?:object, body?:object}} p
@@ -479,9 +484,10 @@ export async function invokeWebAPI(client, { func, apiKeyId, query, body }) {
       action: ACT_WEBAPI,
       op: func,
       apiKeyId,
-      // useDeveloper.js:46-58: query/body は渡した呼び出し元のみ存在する (キー省略方式)
+      // useDeveloper.js:46-58: body はデフォルト {} で常時送信 (body = {} 宣言)。
+      // query は undefined のとき JSON.stringify で脱落するため条件スプレッド (参照と一致)。
       ...(query !== undefined && { query }),
-      ...(body !== undefined && { body }),
+      body: body ?? {},
     },
     DEFAULT_TIMEOUT_MS,
   );
@@ -697,6 +703,160 @@ export function resolveRegisterTransport({ baseUrl, config, configStore, tokenSt
     appIdentifyId,
     fetchImpl,
   });
+}
+
+// ---------- 個人アカウント鍵ストア REST API (P3-2) ----------
+//
+// 参照 (CANDY-HOUSE SesameSDK):
+//   co/candyhouse/sesame/server/CHAPIClient.kt:29-46 — PUT /device, GET /device/list, DELETE /device
+//   いずれも @Parameter(name="appidentifyid", location="header") が付く (sign/register 系と異なる)。
+//   co/candyhouse/sesame/server/CHAPIClientBiz.kt:99-109 — 呼び出し: identifyId() で appidentifyid を取得。
+//   co/candyhouse/sesame/server/dto/CHUserKey.kt:36-46 — CHUserKey フィールド定義。
+//
+// 認可: SigV4 + x-api-key + appidentifyid (register 系と同じ transport 基盤。appidentifyid あり)。
+//
+// ★ @experimental: 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+
+/**
+ * 個人アカウント鍵ストア REST API の transport を作る。
+ * register transport との違い: appidentifyid ヘッダを付ける
+ * (CHAPIClient.kt:29-46 の GET /device/list, PUT /device, DELETE /device は全て
+ * @Parameter(name="appidentifyid") あり — 参照の per-op 表参照)。
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ *
+ * @param {{baseUrl?:string,
+ *          tokenStore?:import("./tokens.js").TokenStore,
+ *          credentialsProvider?:import("./aws-credentials.js").CredentialsProviderLike,
+ *          appIdentifyId?:string|null,
+ *          config?:import("./aws-credentials.js").AppIdConfigLike|null,
+ *          configStore?:import("./aws-credentials.js").AppIdConfigStoreLike|null,
+ *          apiKey?:string,
+ *          fetchImpl?:typeof globalThis.fetch}} [opts]
+ * @returns {RegisterTransport}
+ */
+export function makeKeyStoreTransport({
+  baseUrl = DEFAULT_REGISTER_BASE_URL,
+  tokenStore,
+  credentialsProvider,
+  appIdentifyId,
+  config,
+  configStore,
+  apiKey,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  if (!credentialsProvider && !tokenStore) throw badRequest("domain.devices.registerAuthRequired");
+  if (typeof fetchImpl !== "function") throw badRequest("domain.devices.registerFetchRequired");
+  const store = /** @type {import("./tokens.js").TokenStore} */ (tokenStore);
+  const provider = credentialsProvider
+    || makeCognitoCredentialsProvider({ getIdToken: () => getValidIdToken(store), fetchImpl });
+  // appidentifyid は CHAPIClient.kt:22-46 の per-op ヘッダ (CHAPIClientBiz.kt:85-88 identifyId())。
+  // 未指定なら resolveAppIdentifyId で生成・永続化 (AppIdentifyIdUtil.kt 相当)。
+  const appId = resolveAppIdentifyId({ appIdentifyId, config, configStore });
+  return makeApiGatewayTransport({
+    baseUrl: baseUrl || DEFAULT_REGISTER_BASE_URL,
+    credentialsProvider: provider,
+    appIdentifyId: appId,
+    apiKey,
+    fetchImpl,
+  });
+}
+
+/**
+ * デバイス状態情報 (参照: _sesame_sdk_ref/sesame-sdk/.../CHUserKey.kt:49-57)。
+ * getDevicesList の応答に含まれる。putKey では通常省略される。
+ *
+ * @typedef {Object} StateInfo
+ * @property {number|null} [batteryPercentage] - バッテリー残量 (%)
+ * @property {string|null} [CHSesame2Status]   - デバイスステータス文字列
+ * @property {string|null} [currentFwVer]      - 現在のファームウェアバージョン
+ * @property {string|null} [latestFwVer]       - 最新のファームウェアバージョン
+ * @property {number|null} [timestamp]         - 最終更新 epoch (ms)
+ * @property {boolean|null} [wm2State]         - WM2 接続状態
+ * @property {object[]|null} [remoteList]      - IR リモート一覧
+ * @property {object[]|null} [scriptList]      - Bot スクリプト一覧
+ */
+
+/**
+ * CHUserKey 形 (鍵ストアのエントリ。CHAPIClient.kt / CHUserKey.kt から導出)。
+ * 参照: _sesame_sdk_ref/sesame-sdk/.../CHUserKey.kt:36-47
+ *
+ * @typedef {Object} CHUserKey
+ * @property {string} deviceUUID   — デバイスの UUID
+ * @property {string} deviceModel  — モデル名 (例 "sesame_5")
+ * @property {string} keyIndex     — 鍵インデックス (hex)
+ * @property {string} secretKey    — 共通鍵 (32hex)
+ * @property {string} sesame2PublicKey — 公開鍵 (hex)
+ * @property {string|null} [deviceName] - ニックネーム
+ * @property {number} keyLevel     - アクセスレベル
+ * @property {number|null} [rank]  - 並び順 (nullable)
+ * @property {string} [subUUID]    - 所有者の subUUID
+ * @property {StateInfo} [stateInfo] - デバイス状態情報 (参照: CHUserKey.kt:46)
+ */
+
+/**
+ * GET /device/list — 個人アカウントの鍵ストア全件取得。
+ * (CHAPIClient.kt:36-39, CHAPIClientBiz.kt:105-106)
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * 実機未検証 (参照: CHAPIClient.kt:36-39)
+ *
+ * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。
+ * @returns {Promise<CHUserKey[]>} 鍵ストア全件 (CHUserKey 配列)。
+ */
+export async function getDevicesList(transport) {
+  if (typeof transport !== "function") throw badRequest("domain.devices.registerTransportRequired");
+  const res = await transport({ method: "GET", path: "/device/list" });
+  assertHttpOk(res, "getDevicesList");
+  // 応答は CHUserKey[] 形 JSON (CHAPIClient.kt:38 returns Array<CHUserKey>)。
+  return Array.isArray(res.json) ? res.json : [];
+}
+
+/**
+ * PUT /device — 個人アカウント鍵ストアへの鍵追加・更新。
+ * (CHAPIClient.kt:29-33, CHAPIClientBiz.kt:102-103, ScanQRcodeFG.kt:342-348)
+ *
+ * body は CHUserKey 形オブジェクト (Gson 直列化 → JSON object)。
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * 実機未検証 (参照: CHAPIClient.kt:29-33)
+ *
+ * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。
+ * @param {CHUserKey} key CHUserKey 形オブジェクト
+ * @returns {Promise<any>} サーバ応答
+ */
+export async function putKey(transport, key) {
+  if (typeof transport !== "function") throw badRequest("domain.devices.registerTransportRequired");
+  if (!key?.deviceUUID) throw badRequest("domain.devices.deviceUUIDRequired");
+  const res = await transport({ method: "PUT", path: "/device", body: key });
+  assertHttpOk(res, "putKey");
+  return res.json != null ? res.json : res.text;
+}
+
+/**
+ * DELETE /device — 個人アカウント鍵ストアから鍵を削除。
+ * (CHAPIClient.kt:42-46, CHAPIClientBiz.kt:108-109, CHDeviceViewModel.kt:565-571)
+ *
+ * body は deviceUUID の JSON 文字列リテラル (Kotlin `body: String` → Gson → `"<uuid>"`)。
+ * 参照: CHAPIClientBiz.kt:109 `cHApiClient.removeKey(identifyId(), keyId)` で keyId は
+ * `targetDevice.deviceId.toString()` (CHDeviceViewModel.kt:567)。
+ *
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * 実機未検証 (参照: CHAPIClient.kt:42-46)
+ *
+ * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。
+ * @param {string} deviceUUID 削除するデバイスの UUID
+ * @returns {Promise<any>} サーバ応答
+ */
+export async function removeKey(transport, deviceUUID) {
+  if (typeof transport !== "function") throw badRequest("domain.devices.registerTransportRequired");
+  if (!deviceUUID) throw badRequest("domain.devices.deviceUUIDRequired");
+  // body 形式: Kotlin `body: String` → Gson → JSON string literal `"<uuid>"`.
+  // makeApiGatewayTransport は `body != null ? JSON.stringify(body)` を行うため、
+  // 文字列を body に渡すと JSON.stringify("uuid") = '"uuid"' → HTTP body は `"uuid"` (正準)。
+  const res = await transport({ method: "DELETE", path: "/device", body: /** @type {any} */ (deviceUUID) });
+  assertHttpOk(res, "removeKey");
+  return res.json != null ? res.json : res.text;
 }
 
 /**

@@ -64,10 +64,10 @@ lock.status                  deviceUUID
 devices.list
 device.history               deviceUUID [pageSize]
 ir.send                      [remote] key
-org.getEmployees             companyID
+org.getEmployees             [companyID]
 access.registerCards         deviceUUID cards   # [experimental] bulk-register read IC cards (cloud DB)
 …
-202 methods.
+205 methods.
 ```
 
 Read the line for the method you want. Each line is `method  <required> [optional]`. For example, `device.history  deviceUUID [pageSize]` means **`deviceUUID` is required and `pageSize` is optional**.
@@ -109,7 +109,7 @@ For exact parameter types (e.g. for code generation), `sesame rpc --json rpc.dis
 
 Thin clients wrap the above so you write `c.unlock("front")` instead of building JSON by hand. They are optional — section 2 already works without them.
 
-> **`sdk/` vs `clients/`** — the clients below are the **hand-written, low-level** layer (`clients/js`, `clients/python`): minimal-dependency, multi-transport (JS: Unix socket / HTTP / WebSocket; Python: Unix socket / stdio / HTTP — neither covers gRPC, for which you generate protoc stubs from `src/serve/sesame.proto`), with a generic `call()`. For most users the **generated, typed** SDK ([`sdk/ts`](../../sdk/ts/README.md) / [`sdk/python`](../../sdk/python/README.md)) — one typed method per RPC, generated from `schema/openrpc.json` and tracking the OpenRPC contract over HTTP — is the better default. See the ["which should I use?" guide](../../README.md#which-should-i-use--sdk-vs-clients).
+> **`sdk/` vs `clients/`** — the clients below are the **hand-written, low-level** layer (`packages/kit/clients/js`, `packages/kit/clients/python`): minimal-dependency, multi-transport (JS: Unix socket / HTTP / WebSocket; Python: Unix socket / stdio / HTTP — neither covers gRPC, for which you generate protoc stubs from `packages/kit/src/serve/sesame.proto`), with a generic `call()`. For most users the **generated, typed** SDK ([`sdk/ts`](../../packages/kit/sdk/ts/README.md) / [`sdk/python`](../../packages/kit/sdk/python/README.md)) — one typed method per RPC, generated from `schema/openrpc.json` and tracking the OpenRPC contract over HTTP — is the better default. See the ["which should I use?" guide](../../README.md#which-should-i-use--sdk-vs-clients).
 
 **Node** — after `npm install sesame-kit`:
 
@@ -134,12 +134,12 @@ try {
 
 > **Two Python clients ship with sesame-kit, and they share the module name `sesame_client` and the class name `SesameClient` — but their APIs are different and incompatible. Install/vendor only ONE.**
 > - **This bundled client** (`clients/python`, hand-written, multi-transport convenience) — factory constructors `SesameClient.unix()` / `.http()` / `.stdio()`, positional convenience methods like `c.unlock("front")`, and `c.call(method, **params)`. Documented below.
-> - **The generated, fully-typed SDK** (`sdk/python`, HTTP-only) — constructor `SesameClient(base_url, token=...)` with namespaced typed calls like `c.lock.unlock(name="front")`. No `.unix()` / `.http()` factories and no positional convenience methods. See [`sdk/python/README.md`](../../sdk/python/README.md).
+> - **The generated, fully-typed SDK** (`packages/kit/sdk/python`, HTTP-only) — constructor `SesameClient(base_url, token=...)` with namespaced typed calls like `c.lock.unlock(name="front")`. No `.unix()` / `.http()` factories and no positional convenience methods. See [`sdk/python/README.md`](../../packages/kit/sdk/python/README.md).
 >
 > Because both resolve `from sesame_client import SesameClient`, the examples below only work against the bundled client; copy-pasting them against the generated SDK (or vice-versa) fails. Pick one per project.
 
 ```bash
-pip install ./clients/python                       # from a cloned repo
+pip install ./packages/kit/clients/python          # from a cloned repo
 pip install "$(npm root -g)/sesame-kit/clients/python"   # from a global `npm install -g sesame-kit`
 ```
 ```python
@@ -165,8 +165,8 @@ The same RPC catalog is available over five transports. Use HTTP/WS/gRPC for net
 | WebSocket | any language / browser (full-duplex) | `event.*` notifications | token |
 | gRPC | typed stubs for many languages | `Subscribe` stream | token (metadata) |
 
-gRPC is typed: `src/serve/sesame.proto` has a typed method per op. Generate stubs with
-`python -m grpc_tools.protoc -I src/serve --python_out=. --grpc_python_out=. src/serve/sesame.proto`.
+gRPC is typed: `packages/kit/src/serve/sesame.proto` has a typed method per op. Generate stubs with
+`python -m grpc_tools.protoc -I packages/kit/src/serve --python_out=. --grpc_python_out=. packages/kit/src/serve/sesame.proto`.
 Scalar/array params are protobuf-typed; dynamic params are a JSON-string field; responses are `JsonRpc{json}`. Ops without a typed method use the generic `Invoke`.
 
 ## Events

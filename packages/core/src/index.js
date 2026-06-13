@@ -1,11 +1,11 @@
 // 公開ライブラリエントリ。
 //
-// パッケージ名は "sesame-kit" (package.json の "name")。
+// パッケージ名は "@sesame-kit/core" (package.json の "name")。
 // npm package として publish できる公開面は package.json の exports/files を単一の契約にする。
-// ローカル開発中は `npm link sesame-kit` か `npm install /path/to/sesame-kit` でも利用できる。
+// ローカル開発中は `npm link @sesame-kit/core` か `npm install /path/to/packages/core` でも利用できる。
 //
 // 高レベル:
-//   import { SesameHub3 } from "sesame-kit";
+//   import { SesameHub3 } from "@sesame-kit/core";
 //   await SesameHub3.use(async (hub) => {
 //     await hub.send("ac", "停止");
 //   });
@@ -15,8 +15,8 @@
 //   try { await hub.send("ac", "停止"); } finally { await hub.close(); }
 //
 // 低レベル (自前で WS / トークン管理する場合):
-//   import { Hub3WsClient, sendIR, getIRCodes, FileTokenStore } from "sesame-kit";
-//   import { lock } from "sesame-kit";   // lock.* namespace も利用可
+//   import { Hub3WsClient, sendIR, getIRCodes, FileTokenStore } from "@sesame-kit/core";
+//   import { lock } from "@sesame-kit/core";   // lock.* namespace も利用可
 
 export { SesameHub3 } from "./client.js";
 export { SesameError, ERR } from "./errors.js"; // 型付きドメインエラー (err.code で分岐)

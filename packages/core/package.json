@@ -120,6 +120,7 @@
   "files": [
     "src/",
     "types/",
+    "LICENSE.biz3",
     "!**/__pycache__",
     "!**/*.pyc"
   ],
@@ -141,6 +142,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   },
   "optionalDependencies": {
     "@abandonware/noble": "^1.9.2-25"

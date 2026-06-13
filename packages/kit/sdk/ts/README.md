@@ -1,15 +1,15 @@
 # sesame-kit TypeScript SDK (generated)
 
 A typed client for the self-hosted `sesame serve` daemon (JSON-RPC over HTTP).
-**Generated** from [`schema/openrpc.json`](../../schema/openrpc.json) by
+**Generated** from [`schema/openrpc.json`](../../../../schema/openrpc.json) by
 `npm run build:sdk` — do not edit `sesame-client.ts` by hand; it is drift-gated
 against the schema (`tests/sdk-ts-contract.test.js`).
 
 > This is the **generated, typed** SDK and is recommended for most users. A
 > separate **hand-written, low-level** client (multi-transport: Unix socket /
-> HTTP / WebSocket) ships at [`clients/js/`](../../clients/js/) — use it
+> HTTP / WebSocket) ships at [`clients/js/`](../../../kit/clients/js/) — use it
 > for thin / multi-transport / custom integrations. See the
-> [repository README](../../README.md#which-should-i-use--sdk-vs-clients) for the
+> [repository README](../../../../README.md#which-should-i-use--sdk-vs-clients) for the
 > full "which should I use?" guidance.
 
 ## Get the file
@@ -59,7 +59,7 @@ try {
 
 Methods are tagged `@experimental` in JSDoc when they are outside the API SemVer
 guarantee (see `docs/api-stability.md`). Only the `stable` surface
-(`lock.*`, `devices.list`, `device.history`/`battery`, `status`,
+(`lock.*` (excluding `lock.setAutolock`), `devices.list`, `device.history`/`battery`, `status`,
 `account.whoami`, `events.*`) is covered by `API_VERSION` semver.
 
 ## Events

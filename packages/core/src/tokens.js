@@ -1,6 +1,7 @@
 // ファイルシステム実装の TokenStore。auth.js から I/O を分離するための薄いラッパ。
 // ライブラリ消費者は独自の実装 (例: keychain, in-memory) に差し替え可能。
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { jwtClaim } from "./auth.js";
 import { configPaths } from "./paths.js";
 import { withFileLock, writeSecretJson } from "./secure-fs.js";
@@ -26,6 +27,10 @@ import { withFileLock, writeSecretJson } from "./secure-fs.js";
  * @typedef {object} PendingLogin
  * @property {string} clientId
  * @property {string} username
+ * @property {string} [usernameInternal] ChallengeParameters.USERNAME (内部ユーザー名)。
+ *   pool が email → UUID 写像するとき email と異なる。
+ *   _aws_sdk_ref/CognitoUser.java:3600 の usernameInternal フィールド相当。
+ *   存在しない場合は username (= 入力 email) をフォールバックとして使う。
  * @property {string} [session] Cognito challenge session
  * @property {string} initiatedAt ISO timestamp
  */
@@ -45,10 +50,20 @@ import { withFileLock, writeSecretJson } from "./secure-fs.js";
 /**
  * @param {string} path
  * @returns {unknown} ファイルが無ければ null。中身は呼び出し側で型付けする。
+ *
+ * P3-17: existsSync → readFileSync の 2 ステップは TOCTOU 競合を持つ。
+ * serve の load と CLI の logout (unlink) が並行すると、existsSync が true を返した後に
+ * unlink が走り、readFileSync が生の ENOENT を投げる可能性がある。
+ * try/catch で ENOENT → null に写像することで競合を解消し、existsSync は除去する。
+ * JSON.parse 失敗 (SyntaxError) はファイルが壊れていることを意味し、呼び出し側に伝播させる。
  */
 function readJsonOrNull(path) {
-  if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, "utf8"));
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    if (/** @type {NodeJS.ErrnoException} */ (e).code === "ENOENT") return null;
+    throw e;
+  }
 }
 
 // tokens.json には idToken / refreshToken / deviceKey が入る。world-readable にならないよう
@@ -148,6 +163,9 @@ export class FileTokenStore {
     if (!loginStatePath) throw new Error("loginStatePath required");
     this.tokensPath = tokensPath;
     this.loginStatePath = loginStatePath;
+    // P3-15: AWS credentials の永続化パス。tokens.json と同一ディレクトリに配置 (同じ 0600)。
+    // 参照: CognitoCachingCredentialsProvider.java:86-98 — AK_KEY/SK_KEY/ST_KEY/EXP_KEY/ID_KEY
+    this.awsCredentialsPath = join(dirname(tokensPath), "aws_credentials.json");
   }
 
   /**
@@ -193,4 +211,31 @@ export class FileTokenStore {
   /** @param {PendingLogin} s */
   savePending(s) { writeJson(this.loginStatePath, s); }
   clearPending() { unlinkIfExists(this.loginStatePath); }
+
+  // P3-15: AWS Identity Pool credentials / identityId の永続化
+  // (CognitoCachingCredentialsProvider 相当 — AK/SK/ST/EXP/ID を aws_credentials.json に格納)
+  // 参照: _aws_sdk_ref/CognitoCachingCredentialsProvider.java:86-98 (キー定数)
+  //       _aws_sdk_ref/CognitoCachingCredentialsProvider.java:473-505 (loadCachedCredentials)
+  //       _aws_sdk_ref/CognitoCachingCredentialsProvider.java:638-646 (saveCredentials)
+  //       _aws_sdk_ref/CognitoCachingCredentialsProvider.java:655-659 (saveIdentityId)
+
+  /**
+   * 保存済みの AWS 一時 credentials を読む。ファイルが無い / 壊れている場合は null。
+   * @returns {import('./aws-credentials.js').PersistedAwsCredentials|null}
+   */
+  loadAwsCredentials() {
+    return /** @type {any} */ (readJsonOrNull(this.awsCredentialsPath));
+  }
+
+  /**
+   * AWS 一時 credentials を 0600 ファイルへ書く。null で渡すとファイルを削除する。
+   * @param {import('./aws-credentials.js').PersistedAwsCredentials|null} c
+   */
+  saveAwsCredentials(c) {
+    if (c === null) {
+      unlinkIfExists(this.awsCredentialsPath);
+      return;
+    }
+    writeJson(this.awsCredentialsPath, c);
+  }
 }

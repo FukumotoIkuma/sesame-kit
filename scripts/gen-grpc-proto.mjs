@@ -7,6 +7,13 @@
 //       response は google.protobuf.Value (配列/スカラ/オブジェクトを一様に運べる)。
 // これにより「JSON 文字列を運ぶだけの gRPC」でなく、型付き codegen の価値が出る。
 //
+// P1-3 (R3:SURF-01): proto3 は presence 無し scalar の省略を既定値(0/false/"")として注入する。
+// required でない scalar には proto3 `optional` を付与し field presence を有効化する。
+// これにより @grpc/proto-loader (oneofs:true) が synthetic oneof を生成し、
+// 省略フィールドをデコード後 `undefined` として扱う(実測確認済み)。
+// required フィールドは optional 不要(バリデーションが担保。既定 0 を使うことはない)。
+// repeated は optional 不可(proto3 の仕様)。JSON-string フィールドは repeated なし string → optional 付与。
+//
 // 実行: npm run build:grpc-proto  (build:rpc-schema の後。registry が生成 JSON を読むため)
 
 import { writeFileSync } from "node:fs";
@@ -45,24 +52,34 @@ function validField(name) {
 
 export async function generateProto() {
   const reg = buildRegistry();
-  const methods = []; // { jsonrpc, pascal, fields:[{type,name}] }
+  const methods = []; // { jsonrpc, pascal, fields:[{type,name,optional}] }
 
   for (const [name, entry] of reg) {
     if (name.startsWith("events.")) continue; // イベントは Subscribe ストリームで扱う
     const params = entry.params || [];
     const fields = [];
     const jsonFields = []; // glue が JSON.parse する field 名
+    // optionalScalars: presence 有効化が必要な field 名一覧(glue が synthetic oneof で省略判定)。
+    // required でない scalar/JSON-string field が対象。repeated は proto3 仕様で optional 不可。
+    const optionalScalars = [];
     for (const p of params) {
       if (!validField(p.name)) {
-        fields.push({ type: "string", name: "params" }); // "(params)" 等は JSON 文字列に
+        // "(params)" 等は JSON 文字列に。required 扱い(1 フィールドしかない)。
+        fields.push({ type: "string", name: "params", optional: false });
         jsonFields.push("params");
       } else {
         const t = pbFieldType(p.schema);
-        fields.push({ type: t.type, name: p.name });
+        // repeated string は optional 不可(proto3 仕様)。scalar および JSON-string は
+        // required でない限り optional を付与して field presence を有効化する。
+        const isRepeated = t.type.startsWith("repeated ");
+        const isRequired = !!p.required;
+        const useOptional = !isRequired && !isRepeated;
+        fields.push({ type: t.type, name: p.name, optional: useOptional });
         if (t.json) jsonFields.push(p.name);
+        if (useOptional) optionalScalars.push(p.name);
       }
     }
-    methods.push({ jsonrpc: name, pascal: pascal(name), fields, jsonFields });
+    methods.push({ jsonrpc: name, pascal: pascal(name), fields, jsonFields, optionalScalars });
   }
   // SURF-22: 旧実装はここで `Discover` を追加していたが、registry の rpc.discover が上のループで
   // `RpcDiscover` として既に生成されるため同一 op への重複 rpc だった。利用箇所 (tests/clients/
@@ -98,7 +115,10 @@ export async function generateProto() {
   for (const m of methods) {
     L.push(`message ${m.pascal}Request {`);
     m.fields.forEach((f, i) => {
-      L.push(`  ${f.type} ${f.name} = ${i + 1};`);
+      // P1-3: required でない scalar に proto3 optional を付与して field presence を有効化。
+      // repeated は optional 不可(proto3 仕様)。
+      const prefix = f.optional ? "optional " : "";
+      L.push(`  ${prefix}${f.type} ${f.name} = ${i + 1};`);
     });
     L.push("}");
   }
@@ -109,8 +129,10 @@ export async function generateProto() {
   L.push("");
 
   const protoText = L.join("\n");
-  // map: Pascal → { method, jsonFields }。glue が JSON.parse する field を知るため。
-  const nameMap = Object.fromEntries(methods.map((m) => [m.pascal, { method: m.jsonrpc, jsonFields: m.jsonFields }]));
+  // map: Pascal → { method, jsonFields, optionalScalars }。
+  //   jsonFields: glue が JSON.parse する field 名。
+  //   optionalScalars: presence 有効化フィールド名(省略時は params から落とす)。
+  const nameMap = Object.fromEntries(methods.map((m) => [m.pascal, { method: m.jsonrpc, jsonFields: m.jsonFields, optionalScalars: m.optionalScalars }]));
   return { protoText, nameMap, count: methods.length };
 }
 

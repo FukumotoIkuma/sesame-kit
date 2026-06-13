@@ -4,7 +4,7 @@
 // OS3 (src/ble/index.js の SesameBle) とは別プロトコルなので独立ファサードとして提供する。
 //
 // 使い方 (高レベル):
-//   import { SesameOS2Ble } from "sesame-kit/ble/os2";  // 結線は別フェーズ
+//   import { SesameOS2Ble } from "@sesame-kit/core/ble/os2";
 //   await SesameOS2Ble.use(
 //     { deviceUUID, secretKey, keyIndex, ssmPublicKey, model: "sesame_3" },
 //     async (lock) => {
@@ -264,9 +264,21 @@ export class SesameOS2Ble {
     return r.payload;
   }
 
-  /** 工場出荷状態へリセット (OP.delete, item=registration)。CHSesame2Device.kt:570-578。 */
+  /**
+   * 工場出荷状態へリセット (OP.delete, item=registration)。CHSesame2Device.kt:570-578。
+   * 参照: cmdResultCode==success のとき dropKey(result) を呼び、鍵レコード削除 + disconnect +
+   * sesame2KeyData=null を行う (CHBaseDevice.kt:120-139)。
+   * kit には永続鍵ストアが無い (secretKey は呼び出し側が保持) ため、dropKey 相当として
+   * **成功時に disconnect() してセッションを破棄する** (wm2.js reset() と同じ流儀)。
+   * 鍵レコードの削除そのものは呼び出し側の責務 (誇張せず明記)。
+   */
   async reset() {
-    return this._session.request(OP.DELETE, ITEM.REGISTRATION, Buffer.alloc(0));
+    const res = await this._session.request(OP.DELETE, ITEM.REGISTRATION, Buffer.alloc(0));
+    // cmdResultCode==success のときだけ dropKey 相当 (= session 破棄) を行う (kt:572-573)。
+    if (res.resultCode === 0) {
+      await this._session.disconnect();
+    }
+    return res;
   }
 
   /**

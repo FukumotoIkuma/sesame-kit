@@ -2,7 +2,7 @@
 // 「2 プロセス」はテストでは同一プロセス内で擬似する — ロックは O_EXCL のファイル存在で
 // 表現されているため、lock ファイルを直接作る/保持中に再取得を試みることで競合を再現できる。
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -206,5 +206,57 @@ describe("withFileLock rename ベース奪取 (P5-12)", () => {
       const reapFiles = readdirSync(dir).filter((f) => f.includes(".reap."));
       expect(reapFiles.length).toBe(0);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P5-3: withFileLock 解放側の所有権確認テスト (R3:ARCH-06)
+//
+// 問題: v2 P5-12 は取得側の競合窓を閉じたが解放側 (finally) が無条件 unlink のままだった。
+//   P1 保持中 → stale 奪取 (P2 が lock を差し替え) → P1 復帰後 finally が P2 の
+//   新鮮な lock を unlink → P3 取得 → P2 と P3 の二重保持 → tokens.json の lost-update。
+//
+// 修正 (P5-3):
+//   取得成功時に fstatSync(fd).ino を acquiredIno として保持し、
+//   finally で statSync(lockPath).ino と比較して一致する場合のみ unlink する。
+//   不一致 = 奪取済みなので何もしない。
+//
+// テスト手法: fn 実行中に lock ファイルを手動で差し替え (別 ino を持つ新ファイルに置換)、
+//   withFileLock 完了後も差し替え後 lock が残ることを確認する (旧実装では消えていた)。
+// ---------------------------------------------------------------------------
+describe("withFileLock 解放側の所有権確認 (P5-3)", () => {
+  it("保持中に lock ファイルを差し替えると、解放後も差し替え後の lock が残る (奪取済み lock を消さない)", () => {
+    // fn 実行中に lockPath を「新しい ino を持つファイル」に差し替える (stale 奪取の模倣)。
+    // 差し替えは: 既存 lockPath を別名に退避 → 新 lockPath を書く (O_CREAT → 新 ino)。
+    let replacedLockIno;
+
+    withFileLock(target, () => {
+      // この時点で lockPath が存在し、acquiredIno で記録されている。
+      // 「別プロセスが stale 判断して lock を差し替えた」状況を模倣:
+      //   1. 既存 lock を退避 (rename)
+      //   2. 新 lock を書く (新規作成 → 新 ino)
+      const tempPath = `${lockPath}.stolen`;
+      renameSync(lockPath, tempPath);         // 既存 lock を退避
+      writeFileSync(lockPath, JSON.stringify({ pid: process.pid + 1, acquiredAt: new Date().toISOString() }));
+      replacedLockIno = statSync(lockPath).ino;
+      unlinkSync(tempPath);                   // 退避ファイルを片付け
+      // この時点: lockPath は新 ino (奪取後の lock)。fn はまだ保持中。
+    }, FAST);
+
+    // 旧実装 (無条件 unlink) では lockPath が消えるが、P5-3 修正後は残る。
+    expect(existsSync(lockPath)).toBe(true); // 差し替え後の lock が生きている
+    // 残っている lock の ino が差し替えたものと同一 (P1 の解放で消えていない)
+    expect(statSync(lockPath).ino).toBe(replacedLockIno);
+    // 後片付け: 差し替えた lock を消して次の取得が成功することを確認
+    unlinkSync(lockPath);
+    expect(withFileLock(target, () => "after", FAST)).toBe("after");
+  });
+
+  it("通常の保持→解放では lock が消える (正常系に影響しない)", () => {
+    // P5-3 の変更が正常経路を壊していないことを確認。
+    withFileLock(target, () => {
+      expect(existsSync(lockPath)).toBe(true);
+    }, FAST);
+    expect(existsSync(lockPath)).toBe(false);
   });
 });

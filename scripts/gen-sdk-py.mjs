@@ -1,4 +1,4 @@
-// schema/openrpc.json から型付き Python SDK を生成する (sdk/python/sesame_client.py)。
+// schema/openrpc.json から型付き Python SDK を生成する (packages/kit/sdk/python/sesame_client.py)。
 //
 // TS 版 (gen-sdk-ts.mjs) と同じスキーマ駆動。公開契約を唯一の入力に機械生成し、
 // build:openrpc → build:sdk:py で伝播、drift gate (tests/sdk-py-contract.test.js) が同期を担保。
@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SPEC = resolve(ROOT, "schema", "openrpc.json");
-const OUT = resolve(ROOT, "sdk", "python", "sesame_client.py");
+const OUT = resolve(ROOT, "packages", "kit", "sdk", "python", "sesame_client.py");
 
 const PY_KEYWORDS = new Set([
   "False","None","True","and","as","assert","async","await","break","class","continue","def","del",

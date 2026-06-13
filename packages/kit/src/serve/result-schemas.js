@@ -155,4 +155,12 @@ export const RESULT_SCHEMAS = Object.freeze({
   "ble.biometric.faceListGet": obj({ records: arr(OBJ) }, ["records"]),
   "ble.biometric.palmListGet": obj({ records: arr(OBJ) }, ["records"]),
   "ble.fingerPrint.fingerPrints": obj({ records: arr(obj({ id: STR, name: STR, type: NUM }, ["id"])) }, ["records"]),
+
+  // NOTE: "ble.os2.status" は RESULT_SCHEMAS から除外。
+  // OS2_TOPLEVEL_RPC_OPS の【status 除外方針 (P4-5 / R2:SURF-31)】コメント参照:
+  // status() は mechStatus publish 受信待ち (タイムアウト付き Promise) であり、
+  // typed spec の記述を保留する方針のため、registry に "ble.os2.status" メソッドが存在しない。
+  // RESULT_SCHEMAS のキーは全て registry の実メソッドでなければならない
+  // (tests/serve/result-schemas-contract.test.js の orphan スキーマ無し制約) ため、ここには置かない。
+  // OS2 mechStatus のスキーマは将来 OS2_TOPLEVEL_RPC_OPS に status spec が追加された時点で戻す。
 });

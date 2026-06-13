@@ -321,7 +321,7 @@ export class SesameHub3 {
   //   await hub.org.getEmployees();                   // companyID 自動
   //   await hub.access.getCards({ deviceUUIDs: [...] });
   //
-  // 低レベル関数を直接使いたい場合は `import { org } from "sesame-kit"` で
+  // 低レベル関数を直接使いたい場合は `import { org } from "@sesame-kit/core"` で
   // モジュールごと取り、第1引数に WS client を渡す。
 
   /**
@@ -1092,13 +1092,19 @@ export class SesameHub3 {
 
   /**
    * company から指定 UUID のデバイスを削除。
+   * items に subUUID (操作者UUID) を必ず同送する。
+   * 参照: references_web/src/components/MobileRemoveDevice.js:58-64 —
+   *   removeSesameDevices([{ deviceUUID, subUUID }], ...) と subUUID を常時同送。
    * @param {string} deviceUUID
    */
   async deleteDevice(deviceUUID) {
     const ws = this._ensureConnected();
+    // P1-5 方針: renameDevice と同形。subUUID は connect() で idToken から取得。
+    // 未取得 (= 未接続/認証前) なら NOT_CONNECTED を throw する。
+    if (!this._subUUID) throw new SesameError(t("domain.client.subUUIDNotAvailable"), { code: ERR.NOT_CONNECTED, retryable: true });
     return devices.deleteDevices(ws, {
       companyID: this._companyID,
-      items: [{ deviceUUID }],
+      items: [{ deviceUUID, subUUID: this._subUUID }],
     });
   }
 
@@ -1226,6 +1232,65 @@ export class SesameHub3 {
   async listFirmware() {
     const ws = this._ensureConnected();
     return devices.listFirmware(ws);
+  }
+
+  // ---------- 個人アカウント鍵ストア REST API (P3-2) ----------
+
+  /**
+   * 個人アカウント鍵ストア REST API 用 transport を解決する。
+   * appidentifyid ヘッダ付き (CHAPIClient.kt:29-46 の GET/PUT/DELETE /device 系)。
+   * @param {{appIdentifyId?: string|null}} [opts]
+   * @returns {import("./devices.js").RegisterTransport}
+   */
+  _keyStoreTransport({ appIdentifyId } = {}) {
+    return devices.makeKeyStoreTransport({
+      baseUrl: this._config.registerBaseUrl,
+      tokenStore: this._tokenStore,
+      appIdentifyId: appIdentifyId ?? undefined,
+      config: this._config,
+      configStore: this._configStore ?? undefined,
+    });
+  }
+
+  /**
+   * GET /device/list — 個人アカウント鍵ストア全件取得。
+   *
+   * @experimental 実機未検証 (参照: CHAPIClient.kt:36-39) §9 V15
+   *
+   * @param {{appIdentifyId?: string|null}} [opts]
+   * @returns {Promise<import("./devices.js").CHUserKey[]>}
+   */
+  async keyStoreList({ appIdentifyId } = {}) {
+    const transport = this._keyStoreTransport({ appIdentifyId });
+    return devices.getDevicesList(transport);
+  }
+
+  /**
+   * PUT /device — 個人アカウント鍵ストアへ鍵を追加・更新。
+   *
+   * @experimental 実機未検証 (参照: CHAPIClient.kt:29-33) §9 V15
+   *
+   * @param {import("./devices.js").CHUserKey} key
+   * @param {{appIdentifyId?: string|null}} [opts]
+   * @returns {Promise<any>}
+   */
+  async keyStorePut(key, { appIdentifyId } = {}) {
+    const transport = this._keyStoreTransport({ appIdentifyId });
+    return devices.putKey(transport, key);
+  }
+
+  /**
+   * DELETE /device — 個人アカウント鍵ストアから鍵を削除。
+   *
+   * @experimental 実機未検証 (参照: CHAPIClient.kt:42-46) §9 V15
+   *
+   * @param {string} deviceUUID
+   * @param {{appIdentifyId?: string|null}} [opts]
+   * @returns {Promise<any>}
+   */
+  async keyStoreRemove(deviceUUID, { appIdentifyId } = {}) {
+    const transport = this._keyStoreTransport({ appIdentifyId });
+    return devices.removeKey(transport, deviceUUID);
   }
 
   /**
