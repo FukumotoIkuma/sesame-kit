@@ -239,15 +239,33 @@ describe("OS2 protocol — data builders & parsers", () => {
     expect(() => parseMechStatus(Buffer.alloc(7))).toThrow(/8 bytes/);
   });
 
-  it("parseMechStatus: Bot 固有 motorStatus=buf[4] / isStop=(flags&1)==0 (CHSesameBot.kt:22-29)", () => {
-    // CHSesameBotMechStatus: motorStatus = data[4] (noPower=0/forward=1/hold=2/backward=3、
-    // CHSesameBotDevice.kt:286-293)、flags = data[7]、isStop = (flags and 1 == 0) (CHSesameBot.kt:28)。
+  it("parseMechStatus: motorStatus=buf[4] はどの kind でも読める; isStop は kind 依存 (P4-2)", () => {
+    // motorStatus フィールド (buf[4]) は全 kind で共通に読む (CHSesameBot.kt:23)。
+    // isStop の意味論は kind によって異なる (P4-2):
+    //   kind 未指定 (os2lock, Sesame2 既定): isStop = null (CHSesame2.kt:40)
+    //   kind="os2bike" : flags bit0 由来 (CHSesameBot.kt:28)
+    //   kind="os2bot"  : motorStatus 由来 (CHSesameBotDevice.kt:286-293)
+    //
+    // このテストでは flags bit0 由来ケースを os2bike で、os2lock (null) を既定で確認する。
     const moving = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x00, 0x01, 0x00, 0x00, 0x03]));
-    expect(moving.motorStatus).toBe(1); // forward
-    expect(moving.isStop).toBe(false);  // flags bit0=1 → 動作中
+    expect(moving.motorStatus).toBe(1);       // forward (all kinds)
+    expect(moving.isStop).toBeNull();         // os2lock (既定): CHSesame2.kt:40 = null
+    // os2bike では flags bit0=1 (flags=0x03 → bit0=1) → isStop=false
+    const movingBike = parseMechStatus(
+      Buffer.from([0x10, 0x0c, 0x00, 0x00, 0x01, 0x00, 0x00, 0x03]),
+      { kind: "os2bike" },
+    );
+    expect(movingBike.motorStatus).toBe(1);
+    expect(movingBike.isStop).toBe(false);    // flags bit0=1 → (flags and 1 == 0) = false (CHSesameBot.kt:28)
     const stopped = parseMechStatus(Buffer.from([0x10, 0x0c, 0x00, 0x00, 0x02, 0x00, 0x00, 0x02]));
-    expect(stopped.motorStatus).toBe(2); // hold
-    expect(stopped.isStop).toBe(true);   // flags bit0=0 → 停止
+    expect(stopped.motorStatus).toBe(2);      // hold (all kinds)
+    expect(stopped.isStop).toBeNull();        // os2lock (既定): null
+    // os2bike では flags bit0=0 (flags=0x02) → isStop=true
+    const stoppedBike = parseMechStatus(
+      Buffer.from([0x10, 0x0c, 0x00, 0x00, 0x02, 0x00, 0x00, 0x02]),
+      { kind: "os2bike" },
+    );
+    expect(stoppedBike.isStop).toBe(true);    // flags bit0=0 → (flags and 1 == 0) = true
   });
 
   it("parseMechStatus: positionDeg/targetDeg = raw*360/1024 を併記 (CHSesame2.kt:32-33、BLE2-08)", () => {

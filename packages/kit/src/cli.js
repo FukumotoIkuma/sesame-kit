@@ -14,6 +14,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { setLocale, resolveLocale, isKnownLang, t } from "@sesame-kit/core/i18n";
+// kit 専用カタログ (cli/serve/session) を core の CATALOG へ追記する副作用 import。
+// dispatch 前・最初の t() 呼び出し前にここで行う。
+import "./i18n/index.js";
 import {
   die, setJsonMode, isJsonMode, withStaleHint,
   isCommanderError, commanderErrorInfo, runtimeExitCode,
@@ -42,6 +45,7 @@ import { registerIotCommands } from "./cli/iot.js";
 import { registerPresetIrCommands } from "./cli/presetir.js";
 import { registerBleCommands } from "./cli/ble.js";
 import { registerServeCommand } from "./cli/serve.js";
+import { registerSdkCommands } from "./cli/sdk.js";
 import { bleWasUsed } from "@sesame-kit/core/ble";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -233,6 +237,7 @@ export async function run(argv = process.argv) {
   registerPresetIrCommands(program, ctx);
   registerBleCommands(program, ctx); // BLE 直結の読み取り系 (scan / 生体一覧 / Bot2 スクリプト)
   registerServeCommand(program); // 常駐 JSON-RPC バックエンド (serve は reserved に自動で入る)
+  registerSdkCommands(program); // SDK eject (同梱 sdk/ ファイルの書き出し。P2-5)
 
   // デバイス主語の振り分け (位置引数の抽出・予約語判定・op 書き換え) は cli/dispatch.js に分離。
   // 既知デバイス / device action を伴うものだけ隠し op コマンドへ回し、それ以外の単独トークンは

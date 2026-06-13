@@ -277,14 +277,34 @@ describe("jwtAud (via bootstrap)", () => {
     expect(store._peek()).toBeNull();
   });
 
-  it("ConfirmDevice 済み device credentials が揃わなければ保存せず拒否する", () => {
+  it("P3-16: deviceKey が存在するが deviceGroupKey/devicePassword が欠ければ拒否する (不整合 device は禁止)", () => {
+    // P3-16: requireConfirmedDevice は「deviceKey が存在する場合のみ device 3 点整合チェック」。
+    // deviceKey が存在するのに deviceGroupKey/devicePassword が欠ける状態は不整合 = 拒否。
+    // 参照: _aws_sdk_ref/CognitoUser.java:3645 (DEVICE_KEY と devicePassword は 3 点セット)。
     const store = makeMemStore();
     expect(() => bootstrap(store, {
       idToken: makeJwt({ aud: CONSUMER_CLIENT_ID, sub: "u", exp: 9 }),
       refreshToken: "rt",
       deviceKey: "dev-key-only",
-    })).toThrow(/missing confirmed Cognito device credentials/);
+    })).toThrow(/has a deviceKey but is missing deviceGroupKey or devicePassword/);
     expect(store._peek()).toBeNull();
+  });
+
+  it("P3-16: deviceKey が null (device 無しトークン) は bootstrap で拒否しない", () => {
+    // P3-16: device 無しトークンはデバイストラッキング無効の Pool で生成される一級市民。
+    // deviceKey が無い場合、requireConfirmedDevice チェックをスキップする。
+    // 参照: _aws_sdk_ref/CognitoUser.java:3130-3138 (NewDeviceMetadata==null なら confirm しない)。
+    // bootstrap は requireAud=true で呼ばれるため idToken の aud チェックは行う。
+    const store = makeMemStore();
+    const t = bootstrap(store, {
+      idToken: makeJwt({ aud: CONSUMER_CLIENT_ID, sub: "u", exp: 9_999_999_999 }),
+      refreshToken: "rt",
+      deviceKey: null,
+      deviceGroupKey: null,
+      devicePassword: null,
+    });
+    expect(t.deviceKey).toBeNull();
+    expect(store._peek()?.deviceKey).toBeNull();
   });
 });
 

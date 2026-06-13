@@ -100,9 +100,12 @@ describe("OpenRPC contract artifact (schema/openrpc.json)", () => {
 //   1.3.0 → d19ad7b056be728e  (202 メソッド / topics: lockState,deviceUpdate,deviceListChanged)
 //            Phase1-4 の全追加(ble.scan, auth-data 4op, os2.reset/position, syncRemotesFromServer,
 //            events topics enum) + P3-27 の ble.wifi.networkStatus 削除 を含む。
+//   1.4.0 → 64ea81ba7ced77e0  (205 メソッド / topics: lockState,deviceUpdate,deviceListChanged)
+//            P3-2: keystore.list / keystore.put / keystore.remove を追加 (@experimental §9 V15)。
 /** @type {Record<string, string>} */
 const KNOWN_FINGERPRINTS = {
   "1.3.0": "d19ad7b056be728e",
+  "1.4.0": "64ea81ba7ced77e0",
 };
 
 /**

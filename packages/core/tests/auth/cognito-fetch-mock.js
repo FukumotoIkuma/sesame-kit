@@ -15,29 +15,36 @@ export function installFetchMock() {
   vi.stubGlobal("fetch", fetchMock);
 }
 
-/** 2xx の Cognito 応答 (Response 互換の最小形)。 */
+/** 2xx の Cognito 応答 (Response 互換の最小形。clone() を含む)。 */
 export function cognitoOk(body = {}) {
-  return {
+  const bodyStr = JSON.stringify(body);
+  const make = () => ({
     ok: true,
     status: 200,
-    text: async () => JSON.stringify(body),
-  };
+    text: async () => bodyStr,
+    clone() { return make(); },
+  });
+  return make();
 }
 
 /**
  * Cognito エラー応答。実ワイヤでは __type は
  * "com.amazonaws...#NotAuthorizedException" の "#" 付き形式が一般的。
+ * clone() を含む (Throttling 4xx 判定で res.clone().text() を呼ぶため)。
  * @param {string} name 例外名 (例: "NotAuthorizedException")
  * @param {string} [message]
  * @param {{ status?: number, hashPrefix?: boolean }} [opts]
  */
 export function cognitoError(name, message = `${name}: simulated`, { status = 400, hashPrefix = true } = {}) {
   const __type = hashPrefix ? `com.amazonaws.cognito.identity.idp.model#${name}` : name;
-  return {
+  const bodyStr = JSON.stringify({ __type, message });
+  const make = () => ({
     ok: false,
     status,
-    text: async () => JSON.stringify({ __type, message }),
-  };
+    text: async () => bodyStr,
+    clone() { return make(); },
+  });
+  return make();
 }
 
 /**

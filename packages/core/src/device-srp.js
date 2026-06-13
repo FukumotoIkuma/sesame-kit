@@ -9,6 +9,15 @@
 //
 // アルゴリズムは amazon-cognito-identity-js の AuthenticationHelper.generateHashDevice
 // と同一 (SRP-6a, 3072-bit group, g=2)。一次資料: AWS Amplify / amazon-cognito-identity-js。
+//
+// 意図的逸脱 (P3-18a):
+//   - devicePassword 形式: Android 参照 (_aws_sdk_ref/CognitoDeviceHelper.java:269-279) は
+//     UUID.randomUUID().toString() の 36 文字を devicePassword とする。
+//     本 kit は randomBytes(40).toString("base64") (JS SDK 方式) を採用。
+//     ワイヤ上は ConfirmDevice/DEVICE_SRP で HKDF の入力としてのみ扱われ、Cognito は
+//     値の形式を検証しない。エントロピーは 40×8=320bit と上位互換であり、
+//     実装変更は不要 (§10-13 見送り確定)。
+//     参照: _aws_sdk_ref/CognitoDeviceHelper.java:269-279。
 import { createHash, createHmac, randomBytes } from "node:crypto";
 
 // SRP-6a 3072-bit group prime (RFC 5054 / Cognito 共通)。g = 2。

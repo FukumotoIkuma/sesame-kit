@@ -9,7 +9,7 @@ The same features as the `sesame` CLI can be called directly from Node.js. To us
 ## `use()` helper (auto connect/close)
 
 ```js
-import { SesameHub3 } from "sesame-kit";
+import { SesameHub3 } from "@sesame-kit/core";
 
 await SesameHub3.use(async (hub) => {
   await hub.unlock("front");
@@ -99,7 +99,7 @@ await SesameHub3.use(async (hub) => {
 ## The older name-based API (config required)
 
 ```js
-import { SesameHub3 } from "sesame-kit";
+import { SesameHub3 } from "@sesame-kit/core";
 
 const hub = await SesameHub3.fromConfig();
 await hub.connect();
@@ -116,7 +116,7 @@ try {
 
 ## Low-level imports (transport / op functions / crypto directly)
 
-Available from the main entry (`"sesame-kit"`):
+Available from the main entry (`"@sesame-kit/core"`):
 
 ```js
 import {
@@ -125,20 +125,20 @@ import {
   triggerLock, lockLock, lockUnlock, lockToggle, botClick,  // individual lock functions (named export)
   ir, devices, crypto, lock, auth,  // ← these are namespace exports (objects)
   FileTokenStore, ConfigStore, configPaths,
-} from "sesame-kit";
+} from "@sesame-kit/core";
 
 // Call namespace methods via dot:
 crypto.cmacTime("...");          // ✅ what you get from the main entry is the crypto namespace
 auth.getValidIdToken(store);     // ✅ same as above
-// ⚠️ import { cmacTime } from "sesame-kit" does not work (cmacTime is inside the crypto namespace)
+// ⚠️ import { cmacTime } from "@sesame-kit/core" does not work (cmacTime is inside the crypto namespace)
 ```
 
 To named-import individual functions, use the subpath (the `exports` map in `package.json`):
 
 ```js
-import { cmacTime } from "sesame-kit/crypto";   // ✅ named works on a subpath
-import { learnIRKey } from "sesame-kit/ir";
-import { lockLock } from "sesame-kit/lock";
+import { cmacTime } from "@sesame-kit/core/crypto";   // ✅ named works on a subpath
+import { learnIRKey } from "@sesame-kit/core/ir";
+import { lockLock } from "@sesame-kit/core/lock";
 ```
 
 ## Error handling: branch on `err.code`, never on the message
@@ -146,7 +146,7 @@ import { lockLock } from "sesame-kit/lock";
 Error **messages thrown by the library are locale-dependent** (they go through the same i18n layer as the CLI, so the text changes with `--lang` / `config.uiLang`). For machine branching, use the structured fields of `SesameError` instead:
 
 ```js
-import { SesameError } from "sesame-kit";
+import { SesameError } from "@sesame-kit/core";
 
 try {
   await hub.unlock("front");
@@ -165,10 +165,10 @@ The same rule applies over `sesame serve`: JSON-RPC errors carry `error.data.kin
 ## TypeScript
 
 `.d.ts` type definitions are bundled (`types/`, generated from JSDoc with `tsc`). With `moduleResolution: "node16" / "nodenext" / "bundler"`,
-package-name imports (`from "sesame-kit"` / `"sesame-kit/crypto"` etc.) get types:
+package-name imports (`from "@sesame-kit/core"` / `"@sesame-kit/core/crypto"` etc.) get types:
 
 ```ts
-import { SesameHub3 } from "sesame-kit";
+import { SesameHub3 } from "@sesame-kit/core";
 await SesameHub3.use(async (hub) => {
   await hub.unlockDevice({ deviceUUID: "...", secretKey: "..." });  // arguments are type-checked
 });

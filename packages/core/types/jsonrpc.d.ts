@@ -45,7 +45,31 @@ export function handleMessage(raw: string, invoke: (method: string, params: unkn
  * @returns {RpcEvent}
  */
 export function makeEvent(topic: string, payload: unknown): RpcEvent;
-export const CONTRACT_VERSION: "1.3.0";
+export const CONTRACT_VERSION: "1.4.0";
+/**
+ * CONTRACT_VERSION ごとの公開メソッド集合フィンガープリント (規範7 のゲート)。
+ *
+ * 算出方法: buildRegistry() のキー一覧をソートして "," 結合し、SHA-256 の下位 64bit (16 hex 文字)。
+ *   const methods = [...buildRegistry().keys()].sort().join(",");
+ *   const hash = crypto.createHash("sha256").update(methods).digest("hex").slice(0, 16);
+ *
+ * 使用目的: 公開面が変わったのに CONTRACT_VERSION が据え置かれた状態を CI で検出する。
+ *   - メソッドを追加/削除/改名した場合 → hash 不一致 → バージョン bump を強制。
+ *   - result 形・params 形のみ変わった場合は hash 不変 → bump 不要 (minor 追加は minor bump)。
+ *   - この定数を更新するには「既存ハッシュを削除して新ハッシュを追加」ではなく
+ *     「新バージョンを追記して古いバージョンも残す」こと (changelog として機能するため)。
+ *
+ * v1.3.0 メソッド集合: 202 メソッド。ble.scan を追加した版。
+ *   v2 P5-14(workspace 分割)後に ble.scan (P1-7)・access.auth-data 系 4 op (P4-4)・
+ *   ble.os2.reset/configureLockPosition (P4-5)・config.syncRemotesFromServer (P4-6) を追加し
+ *   ble.wifi.networkStatus を削除 (P3-27) して確定した公開面。
+ * v1.4.0 メソッド集合: 205 メソッド。keystore.list / keystore.put / keystore.remove を追加した版 (P3-2)。
+ *   result 形変更 (isStop nullable 化 P4-2 / payment.changeDefaultPayment reqContext P3-8) はメソッド集合不変のため
+ *   フィンガープリントには影響しない (hash = 28fc802bc1720a77 は P3-2 のメソッド集合に対応)。
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+export const KNOWN_FINGERPRINTS: Readonly<Record<string, string>>;
 /**
  * JSON-RPC の id 型。string / number / null のいずれか。
  * @typedef {string|number|null} RpcId

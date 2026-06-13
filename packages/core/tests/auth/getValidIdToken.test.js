@@ -123,7 +123,11 @@ describe("getValidIdToken", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("未失効 idToken でも ConfirmDevice 済み device credentials が無ければ拒否する", async () => {
+    it("P3-16: device 無し (deviceKey=null) の未失効 idToken はそのまま返す (device-less token は一級市民)", async () => {
+      // P3-16: requireConfirmedDevice は「deviceKey が存在する場合のみ整合チェック」に緩和。
+      // deviceKey が null = デバイストラッキング無効 Pool = device 無しトークンとして合法。
+      // 参照: _aws_sdk_ref/CognitoUser.java:3130-3138 (NewDeviceMetadata==null なら confirm しない),
+      //        :3554-3564 (REFRESH は deviceKey null なら DEVICE_KEY を省略)。
       const now = 1_700_000_000;
       vi.useFakeTimers();
       vi.setSystemTime(now * 1000);
@@ -138,7 +142,28 @@ describe("getValidIdToken", () => {
         devicePassword: null,
       });
 
-      await expect(getValidIdToken(store)).rejects.toThrow(/missing confirmed Cognito device credentials/);
+      const got = await getValidIdToken(store);
+      expect(got).toBe(idToken);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("deviceKey が存在するが deviceGroupKey/devicePassword が欠ける場合は拒否する (不整合 device)", async () => {
+      // P3-16: deviceKey が存在するのに device 3 点セットが不完全な場合は不整合として拒否。
+      // 参照: _aws_sdk_ref/CognitoUser.java:3645 (DEVICE_KEY/DEVICE_PASSWORD は 3 点セット)。
+      const now = 1_700_000_000;
+      vi.useFakeTimers();
+      vi.setSystemTime(now * 1000);
+
+      const store = makeStore({
+        idToken: makeJwt(now + 3600),
+        refreshToken: "rt",
+        clientId: CONSUMER_CLIENT_ID,
+        deviceKey: "dev-key-only",   // deviceGroupKey / devicePassword が欠ける
+        deviceGroupKey: null,
+        devicePassword: null,
+      });
+
+      await expect(getValidIdToken(store)).rejects.toThrow(/has a deviceKey but is missing/);
       expect(fetchMock).not.toHaveBeenCalled();
     });
   });
@@ -292,13 +317,16 @@ describe("getValidIdToken", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("refresh 前に ConfirmDevice 済み device credentials が無ければ拒否する", async () => {
+    it("P3-16: device 無し (deviceKey=null) の expired idToken は DEVICE_KEY 無しで refresh する (_aws_sdk_ref/CognitoUser.java:3554-3564)", async () => {
+      // P3-16: deviceKey が null の場合は REFRESH_TOKEN_AUTH に DEVICE_KEY を含めず refresh する。
+      // 参照: _aws_sdk_ref/CognitoUser.java:3554-3564 (deviceKey == null なら DEVICE_KEY 省略)。
       const now = 1_700_000_000;
       vi.useFakeTimers();
       vi.setSystemTime(now * 1000);
 
+      const newToken = makeJwt(now + 3600);
       const store = makeStore({
-        idToken: makeJwt(now - 1),
+        idToken: makeJwt(now - 1), // expired
         refreshToken: "rt",
         clientId: CONSUMER_CLIENT_ID,
         deviceKey: null,
@@ -306,8 +334,17 @@ describe("getValidIdToken", () => {
         devicePassword: null,
       });
 
-      await expect(getValidIdToken(store)).rejects.toThrow(/missing confirmed Cognito device credentials/);
-      expect(fetchMock).not.toHaveBeenCalled();
+      fetchMock.mockResolvedValueOnce(cognitoOk({
+        AuthenticationResult: { IdToken: newToken },
+      }));
+
+      const got = await getValidIdToken(store);
+      expect(got).toBe(newToken);
+      // DEVICE_KEY は含まれない (deviceKey=null なので)
+      const call = cognitoCalls()[0];
+      expect(call.op).toBe("InitiateAuth");
+      expect(call.input.AuthParameters.DEVICE_KEY).toBeUndefined();
+      expect(call.input.AuthParameters.REFRESH_TOKEN).toBe("rt");
     });
 
     it("rotation: response.RefreshToken があれば store に新 refreshToken を保存する (参照 SDK は旧 token 維持だが意図的逸脱)", async () => {

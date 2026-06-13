@@ -162,10 +162,22 @@ export function subscribeChunks(client, { sendFrame, subscriptions, timeoutMs, o
     }
     // P3-9: 同 action の success:false フレーム (要求 op で返る即時エラー) を検知して
     // timeout を待たずに失敗確定する (useManageDevice.js:27-34 の !message.success と同じ判定)。
+    // P3-3: serve デーモンの並行 RPC 環境では、同 action の別 op (del / updateName 等) の
+    // 失敗応答が来ただけで一覧が誤 reject されないよう、op 相関を絞る
+    // (参照: useManageDevice.js:27-34 — vendor は action レベルでのみ判定するが、kit は
+    // 並行 RPC を持つため op 相関が必要)。
+    // 判定規則: 受信フレームに op フィールドがあり、かつそれが sendFrame の op 系列でない
+    // 場合は無視する。「op 欠落フレーム」または「sendFrame.op と一致するフレーム」のみ拾う。
+    // 完全相関 (requestID 等) は不可能なため上限として op 単位の絞り込みにとどめる。
     if (errorAction && typeof (/** @type {any} */ (client).onMessage) === "function") {
+      const ownOp = sendFrame && typeof (/** @type {any} */ (sendFrame)).op === "string"
+        ? (/** @type {any} */ (sendFrame)).op : null;
       unsubs.push(/** @type {any} */ (client).onMessage((/** @type {any} */ msg) => {
         if (done) return;
         if (msg?.action !== errorAction || msg?.success !== false) return;
+        // P3-3: 受信フレームに op があり、自要求の op 系列でなければ無視 (他者の失敗応答)。
+        // ownOp が null (sendFrame に op 無し) の場合は op 絞りなし (旧挙動と同一)。
+        if (ownOp !== null && msg.op !== undefined && msg.op !== ownOp) return;
         finish(rejected(
           t("domain.util.opFailed", { op: errorAction, detail: msg?.message || JSON.stringify(msg) }),
           { upstreamCode: msg?.code ?? null },

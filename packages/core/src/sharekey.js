@@ -1,8 +1,10 @@
-// デバイス鍵共有 URL (ゲスト共有 QR) の生成 / 解析。
+// デバイス鍵共有 URL (ゲスト共有 QR) の生成 / 解析 + フレンド (社員追加) QR。
 //
 // Ported 1:1 from biz3 (CANDY-HOUSE/biz3, MIT):
 //   - generateInviteGuestQRCodeByInfo : references_web/src/utils/biz3utils.js:114-135
 //   - readQrcode (URL 解析部のみ)        : references_web/src/utils/biz3utils.js:167-213
+//   - generateUserQRCodeBySubUUID      : references_web/src/utils/biz3utils.js:107-112
+//   - readUserQrcode (URL 解析部のみ)    : references_web/src/utils/biz3utils.js:144-165
 //
 // biz3 web は SESAME アプリと共有するため、鍵情報を `ssm://UI?t=sk&sk=<base64>&l=<lv>&n=<name>`
 // という URL にエンコードし、それを QR 画像化 (@nuintun/qrcode の dataURL) している。
@@ -153,4 +155,54 @@ export function parseShareKeyUrl(url) {
     deviceName: params.get("n"),
     deviceUUID,
   };
+}
+
+// ---------- フレンド (社員追加) QR ----------
+
+// qrMode.QR_FRIEND = 'friend' (references_web/src/constants/qrType.js:3)
+const QR_FRIEND = "friend";
+
+/**
+ * subUUID からフレンド QR URL を生成する。
+ * biz3 generateUserQRCodeBySubUUID の 1:1 移植 (biz3utils.js:107-112)。
+ *
+ *   ssm://UI/?t=friend&friend=<subUUID 大文字>
+ *
+ * `t=friend` と `friend=<UUID>` の大文字生成が参照の仕様。
+ * 参照: references_web/src/utils/biz3utils.js:107-112
+ *
+ * @param {string} subUUID 操作者のユーザ UUID (Cognito subUUID)
+ * @returns {string} `ssm://UI/?t=friend&friend=<subUUID 大文字>`
+ */
+export function buildFriendQrUrl(subUUID) {
+  if (!subUUID) throw badRequest("sharekey.err.subUUIDRequired");
+  // biz3utils.js:111: t=${qrMode.QR_FRIEND}&${qrMode.QR_FRIEND}=${userSub.toUpperCase()}
+  return `ssm://UI/?t=${QR_FRIEND}&${QR_FRIEND}=${String(subUUID).toUpperCase()}`;
+}
+
+/**
+ * フレンド QR URL (`ssm://UI/?t=friend&friend=...`) を解析して `{ friendID }` を返す。
+ * biz3 readUserQrcode の URL 解析部の 1:1 移植 (biz3utils.js:144-165, DOM 依存部除外)。
+ *
+ *   - `t !== 'friend'` または `friend` パラメータ欠落の場合は throw。
+ *   - friendID は **小文字** で返す (biz3utils.js:158: `friendUUID.toLowerCase()`)。
+ *
+ * 参照: references_web/src/utils/biz3utils.js:144-165
+ *
+ * @param {string} url `ssm://UI/?t=friend&friend=<subUUID>` 形式の文字列
+ * @returns {{ friendID: string }} friendID は小文字
+ */
+export function parseFriendQrUrl(url) {
+  if (!url) throw badRequest("sharekey.err.friendQrUrlRequired");
+  const qIdx = String(url).indexOf("?");
+  const params = new URLSearchParams(qIdx >= 0 ? String(url).slice(qIdx + 1) : String(url));
+
+  const type = params.get("t");
+  const friendUUID = params.get(QR_FRIEND);
+  // biz3utils.js:153: `if (type !== qrMode.QR_FRIEND || !friendUUID)` → call(null) (解析失敗)
+  if (type !== QR_FRIEND || !friendUUID) {
+    throw badRequest("sharekey.err.invalidFriendQr");
+  }
+  // biz3utils.js:158: friendID: friendUUID.toLowerCase()
+  return { friendID: friendUUID.toLowerCase() };
 }

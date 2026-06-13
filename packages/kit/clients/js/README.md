@@ -34,8 +34,8 @@ Failures throw `SesameRpcError(message, kind)` (`kind`: `not_authenticated` /
 
 For most users the **typed, contract-tracked SDK** is the better choice:
 [`sdk/ts/sesame-client.ts`](../../sdk/ts/sesame-client.ts) is **generated** from
-[`schema/openrpc.json`](../../schema/openrpc.json), with one typed method per RPC,
+[`schema/openrpc.json`](../../../../schema/openrpc.json), with one typed method per RPC,
 typed params/results, and `SesameRpcError` (`kind` / `retryable`). See
 [`sdk/ts/README.md`](../../sdk/ts/README.md) and the
-[repository README](../../README.md#which-should-i-use--sdk-vs-clients) for the
+[repository README](../../../../README.md#which-should-i-use--sdk-vs-clients) for the
 full "which should I use?" guidance.

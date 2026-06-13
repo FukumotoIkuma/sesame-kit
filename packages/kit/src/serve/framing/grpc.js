@@ -94,11 +94,16 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
     }
   };
 
-  const pkgDef = protoLoader.loadSync(PROTO_PATH, { keepCase: true, longs: String, defaults: true });
+  // P1-3: oneofs:true が必要(proto3 optional は synthetic oneof で実装されるため)。
+  // defaults:true は非 optional フィールド(required string 等)の初期値補完に維持する。
+  // optional scalar が省略された場合、proto-loader は `_fieldName` sentinel を生成しない。
+  // explicit 送信の場合は `fieldName: <value>` + `_fieldName: "fieldName"` の両方が入る。
+  // これにより「未指定(省略)」と「明示 0/false/""」の区別が可能になる(実測確認済み)。
+  const pkgDef = protoLoader.loadSync(PROTO_PATH, { keepCase: true, longs: String, defaults: true, oneofs: true });
   // loadPackageDefinition は GrpcObject を返すが各ノードの具体型は動的なので Record で受ける。
   const proto = /** @type {Record<string, any>} */ (grpc.loadPackageDefinition(pkgDef)).sesame;
-  /** @type {Record<string, { method: string, jsonFields: string[] }>} */
-  const methodMap = JSON.parse(readFileSync(MAP_PATH, "utf8")); // Pascal → {method, jsonFields}
+  /** @type {Record<string, { method: string, jsonFields: string[], optionalScalars: string[] }>} */
+  const methodMap = JSON.parse(readFileSync(MAP_PATH, "utf8")); // Pascal → {method, jsonFields, optionalScalars}
   const server = new grpc.Server();
 
   // handler は構造的 GrpcCall で型付けする (proto 生成の具体 call 型は静的に分からない)。
@@ -107,12 +112,30 @@ export async function startGrpcFraming(daemon, { bind = "127.0.0.1", port, token
   const impl = {};
 
   // 型付き unary メソッドを一括登録 (handler は generic に daemon.invoke へ委譲)。
-  for (const [pascal, { method, jsonFields }] of Object.entries(methodMap)) {
+  for (const [pascal, { method, jsonFields, optionalScalars }] of Object.entries(methodMap)) {
     impl[pascal] = async (call, callback) => {
       if (!tokenMatches(metaToken(call), token)) return callback({ code: grpc.status.UNAUTHENTICATED, message: t("serve.grpc.unauthorized") });
       const params = { ...call.request };
+      // P1-3: optional scalar の presence 正規化。
+      // proto3 optional フィールドは @grpc/proto-loader (oneofs:true) が synthetic oneof を生成する。
+      // 省略された optional scalar は `_fieldName` sentinel を持たない → params から除去(undefined と同等)。
+      // 明示送信の場合は `_fieldName: "fieldName"` が存在する → 値(0/false/"" も含む)をそのまま維持。
+      // sentinel キー(_で始まる oneof discriminator)は handler に渡さないよう除去する。
+      for (const f of (optionalScalars || [])) {
+        if (`_${f}` in params) {
+          // 明示的に送信された — sentinel のみ除去し値は維持する
+          delete params[`_${f}`];
+        } else {
+          // 省略された — params から除去してハンドラに「未指定」として届ける
+          delete params[f];
+        }
+      }
+      // jsonFields: optional string として JSON 文字列エンコードされた動的フィールドを parse。
+      // optional によりフィールドが省略された場合は params[f] が既に undefined → delete は不要だが
+      // 空文字列の場合は optional でも「明示空」なので、JSON-string フィールドとして空は「未指定」扱い
+      // (空の JSON 文字列は valid な JSON ではなく、空 object "{}" や "null" と区別できないため)。
       for (const f of jsonFields) {
-        if (params[f] === undefined || params[f] === "") { delete params[f]; continue; } // 空=未指定
+        if (params[f] === undefined || params[f] === "") { delete params[f]; continue; }
         try { params[f] = JSON.parse(params[f]); } catch { return callback({ code: grpc.status.INVALID_ARGUMENT, message: t("serve.grpc.fieldMustBeJson", { f }) }); }
       }
       /** @type {import("../daemon.js").Connection} */

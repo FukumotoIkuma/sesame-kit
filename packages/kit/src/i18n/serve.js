@@ -1,5 +1,7 @@
-// serve レイヤ (cli/serve.js, serve/jsonrpc.js, serve/daemon.js, serve/registry.js,
+// serve レイヤ (cli/serve.js, serve/daemon.js, serve/registry.js,
 // serve/framing/*) のユーザ向けメッセージ。
+// JSON-RPC プロトコルエラー (serve.parseError / batchUnsupported / invalidRequest /
+// internal / internalError) は packages/core/src/i18n/jsonrpc.js で管理する。
 export default {
   en: {
     // ---- cli/serve.js ----
@@ -76,13 +78,6 @@ Examples:
     "serve.note.uncaught": "uncaughtException:",
     "serve.note.unhandled": "unhandledRejection (ignored):",
     "serve.note.tooManyRej": "too many unhandled rejections in 60s — exiting",
-
-    // ---- serve/jsonrpc.js ----
-    "serve.parseError": "Parse error (send one JSON per line; pretty-print not allowed)",
-    "serve.batchUnsupported": "Batch requests are not supported",
-    "serve.invalidRequest": "Invalid Request",
-    "serve.internal": "internal",
-    "serve.internalError": "internal error",
 
     // ---- serve/daemon.js ----
     "serve.hubRequired": "hub required",
@@ -339,13 +334,6 @@ Watch events (SSE):
     "serve.note.uncaught": "uncaughtException:",
     "serve.note.unhandled": "unhandledRejection (ignored):",
     "serve.note.tooManyRej": "too many unhandled rejections in 60s — exiting",
-
-    // ---- serve/jsonrpc.js ----
-    "serve.parseError": "Parse error (1 行 1 JSON で送ること。pretty-print 不可)",
-    "serve.batchUnsupported": "Batch requests are not supported",
-    "serve.invalidRequest": "Invalid Request",
-    "serve.internal": "internal",
-    "serve.internalError": "internal error",
 
     // ---- serve/daemon.js ----
     "serve.hubRequired": "hub required",

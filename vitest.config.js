@@ -20,8 +20,11 @@ const INTEGRATION = [
 ];
 
 // テスト時のみロケールを ja に固定 (既存の日本語アサートを維持。本番既定は en)。
-// setup は core/kit 両 project 共通で使う単一ファイル (@sesame-kit/core/i18n を叩く)。
+// core 用 setup: @sesame-kit/core/i18n のロケール固定 (core/kit 両 project 共通)。
+// kit 用 setup: CLI/serve/session カタログを core へ登録 (kit テストが t("cli.*") 等を使うため)。
+// 登録はモジュール評価時に一度だけ走り、重複 throw を避けるため両 setup を分けておく。
 const SETUP = ["./packages/core/tests/setup.i18n.js"];
+const KIT_SETUP = [...SETUP, "./packages/kit/vitest.setup.js"];
 
 // テスト探索のルート (両ワークスペースの tests/ を含める。glob は packages/* 配下に固定して
 // ルート直下に残る一時ファイル等を拾わない)。
@@ -40,14 +43,14 @@ export default defineConfig({
         test: {
           name: "unit",
           include: TEST_INCLUDE,
-          setupFiles: SETUP,
+          setupFiles: KIT_SETUP,
           exclude: [...BASE_EXCLUDE, ...INTEGRATION], // 統合テストは e2e project へ
         },
       },
       {
         test: {
           name: "e2e",
-          setupFiles: SETUP,
+          setupFiles: KIT_SETUP,
           include: INTEGRATION,
           exclude: BASE_EXCLUDE,
           fileParallelism: false, // 直列実行で実ポート/タイミングの競合を避ける

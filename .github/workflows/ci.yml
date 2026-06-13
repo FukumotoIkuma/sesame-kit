@@ -119,3 +119,35 @@ jobs:
       # creds もネットワークも使わない。fixtures が stable スキーマに適合しなければ exit 1。
       - name: Replay recorded upstream responses against stable schemas
         run: node scripts/canary-upstream.mjs --replay
+
+  # P2-1 (R3:ARCH-01): @sesame-kit/core が単体 install で import できることを常時検証する。
+  # monorepo の hoisting は依存欠落を隠すため、pack + 隔離 install が唯一の信頼できるゲート。
+  # npm pack は lock 非依存(tarball をその場で生成)なので Docker Linux での lock 再生成は不要。
+  # ws はレジストリから取得する(これが core の依存宣言が正しいことの証明)。
+  core-install-smoke:
+    name: "@sesame-kit/core isolated install smoke"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install workspace dependencies (hoisting check baseline)
+        run: npm ci
+
+      - name: Pack @sesame-kit/core tarball
+        # npm pack は --pack-destination を自動作成しないので先に mkdir する。
+        run: mkdir -p /tmp/core-pack && npm pack -w packages/core --pack-destination /tmp/core-pack
+
+      - name: Install core tarball in isolation (no workspace hoisting)
+        run: |
+          mkdir /tmp/core-smoke
+          cd /tmp/core-smoke
+          # Install the packed tarball; ws must be resolved from the registry, not hoisting.
+          npm install /tmp/core-pack/sesame-kit-core-*.tgz
+          # Smoke: the entrypoint must resolve without ERR_MODULE_NOT_FOUND.
+          node -e "import('@sesame-kit/core').then(() => console.log('smoke: ok')).catch(e => { console.error(e); process.exit(1); })"

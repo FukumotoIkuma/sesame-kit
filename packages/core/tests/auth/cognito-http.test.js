@@ -83,32 +83,39 @@ describe("cognitoCall", () => {
   });
 
   it('"Message" (大文字 M) キーのエラーメッセージも拾う', async () => {
+    // maxRetries:0 — このテストはエラーハンドリング (メッセージキー) を検証する。
+    // リトライは retry-timeout.test.js で行う。
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 400,
       text: async () => JSON.stringify({ __type: "x#SomeException", Message: "capital M" }),
     });
-    const err = await cognitoCall("InitiateAuth", {}).catch((e) => e);
+    const err = await cognitoCall("InitiateAuth", {}, { maxRetries: 0 }).catch((e) => e);
     expect(err.name).toBe("SomeException");
     expect(err.message).toBe("capital M");
   });
 
   it("__type 無しのエラー応答は name=CognitoHttpError + HTTP status 入りメッセージ", async () => {
+    // maxRetries:0 — このテストはリトライ動作ではなくエラーハンドリングを検証する。
+    // 5xx がリトライ対象であっても、リトライは cognito-http のリトライ専用テストで検証する。
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500, text: async () => "{}" });
-    const err = await cognitoCall("InitiateAuth", {}).catch((e) => e);
+    const err = await cognitoCall("InitiateAuth", {}, { maxRetries: 0 }).catch((e) => e);
     expect(err.name).toBe("CognitoHttpError");
     expect(err.message).toMatch(/InitiateAuth failed: HTTP 500/);
   });
 
   it("非 JSON のエラー body でも crash せず CognitoHttpError を投げる", async () => {
+    // maxRetries:0 — このテストはリトライ動作ではなくエラーハンドリングを検証する。
     fetchMock.mockResolvedValueOnce({ ok: false, status: 502, text: async () => "<html>Bad Gateway</html>" });
-    const err = await cognitoCall("RevokeToken", {}).catch((e) => e);
+    const err = await cognitoCall("RevokeToken", {}, { maxRetries: 0 }).catch((e) => e);
     expect(err.name).toBe("CognitoHttpError");
     expect(err.message).toMatch(/HTTP 502/);
   });
 
   it("ネットワークエラー (fetch reject) はそのまま伝播する", async () => {
+    // maxRetries:0 — 「ネットワークエラーが最終的に伝播する」を単一試行で検証する。
+    // リトライ後の伝播はリトライ専用テストで確認する。
     fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
-    await expect(cognitoCall("InitiateAuth", {})).rejects.toThrow(/fetch failed/);
+    await expect(cognitoCall("InitiateAuth", {}, { maxRetries: 0 })).rejects.toThrow(/fetch failed/);
   });
 });

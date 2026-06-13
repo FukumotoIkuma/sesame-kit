@@ -20,9 +20,9 @@ export function parseTouchCard(data: Buffer): {
 };
 /**
  * CHSesameTouchFace(data) (CHSesameBiometricParseData.kt:28-36) を移植。
- * face / palm の NOTIFY/CHANGE 受信に使う。nameUUID は hex を noHashtoUUID した文字列だが、
- * kit には UUID 整形ヘルパが無いため nameUUID は **hex 文字列のまま** 返す
- * (SDK の noHashtoUUID は表示用整形であり、識別子としての値は hex と同値)。
+ * face / palm の NOTIFY/CHANGE 受信に使う。SDK は nameUUID を noHashtoUUID で整形するが、
+ * biometric 層は識別子を hex 正規形で統一する方針のため nameUUID は **hex 文字列のまま** 返す
+ * (整形は消費側で行う。crypto.js:hexToUuid が利用可)。
  *
  * @param {Buffer} data
  * @returns {{type:number, idLength:number, id:string, nameLength:number, nameUUID:string}}
@@ -97,8 +97,8 @@ export function parseBiometricMechStatus(data: Buffer): {
  *   it[21] == 0x00 → SS5 鍵:  id = it[0..15] (16B) の hex、value = [0x05, it[22]]。
  *   it[21] != 0x00 → SS2 鍵:  id = base64decode(utf8(it[0..21]) + "==") の hex、value = [0x04, it[22]]。
  *       (SS2 系は 22B の base64 文字列を ASCII で詰めており、"==" を補って復号する)。
- * SDK は id をさらに noHashtoUUID で UUID 整形するが、kit は parseTouchFace と同じ方針で
- * **hex 文字列のまま** id とする (noHashtoUUID は表示整形であり識別子としての値は hex と同値)。
+ * SDK は id をさらに noHashtoUUID で UUID 整形するが、biometric 層は識別子を hex 正規形で
+ * 統一する方針のため **hex 文字列のまま** id とする (整形は消費側で行う。crypto.js:hexToUuid が利用可)。
  * base64 復号に失敗したチャンクは SDK 同様スキップする (kt:247-249 catch)。
  *
  * 空きスロット判定 (hasEmptySlot, kt:225-231):

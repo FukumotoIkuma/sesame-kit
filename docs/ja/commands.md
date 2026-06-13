@@ -138,10 +138,11 @@ sesame ir remote-add-matter              # IR リモコンを Hub3 上の Matter
 `send` / `ir learn` を使うには、先にリモコン（とその Hub3）を config に取り込む必要があります。サーバから一括取り込みが最速です:
 
 ```bash
-sesame hub3 sync-from-devices    # Hub3 を取り込む
-sesame remote sync-from-devices  # リモコンを取り込む (Hub3・irType は自動判定) + キーも取得
-sesame remote ls                 # 登録済みリモコン一覧
-sesame remote set-default ac     # 引数なし `sesame send <key>` で使う既定リモコン
+sesame hub3 sync-from-devices                       # Hub3 を取り込む
+sesame remote sync-from-devices                     # リモコンを取り込む (Hub3・irType は自動判定) + キーも取得
+sesame remote sync-from-server <hub3> <irType>      # サーバから IR リモコンを取り込む (getRemoteList。hub3 と irType が必要)
+sesame remote ls                                    # 登録済みリモコン一覧
+sesame remote set-default ac                        # 引数なし `sesame send <key>` で使う既定リモコン
 ```
 
 1 つずつ追加するなら `sesame hub3 add` / `sesame remote add`（どちらも一覧から選ぶ。UUID/irType の手打ち不要）。`sesame remote sync-keys [name]` でリモコンのキー一覧を取り込み直します。
@@ -423,7 +424,7 @@ sesame ble position <device> <lock> <unlock>   # 施錠 / 解錠角度の設定 
 ライブラリとしても利用可:
 
 ```js
-import { SesameBle } from "sesame-kit";   // or: import { ble } from "sesame-kit"
+import { SesameBle } from "@sesame-kit/core";   // or: import { ble } from "@sesame-kit/core"
 await SesameBle.use({ deviceUUID, secretKey }, async (lock) => {
   await lock.unlock();
   await lock.autolock(30);

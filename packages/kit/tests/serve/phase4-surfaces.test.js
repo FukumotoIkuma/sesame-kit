@@ -278,7 +278,8 @@ describe("SURF-22: gRPC Discover 重複の削除", () => {
   it("rpc.discover への rpc は RpcDiscover の 1 本のみ (Discover は生成されない)", async () => {
     const { generateProto } = await import("../../../../scripts/gen-grpc-proto.mjs");
     const { protoText, nameMap } = await generateProto();
-    expect(nameMap.RpcDiscover).toEqual({ method: "rpc.discover", jsonFields: [] });
+    // P1-3: nameMap エントリに optionalScalars が追加された(proto3 field presence 対応)。
+    expect(nameMap.RpcDiscover).toEqual({ method: "rpc.discover", jsonFields: [], optionalScalars: [] });
     expect(nameMap.Discover).toBeUndefined();
     const discoverRpcs = Object.values(nameMap).filter((e) => e.method === "rpc.discover");
     expect(discoverRpcs).toHaveLength(1);

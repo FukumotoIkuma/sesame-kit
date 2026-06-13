@@ -15,6 +15,9 @@
 // 上記は profile "lock" (既定) のフロー。WifiModule2 は initial(13)・login/register/暗号鍵・sault が
 // ロックと非互換のため profile "wm2" で構築する (protocol.js SESSION_PROFILES、
 // CHWifiModule2Device.kt:279-321,521-528。@experimental 実機未検証)。
+//
+// 注: OS3 ロックの自動履歴ドレイン (CHSesameOS3LockBase.kt:185-209、トリガは adv_tag_b1) は
+// 実装されていません。クラウド POST が試行される環境では意図的に非実装 (§10-6 参照)。
 
 import { Buffer } from "node:buffer";
 import { createECDH } from "node:crypto";
@@ -237,10 +240,21 @@ export class SesameBleSession {
       }, LOGIN_TIMEOUT_MS);
       this._loginWaiter = { resolve, reject, timer };
     });
-    await this._transport.connect(
-      (packet) => this._onPacket(packet),
-      (reason) => this._handleTransportDisconnect(reason),
-    );
+    // P1-1: transport.connect() の失敗時に loginPromise が孤児になって unhandledRejection を
+    // 発生させないよう、失敗時に待機者を即 clear して孤児 Promise に no-op catch を付ける。
+    // 「待機者生成を connect 成功後へ移動」は初回 initial の受信レースを精査しない限り採らない
+    // (現行の「先に待機者を作る」順序は受信レースに対して正しい)。
+    try {
+      await this._transport.connect(
+        (packet) => this._onPacket(packet),
+        (reason) => this._handleTransportDisconnect(reason),
+      );
+    } catch (e) {
+      clearTimeout(this._loginWaiter?.timer);
+      this._loginWaiter = null;
+      loginPromise.catch(() => {}); // 孤児 Promise の unhandledRejection を抑制
+      throw e;
+    }
     return loginPromise;
   }
 
@@ -292,10 +306,19 @@ export class SesameBleSession {
         }, LOGIN_TIMEOUT_MS);
         this._readyWaiter = { resolve, reject, timer };
       });
-      await this._transport.connect(
-        (packet) => this._onPacket(packet),
-        (reason) => this._handleTransportDisconnect(reason),
-      );
+      // P1-1: transport.connect() 失敗時に readyPromise が孤児になって unhandledRejection を
+      // 発生させないよう、失敗時に待機者を即 clear して孤児 Promise に no-op catch を付ける。
+      try {
+        await this._transport.connect(
+          (packet) => this._onPacket(packet),
+          (reason) => this._handleTransportDisconnect(reason),
+        );
+      } catch (e) {
+        clearTimeout(this._readyWaiter?.timer);
+        this._readyWaiter = null;
+        readyPromise.catch(() => {}); // 孤児 Promise の unhandledRejection を抑制
+        throw e;
+      }
       await readyPromise;
     }
 
@@ -785,10 +808,16 @@ export class SesameBleSession {
     // nonce 12B が暗号契約 (SesameOS3BleCipher.kt:8-19,23 / CHWifiModule2Device.kt:297,317、
     // protocol.js ccmSault も 4B を要求)。4B 超を黙って先頭 4B に切り詰めるとデバイス側の
     // sault と不一致になり全フレームが復号不能になるため、明示エラーで待機者を解放する。
-    if (!token || token.length < 4) { this._log("initial token too short"); return; }
-    if (token.length > 4) {
-      const err = new Error(t("ble.initialTokenMustBe4", { len: token.length }));
-      this._log("initial token too long (refusing to truncate)", token.length);
+    if (!token || token.length !== 4) {
+      // token.length < 4 も > 4 も同一の fail-fast: 待機者を即 reject して経路を閉じる。
+      // < 4 のとき旧実装はログのみ return で待機者を timeout 宙づりにしていた (>4B との非対称)。
+      // 両方向とも同じエラーで即 reject する (P4-5)。
+      // 根拠: CCM nonce = count(8B LE) ++ sault で、lock profile の sault = 0x00 ++ token4 →
+      // nonce 13B / wm2 の sault = token4 → nonce 12B (SesameOS3BleCipher.kt:8-19,23 /
+      // CHWifiModule2Device.kt:297)。4B 以外は cipher と sault が不一致 → 全フレーム復号不能。
+      const len = token ? token.length : 0;
+      const err = new Error(t("ble.initialTokenMustBe4", { len }));
+      this._log("initial token must be exactly 4 bytes (got " + len + "B); failing waiters", len);
       this._rejectWaiter("_loginWaiter", err);
       this._rejectWaiter("_readyWaiter", err);
       return;

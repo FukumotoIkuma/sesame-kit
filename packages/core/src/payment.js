@@ -68,9 +68,13 @@ export async function getClientSecret(client, params = {}) {
  * biz3 changeDefaultPay (useStripeInfo.js:240-252):
  * { action:'biz3ManagePayment', customerId, defaultPaymentMethod, op:'changeDefaultPayment' }
  *
+ * 応答: vendor (useStripeInfo.js:123-135) は `message.reqContext.defaultPaymentMethod` を
+ * 読む。応答の実体は `reqContext` にあるため、戻り値に `reqContext` を含める。
+ * 参照: references_web/src/api/useStripeInfo.js:123-135
+ *
  * @param {import("./transport.js").Hub3WsClient} client
  * @param {{customerId?:string, companyID?:string, defaultPaymentMethod?:string, timeoutMs?:number}} params
- * @returns {Promise<object|null>}
+ * @returns {Promise<{data: object|null, reqContext: any}>}
  */
 export async function changeDefaultPayment(client, params = {}) {
   const { defaultPaymentMethod, timeoutMs = DEFAULT_TIMEOUT_MS } = params;
@@ -82,7 +86,9 @@ export async function changeDefaultPayment(client, params = {}) {
     timeoutMs,
   );
   assertSuccess(resp, "changeDefaultPayment");
-  return resp?.data ?? null;
+  // vendor が消費するのは resp.reqContext (useStripeInfo.js:124: message.reqContext.defaultPaymentMethod)。
+  // resp.data は通常 null / 空だが、lib 利用者が両フィールドにアクセスできるよう両方を返す。
+  return { data: resp?.data ?? null, reqContext: resp?.reqContext };
 }
 
 /**

@@ -255,6 +255,95 @@ export function webapiEntries() {
 }
 
 /**
+ * 個人アカウント鍵ストア REST API の RPC 公開仕様 (P3-2)。
+ * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ *
+ * CHAPIClient.kt:29-46 の PUT /device, GET /device/list, DELETE /device に相当。
+ * registry パッチ方式は v2 教訓で禁止。buildRegistry 呼び出しは CONTRACT_VERSION bump を
+ * 担当する P5-8 postStep で行う。本関数は型情報・ドキュメント用の仕様宣言のみを提供し、
+ * buildRegistry() には直接接続しない (NAMESPACE_OPS の宣言形式と同じ位置付け)。
+ *
+ * params/result の型宣言は devices.js の CHUserKey JSDoc に準拠。
+ *
+ * @returns {Record<string, import("../registry-helpers.js").MethodEntry>}
+ */
+export function keyStoreEntries() {
+  return {
+    /**
+     * GET /device/list — 個人アカウント鍵ストア全件取得。
+     * @experimental 実機未検証 (参照: CHAPIClient.kt:36-39) §9 V15
+     */
+    "keystore.list": {
+      summary: "GET /device/list — 個人アカウント鍵ストア全件取得 (@experimental §9 V15)",
+      params: [
+        { name: "appIdentifyId", required: false, desc: "appidentifyid ヘッダ値 (省略時は自動生成)", schema: S },
+      ],
+      result: "CHUserKey[] (deviceUUID/deviceModel/keyIndex/secretKey/sesame2PublicKey/deviceName/keyLevel)",
+      /** @param {any} ctx */
+      handler: (ctx) => {
+        requireAuth(ctx.daemon);
+        return ctx.hub.keyStoreList({ appIdentifyId: ctx.params?.appIdentifyId ?? undefined });
+      },
+    },
+    /**
+     * PUT /device — 個人アカウント鍵ストアへ鍵を追加・更新。
+     * @experimental 実機未検証 (参照: CHAPIClient.kt:29-33) §9 V15
+     */
+    "keystore.put": {
+      summary: "PUT /device — 個人アカウント鍵ストアへ鍵を追加・更新 (@experimental §9 V15)",
+      params: [
+        { name: "deviceUUID",       required: true,  schema: S },
+        { name: "deviceModel",      required: true,  schema: S },
+        { name: "keyIndex",         required: true,  schema: S },
+        { name: "secretKey",        required: true,  schema: S },
+        { name: "sesame2PublicKey", required: true,  schema: S },
+        { name: "deviceName",       required: false, schema: S },
+        { name: "keyLevel",         required: true,  schema: N },
+        { name: "appIdentifyId",    required: false, schema: S },
+      ],
+      result: "server response (any)",
+      /** @param {any} ctx */
+      handler: (ctx) => {
+        requireAuth(ctx.daemon);
+        need(ctx.params, ["deviceUUID", "deviceModel", "keyIndex", "secretKey", "sesame2PublicKey"]);
+        if (ctx.params.keyLevel === undefined || ctx.params.keyLevel === null) {
+          throw new RpcError(t("serve.missingParam", { k: "keyLevel" }), { code: RPC.INVALID_PARAMS, kind: KIND.BAD_PARAMS });
+        }
+        /** @type {import("@sesame-kit/core/devices").CHUserKey} */
+        const key = {
+          deviceUUID:       ctx.params.deviceUUID,
+          deviceModel:      ctx.params.deviceModel,
+          keyIndex:         ctx.params.keyIndex,
+          secretKey:        ctx.params.secretKey,
+          sesame2PublicKey: ctx.params.sesame2PublicKey,
+          deviceName:       ctx.params.deviceName ?? null,
+          keyLevel:         ctx.params.keyLevel,
+        };
+        return ctx.hub.keyStorePut(key, { appIdentifyId: ctx.params?.appIdentifyId ?? undefined });
+      },
+    },
+    /**
+     * DELETE /device — 個人アカウント鍵ストアから鍵を削除。
+     * @experimental 実機未検証 (参照: CHAPIClient.kt:42-46) §9 V15
+     */
+    "keystore.remove": {
+      summary: "DELETE /device — 個人アカウント鍵ストアから鍵を削除 (@experimental §9 V15)",
+      params: [
+        { name: "deviceUUID",    required: true,  schema: S },
+        { name: "appIdentifyId", required: false, schema: S },
+      ],
+      result: "server response (any)",
+      /** @param {any} ctx */
+      handler: (ctx) => {
+        requireAuth(ctx.daemon);
+        need(ctx.params, ["deviceUUID"]);
+        return ctx.hub.keyStoreRemove(ctx.params.deviceUUID, { appIdentifyId: ctx.params?.appIdentifyId ?? undefined });
+      },
+    },
+  };
+}
+
+/**
  * ir.* の直後に来る認証データ系エントリ (access.postAuthenticationData 等)。
  * @returns {Record<string, import("../registry-helpers.js").MethodEntry>}
  */

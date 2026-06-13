@@ -28,8 +28,8 @@ guarantees schema and implementation never diverge.
   app **and** verified by us; `未確認` notes = low confidence → `experimental`).
   See [api-stability.md](./api-stability.md) → "Two boundaries".
 - **Provenance is first-class.** Each contract element records origin/confidence
-  (`verified-live` / `biz3-source-ref` / `unverified`); **`x-stability` is derived
-  from provenance** so internal confidence and external promise stay consistent.
+  (`local` / `app-core` / `unverified` — implementation vocabulary; see [api-stability.md](./api-stability.md) → "Provenance");
+  **`x-stability` is derived from provenance** so internal confidence and external promise stay consistent.
 - **Two drift gates, not one.** (1) schema ↔ impl (our internal consistency); and
   (2) **vendor-behavior ↔ impl** upstream-conformance (live canary / fixture
   replay) — without (2) the facade silently lies when the vendor changes.
@@ -64,13 +64,13 @@ guarantees schema and implementation never diverge.
 - [x] **i — Surface audit & tiering.** Full inventory of serve methods/events/
   params/errors; stable-vs-experimental decision. → `docs/api-stability.md`
   (branch `platform/api-surface`).
-- [x] **ii-a — Machine-readable tiers + apiVersion.** `src/serve/stability.js` is
+- [x] **ii-a — Machine-readable tiers + apiVersion.** `packages/kit/src/serve/stability.js` is
   the single source (provenance → tier); `rpc.discover` emits per-method/event
   `x-stability` + `x-provenance`; `status` and discover.info expose `apiVersion`
   (canonical; `contractVersion`/`x-contractVersion` kept as deprecated aliases).
   Also fixed: vitest `projects` config (self-contained; `--project unit|e2e`
   filters work, no double-count) and restored `npm test` = unit then e2e.
-- [x] **ii-b — Error model hardening.** `src/errors.js` (`SesameError` + machine
+- [x] **ii-b — Error model hardening.** `packages/core/src/errors.js` (`SesameError` + machine
   `code`, `retryable`, `data`) typed at the library layer; serve boundary maps
   `code` → `kind` (+`data.retryable`, `data.upstreamCode`). New `kind=rejected`.
   Applied to the stable `lock.*` path + lock resolution. CONTRACT_VERSION → 1.1.0
@@ -104,7 +104,7 @@ guarantees schema and implementation never diverge.
   a new `x-event-topics` (subscribable topics, excludes broadcast `event.ready`).
   Filled the event.ready gap: it's now emitted on **every** persistent connection
   (stdio/socket/ws/SSE/gRPC Subscribe) via `daemon.addConnection`, not just stdio;
-  marked stable/local. CONTRACT_VERSION → 1.2.0 (additive). Also hardened the
+  marked stable/local. CONTRACT_VERSION → 1.2.0 → 1.3.0 → 1.4.0 (additive). Also hardened the
   NDJSON DoS cutoff to force-destroy the socket (a flooding client with buffered
   server data no longer lingers on a graceful half-close).
 - [x] **v — Upstream-conformance gate + provenance.** Provenance is first-class
@@ -129,10 +129,10 @@ follow iii.
   params~~ → `iot.subscribeIotResponse` is no longer an exposed RPC method;
   `iot.removeSesameFromHub3` self-describes its params in `rpc.discover`.
 - ~~Stale `CONTRACT_VERSION` doc-comment ("79 method" vs 81 exposed)~~ →
-  `src/serve/jsonrpc.js` keeps a per-version changelog; the registry exposes
-  202 methods at contract 1.2.0.
-- ~~`serve` exposes no BLE today (all RPC = cloud WS)~~ → 76 BLE operations are
-  now exposed as typed `ble.*` / `ble.os2.*` RPC methods — `ble.script.*` /
+  `packages/core/src/jsonrpc.js` keeps a per-version changelog; the registry exposes
+  205 methods at contract 1.4.0.
+- ~~`serve` exposes no BLE today (all RPC = cloud WS)~~ → 76 `ble.*` / `ble.os2.*` RPC methods
+  (74 typed + 2 generic escape-hatch facades) are now exposed — `ble.script.*` /
   `ble.biometric.*` / `ble.fingerPrint.*` / `ble.remoteNano.*` / `ble.wifi.*` /
   `ble.hub3.*` / `ble.os2.*` and standalone ops (`register` / `updateFirmware` /
   `reset` / `position` / `history` / `scan` / `magnet` …) — plus the generic
@@ -145,3 +145,40 @@ follow iii.
   artifact; impl is the source, drift-gated). Resolved in iii.
 - SDK package names / publishing targets (npm, PyPI).
 - Whether the stable event contract gets sequence ids in 1.0 or 1.x.
+
+## Platform support
+
+**macOS and Linux are the supported platforms.**
+
+**Windows (win32) is not supported** and is not a target for the current
+milestone. Two blockers make Windows unsupported at this time:
+
+1. **Config path**: `packages/core/src/paths.js` resolves config directories
+   under the XDG/POSIX convention (`~/.config/sesame-kit`). No `%APPDATA%`
+   mapping exists. Running on Windows would silently use an unexpected path.
+
+2. **File-permission security**: `packages/core/src/secure-fs.js` applies
+   `0600` permissions to protect tokens and private keys (e.g. `tokens.json`,
+   `config.json`). The implementation acknowledges that `0600` mode has no
+   effect on Windows (NTFS uses ACLs), so secrets written on Windows have no
+   OS-enforced access control.
+
+At startup on `win32`, `resolveConfigDir()` (and `configPaths()`) emit a
+`console.error` warning once per process:
+
+```
+[sesame-kit] Windows is not supported: config paths (XDG/POSIX) and
+file-permission security (0600 for tokens/secrets) do not work on win32.
+Use macOS or Linux. See docs/platform-roadmap.md for the roadmap.
+```
+
+The Unix domain socket transport (`sesame serve` default) is POSIX-only;
+`stdio` / HTTP / WS / gRPC framings are cross-platform in principle but have
+not been tested on Windows.
+
+**Roadmap (future work, not committed):** Full Windows support would require:
+- `%APPDATA%\sesame-kit` path resolution in `paths.js`
+- Windows ACL-based file protection replacing the `0600` chmod approach in
+  `secure-fs.js`
+- Named-pipe or TCP-only serve transport (no UDS)
+- CI validation on a Windows runner

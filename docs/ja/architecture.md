@@ -100,58 +100,67 @@ autolock を BLE 直送します。よって autolock は BLE の `sesame autolo
 1 コア + 5 フレーミングで、単一常駐 `SesameHub3` に cloud/Biz3 RPC と登録済み BLE op を一様公開します。詳細は README の
 [言語非依存バックエンド](../../README.ja.md#言語非依存バックエンド-sesame-serve) を参照。
 
-- **コア**: `src/serve/jsonrpc.js`（JSON-RPC 2.0、transport 非依存）+ `registry.js`（`NAMESPACE_OPS` から
-  メソッドを自動公開 + OpenRPC）+ `daemon.js`（直列化 / 購読一元 / 背圧 / shutdown）。
-- **フレーミング**: `framing/` 配下に stdio / socket(UDS) / http(+SSE) / ws / grpc + token。
+- **コア**: `packages/core/src/jsonrpc.js`（JSON-RPC 2.0、transport 非依存）+ `packages/kit/src/serve/registry.js`（`NAMESPACE_OPS` から
+  メソッドを自動公開 + OpenRPC）+ `packages/kit/src/serve/daemon.js`（直列化 / 購読一元 / 背圧 / shutdown）。
+- **フレーミング**: `packages/kit/src/serve/framing/` 配下に stdio / socket(UDS) / http(+SSE) / ws / grpc + token。
 - **型抽出**: `scripts/gen-rpc-schema.mjs` が `.d.ts` から param 型を抽出し (`rpc-params.generated.json`)、
   `scripts/gen-grpc-proto.mjs` が型付き `sesame.proto` を生成します。両者は drift-guard テストで保護しています。
 
-## ファイル構成
+## ファイル構成（2 パッケージ構成）
+
+本リポジトリは npm workspace で 2 つの公開パッケージに分割されています:
+- **`@sesame-kit/core`** (`packages/core/`) — ライブラリ本体（BLE + クラウド転送・認証・暗号・デバイス管理）
+- **`sesame-kit`** (`packages/kit/`) — `sesame` CLI・`sesame serve` JSON-RPC デーモン。`@sesame-kit/core` に依存
 
 ```
-sesame-kit/
-├── package.json
-├── README.md
-├── docs/                   # commands / architecture / library / migration
-├── LICENSE
-├── LICENSE.biz3
-├── bin/
-│   └── sesame.js           # CLI 実行エントリ
-├── sdk/                    # 生成された型付き SDK (schema/openrpc.json から生成。推奨) — RPC ごと 1 メソッド、HTTP+SSE
-│   ├── ts/sesame-client.ts       #   型付き TS クライアント (drift-gated。手編集禁止)
-│   └── python/sesame_client.py   #   型付き Python クライアント (drift-gated。手編集禁止)
-├── clients/                # 手書きの薄い公式クライアント (低レベル。上級 / カスタム連携向け)
-│   ├── python/sesame_client.py   #   UDS/stdio/HTTP + イベント購読、汎用 call() (依存ゼロ)
-│   └── js/sesame-client.mjs      #   UDS/HTTP/WebSocket + イベント購読 (Node 20+)。sdk/ と clients/ の違いは README 参照
-├── vendor/
-│   └── biz3/constants/     # biz3 の import-zero 定数を逐語コピー (single source of truth)
-└── src/
-    ├── index.js            # 公開ライブラリエントリ
-    ├── cli.js              # commander 実装 (基本コマンド + makeCtx)
-    ├── cli/                # 機能別コマンド配線 (registerXxxCommands)
-    │   └── serve.js        #   sesame serve … (常駐 JSON-RPC バックエンド配線)
-    ├── serve/              # 言語非依存バックエンド (1 コア + 5 フレーミング)
-    │   ├── jsonrpc.js      #   JSON-RPC 2.0 プロトコルコア (transport 非依存)
-    │   ├── registry.js     #   メソッドカタログ (NAMESPACE_OPS から自動公開) + OpenRPC
-    │   ├── daemon.js       #   単一常駐 hub への多重化 (直列化/購読/背圧/shutdown)
-    │   ├── sesame.proto    #   gRPC 型付き定義 (生成物)
-    │   └── framing/        #   stdio / socket(UDS) / http(+SSE) / ws / grpc + token
-    ├── client.js           # SesameHub3 高レベルクラス (namespace getter で op を自動注入)
-    ├── lock-manager.js     # LockManager (ロック名前解決 + 制御 op。client.js から委譲)
-    ├── transport.js        # Hub3WsClient (reconnect/keepalive/queue/sleep)
-    ├── auth.js             # Cognito CUSTOM_AUTH + REFRESH_TOKEN_AUTH + jwtSub
-    ├── crypto.js           # AES-CMAC + uuid→base64 + cmd code 定数
-    ├── util.js             # assertSuccess / subscribeChunks (ページング push の定型) / SesameError ヘルパ
-    ├── lock.js / ir.js / presetir.js / sharekey.js   # ドメイン op
-    ├── ble/                # BLE 直接制御 (OS非依存コア + 差し替え可能トランスポート)
-    │   ├── protocol.js     #   純JS: CMAC鍵/AES-CCM/セグメント/フレーム/mechStatus
-    │   ├── session.js      #   状態機械 (initial→login→コマンド応答)
-    │   ├── transport.js    #   noble アダプタ (optionalDependency, 遅延require)
-    │   └── index.js        #   SesameBle ファサード
-    ├── iot.js / account.js / schedule.js / org.js / company.js / access.js / devices.js
-    ├── config.js           # ConfigStore (~/.config/sesame-kit/config.json)
-    ├── tokens.js           # FileTokenStore
-    └── paths.js            # 設定ディレクトリ解決
+sesame-kit/                             # monorepo ルート (private)
+├── package.json                        # workspace root (private: true)
+├── README.md / README.ja.md
+├── docs/                               # commands / architecture / library / migration
+├── LICENSE / LICENSE.biz3
+├── schema/openrpc.json                 # 公開 OpenRPC ドキュメント (rpc.discover でも取得可)
+├── packages/
+│   ├── core/                           # @sesame-kit/core (ライブラリ)
+│   │   ├── package.json
+│   │   └── src/
+│   │       ├── index.js                # 公開ライブラリエントリ
+│   │       ├── jsonrpc.js              # JSON-RPC 2.0 プロトコルコア (transport 非依存)
+│   │       ├── client.js              # SesameHub3 高レベルクラス (namespace getter で op を自動注入)
+│   │       ├── lock-manager.js        # LockManager (ロック名前解決 + 制御 op)
+│   │       ├── transport.js           # Hub3WsClient (reconnect/keepalive/queue/sleep)
+│   │       ├── auth.js                # Cognito CUSTOM_AUTH + REFRESH_TOKEN_AUTH + jwtSub
+│   │       ├── crypto.js              # AES-CMAC + uuid→base64 + cmd code 定数
+│   │       ├── util.js                # assertSuccess / subscribeChunks / SesameError ヘルパ
+│   │       ├── lock.js / ir.js / presetir.js / sharekey.js  # ドメイン op
+│   │       ├── ble/                   # BLE 直接制御 (OS非依存コア + 差し替え可能トランスポート)
+│   │       │   ├── protocol.js        #   純JS: CMAC鍵/AES-CCM/セグメント/フレーム/mechStatus
+│   │       │   ├── session.js         #   状態機械 (initial→login→コマンド応答)
+│   │       │   ├── transport.js       #   noble アダプタ (optionalDependency, 遅延require)
+│   │       │   └── index.js           #   SesameBle ファサード
+│   │       ├── iot.js / account.js / schedule.js / org.js / company.js / access.js / devices.js
+│   │       ├── config.js              # ConfigStore (~/.config/sesame-kit/config.json)
+│   │       ├── tokens.js              # FileTokenStore
+│   │       └── paths.js               # 設定ディレクトリ解決
+│   └── kit/                            # sesame-kit (CLI + serve)
+│       ├── package.json
+│       ├── bin/
+│       │   └── sesame.js              # CLI 実行エントリ
+│       ├── sdk/                       # 生成された型付き SDK (schema/openrpc.json から生成。推奨)
+│       │   ├── ts/sesame-client.ts    #   型付き TS クライアント (drift-gated。手編集禁止)
+│       │   └── python/sesame_client.py#   型付き Python クライアント (drift-gated。手編集禁止)
+│       ├── clients/                   # 手書きの薄い公式クライアント (低レベル。上級 / カスタム連携向け)
+│       │   ├── python/sesame_client.py#   UDS/stdio/HTTP + イベント購読、汎用 call() (依存ゼロ)
+│       │   └── js/sesame-client.mjs  #   UDS/HTTP/WebSocket + イベント購読 (Node 20+)
+│       └── src/
+│           ├── cli.js                 # commander 実装 (基本コマンド + makeCtx)
+│           ├── cli/                   # 機能別コマンド配線 (registerXxxCommands)
+│           │   └── serve.js           #   sesame serve … (常駐 JSON-RPC バックエンド配線)
+│           └── serve/                 # 言語非依存バックエンド (1 コア + 5 フレーミング)
+│               ├── registry.js        #   メソッドカタログ (NAMESPACE_OPS から自動公開) + OpenRPC
+│               ├── daemon.js          #   単一常駐 hub への多重化 (直列化/購読/背圧/shutdown)
+│               ├── sesame.proto       #   gRPC 型付き定義 (生成物)
+│               └── framing/           #   stdio / socket(UDS) / http(+SSE) / ws / grpc + token
+└── scripts/                           # 生成スクリプト (gen-rpc-schema / gen-grpc-proto / gen-sdk-*)
 ```
 
 ## 生成物 (コミット + CI ガード)
@@ -160,13 +169,13 @@ sesame-kit/
 
 | 生成物 | 生成元 | 生成コマンド |
 | --- | --- | --- |
-| `types/**/*.d.ts` (+ `.d.ts.map`) | `src/**/*.js` の JSDoc | `tsc` (`npm run build:types`) |
-| `src/serve/rpc-params.generated.json` | 各モジュールの `NAMESPACE_OPS` + `types/*.d.ts` | `npm run build:rpc-schema` |
-| `src/serve/sesame.proto`, `src/serve/grpc-methods.generated.json` | RPC レジストリ | `npm run build:grpc-proto` |
+| `packages/core/types/**/*.d.ts` (+ `.d.ts.map`) | `packages/core/src/**/*.js` の JSDoc | `tsc` (`npm run build:types`) |
+| `packages/kit/src/serve/rpc-params.generated.json` | 各モジュールの `NAMESPACE_OPS` + `types/*.d.ts` | `npm run build:rpc-schema` |
+| `packages/kit/src/serve/sesame.proto`, `packages/kit/src/serve/grpc-methods.generated.json` | RPC レジストリ | `npm run build:grpc-proto` |
 | `schema/openrpc.json` | RPC レジストリ | `npm run build:openrpc` |
-| `sdk/ts/sesame-client.ts`, `sdk/python/sesame_client.py` | OpenRPC ドキュメント | `npm run build:sdk` |
+| `packages/kit/sdk/ts/sesame-client.ts`, `packages/kit/sdk/python/sesame_client.py` | OpenRPC ドキュメント | `npm run build:sdk` |
 
-**方針: 生成物をコミットする**（JSON/proto 契約と同じ慣習。リポジトリを clone した利用者がビルド無しで `.d.ts` を得られ、`npm publish` 時は `prepack` が再生成する）。
+**方針: 生成物をコミットする**（JSON/proto 契約と同じ慣習。リポジトリを clone した利用者がビルド無しで `.d.ts` を得られる）。生成物の整合は `release.sh` の drift 検査が担保し、`npm publish` 時の自動再生成（`prepack`/`prepublishOnly`）は存在しない。
 
 コミット済みコピーの整合は 2 つのガードが守ります:
 - `tests/serve/schema-drift.test.js` が RPC param スキーマと gRPC proto をインプロセスで再生成しバイト比較する。

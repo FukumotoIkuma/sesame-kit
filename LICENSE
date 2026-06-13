@@ -2,9 +2,7 @@ MIT License
 
 Copyright (c) 2026 Ikuma Fukumoto
 
-This project is a Node.js port of biz3 (CANDY-HOUSE/biz3, MIT) with the
-Cognito client ID swapped to the official iOS/Android consumer client
-(6ialca0p8u0lsgvbmvsljfm305) for long-lived sessions. See LICENSE.biz3
+This project is a Node.js port of biz3 (CANDY-HOUSE/biz3, MIT); see LICENSE.biz3
 for the original biz3 MIT license.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

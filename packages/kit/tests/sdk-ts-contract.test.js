@@ -1,4 +1,4 @@
-// TS SDK 成果物 (sdk/ts/sesame-client.ts) ↔ スキーマ の drift gate。
+// TS SDK 成果物 (packages/kit/sdk/ts/sesame-client.ts) ↔ スキーマ の drift gate。
 //
 // SDK はスキーマ駆動で機械生成される。スキーマ (schema/openrpc.json) を変えたのに
 // `npm run build:sdk` を忘れると SDK が腐る。再生成結果が committed と一致することを担保し、
@@ -8,9 +8,9 @@ import { readFileSync } from "node:fs";
 import { generateSdk } from "../../../scripts/gen-sdk-ts.mjs";
 
 const spec = JSON.parse(readFileSync(new URL("../../../schema/openrpc.json", import.meta.url)));
-const committed = readFileSync(new URL("../../../sdk/ts/sesame-client.ts", import.meta.url), "utf8");
+const committed = readFileSync(new URL("../sdk/ts/sesame-client.ts", import.meta.url), "utf8");
 
-describe("TS SDK artifact (sdk/ts/sesame-client.ts)", () => {
+describe("TS SDK artifact (packages/kit/sdk/ts/sesame-client.ts)", () => {
   it("スキーマから再生成した結果と一致する (ずれたら `npm run build:sdk`)", () => {
     expect(generateSdk(spec)).toBe(committed);
   });

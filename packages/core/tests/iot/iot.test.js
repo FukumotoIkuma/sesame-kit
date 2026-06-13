@@ -42,11 +42,18 @@ const HUB3 = "11111111-2222-3333-4444-555555555555";
 const SECRET = "00112233445566778899aabbccddeeff"; // 32hex
 
 describe("buildIotTopic", () => {
-  it("hub3_id 末尾セグメントから wm2{seg}cmd を作る (大文字小文字変換なし)", () => {
+  it("hub3_id 末尾セグメントから wm2{seg大文字}cmd を作る", () => {
     expect(buildIotTopic(HUB3)).toBe("wm2555555555555cmd");
   });
-  it("大文字はそのまま (case 変換しない)", () => {
+  it("大文字はそのまま", () => {
     expect(buildIotTopic("AAAA-BBBB-CCCCDDDDEEEE")).toBe("wm2CCCCDDDDEEEEcmd");
+  });
+  // P3-4: 小文字入力を uppercase 正規化 (CHAPIClientBiz.kt:235 hub3DeviceIdLastSegment.uppercase())
+  it("P3-4: 小文字入力は大文字変換される (CHAPIClientBiz.kt:235)", () => {
+    expect(buildIotTopic("aaaa-bbbb-ccccddddeeee")).toBe("wm2CCCCDDDDEEEEcmd");
+  });
+  it("大文字/小文字混在でも大文字に正規化される", () => {
+    expect(buildIotTopic("aaaa-BBBB-AbCdEfGhIjKl")).toBe("wm2ABCDEFGHIJKLcmd");
   });
   it("hub3_id 未指定は throw", () => {
     expect(() => buildIotTopic("")).toThrow(/hub3Id required/);
@@ -54,12 +61,22 @@ describe("buildIotTopic", () => {
 });
 
 describe("buildIotPayload (バイト連結順)", () => {
-  it("sign(4B) + cmd(1B) + device_id UTF8 の順で base64 化", () => {
+  it("sign(4B) + cmd(1B) + device_id UTF8 の順で base64 化 (device_id は uppercase 正規化)", () => {
     const b64 = buildIotPayload({ cmd: 0x03, deviceId: HUB3, secretKey: SECRET });
     const hex = payloadHex(b64);
-    // sign = aabbccdd, cmd = 03, device_id = HUB3 を UTF8 (= ASCII) 化した hex
-    const didHex = Buffer.from(HUB3, "utf8").toString("hex");
+    // sign = aabbccdd, cmd = 03, device_id = HUB3 大文字を UTF8 化した hex
+    // HUB3 は全数字+ハイフンなので uppercase しても変化しない
+    const didHex = Buffer.from(HUB3.toUpperCase(), "utf8").toString("hex");
     expect(hex).toBe("aabbccdd" + "03" + didHex);
+  });
+  // P3-4: 小文字入力でも大文字 UUID が payload に入る (CHAPIClientBiz.kt:216-217)
+  it("P3-4: 小文字 deviceId は大文字化されて payload に入る (CHAPIClientBiz.kt:216-217)", () => {
+    const lowerUuid = "aabbccdd-1122-3344-5566-778899aabbcc";
+    const b64 = buildIotPayload({ cmd: 0x01, deviceId: lowerUuid, secretKey: SECRET });
+    const hex = payloadHex(b64);
+    const upperUuid = lowerUuid.toUpperCase();
+    const didHex = Buffer.from(upperUuid, "utf8").toString("hex");
+    expect(hex).toBe("aabbccdd" + "01" + didHex);
   });
 
   it("device_id は hex デコードではなく UTF8 (ハイフン込み36文字=36バイト)", () => {

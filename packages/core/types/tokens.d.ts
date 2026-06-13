@@ -13,6 +13,7 @@ export class FileTokenStore {
     });
     tokensPath: string;
     loginStatePath: string;
+    awsCredentialsPath: string;
     /** @returns {StoredTokens|null} */
     load(): StoredTokens | null;
     /**
@@ -31,6 +32,16 @@ export class FileTokenStore {
     /** @param {PendingLogin} s */
     savePending(s: PendingLogin): void;
     clearPending(): void;
+    /**
+     * 保存済みの AWS 一時 credentials を読む。ファイルが無い / 壊れている場合は null。
+     * @returns {import('./aws-credentials.js').PersistedAwsCredentials|null}
+     */
+    loadAwsCredentials(): import("./aws-credentials.js").PersistedAwsCredentials | null;
+    /**
+     * AWS 一時 credentials を 0600 ファイルへ書く。null で渡すとファイルを削除する。
+     * @param {import('./aws-credentials.js').PersistedAwsCredentials|null} c
+     */
+    saveAwsCredentials(c: import("./aws-credentials.js").PersistedAwsCredentials | null): void;
 }
 /**
  * 永続化されるトークン一式。auth.js が読み書きする形。
@@ -81,6 +92,13 @@ export type StoredTokens = {
 export type PendingLogin = {
     clientId: string;
     username: string;
+    /**
+     * ChallengeParameters.USERNAME (内部ユーザー名)。
+     * pool が email → UUID 写像するとき email と異なる。
+     * _aws_sdk_ref/CognitoUser.java:3600 の usernameInternal フィールド相当。
+     * 存在しない場合は username (= 入力 email) をフォールバックとして使う。
+     */
+    usernameInternal?: string | undefined;
     /**
      * Cognito challenge session
      */

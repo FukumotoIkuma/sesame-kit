@@ -118,11 +118,13 @@ describe("P3-24: parseMechStatus({kind:'os2bot'}) — Bot1 固有意味論", () 
     expect(s.state).toBe(MECH_STATE.MOVED);
   });
 
-  it("kind 指定なし・motorStatus=1,flags bit0=0 → isStop=true (flags-based 既定維持)", () => {
-    // Sesame2 では isStop は flags bit0 で判定する (CHSesameBot.kt:28 初期値と同じ)。
+  it("kind 指定なし・motorStatus=1,flags bit0=0 → isStop=null (P4-2: Sesame2 は null)", () => {
+    // P4-2 修正: Sesame2/3/4 (os2lock) の isStop は null が正しい。
+    // 出典: CHSesame2.kt:40 `override var isStop: Boolean? = null` — SDK が明示的に null。
+    // 旧実装は flags bit0 から isStop を捏造していたが、bit0 のロックでの意味論は一次資料がない。
     const buf = Buffer.from([0x10, 0x0c, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]); // flags=0x00
     const s = parseMechStatus(buf);
-    expect(s.isStop).toBe(true); // flags bit0=0 → 停止 (Sesame2 既定)
+    expect(s.isStop).toBeNull(); // os2lock (既定): CHSesame2.kt:40 = null (flags bit0 は読まない)
   });
 });
 

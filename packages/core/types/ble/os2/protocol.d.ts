@@ -243,24 +243,31 @@ export function autolockData(seconds: number, tag?: Buffer | Uint8Array): Buffer
  * 施錠/解錠/中間は isInLockRange / isInUnlockRange の 2 ビットで判定する
  * (CHSesame2Device.kt:551 / CHSesameBikeDevice.kt:299: lock / unlock / else=moved)。
  *
- * Bot1 固有意味論 (kind="os2bot", P3-24 / R2:BLE2-15):
- *   - state は 2 値のみ: isInLockRange → LOCKED、else → UNLOCKED (MOVED は出ない)。
- *     出典: CHSesameBotDevice.kt:303 / :346 —
- *       `deviceStatus = if (isInLockRange) CHDeviceStatus.Locked else CHDeviceStatus.Unlocked`
- *   - isStop は motorStatus 由来で上書き計算される (CHSesameBotDevice.kt:286-293 / :334-344):
- *       motorStatus 0 (noPower) → true
- *       motorStatus 1 (forward)  → false
- *       motorStatus 2 (hold)     → true
- *       motorStatus 3 (backward) → false
- *       else                     → false
- *     (CHSesameBot.kt:28 の flags-based isStop はクラス初期値であり、
- *      CHSesameBotDevice.kt:286-293 の when ブロックで必ず上書きされる)
+ * kind 3 値化 (P4-2):
+ *   - kind="os2bot"  : Bot1 固有意味論 (P3-24 / R2:BLE2-15)。
+ *       state は 2 値のみ: isInLockRange → LOCKED、else → UNLOCKED (MOVED は出ない)。
+ *       出典: CHSesameBotDevice.kt:303 / :346 —
+ *         `deviceStatus = if (isInLockRange) CHDeviceStatus.Locked else CHDeviceStatus.Unlocked`
+ *       isStop は motorStatus 由来で上書き計算される (CHSesameBotDevice.kt:286-293 / :334-344):
+ *         motorStatus 0 (noPower) → true
+ *         motorStatus 1 (forward)  → false
+ *         motorStatus 2 (hold)     → true
+ *         motorStatus 3 (backward) → false
+ *         else                     → false
+ *       (CHSesameBot.kt:28 の flags-based isStop はクラス初期値であり、
+ *        CHSesameBotDevice.kt:286-293 の when ブロックで必ず上書きされる)
+ *   - kind="os2bike" : Bike1 固有。isStop は flags bit0 由来 (CHSesameBotMechStatus と同クラス利用。
+ *       出典: CHSesameBot.kt:28 `isStop: Boolean? = (flags and 1 == 0)` /
+ *             CHSesameBikeDevice.kt:296 Bike1 は CHSesameBotMechStatus を使う)。
+ *   - 既定 (os2lock / kind 未指定) : Sesame2/3/4。**isStop = null**。
+ *       出典: CHSesame2.kt:40 `override var isStop: Boolean? = null` — SDK が明示的に null。
+ *       flags bit0 の意味論は一次資料がないため null で公開するのが 1:1 移植として正しい。
  *
  * @param {Buffer} buf mech_status_t (8B。Kotlin は data[7] まで読む固定レイアウト)
- * @param {{kind?: string}} [opts] オプション。kind="os2bot" で Bot1 固有意味論を適用。
+ * @param {{kind?: string}} [opts] オプション。kind="os2bot"/"os2bike" で固有意味論を適用。
  * @returns {{state:string, isInLockRange:boolean, isInUnlockRange:boolean, isBatteryCritical:boolean,
  *            target:number|null, position:number|null, targetDeg:number|null, positionDeg:number,
- *            batteryRaw:number, retCode:number, flags:number, motorStatus:number, isStop:boolean}}
+ *            batteryRaw:number, retCode:number, flags:number, motorStatus:number, isStop:boolean|null}}
  */
 export function parseMechStatus(buf: Buffer, { kind }?: {
     kind?: string;
@@ -277,7 +284,7 @@ export function parseMechStatus(buf: Buffer, { kind }?: {
     retCode: number;
     flags: number;
     motorStatus: number;
-    isStop: boolean;
+    isStop: boolean | null;
 };
 /**
  * OS2 の mech_setting (12B) を SESAME2/3/4 として解析する (BLE2-07)。

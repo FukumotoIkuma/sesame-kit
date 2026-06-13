@@ -30,8 +30,8 @@ for one release — migrate to `SesameRpcError`.)
 
 For most users the **typed, contract-tracked SDK** is the better choice:
 [`sdk/python/sesame_client.py`](../../sdk/python/sesame_client.py) is **generated**
-from [`schema/openrpc.json`](../../schema/openrpc.json), with one typed method per
+from [`schema/openrpc.json`](../../../../schema/openrpc.json), with one typed method per
 RPC, typed keyword args / `TypedDict` results, and `SesameRpcError`
 (`kind` / `retryable`). See [`sdk/python/README.md`](../../sdk/python/README.md)
-and the [repository README](../../README.md#which-should-i-use--sdk-vs-clients)
+and the [repository README](../../../../README.md#which-should-i-use--sdk-vs-clients)
 for the full "which should I use?" guidance.

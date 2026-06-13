@@ -197,7 +197,16 @@ export class SesameOS2BleSession {
       }, LOGIN_TIMEOUT_MS);
       this._loginWaiter = { resolve, reject, timer };
     });
-    await this._connectTransport();
+    // P1-1: transport.connect() 失敗時に loginPromise が孤児になって unhandledRejection を
+    // 発生させないよう、失敗時に待機者を即 clear して孤児 Promise に no-op catch を付ける。
+    try {
+      await this._connectTransport();
+    } catch (e) {
+      clearTimeout(this._loginWaiter?.timer);
+      this._loginWaiter = null;
+      loginPromise.catch(() => {}); // 孤児 Promise の unhandledRejection を抑制
+      throw e;
+    }
     return loginPromise;
   }
 
@@ -255,7 +264,16 @@ export class SesameOS2BleSession {
         }, LOGIN_TIMEOUT_MS);
         this._readyWaiter = { resolve, reject, timer };
       });
-      await this._connectTransport();
+      // P1-1: transport.connect() 失敗時に readyPromise が孤児になって unhandledRejection を
+      // 発生させないよう、失敗時に待機者を即 clear して孤児 Promise に no-op catch を付ける。
+      try {
+        await this._connectTransport();
+      } catch (e) {
+        clearTimeout(this._readyWaiter?.timer);
+        this._readyWaiter = null;
+        readyPromise.catch(() => {}); // 孤児 Promise の unhandledRejection を抑制
+        throw e;
+      }
       await readyPromise;
     }
 
@@ -459,16 +477,34 @@ export class SesameOS2BleSession {
     });
   }
 
+  /**
+   * 1 セグメントを transport へ書く。P1-2: write が reject したときの後始末は
+   * transport→onDisconnect→_handleTransportDisconnect が pending を fail-fast する経路で行うので、
+   * ここでは未処理 Promise 拒否 (unhandledRejection) を避けるためだけに握りつぶす
+   * (元から fire-and-forget。送信失敗は応答 timeout / 切断通知のどちらかで必ず表面化する)。
+   * OS3 session._writeSeg() と等価なヘルパ (P1-2)。
+   * @param {Buffer} seg
+   */
+  _writeSeg(seg) {
+    try {
+      const r = this._transport.write(seg);
+      if (r && typeof r.then === "function") r.catch((/** @type {any} */ e) => this._log("write rejected (handled via disconnect)", e?.message));
+    } catch (e) {
+      // 同期 throw (notConnected 等) も同経路。pending は切断通知で解放される。
+      this._log("write threw (handled via disconnect)", /** @type {{message?:string}} */ (e)?.message);
+    }
+  }
+
   /** 暗号化なしで送る (login / registration / IRER 等のハンドシェイク用)。 @param {Buffer} frame */
   _sendPlain(frame) {
-    for (const seg of splitSegments(frame, SEG.PLAINTEXT)) this._transport.write(seg);
+    for (const seg of splitSegments(frame, SEG.PLAINTEXT)) this._writeSeg(seg);
   }
 
   /** OS2 CCM 暗号化して送る (cipher 内部で encCount++)。 @param {Buffer} frame */
   _sendCipher(frame) {
     // login/register 後のみ呼ばれ _cipher は非 null (型のみ非 null 化)。
     const ct = /** @type {SesameOS2BleCipher} */ (this._cipher).encrypt(frame);
-    for (const seg of splitSegments(ct, SEG.CIPHERTEXT)) this._transport.write(seg);
+    for (const seg of splitSegments(ct, SEG.CIPHERTEXT)) this._writeSeg(seg);
   }
 
   /**
@@ -518,9 +554,13 @@ export class SesameOS2BleSession {
       if (itemCode === ITEM.INITIAL) { this._handleInitial(payload); return; }
       if (itemCode === ITEM.LOGIN) { this._handleLoginPublish(payload); return; }
       if (itemCode === ITEM.MECH_STATUS) {
-        // Bot1 固有意味論 (P3-24): kind="os2bot" を渡し state 2値化と motorStatus 由来 isStop を適用。
-        // 出典: CHSesameBotDevice.kt:334-346 (mechStatus publish ハンドラの isStop 上書きと state 2値)。
-        const mechOpts = this._model === "ssmbot_1" ? { kind: "os2bot" } : {};
+        // kind 3 値化 (P4-2): bot/bike/その他(os2lock)で isStop の意味論が異なる。
+        // os2bot  : CHSesameBotDevice.kt:334-346 (motorStatus 由来 isStop + state 2値)
+        // os2bike : CHSesameBikeDevice.kt:296 / CHSesameBot.kt:28 (flags bit0 由来 isStop)
+        // os2lock : CHSesame2.kt:40 (isStop = null — Sesame2/3/4)
+        const mechOpts = this._model === "ssmbot_1" ? { kind: "os2bot" }
+          : this._model === "bike_1" ? { kind: "os2bike" }
+          : { kind: "os2lock" };
         try { this._lastStatus = parseMechStatus(payload, mechOpts); } catch { /* ignore */ }
         for (const fn of [...this._statusListeners]) { try { fn(this._lastStatus); } catch { /* ignore */ } }
         // 【意図的逸脱: P3-26 / R2:BLE2-17】
@@ -647,9 +687,11 @@ export class SesameOS2BleSession {
   _handleLoginResponse(resultCode, payload) {
     if (!this._loginWaiter) return;
     if (resultCode !== 0) { this._rejectWaiter("_loginWaiter", new BleResultError("login", resultCode, ITEM.LOGIN)); return; }
-    // Bot1 固有意味論 (P3-24): kind="os2bot" を渡し state 2値化と motorStatus 由来 isStop を適用。
-    // 出典: CHSesameBotDevice.kt:282-293 (login response の mechStatus isStop 上書き + state 2値)。
-    const mechOpts = this._model === "ssmbot_1" ? { kind: "os2bot" } : {};
+    // kind 3 値化 (P4-2): bot/bike/os2lock。出典: CHSesame2.kt:40 (os2lock isStop=null)
+    // / CHSesameBotDevice.kt:282-293 (os2bot) / CHSesameBikeDevice.kt:296 (os2bike)。
+    const mechOpts = this._model === "ssmbot_1" ? { kind: "os2bot" }
+      : this._model === "bike_1" ? { kind: "os2bike" }
+      : { kind: "os2lock" };
     try { this._lastLoginResponse = parseLoginResponse(payload, mechOpts); this._lastStatus = this._lastLoginResponse.mechStatus; }
     catch (e) { this._log("login response parse failed", /** @type {{message?:string}} */ (e)?.message); }
     this._loggedIn = true;
@@ -659,9 +701,11 @@ export class SesameOS2BleSession {
 
   /** 登録直後はデバイスが response ではなく login **publish** で完了を知らせる (CHSesame2Device.kt:508-517)。 @param {Buffer} payload */
   _handleLoginPublish(payload) {
-    // Bot1 固有意味論 (P3-24): kind="os2bot" を渡し state 2値化と motorStatus 由来 isStop を適用。
-    // 出典: CHSesameBotDevice.kt:282-293 (register 完了の login publish でも同形処理)。
-    const mechOpts = this._model === "ssmbot_1" ? { kind: "os2bot" } : {};
+    // kind 3 値化 (P4-2): bot/bike/os2lock。出典: CHSesame2.kt:40 (os2lock isStop=null)
+    // / CHSesameBotDevice.kt:282-293 (os2bot) / CHSesameBikeDevice.kt:296 (os2bike)。
+    const mechOpts = this._model === "ssmbot_1" ? { kind: "os2bot" }
+      : this._model === "bike_1" ? { kind: "os2bike" }
+      : { kind: "os2lock" };
     try { this._lastLoginResponse = parseLoginResponse(payload, mechOpts); this._lastStatus = this._lastLoginResponse.mechStatus; }
     catch (e) { this._log("login publish parse failed", /** @type {{message?:string}} */ (e)?.message); }
     // register() の登録完了通知。登録完了時は機種・fw・時刻差に関わらず無条件送信

@@ -5,6 +5,11 @@ export const ERR: Readonly<{
     REJECTED: "rejected";
     BAD_REQUEST: "bad_request";
     UNAUTHENTICATED: "unauthenticated";
+    BLE_NO_ADAPTER: "ble_no_adapter";
+    BLE_UNAUTHORIZED: "ble_unauthorized";
+    BLE_UNSUPPORTED: "ble_unsupported";
+    BLE_POWERED_OFF: "ble_powered_off";
+    BLE_INIT_TIMEOUT: "ble_init_timeout";
 }>;
 export class SesameError extends Error {
     /**

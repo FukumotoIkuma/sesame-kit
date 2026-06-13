@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-process.env.AWS_SDK_JS_NODE_VERSION_SUPPORT_WARNING_DISABLED ??= "true";
-
 const { run } = await import("../src/cli.js");
 
 run().catch((err) => {

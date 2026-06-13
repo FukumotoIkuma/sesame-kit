@@ -23,15 +23,26 @@
 /**
  * Cognito Identity Provider の 1 オペレーションを呼ぶ。
  *
+ * P3-13: AbortSignal.timeout (15s — ClientConfiguration.java:36 DEFAULT_SOCKET_TIMEOUT) +
+ * 5xx / Throttling (Throttling / ThrottlingException / ProvisionedThroughputExceededException) /
+ * ネットワーク例外のみ指数バックオフ最大 3 回リトライ
+ * (DEFAULT_MAX_ERROR_RETRY=3 — PredefinedRetryPolicies.java:50)。
+ * Throttling は 4xx でも来る (RetryUtils.java:34-41 — isThrottlingException)。
+ * 4xx 非 Throttling エラー (NotAuthorizedException 等) と タイムアウト (AbortError/TimeoutError)
+ * はリトライ禁止 (RetryUtils.java:82-101 — SocketTimeoutException は InterruptedIOException
+ * サブクラスでリトライ除外)。
+ *
  * @param {string} op オペレーション名 (例: "InitiateAuth")。X-Amz-Target の末尾になる。
  * @param {object} payload リクエストパラメータ (AWS SDK の Command input と同形)
- * @param {{ region?: string, fetchImpl?: typeof fetch }} [opts]
+ * @param {{ region?: string, fetchImpl?: typeof fetch, timeoutMs?: number, maxRetries?: number }} [opts]
  * @returns {Promise<CognitoResponse>}
  * @throws {Error} エラー応答時。`name` に Cognito の例外名 (__type の "#" 以降) を写像。
  */
-export function cognitoCall(op: string, payload: object, { region, fetchImpl }?: {
+export function cognitoCall(op: string, payload: object, { region, fetchImpl, timeoutMs, maxRetries, }?: {
     region?: string;
     fetchImpl?: typeof fetch;
+    timeoutMs?: number;
+    maxRetries?: number;
 }): Promise<CognitoResponse>;
 /**
  * Cognito AuthenticationResult (旧

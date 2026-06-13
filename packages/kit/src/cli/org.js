@@ -23,7 +23,7 @@
 // employee系='companyID' / employeeGroup・deviceGroup='cid' 等、本体 JSDoc 参照) は
 // 本体側で吸収済みなので、ここでは本体の引数名にそのまま合わせる。
 
-import { buildShareKeyUrl } from "@sesame-kit/core/sharekey";
+import { buildShareKeyUrl, parseFriendQrUrl } from "@sesame-kit/core/sharekey";
 import { cmacTime } from "@sesame-kit/core/crypto";
 import { t } from "@sesame-kit/core/i18n";
 
@@ -76,19 +76,36 @@ export function registerOrgCommands(program, ctx) {
       }),
     );
 
-  // sesame org employee add --json <items>
+  // sesame org employee add --json <items> [--friend-qr <url>]
   employee.command("add")
     .description(t("org.employee.add.desc"))
     .option("--json <items>", t("org.employee.add.opt"))
+    .option("--friend-qr <url>", "ssm://UI/?t=friend&friend=<subUUID> format URL (from SESAME app friend QR). Parses friendID and composes items=[{friendID,companyID}].")
     .action((cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
-        if (!cmdOpts.json) {
-          ctx.die(t("org.employee.add.need"), 2);
+        /** @type {any[]} */
+        let items;
+        if (cmdOpts.friendQr) {
+          // --friend-qr <url>: parseFriendQrUrl でフレンド QR を解析し、
+          // AddEmployee.js:394-406 の 1:1 で items=[{friendID, companyID}] を合成する。
+          // 参照: references_web/src/components/biz/device/AddEmployee.js:386-410
+          //         sendParam = { ...userInfo, companyID }  → submit([sendParam])
+          let parsed;
+          try {
+            parsed = parseFriendQrUrl(cmdOpts.friendQr);
+          } catch (e) {
+            ctx.die(`Invalid friend QR URL: ${/** @type {any} */ (e)?.message || String(e)}`, 2);
+            return;
+          }
+          items = [{ friendID: parsed.friendID, companyID: hub.config.companyID }];
+        } else if (cmdOpts.json) {
+          items = ctx.parseJson(cmdOpts.json, t("org.employee.add.hint"));
+          if (items === undefined) return;
+          if (!Array.isArray(items)) { ctx.die(t("org.err.jsonArray"), 2); return; }
+        } else {
+          ctx.die(t("org.employee.add.need") + " or use --friend-qr <url>", 2);
           return;
         }
-        const items = ctx.parseJson(cmdOpts.json, t("org.employee.add.hint"));
-        if (items === undefined) return;
-        if (!Array.isArray(items)) { ctx.die(t("org.err.jsonArray"), 2); return; }
         // 各要素に companyID を補完 (本体 addEmployees は item 内 companyID を期待。biz3 同様)。
         // companyID を後置し、item 内に空文字/null が紛れても必ず有効値が勝つようにする
         // (明示の有効な companyID があればそれを尊重)。

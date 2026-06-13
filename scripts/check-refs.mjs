@@ -105,6 +105,25 @@ const CHECKS = [
     // P2-6 で使う RespondToAuthChallenge ワイヤ形マーシャラ
     symbol: "RespondToAuthChallengeRequestMarshaller",
   },
+  {
+    label: "_aws_sdk_ref/ClientConfiguration.java",
+    file: "_aws_sdk_ref/ClientConfiguration.java",
+    // P3-13: DEFAULT_SOCKET_TIMEOUT = 15_000 / DEFAULT_CONNECTION_TIMEOUT = 15_000
+    // (ClientConfiguration.java:33,36)
+    symbol: "DEFAULT_SOCKET_TIMEOUT",
+  },
+  {
+    label: "_aws_sdk_ref/PredefinedRetryPolicies.java",
+    file: "_aws_sdk_ref/PredefinedRetryPolicies.java",
+    // P3-13: DEFAULT_MAX_ERROR_RETRY = 3 (PredefinedRetryPolicies.java:50)
+    symbol: "DEFAULT_MAX_ERROR_RETRY",
+  },
+  {
+    label: "_aws_sdk_ref/RetryUtils.java",
+    file: "_aws_sdk_ref/RetryUtils.java",
+    // P3-13: isThrottlingException (RetryUtils.java:34)
+    symbol: "isThrottlingException",
+  },
 
   // _sesame_sdk_ref/ — Android SesameSDK (アプリのフロー結線)
   {

@@ -1,87 +1,148 @@
 {
   "RpcDiscover": {
     "method": "rpc.discover",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "ScheduleGetScheduleList": {
     "method": "schedule.getScheduleList",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "subUUID",
+      "timeoutMs"
+    ]
   },
   "ScheduleCancelSchedule": {
     "method": "schedule.cancelSchedule",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "subUUID",
+      "scheduleId",
+      "timeoutMs"
+    ]
   },
   "OrgGetEmployees": {
     "method": "org.getEmployees",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs",
+      "partialOnTimeout"
+    ]
   },
   "OrgGetCurrentUserInfo": {
     "method": "org.getCurrentUserInfo",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs"
+    ]
   },
   "OrgAddEmployees": {
     "method": "org.addEmployees",
     "jsonFields": [
       "items"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "OrgUpdateEmployee": {
     "method": "org.updateEmployee",
     "jsonFields": [
       "data"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgRemoveEmployees": {
     "method": "org.removeEmployees",
     "jsonFields": [
       "items"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "OrgReorderEmployees": {
     "method": "org.reorderEmployees",
     "jsonFields": [
       "items"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "OrgQueryByCS": {
     "method": "org.queryByCS",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs",
+      "partialOnTimeout"
+    ]
   },
   "OrgConfirmQueryByCS": {
     "method": "org.confirmQueryByCS",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs"
+    ]
   },
   "OrgGetEmployeeGroups": {
     "method": "org.getEmployeeGroups",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
+    ]
   },
   "OrgAddEmployeeGroup": {
     "method": "org.addEmployeeGroup",
     "jsonFields": [
       "item"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgUpdateEmployeeGroup": {
     "method": "org.updateEmployeeGroup",
     "jsonFields": [
       "item"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgRemoveEmployeeGroups": {
     "method": "org.removeEmployeeGroups",
     "jsonFields": [
       "gids"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgGetEmployeeGroupBindDeviceGroup": {
     "method": "org.getEmployeeGroupBindDeviceGroup",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs"
+    ]
   },
   "OrgAddEmployeeInGroup": {
     "method": "org.addEmployeeInGroup",
     "jsonFields": [
       "uuids",
       "items"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgRemoveEmployeeInGroup": {
@@ -89,48 +150,84 @@
     "jsonFields": [
       "uuids",
       "items"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgRemoveEmployeeGroupBindDeviceGroup": {
     "method": "org.removeEmployeeGroupBindDeviceGroup",
     "jsonFields": [
       "data"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgGetTags": {
     "method": "org.getTags",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
+    ]
   },
   "OrgPostTag": {
     "method": "org.postTag",
     "jsonFields": [
       "data"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgRemoveTag": {
     "method": "org.removeTag",
     "jsonFields": [
       "data"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgGetDeviceGroups": {
     "method": "org.getDeviceGroups",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
+    ]
   },
   "OrgAddDeviceGroup": {
     "method": "org.addDeviceGroup",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
+    ]
   },
   "OrgUpdateDeviceGroup": {
     "method": "org.updateDeviceGroup",
     "jsonFields": [
       "item"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgRemoveDeviceGroups": {
     "method": "org.removeDeviceGroups",
     "jsonFields": [
       "groupIds"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgAddDeviceInGroup": {
@@ -138,6 +235,10 @@
     "jsonFields": [
       "uuids",
       "items"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgRemoveDeviceInGroup": {
@@ -145,337 +246,812 @@
     "jsonFields": [
       "uuids",
       "items"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgGetDeviceGroupBindUserGroup": {
     "method": "org.getDeviceGroupBindUserGroup",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs"
+    ]
   },
   "OrgRemoveDeviceGroupBindUserGroup": {
     "method": "org.removeDeviceGroupBindUserGroup",
     "jsonFields": [
       "data"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgShareDeviceKeysToEmployees": {
     "method": "org.shareDeviceKeysToEmployees",
     "jsonFields": [
       "items"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "OrgShareDeviceGroupKeysToEmployeeGroup": {
     "method": "org.shareDeviceGroupKeysToEmployeeGroup",
     "jsonFields": [
       "item"
+    ],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
     ]
   },
   "OrgGetEmployeeDeviceKeys": {
     "method": "org.getEmployeeDeviceKeys",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "subUUID",
+      "timeoutMs"
+    ]
   },
   "OrgRemoveEmployeeDeviceKey": {
     "method": "org.removeEmployeeDeviceKey",
     "jsonFields": [
       "data"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "OrgUpdateGuestKeyTag": {
     "method": "org.updateGuestKeyTag",
     "jsonFields": [
       "data"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "OrgGenerateGuestQR": {
     "method": "org.generateGuestQR",
     "jsonFields": [
       "data"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "OrgGetDeviceEmployeeKeys": {
     "method": "org.getDeviceEmployeeKeys",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "companyID",
+      "limit",
+      "timeoutMs"
+    ]
   },
   "CompanyGetCompanies": {
     "method": "company.getCompanies",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs"
+    ]
   },
   "CompanyUpdateCompanyName": {
     "method": "company.updateCompanyName",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
+    ]
   },
   "CompanyAddCompany": {
     "method": "company.addCompany",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "subUUID",
+      "timeoutMs"
+    ]
   },
   "CompanyGetPaymentConfig": {
     "method": "company.getPaymentConfig",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "companyID",
+      "timeoutMs"
+    ]
   },
   "PaymentGetPaymentMethods": {
     "method": "payment.getPaymentMethods",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "customerId",
+      "companyID",
+      "timeoutMs"
+    ]
   },
   "PaymentGetClientSecret": {
     "method": "payment.getClientSecret",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "customerId",
+      "companyID",
+      "timeoutMs"
+    ]
   },
   "PaymentChangeDefaultPayment": {
     "method": "payment.changeDefaultPayment",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "customerId",
+      "companyID",
+      "defaultPaymentMethod",
+      "timeoutMs"
+    ]
   },
   "PaymentRemovePayment": {
     "method": "payment.removePayment",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "customerId",
+      "companyID",
+      "paymentId",
+      "timeoutMs"
+    ]
   },
   "PaymentPayUpdateLevel": {
     "method": "payment.payUpdateLevel",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "customerId",
+      "companyID",
+      "subId",
+      "subscriptionId",
+      "level",
+      "isUpgrade",
+      "isCancel",
+      "timeoutMs"
+    ]
   },
   "PaymentGetDevApiInfo": {
     "method": "payment.getDevApiInfo",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "customerId",
+      "companyID",
+      "email",
+      "update",
+      "timeoutMs"
+    ]
   },
   "AccessGetCards": {
     "method": "access.getCards",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs",
+      "graceMs",
+      "partialOnTimeout"
+    ]
   },
   "AccessGetPasscodes": {
     "method": "access.getPasscodes",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs",
+      "graceMs",
+      "partialOnTimeout"
+    ]
   },
   "AccessPostCards": {
     "method": "access.postCards",
     "jsonFields": [
       "list"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "AccessPostPasscodes": {
     "method": "access.postPasscodes",
     "jsonFields": [
       "list"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "AccessDelCards": {
     "method": "access.delCards",
     "jsonFields": [
       "items"
-    ]
+    ],
+    "optionalScalars": []
   },
   "AccessDelPasscodes": {
     "method": "access.delPasscodes",
     "jsonFields": [
       "items"
-    ]
+    ],
+    "optionalScalars": []
   },
   "AccessClearCards": {
     "method": "access.clearCards",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs"
+    ]
   },
   "AccessClearPasscodes": {
     "method": "access.clearPasscodes",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs"
+    ]
   },
   "AccessUpdateCardName": {
     "method": "access.updateCardName",
     "jsonFields": [
       "item"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "AccessUpdatePasscodeName": {
     "method": "access.updatePasscodeName",
     "jsonFields": [
       "item"
+    ],
+    "optionalScalars": [
+      "timeoutMs"
     ]
   },
   "AccessUpdateCardOwner": {
     "method": "access.updateCardOwner",
     "jsonFields": [
       "item"
+    ],
+    "optionalScalars": [
+      "item",
+      "cardID",
+      "ownerSubUUID",
+      "timeoutMs"
     ]
   },
   "IotSendIotCmd": {
     "method": "iot.sendIotCmd",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "op"
+    ]
   },
   "IotSendIotCmdAwait": {
     "method": "iot.sendIotCmdAwait",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceId",
+      "timeoutMs"
+    ]
   },
   "IotSetHub3LedDuty": {
     "method": "iot.setHub3LedDuty",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "hub3Id",
+      "timeoutMs"
+    ]
   },
   "IotHub3RelaySwitch": {
     "method": "iot.hub3RelaySwitch",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "hub3Id",
+      "op"
+    ]
   },
   "IotAddSesameToHub3": {
     "method": "iot.addSesameToHub3",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "nickName",
+      "timeoutMs"
+    ]
   },
   "IotRemoveSesameFromHub3": {
     "method": "iot.removeSesameFromHub3",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "nickName",
+      "timeoutMs"
+    ]
   },
   "IotStartFirmwareUpdate": {
     "method": "iot.startFirmwareUpdate",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "hub3Id"
+    ]
   },
   "IotClearHub3WifiSsid": {
     "method": "iot.clearHub3WifiSsid",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "hub3Id"
+    ]
   },
   "IotGetMatterPairingCode": {
     "method": "iot.getMatterPairingCode",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "hub3Id",
+      "timeoutMs"
+    ]
   },
   "IotOpenMatterPairingWindow": {
     "method": "iot.openMatterPairingWindow",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "hub3Id",
+      "timeoutMs"
+    ]
   },
   "PresetirSendIR": {
     "method": "presetir.sendIR",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceId",
+      "hub3DeviceId",
+      "companyID",
+      "irDeviceUUID",
+      "operation",
+      "timeoutMs"
+    ]
   },
   "PresetirEmitAir": {
     "method": "presetir.emitAir",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "companyID",
+      "irDeviceUUID",
+      "timeoutMs",
+      "savedState",
+      "power",
+      "temperature",
+      "mode",
+      "fanSpeed",
+      "windDirection",
+      "autoSwing",
+      "keyType"
+    ]
   },
   "PresetirEmitButton": {
     "method": "presetir.emitButton",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "companyID",
+      "irDeviceUUID",
+      "timeoutMs"
+    ]
   },
   "BleScriptClick": {
     "method": "ble.script.click",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "index"
+    ]
   },
   "BleScriptSelectScript": {
     "method": "ble.script.selectScript",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleScriptSendClickScript": {
     "method": "ble.script.sendClickScript",
     "jsonFields": [
       "script"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleScriptGetCurrentScript": {
     "method": "ble.script.getCurrentScript",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "index"
+    ]
   },
   "BleScriptGetScriptNameList": {
     "method": "ble.script.getScriptNameList",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricCardModeSet": {
     "method": "ble.biometric.cardModeSet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricCardModeGet": {
     "method": "ble.biometric.cardModeGet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricCardGet": {
     "method": "ble.biometric.cardGet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "collectMs"
+    ]
   },
   "BleBiometricCardAdd": {
     "method": "ble.biometric.cardAdd",
     "jsonFields": [
       "id"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleBiometricCardDelete": {
     "method": "ble.biometric.cardDelete",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricCardMove": {
     "method": "ble.biometric.cardMove",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricCardChange": {
     "method": "ble.biometric.cardChange",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricCardChangeValue": {
     "method": "ble.biometric.cardChangeValue",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricPasscodeModeSet": {
     "method": "ble.biometric.passcodeModeSet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricPasscodeModeGet": {
     "method": "ble.biometric.passcodeModeGet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricPasscodeGet": {
     "method": "ble.biometric.passcodeGet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "collectMs"
+    ]
   },
   "BleBiometricPasscodeAdd": {
     "method": "ble.biometric.passcodeAdd",
     "jsonFields": [
       "id"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleBiometricPasscodeDelete": {
     "method": "ble.biometric.passcodeDelete",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricPasscodeMove": {
     "method": "ble.biometric.passcodeMove",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricPasscodeChange": {
     "method": "ble.biometric.passcodeChange",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricFaceModeSet": {
     "method": "ble.biometric.faceModeSet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricFaceModeGet": {
     "method": "ble.biometric.faceModeGet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricFaceListGet": {
     "method": "ble.biometric.faceListGet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "collectMs"
+    ]
   },
   "BleBiometricFaceChange": {
     "method": "ble.biometric.faceChange",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricFaceDelete": {
     "method": "ble.biometric.faceDelete",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricPalmModeSet": {
     "method": "ble.biometric.palmModeSet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricPalmModeGet": {
     "method": "ble.biometric.palmModeGet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricPalmListGet": {
     "method": "ble.biometric.palmListGet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "collectMs"
+    ]
   },
   "BleBiometricPalmDelete": {
     "method": "ble.biometric.palmDelete",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleBiometricInsertSesame": {
     "method": "ble.biometric.insertSesame",
     "jsonFields": [
       "sesame"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleBiometricRemoveSesame": {
     "method": "ble.biometric.removeSesame",
     "jsonFields": [
+      "opts"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
       "opts"
     ]
   },
@@ -483,41 +1059,124 @@
     "method": "ble.biometric.setRadarSensitivity",
     "jsonFields": [
       "payload"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleFingerPrintFingerPrintModeSet": {
     "method": "ble.fingerPrint.fingerPrintModeSet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleFingerPrintFingerPrintModeGet": {
     "method": "ble.fingerPrint.fingerPrintModeGet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleFingerPrintFingerPrints": {
     "method": "ble.fingerPrint.fingerPrints",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "collectMs"
+    ]
   },
   "BleFingerPrintFingerPrintDelete": {
     "method": "ble.fingerPrint.fingerPrintDelete",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleFingerPrintFingerPrintChange": {
     "method": "ble.fingerPrint.fingerPrintChange",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleRemoteNanoSetTriggerDelayTime": {
     "method": "ble.remoteNano.setTriggerDelayTime",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleRemoteNanoInsertSesame": {
     "method": "ble.remoteNano.insertSesame",
     "jsonFields": [
       "sesame"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleRemoteNanoRemoveSesame": {
     "method": "ble.remoteNano.removeSesame",
     "jsonFields": [
+      "opts"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
       "opts"
     ]
   },
@@ -525,77 +1184,229 @@
     "method": "ble.remoteNano.setRadarSensitivity",
     "jsonFields": [
       "payload"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleWifiInsertSesames": {
     "method": "ble.wifi.insertSesames",
     "jsonFields": [
       "sesameKey"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleWifiRemoveSesame": {
     "method": "ble.wifi.removeSesame",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleWifiReset": {
     "method": "ble.wifi.reset",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleHub3ScanWifiSSID": {
     "method": "ble.hub3.scanWifiSSID",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleHub3SetWifiSSID": {
     "method": "ble.hub3.setWifiSSID",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleHub3SetWifiPassword": {
     "method": "ble.hub3.setWifiPassword",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleHub3RemoveSesame": {
     "method": "ble.hub3.removeSesame",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleHub3NetworkType": {
     "method": "ble.hub3.networkType",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleHistory": {
     "method": "ble.history",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleDeleteHistory": {
     "method": "ble.deleteHistory",
     "jsonFields": [
       "historyPayload"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleGetVersionTag": {
     "method": "ble.getVersionTag",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleMagnet": {
     "method": "ble.magnet",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleOpSensorControl": {
     "method": "ble.opSensorControl",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleSendAdvProductType": {
     "method": "ble.sendAdvProductType",
     "jsonFields": [
       "data"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleSetBleTxPower": {
     "method": "ble.setBleTxPower",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleOs2Autolock": {
     "method": "ble.os2.autolock",
     "jsonFields": [
+      "tag"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
       "tag"
     ]
   },
@@ -603,325 +1414,654 @@
     "method": "ble.os2.disableAutolock",
     "jsonFields": [
       "tag"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "tag"
     ]
   },
   "BleOs2GetAutolock": {
     "method": "ble.os2.getAutolock",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug"
+    ]
   },
   "BleOs2History": {
     "method": "ble.os2.history",
     "jsonFields": [
       "opts"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "opts"
     ]
   },
   "BleOs2VersionTag": {
     "method": "ble.os2.versionTag",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug"
+    ]
   },
   "BleOs2UpdateSetting": {
     "method": "ble.os2.updateSetting",
     "jsonFields": [
       "setting",
       "tag"
+    ],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "tag"
     ]
   },
   "BleOs2Reset": {
     "method": "ble.os2.reset",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug"
+    ]
   },
   "BleOs2ConfigureLockPosition": {
     "method": "ble.os2.configureLockPosition",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug"
+    ]
   },
   "Status": {
     "method": "status",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "CloudPing": {
     "method": "cloud.ping",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "AccountWhoami": {
     "method": "account.whoami",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "LockLock": {
     "method": "lock.lock",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "name",
+      "deviceUUID",
+      "secretKey"
+    ]
   },
   "LockUnlock": {
     "method": "lock.unlock",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "name",
+      "deviceUUID",
+      "secretKey"
+    ]
   },
   "LockToggle": {
     "method": "lock.toggle",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "name",
+      "deviceUUID",
+      "secretKey"
+    ]
   },
   "LockClick": {
     "method": "lock.click",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "name",
+      "deviceUUID",
+      "secretKey",
+      "scriptIndex"
+    ]
   },
   "LockSetAutolock": {
     "method": "lock.setAutolock",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "name",
+      "deviceUUID",
+      "secretKey",
+      "timeoutMs",
+      "transport",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug"
+    ]
   },
   "LockStatus": {
     "method": "lock.status",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "DevicesList": {
     "method": "devices.list",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "DevicesUserList": {
     "method": "devices.userList",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "DevicesAdd": {
     "method": "devices.add",
     "jsonFields": [
       "items"
-    ]
+    ],
+    "optionalScalars": []
   },
   "DevicesReorder": {
     "method": "devices.reorder",
     "jsonFields": [
       "items"
-    ]
+    ],
+    "optionalScalars": []
   },
   "DevicesNotifyStatus": {
     "method": "devices.notifyStatus",
     "jsonFields": [
       "items"
-    ]
+    ],
+    "optionalScalars": []
   },
   "DevicesNotifyManage": {
     "method": "devices.notifyManage",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "DevicesSwitchRecharge": {
     "method": "devices.switchRecharge",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "AccessRegisterCards": {
     "method": "access.registerCards",
     "jsonFields": [
       "cards"
-    ]
+    ],
+    "optionalScalars": []
   },
   "AccessRegisterPasscodes": {
     "method": "access.registerPasscodes",
     "jsonFields": [
       "passcodes"
-    ]
+    ],
+    "optionalScalars": []
   },
   "DeviceHistory": {
     "method": "device.history",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "pageSize",
+      "lastKey"
+    ]
   },
   "DeviceBattery": {
     "method": "device.battery",
     "jsonFields": [
       "lastEvaluatedKey"
+    ],
+    "optionalScalars": [
+      "pageSize",
+      "lastEvaluatedKey"
     ]
   },
   "DeviceHideHistory": {
     "method": "device.hideHistory",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "DeviceHideBattery": {
     "method": "device.hideBattery",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "DeviceRename": {
     "method": "device.rename",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "DeviceDelete": {
     "method": "device.delete",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "FirmwareList": {
     "method": "firmware.list",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "ConfigSyncLocks": {
     "method": "config.syncLocks",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "prune"
+    ]
   },
   "ConfigSyncHub3s": {
     "method": "config.syncHub3s",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "prune"
+    ]
   },
   "ConfigSyncRemotes": {
     "method": "config.syncRemotes",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "ConfigSyncRemoteKeys": {
     "method": "config.syncRemoteKeys",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "remote"
+    ]
   },
   "ConfigSyncRemotesFromServer": {
     "method": "config.syncRemotesFromServer",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "ConfigListRemoteCandidates": {
     "method": "config.listRemoteCandidates",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "WebapiInvoke": {
     "method": "webapi.invoke",
     "jsonFields": [
       "query",
       "body"
+    ],
+    "optionalScalars": [
+      "query",
+      "body",
+      "apiKeyId"
     ]
   },
   "WebapiDeviceState": {
     "method": "webapi.deviceState",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "apiKeyId"
+    ]
   },
   "WebapiDeviceHistory": {
     "method": "webapi.deviceHistory",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "page",
+      "lg",
+      "isBiz",
+      "apiKeyId"
+    ]
   },
   "WebapiSendCmd": {
     "method": "webapi.sendCmd",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "apiKeyId"
+    ]
   },
   "IrSend": {
     "method": "ir.send",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "remote"
+    ]
   },
   "IrListKeys": {
     "method": "ir.listKeys",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "remote",
+      "hub3DeviceId",
+      "irDeviceUUID"
+    ]
   },
   "IrLearn": {
     "method": "ir.learn",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "timeoutMs"
+    ]
   },
   "IrListRemotes": {
     "method": "ir.listRemotes",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "page",
+      "pageSize"
+    ]
   },
   "IrSearchRemotes": {
     "method": "ir.searchRemotes",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "IrAddRemote": {
     "method": "ir.addRemote",
     "jsonFields": [
       "remote"
-    ]
+    ],
+    "optionalScalars": []
   },
   "IrDeleteRemote": {
     "method": "ir.deleteRemote",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "IrRenameRemote": {
     "method": "ir.renameRemote",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "IrDeleteKey": {
     "method": "ir.deleteKey",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "IrRenameKey": {
     "method": "ir.renameKey",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "IrGetMode": {
     "method": "ir.getMode",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "hub3"
+    ]
   },
   "IrSetMode": {
     "method": "ir.setMode",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "hub3"
+    ]
   },
   "IrMatchRemote": {
     "method": "ir.matchRemote",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "brandName"
+    ]
   },
   "IrAddRemoteToMatter": {
     "method": "ir.addRemoteToMatter",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": []
   },
   "AccessPostAuthenticationData": {
     "method": "access.postAuthenticationData",
     "jsonFields": [
       "items"
+    ],
+    "optionalScalars": [
+      "baseUrl"
     ]
   },
   "AccessPutAuthenticationData": {
     "method": "access.putAuthenticationData",
     "jsonFields": [
       "items"
+    ],
+    "optionalScalars": [
+      "baseUrl"
     ]
   },
   "AccessDeleteAuthenticationData": {
     "method": "access.deleteAuthenticationData",
     "jsonFields": [
       "items"
+    ],
+    "optionalScalars": [
+      "baseUrl"
     ]
   },
   "AccessUpdateAuthenticationName": {
     "method": "access.updateAuthenticationName",
     "jsonFields": [
       "request"
+    ],
+    "optionalScalars": [
+      "request",
+      "kind",
+      "baseUrl",
+      "subUUID",
+      "stpDeviceUUID",
+      "name",
+      "timestamp",
+      "type",
+      "cardType",
+      "nameUUID",
+      "cardNameUUID",
+      "faceNameUUID",
+      "fingerPrintNameUUID",
+      "palmNameUUID",
+      "keyBoardPassCodeNameUUID",
+      "cardID",
+      "faceID",
+      "fingerPrintID",
+      "palmID",
+      "keyBoardPassCode",
+      "op"
+    ]
+  },
+  "KeystoreList": {
+    "method": "keystore.list",
+    "jsonFields": [],
+    "optionalScalars": [
+      "appIdentifyId"
+    ]
+  },
+  "KeystorePut": {
+    "method": "keystore.put",
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceName",
+      "appIdentifyId"
+    ]
+  },
+  "KeystoreRemove": {
+    "method": "keystore.remove",
+    "jsonFields": [],
+    "optionalScalars": [
+      "appIdentifyId"
     ]
   },
   "BleScan": {
     "method": "ble.scan",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "scanTimeoutMs",
+      "includeUnknown"
+    ]
   },
   "BleInvoke": {
     "method": "ble.invoke",
     "jsonFields": [
       "args"
+    ],
+    "optionalScalars": [
+      "args",
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
     ]
   },
   "BleUpdateFirmware": {
     "method": "ble.updateFirmware",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "timeoutMs"
+    ]
   },
   "BleReset": {
     "method": "ble.reset",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BlePosition": {
     "method": "ble.position",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl"
+    ]
   },
   "BleWifiScan": {
     "method": "ble.wifi.scan",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "companyId",
+      "collectMs"
+    ]
   },
   "BleWifiSetSsid": {
     "method": "ble.wifi.setSsid",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "companyId"
+    ]
   },
   "BleWifiSetPassword": {
     "method": "ble.wifi.setPassword",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "companyId"
+    ]
   },
   "BleWifiConnect": {
     "method": "ble.wifi.connect",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "deviceUUID",
+      "address",
+      "scanTimeoutMs",
+      "debug",
+      "needAuthFromServer",
+      "registerBaseUrl",
+      "companyId"
+    ]
   },
   "BleRegister": {
     "method": "ble.register",
-    "jsonFields": []
+    "jsonFields": [],
+    "optionalScalars": [
+      "address",
+      "model",
+      "productType",
+      "scanTimeoutMs",
+      "debug",
+      "nowMs",
+      "registerBaseUrl"
+    ]
   },
   "BleOs2Invoke": {
     "method": "ble.os2.invoke",
     "jsonFields": [
       "args"
+    ],
+    "optionalScalars": [
+      "args",
+      "deviceUUID",
+      "address",
+      "model",
+      "scanTimeoutMs",
+      "debug"
     ]
   },
   "BleOs2Register": {
     "method": "ble.os2.register",
     "jsonFields": [
+      "ak"
+    ],
+    "optionalScalars": [
+      "address",
+      "model",
+      "productType",
+      "scanTimeoutMs",
+      "debug",
+      "localServerAuth",
       "ak"
     ]
   }

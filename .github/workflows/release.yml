@@ -1,13 +1,17 @@
 # P5-8 (ARCH-18/ARCH-21): npm publish を tag-push トリガの CI に移譲し provenance を付ける。
 #
 # フロー: scripts/release.sh が preflight (clean tree / main 同期 / test / build drift /
-# 二重リリース防止) を通してから v* タグを push → この workflow が publish する。
+# 二重リリース防止 / 3 package.json バージョン一致) を通してから v* タグを push →
+# この workflow が publish する。
 #
 # 認証は npm の **trusted publishing (OIDC)** 前提 — NPM_TOKEN シークレットは使わない。
-# 事前に npmjs.com の sesame-kit パッケージ設定で、この GitHub リポジトリ +
+# 事前に npmjs.com の @sesame-kit/core・sesame-kit 各パッケージ設定で、この GitHub リポジトリ +
 # このワークフローファイル (release.yml) を Trusted Publisher として登録しておくこと。
 # `--provenance` は id-token: write 権限の OIDC トークンで Sigstore 署名付きの
 # 出所証明を生成し、npm 上で "Provenance" として検証可能になる。
+#
+# 生成物 (types/ schema/ sdk/) は commit 済みであり、scripts/release.sh の build drift
+# 検査で担保されている。この workflow に prepack は存在しない。
 name: Release
 
 on:
@@ -38,22 +42,39 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # タグと package.json の不一致 (タグ付け忘れ/手動タグ) で誤バージョンを公開しないガード。
-      - name: Verify tag matches package.json version
+      # タグと全 package.json (root / core / kit) のバージョン不一致で
+      # 誤バージョンを公開しないガード。3 ファイルが一致していることも確認する。
+      - name: Verify tag matches all package.json versions
         run: |
-          PKG_VERSION="v$(node -p "require('./package.json').version")"
-          if [ "$PKG_VERSION" != "${GITHUB_REF_NAME}" ]; then
-            echo "::error::tag ${GITHUB_REF_NAME} != package.json ${PKG_VERSION}"
+          ROOT_VER="$(node -p "require('./package.json').version")"
+          CORE_VER="$(node -p "require('./packages/core/package.json').version")"
+          KIT_VER="$(node -p "require('./packages/kit/package.json').version")"
+          KIT_CORE_PIN="$(node -p "require('./packages/kit/package.json').dependencies['@sesame-kit/core']")"
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$ROOT_VER" != "$TAG" ]; then
+            echo "::error::tag v${TAG} != root package.json ${ROOT_VER}"
+            exit 1
+          fi
+          if [ "$CORE_VER" != "$TAG" ]; then
+            echo "::error::packages/core version ${CORE_VER} != tag ${TAG}"
+            exit 1
+          fi
+          if [ "$KIT_VER" != "$TAG" ]; then
+            echo "::error::packages/kit version ${KIT_VER} != tag ${TAG}"
+            exit 1
+          fi
+          if [ "$KIT_CORE_PIN" != "$TAG" ]; then
+            echo "::error::packages/kit @sesame-kit/core pin ${KIT_CORE_PIN} != tag ${TAG}"
             exit 1
           fi
 
       - name: Run tests
         run: npm test
 
-      # prepack (npm run build) が走り、生成物 (types/ schema/ sdk/) を再生成してから publish する。
       # NODE_AUTH_TOKEN は設定しない — trusted publishing (OIDC) で認証する。
+      # core を先に publish し、その後 kit を publish する (kit は core に依存するため)。
       - name: Publish (provenance)
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public -w packages/core -w packages/kit
 
   github-release:
     name: Create GitHub Release

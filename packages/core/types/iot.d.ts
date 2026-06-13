@@ -1,9 +1,14 @@
 /**
- * hub3_id から MQTT cmd topic を構築する (useIotCtrl.js:112-116)。
+ * hub3_id から MQTT cmd topic を構築する (CHAPIClientBiz.kt:235 / useIotCtrl.js:112-116)。
  * hub3_id 未指定なら device_id を流用 (WiFi モデルは自身が Hub3)。
- * 大文字小文字変換は一切しない。
- * @param {string} hub3Id 親 Hub3 (または自身) の UUID (ハイフン付き小文字想定)
- * @returns {string} `wm2{末尾セグメント}cmd`
+ *
+ * P3-4: hub3Id を toUpperCase() 正規化する。
+ * 参照: CHAPIClientBiz.kt:204-237 updateRelay — `hub3DeviceId.substringAfterLast('-').uppercase()`
+ * で末尾セグメントを大文字化してから topic に埋める。アプリのローカル DB は鍵を lowercase
+ * 保存 (CHDeviceManager.kt:130-133) するため送信時 uppercase が正準ワイヤ形。
+ *
+ * @param {string} hub3Id 親 Hub3 (または自身) の UUID
+ * @returns {string} `wm2{末尾セグメント大文字}cmd`
  */
 export function buildIotTopic(hub3Id: string): string;
 /**
@@ -263,7 +268,7 @@ export namespace __internal {
  * subscribeIotResponse(client, cmd, fn) は (params) 1 引数の namespace/JSON-RPC 規約に
  * 適合しない購読プリミティブ (第2引数が cmd 数値、第3がコールバック) なので allowlist に
  * 載せない。sendIotCmdAwait が内部で直接使うほか、低レベル購読が要る利用者は
- * `import { iot } from "sesame-kit"` で直接 import する。
+ * `import { iot } from "@sesame-kit/core"` で直接 import する。
  */
 export const NAMESPACE_OPS: string[];
 /**

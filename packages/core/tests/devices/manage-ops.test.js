@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
-  addDevices, reorderDevices, getNotifyStatus, switchNotify, switchRechargeableBattery,
+  addDevices, deleteDevices, reorderDevices, getNotifyStatus, switchNotify, switchRechargeableBattery,
   getAllDeviceHistory, getBatteryRecord, invokeWebAPI, getUserDevices, subscribeUserDeviceChange,
 } from "../../src/devices.js";
 import { ERR } from "../../src/errors.js";
@@ -34,6 +34,41 @@ function makeClient(responses) {
     }),
   };
 }
+
+describe("P1-5: deleteDevices — items の wire 形 (MobileRemoveDevice.js:58-64)", () => {
+  // 導出元: references_web/src/components/MobileRemoveDevice.js:58-64
+  //   removeSesameDevices([{ deviceUUID, subUUID }], ...)
+  //   useManageDevice.js:228-237 は items を素通しするため、ワイヤ上 {deviceUUID, subUUID} が正。
+
+  it("items に subUUID が乗った frame を送る", async () => {
+    const client = makeClient({ action: ACT, op: "del", success: true });
+    await deleteDevices(client, {
+      companyID: CO,
+      items: [{ deviceUUID: "d-1", subUUID: "sub-uuid-abc" }],
+    });
+    expect(client.requests[0]).toEqual({
+      action: ACT,
+      op: "del",
+      companyID: CO,
+      items: [{ deviceUUID: "d-1", subUUID: "sub-uuid-abc" }],
+    });
+  });
+
+  it("items を素通しするため subUUID 欠落でも送れる (呼び出し側が保証する責務)", async () => {
+    const client = makeClient({ action: ACT, op: "del", success: true });
+    await deleteDevices(client, {
+      companyID: CO,
+      items: [{ deviceUUID: "d-1" }],
+    });
+    expect(client.requests[0].items).toEqual([{ deviceUUID: "d-1" }]);
+  });
+
+  it("success:false は SesameError(REJECTED) で reject する", async () => {
+    const client = makeClient({ action: ACT, op: "del", success: false, message: "not found" });
+    await expect(deleteDevices(client, { companyID: CO, items: [{ deviceUUID: "d-1", subUUID: "s" }] }))
+      .rejects.toMatchObject({ code: ERR.REJECTED });
+  });
+});
 
 describe("P3-1: addDevices", () => {
   it("frame 1:1 (useManageDevice.js:258-263): {action, op:'add', items, companyID}", async () => {
@@ -276,17 +311,24 @@ describe("P3-5: subscribeUserDeviceChange", () => {
   });
 });
 
-describe("P3-10: invokeWebAPI のワイヤ形 — 未指定 query/body はキー省略 (useDeveloper.js:46-58)", () => {
+describe("P3-1: invokeWebAPI のワイヤ形 — body は常時送信、query のみ条件スプレッド (useDeveloper.js:46-58)", () => {
   // 導出元: useDeveloper.js:46-58 (references_web/src/api/useDeveloper.js)
-  // query は渡さない呼び出しでキー不在、body も同様 (JSON.stringify が undefined を除去する形と同義)。
+  // invokeAPI = async ({ func, query, body = {}, cb }) — body のデフォルトは {} (常時送信)。
+  // query は undefined のとき JSON.stringify で脱落するため条件スプレッド。
+  // 正:
+  //   query のみ → frame.body === {}, frame.query あり
+  //   body のみ → frame.body あり, frame.query キー不在
+  //   両方なし → frame.body === {}, frame.query キー不在
+  //   両方あり → 両方あり
   const ACT_WA = "biz3InvokeWebAPIs";
 
-  it("query のみ渡した場合: query あり、body キー不在", async () => {
+  it("query のみ渡した場合: query あり、body は {} で常時存在 (useDeveloper.js:46 body={}デフォルト)", async () => {
     const client = makeClient({ action: ACT_WA, op: "webapi_ssm_shadow_get", data: {} });
     await invokeWebAPI(client, { func: "webapi_ssm_shadow_get", apiKeyId: "k", query: { device_id: "d-1" } });
     const frame = client.requests[0];
     expect(frame.query).toEqual({ device_id: "d-1" });
-    expect("body" in frame).toBe(false);
+    // P3-1: body は {} で常時存在 (旧実装の「body キー不在」は参照誤読による逸脱)
+    expect(frame.body).toEqual({});
   });
 
   it("body のみ渡した場合: body あり、query キー不在", async () => {
@@ -297,12 +339,13 @@ describe("P3-10: invokeWebAPI のワイヤ形 — 未指定 query/body はキー
     expect("query" in frame).toBe(false);
   });
 
-  it("query も body も未指定: 両キーとも不在", async () => {
+  it("query も body も未指定: body は {} で常時存在、query キー不在", async () => {
     const client = makeClient({ action: ACT_WA, op: "webapi_history_get", data: {} });
     await invokeWebAPI(client, { func: "webapi_history_get", apiKeyId: "k" });
     const frame = client.requests[0];
     expect("query" in frame).toBe(false);
-    expect("body" in frame).toBe(false);
+    // P3-1: body は useDeveloper.js:46 の body={} デフォルトにより常時 {}
+    expect(frame.body).toEqual({});
   });
 
   it("query も body も渡した場合: 両キーとも存在", async () => {

@@ -127,15 +127,21 @@ function concatBytes(...arrays) {
 // ---------- topic / payload 構築 ----------
 
 /**
- * hub3_id から MQTT cmd topic を構築する (useIotCtrl.js:112-116)。
+ * hub3_id から MQTT cmd topic を構築する (CHAPIClientBiz.kt:235 / useIotCtrl.js:112-116)。
  * hub3_id 未指定なら device_id を流用 (WiFi モデルは自身が Hub3)。
- * 大文字小文字変換は一切しない。
- * @param {string} hub3Id 親 Hub3 (または自身) の UUID (ハイフン付き小文字想定)
- * @returns {string} `wm2{末尾セグメント}cmd`
+ *
+ * P3-4: hub3Id を toUpperCase() 正規化する。
+ * 参照: CHAPIClientBiz.kt:204-237 updateRelay — `hub3DeviceId.substringAfterLast('-').uppercase()`
+ * で末尾セグメントを大文字化してから topic に埋める。アプリのローカル DB は鍵を lowercase
+ * 保存 (CHDeviceManager.kt:130-133) するため送信時 uppercase が正準ワイヤ形。
+ *
+ * @param {string} hub3Id 親 Hub3 (または自身) の UUID
+ * @returns {string} `wm2{末尾セグメント大文字}cmd`
  */
 export function buildIotTopic(hub3Id) {
   if (!hub3Id) throw badRequest("iot.err.hub3IdRequiredTopic");
-  const lastSegment = hub3Id.split("-").pop();
+  // P3-4: uppercase 正規化 (CHAPIClientBiz.kt:235 hub3DeviceIdLastSegment.uppercase())。
+  const lastSegment = hub3Id.toUpperCase().split("-").pop();
   return `wm2${lastSegment}cmd`;
 }
 
@@ -156,10 +162,17 @@ export function buildIotPayload({ cmd, deviceId, secretKey, extra }) {
   if (!deviceId) throw badRequest("iot.err.deviceIdRequired");
   if (!secretKey) throw badRequest("iot.err.secretKeyRequiredCmac");
 
-  const sign = cmacTime(secretKey);                 // 8 hex (4B)
-  const signArray = hexStringToUint8Array(sign);    // 4 bytes
+  // P3-4: deviceId を toUpperCase() 正規化する。
+  // 参照: CHAPIClientBiz.kt:216-217 val hub3DeviceId = hub3.deviceId?.toString()?.uppercase()
+  //       その後 deviceIdBytes = hub3DeviceId.toByteArray(Charsets.UTF_8) でバイト化。
+  // 同 :168 cmdSesame も ss2.deviceId.toString().uppercase() で大文字化してから
+  //   CHSS2WebCMDReq の device_id に埋める。入力ケースに依らず大文字が正準ワイヤ形。
+  const deviceIdUpper = deviceId.toUpperCase();
+
+  const sign = cmacTime(secretKey);                        // 8 hex (4B)
+  const signArray = hexStringToUint8Array(sign);           // 4 bytes
   const cmdArray = new Uint8Array([cmd & 0xff]);
-  const didArray = stringToUint8Array(deviceId);    // UTF8 (UUID 文字列そのまま)
+  const didArray = stringToUint8Array(deviceIdUpper);      // UTF8 (大文字 UUID)
 
   let payloadArray = concatBytes(signArray, cmdArray, didArray);
   if (extra && extra.length > 0) {
@@ -512,7 +525,7 @@ export const __internal = {
  * subscribeIotResponse(client, cmd, fn) は (params) 1 引数の namespace/JSON-RPC 規約に
  * 適合しない購読プリミティブ (第2引数が cmd 数値、第3がコールバック) なので allowlist に
  * 載せない。sendIotCmdAwait が内部で直接使うほか、低レベル購読が要る利用者は
- * `import { iot } from "sesame-kit"` で直接 import する。
+ * `import { iot } from "@sesame-kit/core"` で直接 import する。
  */
 export const NAMESPACE_OPS = [
   "sendIotCmd", "sendIotCmdAwait",

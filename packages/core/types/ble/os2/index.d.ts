@@ -183,7 +183,14 @@ export class SesameOS2Ble {
     history({ ack }?: {
         ack?: boolean;
     }): Promise<Buffer>;
-    /** 工場出荷状態へリセット (OP.delete, item=registration)。CHSesame2Device.kt:570-578。 */
+    /**
+     * 工場出荷状態へリセット (OP.delete, item=registration)。CHSesame2Device.kt:570-578。
+     * 参照: cmdResultCode==success のとき dropKey(result) を呼び、鍵レコード削除 + disconnect +
+     * sesame2KeyData=null を行う (CHBaseDevice.kt:120-139)。
+     * kit には永続鍵ストアが無い (secretKey は呼び出し側が保持) ため、dropKey 相当として
+     * **成功時に disconnect() してセッションを破棄する** (wm2.js reset() と同じ流儀)。
+     * 鍵レコードの削除そのものは呼び出し側の責務 (誇張せず明記)。
+     */
     reset(): Promise<{
         resultCode: number;
         payload: Buffer;

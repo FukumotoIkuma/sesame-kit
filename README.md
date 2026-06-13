@@ -47,6 +47,17 @@ See [command reference](./docs/en/commands.md), [library usage](./docs/en/librar
 
 Requires Node.js 20+ (matches CI; uses ESM and the `node:` protocol).
 
+> **Note (publish in progress):** `@sesame-kit/core` has not been published to npm yet (E404 if you try), and the latest `sesame-kit` on npm is the pre-split 0.6.1 whose dependency layout differs from this repo. Until 0.6.2+ is released, **use the git clone + workspace path below**. This notice will be removed once both packages are published.
+
+From source (current recommended path):
+
+```bash
+git clone https://github.com/FukumotoIkuma/sesame-kit.git
+cd sesame-kit && npm install   # workspace install wires @sesame-kit/core ↔ sesame-kit
+```
+
+Once published (0.6.2+):
+
 ```bash
 npm install -g sesame-kit       # global CLI: `sesame ...` (+ the `sesame serve` daemon)
 npx sesame-kit --help           # or run without installing
@@ -57,13 +68,6 @@ This repo is an npm workspace split into two published packages:
 
 - **`@sesame-kit/core`** — the library (BLE + cloud transport, auth, crypto, device management). Import this for in-process use (`import { SesameHub3 } from "@sesame-kit/core"`).
 - **`sesame-kit`** — the `sesame` CLI, the `sesame serve` JSON-RPC daemon, and the bundled thin clients. Depends on `@sesame-kit/core`. Installing it pulls in core transitively, and `sesame-kit/client` still resolves to the bundled JS client.
-
-From source:
-
-```bash
-git clone https://github.com/FukumotoIkuma/sesame-kit.git
-cd sesame-kit && npm install   # workspace install wires @sesame-kit/core ↔ sesame-kit
-```
 
 ### Dependencies & security posture
 
@@ -169,14 +173,14 @@ sesame login --json               # → stderr: {"error":"...","code":1}  exit�
 ```
 
 The JSON shape is command-specific. Use the contract version to check compatibility:
-the daemon's `status` returns `contractVersion`, and `rpc.discover` returns `info["x-contractVersion"]`.
+the daemon's `status` returns `apiVersion` (canonical; `contractVersion` is a deprecated alias), and `rpc.discover` returns `info["x-apiVersion"]` (`x-contractVersion` is a deprecated alias).
 It is a SemVer for the machine contract; only breaking changes bump the major. Consumers can pin the major and fail fast.
 
 ---
 
 ## Language-agnostic backend (`sesame serve`)
 
-`sesame serve` is a long-running JSON-RPC 2.0 daemon. It logs in once, keeps the WS connection alive, runs ops repeatedly, and pushes events. Cloud/Biz3 features are exposed as typed RPC methods. BLE operations are also exposed as typed methods — each facade op appears as `ble.<op>` / `ble.os2.<op>` (e.g. `ble.script.click`, `ble.biometric.cardAdd`, `ble.hub3.setWifiSSID`) — 76 typed BLE methods in total (all `experimental`). The generic `ble.invoke` / `ble.os2.invoke` string-dispatch remains as an escape hatch.
+`sesame serve` is a long-running JSON-RPC 2.0 daemon. It logs in once, keeps the WS connection alive, runs ops repeatedly, and pushes events. Cloud/Biz3 features are exposed as typed RPC methods. BLE operations are also exposed as typed methods — each facade op appears as `ble.<op>` / `ble.os2.<op>` (e.g. `ble.script.click`, `ble.biometric.cardAdd`, `ble.hub3.setWifiSSID`) — 76 `ble.*` methods total (74 typed + 2 generic escape-hatch facades; all `experimental`). The generic `ble.invoke` / `ble.os2.invoke` string-dispatch remains as an escape hatch.
 
 ```bash
 sesame serve                          # Unix socket only (default. ~/.config/sesame-kit/sesame.sock)
@@ -194,8 +198,8 @@ There are five framings over the same RPC catalog. Event streams use the transpo
 | WebSocket | any language / browser (full-duplex) | `event.*` notifications | token |
 | gRPC | typed stub generation for many languages | `Subscribe` stream | token (metadata) |
 
-- `rpc.discover` enumerates every method machine-readably (OpenRPC; 202 methods as of contract 1.2.0). Param names, requiredness, and types are extracted from the actual code.
-- Locks: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`, plus `lock.setAutolock` (experimental; takes `transport: "cloud" | "ble"` — only the BLE route takes effect on the device). Namespace ops are all exposed as `<ns>.<op>` (`org.*` / `iot.*` / `access.*` / `ir.*` / `devices.*` / `config.sync*` / `ble.*` / `cloud.ping` …), including `access.registerPasscodes`, `ir.addRemoteToMatter`, and the typed BLE ops (`ble.script.*` / `ble.biometric.*` / `ble.fingerPrint.*` / `ble.remoteNano.*` / `ble.wifi.*` / `ble.hub3.*` / `ble.os2.*` and standalone ops `ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` / `ble.history` / `ble.scan` / `ble.magnet` … — 76 typed `ble.*` methods total). The generic `ble.invoke` / `ble.os2.invoke` are escape-hatch facades for string-dispatching any BLE op.
+- `rpc.discover` enumerates every method machine-readably (OpenRPC; 205 methods as of contract 1.4.0). Param names, requiredness, and types are extracted from the actual code.
+- Locks: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.status`, plus `lock.setAutolock` (experimental; takes `transport: "cloud" | "ble"` — only the BLE route takes effect on the device). Namespace ops are all exposed as `<ns>.<op>` (`org.*` / `iot.*` / `access.*` / `ir.*` / `devices.*` / `config.sync*` / `ble.*` / `cloud.ping` …), including `access.registerPasscodes`, `ir.addRemoteToMatter`, and the typed BLE ops (`ble.script.*` / `ble.biometric.*` / `ble.fingerPrint.*` / `ble.remoteNano.*` / `ble.wifi.*` / `ble.hub3.*` / `ble.os2.*` and standalone ops `ble.register` / `ble.updateFirmware` / `ble.reset` / `ble.position` / `ble.history` / `ble.scan` / `ble.magnet` … — 74 typed + 2 generic = 76 `ble.*` methods total). The generic `ble.invoke` / `ble.os2.invoke` are escape-hatch facades for string-dispatching any BLE op.
 - Events: `events.subscribe {topics:["lockState","deviceUpdate"]}` then `event.<topic>` notifications arrive.
 - Errors are `{error:{code, message, data:{kind}}}`. `kind` is one of seven: `not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented`.
 
@@ -238,7 +242,7 @@ This adds `OPTIONS` preflight handling and `Access-Control-Allow-Origin` to `/rp
 
 Two client layers ship in this repo and they serve different needs:
 
-- **`sdk/` — generated, typed, contract SDK (recommended for most users).** [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) and [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py) are **generated** from [`schema/openrpc.json`](./schema/openrpc.json) (`npm run build:sdk`), with one typed method per RPC (`client.lock.unlock({ name })`), typed params/results, and `SesameRpcError` (`kind` / `retryable`). They track the published OpenRPC contract — a CI drift gate keeps them in lockstep — and talk to the `sesame serve` JSON-RPC daemon over HTTP (+ SSE for events). **Do not hand-edit the generated `sesame-client.ts` / `sesame_client.py`** — change the schema and regenerate.
+- **`sdk/` — generated, typed, contract SDK (recommended for most users).** [`packages/kit/sdk/ts/sesame-client.ts`](./packages/kit/sdk/ts/sesame-client.ts) and [`packages/kit/sdk/python/sesame_client.py`](./packages/kit/sdk/python/sesame_client.py) are **generated** from [`schema/openrpc.json`](./schema/openrpc.json) (`npm run build:sdk`), with one typed method per RPC (`client.lock.unlock({ name })`), typed params/results, and `SesameRpcError` (`kind` / `retryable`). They track the published OpenRPC contract — a CI drift gate keeps them in lockstep — and talk to the `sesame serve` JSON-RPC daemon over HTTP (+ SSE for events). **Do not hand-edit the generated `sesame-client.ts` / `sesame_client.py`** — change the schema and regenerate.
 - **`clients/` — hand-written, low-level transport clients (advanced / custom integrations).** [`packages/kit/clients/js/sesame-client.mjs`](./packages/kit/clients/js/sesame-client.mjs) and [`packages/kit/clients/python/sesame_client.py`](./packages/kit/clients/python/sesame_client.py) are the **薄い公式クライアント** ("thin official clients"): hand-written, minimal-dependency, with a generic `c.call("<method>", …)` plus a few conveniences (`c.unlock(…)`). They are **multi-transport** — the JS client speaks Unix socket / HTTP / WebSocket, the Python client speaks Unix socket / stdio / HTTP — which makes them a good fit for embedded (Python stdio child process), local-daemon, or full-duplex (JS WS) integrations. Neither covers gRPC (use stubs generated from `packages/kit/src/serve/sesame.proto` for that). They are **not generated** from the schema, so they are not statically typed against it.
 
 In short: reach for **`sdk/`** for a typed, contract-tracked client over HTTP; reach for **`clients/`** when you need a thin, multi-transport client or a generic `call()` escape hatch. The `clients/` layer is what `sesame-kit/client` (`package.json` `exports`) points at.
@@ -279,7 +283,7 @@ Auth boundary: interactive login is CLI-only and never runs in the daemon. A Uni
 The JSON-RPC surface is a **versioned, machine-readable contract** so you can build against it safely:
 
 - [`schema/openrpc.json`](./schema/openrpc.json) — the published OpenRPC document (also live via `rpc.discover`). Each method/event carries `x-stability` (`stable` | `experimental`) and `x-provenance`; `apiVersion` (SemVer) is in `status` and `rpc.discover`. A CI drift gate keeps it in lockstep with the implementation.
-- **Generated, typed SDKs** from that schema — [`sdk/ts/sesame-client.ts`](./sdk/ts/sesame-client.ts) (`client.lock.unlock({ name })`) and [`sdk/python/sesame_client.py`](./sdk/python/sesame_client.py) (`client.lock.unlock(name=...)`, zero deps), both with `SesameRpcError` exposing `kind` / `retryable`. Regenerate with `npm run build:sdk`.
+- **Generated, typed SDKs** from that schema — [`packages/kit/sdk/ts/sesame-client.ts`](./packages/kit/sdk/ts/sesame-client.ts) (`client.lock.unlock({ name })`) and [`packages/kit/sdk/python/sesame_client.py`](./packages/kit/sdk/python/sesame_client.py) (`client.lock.unlock(name=...)`, zero deps), both with `SesameRpcError` exposing `kind` / `retryable`. Regenerate with `npm run build:sdk`.
 - **Stability:** only the `stable` core — 13 methods: `lock.lock` / `lock.unlock` / `lock.toggle` / `lock.click` / `lock.status` (note: `lock.setAutolock` is **experimental**), `devices.list`, `device.history` / `device.battery`, `status`, `rpc.discover`, `account.whoami`, `events.subscribe` / `events.unsubscribe` — is covered by the API SemVer; `experimental` methods may change without notice. See [docs/api-stability.md](./docs/api-stability.md).
 - **Errors** are structured: branch on `error.data.kind` (`not_authenticated` / `bad_params` / `timeout` / `connection_lost` / `rejected` / `internal` / `not_implemented`) and `error.data.retryable`, never on message text.
 
@@ -380,6 +384,16 @@ Full docs: **[docs/en/](./docs/en/index.md)** ([日本語](./docs/ja/index.md)).
 
 Three tiers: **verified** (confirmed against the real cloud / real devices), **not implemented by design**, and **implemented but hardware-unverified** (ported 1:1 from the official SDK / biz3 sources and covered by unit + mock end-to-end tests, but not yet confirmed against a real device or the real API Gateway).
 
+### Platform requirements
+
+**macOS and Linux only.** Windows (`win32`) is **not supported**:
+
+- The config-directory resolver (`paths.js`) uses the XDG/POSIX convention (`~/.config/sesame-kit`). No `%APPDATA%` mapping is implemented, so the path would be wrong on Windows.
+- File-permission protection (`0600` on `tokens.json`, `config.json`, and other files containing private keys) has no effect on Windows (NTFS uses ACLs, not POSIX mode bits), leaving secrets without OS-enforced access control.
+- The default `sesame serve` transport uses a Unix domain socket (`sesame.sock`), which is POSIX-only.
+
+Running on Windows will print a warning to stderr once per process and continue (best-effort), but the above limitations apply. See [docs/platform-roadmap.md](./docs/platform-roadmap.md) for the Windows support roadmap.
+
 ### Verified behaviour
 
 - Hub3 IR has two paths: self-learned remotes (`learnEmit`) and preset HXD commands. Learned buttons use `sesame ir learn` / `sesame remote`; preset commands use `sesame preset-ir` (or the `presetir.*` RPC/Node namespace) with a preset `remote.code` and `remote.type`.
@@ -392,7 +406,8 @@ Three tiers: **verified** (confirmed against the real cloud / real devices), **n
 - **Stripe SetupIntent confirmation.** This kit does not handle card data, so it does not implement the confirm step. A Stripe.js-capable client is **not** technically required (the earlier claim here was wrong): confirming needs only the publishable key (hardcoded in biz3 at `references_web/src/env_config.js:5-7`) plus the `client_secret` from `sesame payment client-secret`, so you can confirm via the Stripe public API (`POST /v1/payment_methods` → `POST /v1/setup_intents/{id}/confirm`) or Stripe.js, then pass the resulting `payment_method` id to `payment.changeDefaultPayment`. The kit exposes all surrounding Biz3 payment ops (`payment.*`).
 - **DFU binary transfer (Nordic DFU).** `SesameBle#updateFirmware` ports the SDK's start commands only: Hub3 sends `MOVE_TO(84)` (`CHHub3Device.kt:213-226`), WM2 sends `OPEN_OTA_SERVER(126)` (`CHWifiModule2Device.kt:450-458`), and for OS3 locks the SDK sends **no command at all** (it hands the connected device to an external DFU library — `CHSesameOS3.kt:441-449`); the kit mirrors that no-op path and does not bundle a Nordic-DFU transfer implementation. (An earlier version of this README wrongly said the OS3-lock path sends `MOVE_TO`; that branch is Hub3-only.)
 - Schedule **creation** ops and the Android-app-only auxiliary REST calls (feed history, SNS subscribe, friends, …) do not exist in the biz3 web reference and are out of scope.
-- **OS2 mechStatus publish — automatic history drain (intentional difference).** The official SDK (`CHSesame2Device.kt:543-553`) automatically issues a `readHistoryCommand` when a mechStatus publish arrives with `retCode != 0` or `target == Short.MIN_VALUE (-32768)`, then POSTs the result to the server. kit **does not implement this automatic drain**: history is only read when your code explicitly calls `history()` (Node library / `ble.history` RPC / `sesame <device> history` CLI). This is an intentional design choice — auto-draining ties policy (logging, server sync) to the transport layer; kit keeps the session layer as a pure protocol port and leaves the decision to the caller. The practical effect is that device-side history accumulates between explicit calls; no lock functionality is affected.
+- **OS2 mechStatus publish — automatic history drain (intentional difference).** The official SDK (`CHSesame2Device.kt:543-553`) automatically issues a `readHistoryCommand` when a mechStatus publish arrives with `retCode != 0` or `target == Short.MIN_VALUE (-32768)`, then POSTs the result to the server. kit **does not implement this automatic drain**: history is only read when your code explicitly calls `history()` (Node library / `ble.history` RPC / `sesame ble os2-invoke <device> history` CLI). This is an intentional design choice — auto-draining ties policy (logging, server sync) to the transport layer; kit keeps the session layer as a pure protocol port and leaves the decision to the caller. The practical effect is that device-side history accumulates between explicit calls; no lock functionality is affected.
+- **OS3 lock mechStatus publish — automatic history drain (intentional difference).** The official SDK (`CHSesameOS3LockBase.kt:185-209`) automatically issues `readHistoryCommand` when an advertisement with `adv_tag_b1` is received (if already logged in), then POSTs results to the server and deletes them one by one. kit **does not implement this automatic drain**: history is only read when your code explicitly calls `history()` / `deleteHistory()` (Node library / `ble.history` RPC / `sesame ble invoke <device> history` CLI). Same design rationale as OS2 above — auto-draining ties policy to the transport layer. No lock functionality is affected. @experimental — unverified (reference: `CHSesameOS3LockBase.kt:185-209`).
 
 ### Implemented, but hardware-unverified
 

@@ -69,56 +69,63 @@ The protocol layer (`src/ble/protocol.js`: CMAC session key / AES-CCM / segments
 
 With 1 core + 5 framings, cloud/Biz3 RPC plus registered BLE operations are exposed from a single resident `SesameHub3`. See the README's [language-agnostic backend](../../README.md#language-agnostic-backend-sesame-serve) for details.
 
-- **Core**: `src/serve/jsonrpc.js` (JSON-RPC 2.0, transport-independent) + `registry.js` (auto-exposes methods from `NAMESPACE_OPS` + OpenRPC) + `daemon.js` (serialization / unified subscription / backpressure / shutdown).
-- **Framing**: stdio / socket(UDS) / http(+SSE) / ws / grpc + token under `framing/`.
+- **Core**: `packages/core/src/jsonrpc.js` (JSON-RPC 2.0, transport-independent) + `packages/kit/src/serve/registry.js` (auto-exposes methods from `NAMESPACE_OPS` + OpenRPC) + `packages/kit/src/serve/daemon.js` (serialization / unified subscription / backpressure / shutdown).
+- **Framing**: stdio / socket(UDS) / http(+SSE) / ws / grpc + token under `packages/kit/src/serve/framing/`.
 - **Type extraction**: `scripts/gen-rpc-schema.mjs` extracts param types from `.d.ts` (`rpc-params.generated.json`), and `scripts/gen-grpc-proto.mjs` generates a typed `sesame.proto`. Both are protected by drift-guard tests.
 
 ## File layout
 
+This repo is an npm workspace split into two published packages.
+
 ```
-sesame-kit/
-├── package.json
+sesame-kit/  (workspace root — private, not published)
+├── package.json            # workspace root (private: true)
 ├── README.md
 ├── docs/                   # commands / architecture / library / migration
-├── LICENSE
-├── LICENSE.biz3
-├── bin/
-│   └── sesame.js           # CLI entry point
-├── sdk/                    # GENERATED typed SDKs (from schema/openrpc.json; recommended) — one method per RPC, HTTP+SSE
-│   ├── ts/sesame-client.ts       #   typed TS client (drift-gated; do not hand-edit)
-│   └── python/sesame_client.py   #   typed Python client (drift-gated; do not hand-edit)
-├── clients/                # HAND-WRITTEN thin official clients (low-level; advanced/custom integrations)
-│   ├── python/sesame_client.py   #   UDS/stdio/HTTP + event subscription, generic call() (zero deps)
-│   └── js/sesame-client.mjs      #   UDS/HTTP/WebSocket + event subscription (Node 20+); see README for sdk/ vs clients/
-├── vendor/
-│   └── biz3/constants/     # verbatim copy of biz3's import-zero constants (single source of truth)
-└── src/
-    ├── index.js            # public library entry
-    ├── cli.js              # commander implementation (basic commands + makeCtx)
-    ├── cli/                # per-feature command wiring (registerXxxCommands)
-    │   └── serve.js        #   sesame serve … (resident JSON-RPC backend wiring)
-    ├── serve/              # language-agnostic backend (1 core + 5 framings)
-    │   ├── jsonrpc.js      #   JSON-RPC 2.0 protocol core (transport-independent)
-    │   ├── registry.js     #   method catalog (auto-exposed from NAMESPACE_OPS) + OpenRPC
-    │   ├── daemon.js       #   multiplexing onto a single resident hub (serialization/subscription/backpressure/shutdown)
-    │   ├── sesame.proto    #   gRPC typed definition (generated)
-    │   └── framing/        #   stdio / socket(UDS) / http(+SSE) / ws / grpc + token
-    ├── client.js           # SesameHub3 high-level class (auto-injects ops via namespace getters)
-    ├── lock-manager.js     # LockManager (lock name-resolution + control ops, delegated from client.js)
-    ├── transport.js        # Hub3WsClient (reconnect/keepalive/queue/sleep)
-    ├── auth.js             # Cognito CUSTOM_AUTH + REFRESH_TOKEN_AUTH + jwtSub
-    ├── crypto.js           # AES-CMAC + uuid→base64 + cmd code constants
-    ├── util.js             # assertSuccess / subscribeChunks (paged-push lifecycle) / SesameError helpers
-    ├── lock.js / ir.js / presetir.js / sharekey.js   # domain ops
-    ├── ble/                # BLE direct control (OS-independent core + swappable transport)
-    │   ├── protocol.js     #   pure JS: CMAC key/AES-CCM/segment/frame/mechStatus
-    │   ├── session.js      #   state machine (initial→login→command response)
-    │   ├── transport.js    #   noble adapter (optionalDependency, lazy require)
-    │   └── index.js        #   SesameBle facade
-    ├── iot.js / account.js / schedule.js / org.js / company.js / access.js / devices.js
-    ├── config.js           # ConfigStore (~/.config/sesame-kit/config.json)
-    ├── tokens.js           # FileTokenStore
-    └── paths.js            # config directory resolution
+├── LICENSE / LICENSE.biz3
+├── schema/
+│   └── openrpc.json        # published OpenRPC contract (generated; drift-gated)
+├── packages/
+│   ├── core/               # @sesame-kit/core — the library (BLE + cloud, no CLI/serve)
+│   │   ├── package.json
+│   │   └── src/
+│   │       ├── index.js            # public library entry
+│   │       ├── jsonrpc.js          # JSON-RPC 2.0 protocol core (transport-independent)
+│   │       ├── client.js           # SesameHub3 high-level class
+│   │       ├── lock-manager.js     # LockManager (lock name-resolution + control ops)
+│   │       ├── transport.js        # Hub3WsClient (reconnect/keepalive/queue/sleep)
+│   │       ├── auth.js             # Cognito CUSTOM_AUTH + REFRESH_TOKEN_AUTH + jwtSub
+│   │       ├── crypto.js           # AES-CMAC + uuid→base64 + cmd code constants
+│   │       ├── util.js             # assertSuccess / subscribeChunks / SesameError helpers
+│   │       ├── lock.js / ir.js / presetir.js / sharekey.js   # domain ops
+│   │       ├── ble/                # BLE direct control (OS-independent core + swappable transport)
+│   │       │   ├── protocol.js     #   pure JS: CMAC key/AES-CCM/segment/frame/mechStatus
+│   │       │   ├── session.js      #   state machine (initial→login→command response)
+│   │       │   ├── transport.js    #   noble adapter (optionalDependency, lazy require)
+│   │       │   └── index.js        #   SesameBle facade
+│   │       ├── iot.js / account.js / schedule.js / org.js / company.js / access.js / devices.js
+│   │       ├── config.js           # ConfigStore (~/.config/sesame-kit/config.json)
+│   │       ├── tokens.js           # FileTokenStore
+│   │       └── paths.js            # config directory resolution
+│   └── kit/                # sesame-kit — CLI, sesame serve daemon, bundled clients (depends on @sesame-kit/core)
+│       ├── package.json
+│       ├── bin/
+│       │   └── sesame.js           # CLI entry point
+│       ├── sdk/                    # GENERATED typed SDKs (from schema/openrpc.json; recommended)
+│       │   ├── ts/sesame-client.ts       #   typed TS client (drift-gated; do not hand-edit)
+│       │   └── python/sesame_client.py   #   typed Python client (drift-gated; do not hand-edit)
+│       ├── clients/                # HAND-WRITTEN thin official clients (low-level; advanced/custom)
+│       │   ├── python/sesame_client.py   #   UDS/stdio/HTTP + event subscription, generic call()
+│       │   └── js/sesame-client.mjs      #   UDS/HTTP/WebSocket + event subscription (Node 20+)
+│       └── src/
+│           ├── cli.js              # commander implementation (basic commands + makeCtx)
+│           ├── cli/                # per-feature command wiring (registerXxxCommands)
+│           │   └── serve.js        #   sesame serve … (resident JSON-RPC backend wiring)
+│           └── serve/              # language-agnostic backend (1 core + 5 framings)
+│               ├── registry.js     #   method catalog (auto-exposed from NAMESPACE_OPS) + OpenRPC
+│               ├── daemon.js       #   multiplexing onto a single resident hub (serialization/subscription/backpressure/shutdown)
+│               ├── sesame.proto    #   gRPC typed definition (generated)
+│               └── framing/        #   stdio / socket(UDS) / http(+SSE) / ws / grpc + token
 ```
 
 ## Generated artifacts (committed + CI-guarded)
@@ -127,13 +134,13 @@ Several files in the repo are **generated, committed, and guarded** — not hand
 
 | Artifact | Generated from | By |
 | --- | --- | --- |
-| `types/**/*.d.ts` (+ `.d.ts.map`) | JSDoc in `src/**/*.js` | `tsc` (`npm run build:types`) |
-| `src/serve/rpc-params.generated.json` | each module's `NAMESPACE_OPS` + `types/*.d.ts` | `npm run build:rpc-schema` |
-| `src/serve/sesame.proto`, `src/serve/grpc-methods.generated.json` | the RPC registry | `npm run build:grpc-proto` |
+| `packages/core/types/**/*.d.ts` (+ `.d.ts.map`) | JSDoc in `packages/core/src/**/*.js` | `tsc` (`npm run build:types`) |
+| `packages/kit/src/serve/rpc-params.generated.json` | each module's `NAMESPACE_OPS` + `types/*.d.ts` | `npm run build:rpc-schema` |
+| `packages/kit/src/serve/sesame.proto`, `packages/kit/src/serve/grpc-methods.generated.json` | the RPC registry | `npm run build:grpc-proto` |
 | `schema/openrpc.json` | the RPC registry | `npm run build:openrpc` |
-| `sdk/ts/sesame-client.ts`, `sdk/python/sesame_client.py` | the OpenRPC doc | `npm run build:sdk` |
+| `packages/kit/sdk/ts/sesame-client.ts`, `packages/kit/sdk/python/sesame_client.py` | the OpenRPC doc | `npm run build:sdk` |
 
-**Policy: commit the generated output** (same convention as the JSON/proto contracts; consumers who clone the repo get working `.d.ts` without a build step, and `npm publish` still regenerates everything via `prepack`).
+**Policy: commit the generated output** (same convention as the JSON/proto contracts; consumers who clone the repo get working `.d.ts` without a build step). There is no `prepack` hook — generated artifacts are committed and a CI drift guard checks that committed copies are up to date.
 
 Two guards keep the committed copies honest:
 - `tests/serve/schema-drift.test.js` re-generates the RPC param schema and gRPC proto in-process and byte-compares them.

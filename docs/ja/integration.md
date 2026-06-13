@@ -64,10 +64,10 @@ lock.status                  deviceUUID
 devices.list
 device.history               deviceUUID [pageSize]
 ir.send                      [remote] key
-org.getEmployees             companyID
+org.getEmployees             [companyID]
 access.registerCards         deviceUUID cards   # [experimental] 読み取った IC カードを一括登録 (クラウド DB)
 …
-202 methods.
+205 methods.
 ```
 
 この一覧から、使いたいメソッドの行を読みます。各行は `メソッド名  <必須> [任意]` の形です。例えば `device.history  deviceUUID [pageSize]` は、**`deviceUUID` が必須・`pageSize` が任意**という意味です。
@@ -109,7 +109,7 @@ sesame rpc device.history --params '{"deviceUUID":"AB12CD34...","pageSize":10}'
 
 薄いクライアントが上記をラップし、JSON を手で組み立てる代わりに `c.unlock("front")` と書けます。任意であり、セクション 2 はこれらなしでも動作します。
 
-> **`sdk/` と `clients/`** — 以下のクライアントは**手書きの低レベル**層（`clients/js`・`clients/python`）です: 依存最小・多経路対応（JS: Unix socket / HTTP / WebSocket、Python: Unix socket / stdio / HTTP — gRPC はどちらも非対応で、`src/serve/sesame.proto` から protoc stub を生成して使います）・汎用 `call()` 付き。多くのユーザには、**生成された型付き**の SDK（[`sdk/ts`](../../sdk/ts/README.md) / [`sdk/python`](../../sdk/python/README.md)）— RPC ごとに型付きメソッドが 1 つ、`schema/openrpc.json` から生成され OpenRPC 契約を HTTP 上で追従 — の方が既定として適します。[README の「どちらを使う?」セクション](../../README.ja.md)を参照してください。
+> **`sdk/` と `clients/`** — 以下のクライアントは**手書きの低レベル**層（`clients/js`・`clients/python`）です: 依存最小・多経路対応（JS: Unix socket / HTTP / WebSocket、Python: Unix socket / stdio / HTTP — gRPC はどちらも非対応で、`packages/kit/src/serve/sesame.proto` から protoc stub を生成して使います）・汎用 `call()` 付き。多くのユーザには、**生成された型付き**の SDK（[`sdk/ts`](../../packages/kit/sdk/ts/README.md) / [`sdk/python`](../../packages/kit/sdk/python/README.md)）— RPC ごとに型付きメソッドが 1 つ、`schema/openrpc.json` から生成され OpenRPC 契約を HTTP 上で追従 — の方が既定として適します。[README の「どちらを使う?」セクション](../../README.ja.md)を参照してください。
 
 **Node** — `npm install sesame-kit` の後：
 
@@ -134,12 +134,12 @@ try {
 
 > **sesame-kit には Python クライアントが 2 つ同梱されており、いずれもモジュール名 `sesame_client`・クラス名 `SesameClient` を共有しますが、API は異なり互換性がありません。インストール／同梱するのはどちらか 1 つだけにしてください。**
 > - **この同梱クライアント**（`clients/python`、手書き・複数経路対応の薄いクライアント）— ファクトリコンストラクタ `SesameClient.unix()` / `.http()` / `.stdio()`、`c.unlock("front")` のような位置引数の便利メソッド、`c.call(method, **params)`。以下で説明します。
-> - **生成された型付き SDK**（`sdk/python`、HTTP 専用）— コンストラクタ `SesameClient(base_url, token=...)` と、`c.lock.unlock(name="front")` のような名前空間付きの型付き呼び出し。`.unix()` / `.http()` ファクトリや位置引数の便利メソッドはありません。[`sdk/python/README.md`](../../sdk/python/README.md) を参照。
+> - **生成された型付き SDK**（`sdk/python`、HTTP 専用）— コンストラクタ `SesameClient(base_url, token=...)` と、`c.lock.unlock(name="front")` のような名前空間付きの型付き呼び出し。`.unix()` / `.http()` ファクトリや位置引数の便利メソッドはありません。[`packages/kit/sdk/python/README.md`](../../packages/kit/sdk/python/README.md) を参照。
 >
 > どちらも `from sesame_client import SesameClient` で解決されるため、以下の例は同梱クライアントでのみ動作します。生成 SDK に対して（またはその逆で）コピペすると失敗します。プロジェクトごとに 1 つを選んでください。
 
 ```bash
-pip install ./clients/python                       # from a cloned repo
+pip install ./packages/kit/clients/python                       # from a cloned repo
 pip install "$(npm root -g)/sesame-kit/clients/python"   # from a global `npm install -g sesame-kit`
 ```
 ```python
@@ -165,8 +165,8 @@ c.subscribe(["lockState"], lambda topic, payload: print(topic, payload))
 | WebSocket | 任意の言語 / ブラウザ（全二重） | `event.*` 通知 | トークン |
 | gRPC | 多言語向けの型付きスタブ | `Subscribe` ストリーム | トークン（メタデータ） |
 
-gRPC は型付きです。`src/serve/sesame.proto` には op ごとに型付きメソッドがあります。スタブは
-`python -m grpc_tools.protoc -I src/serve --python_out=. --grpc_python_out=. src/serve/sesame.proto`
+gRPC は型付きです。`packages/kit/src/serve/sesame.proto` には op ごとに型付きメソッドがあります。スタブは
+`python -m grpc_tools.protoc -I packages/kit/src/serve --python_out=. --grpc_python_out=. packages/kit/src/serve/sesame.proto`
 で生成します。スカラー/配列パラメータは protobuf 型、動的パラメータは JSON 文字列フィールド、レスポンスは `JsonRpc{json}` です。型付きメソッドを持たない op は汎用の `Invoke` を使います。
 
 ## イベント
@@ -191,7 +191,7 @@ gRPC は型付きです。`src/serve/sesame.proto` には op ごとに型付き�
 
 ## 互換性
 
-結果の形はメソッド固有です。互換性を確認するには、コントラクトバージョンを読みます。`status` は `contractVersion` を返し、`rpc.discover` は `info["x-contractVersion"]` を返します。これは機械向けコントラクトの SemVer であり、互換性を壊す変更のみがメジャーを上げます。
+結果の形はメソッド固有です。互換性を確認するには、コントラクトバージョンを読みます。`status` は `apiVersion` を返し、`rpc.discover` は `info["x-apiVersion"]` を返します（旧称 `contractVersion` / `x-contractVersion` は互換性のため同値を返すエイリアスとして残しています）。これは機械向けコントラクトの SemVer であり、互換性を壊す変更のみがメジャーを上げます。
 
 ## セキュリティ境界
 

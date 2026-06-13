@@ -11,7 +11,31 @@
 // 実装方針: @aws-sdk/client-cognito-identity を増やさず素 fetch + X-Amz-Target で呼ぶ
 // (P2-2 の cognito-idp 生 HTTP 化と同方式)。GetId / GetCredentialsForIdentity は SigV4 署名
 // 不要の匿名 API。取得した credentials は Expiration の手前 (refreshMarginMs) までメモリ
-// キャッシュし、失効前に自動再取得する (CognitoCachingCredentialsProvider 相当)。
+// キャッシュし、失効前に自動再取得する。
+//
+// P3-13: リトライ / タイムアウト実値 (R3:AUTH-04)
+//   参照: _aws_sdk_ref/ClientConfiguration.java:33,36 —
+//     DEFAULT_CONNECTION_TIMEOUT = 15_000 ms, DEFAULT_SOCKET_TIMEOUT = 15_000 ms
+//   参照: _aws_sdk_ref/PredefinedRetryPolicies.java:50 — DEFAULT_MAX_ERROR_RETRY = 3
+//   参照: _aws_sdk_ref/PredefinedRetryPolicies.java:154-194 — SDKDefaultRetryCondition:
+//     HTTP 500/502/503/504 + Throttling / ThrottlingException /
+//     ProvisionedThroughputExceededException + ネットワーク例外のみリトライ。
+//     4xx Throttling 系はリトライ対象 (RetryUtils.java:34-41 — isThrottlingException)。
+//     4xx 非 Throttling (NotAuthorizedException 等) はリトライ禁止。
+//     タイムアウト (AbortError/TimeoutError) はリトライ禁止
+//     (RetryUtils.java:82-101 — SocketTimeoutException は InterruptedIOException
+//     サブクラスでリトライ除外)。
+//   参照: _aws_sdk_ref/RetryUtils.java:34-41 — isThrottlingException errorCode 集合。
+//   参照: _aws_sdk_ref/RetryUtils.java:82-101 — isInterrupted: SocketTimeoutException 除外。
+//
+// P3-15: identityId / credentials の tokens ストア永続化 (R3:AUTH-06)
+//   参照: _aws_sdk_ref/CognitoCachingCredentialsProvider.java:86-98 — キー定数
+//   参照: _aws_sdk_ref/CognitoCachingCredentialsProvider.java:473-505 — loadCachedCredentials
+//   参照: _aws_sdk_ref/CognitoCachingCredentialsProvider.java:515-521 — refresh 後の saveCredentials
+//   参照: _aws_sdk_ref/CognitoCachingCredentialsProvider.java:638-646 — saveCredentials
+//   参照: _aws_sdk_ref/CognitoCachingCredentialsProvider.java:655-659 — saveIdentityId
+//   永続化ストアの実値形式は tokens.json (0600) の aws_credentials キーに収める。
+//   失効閾値 500s は既存実装と参照一致 (CognitoCredentialsProvider.java:67)。
 //
 // ★ 実機未検証マーカー: リクエスト形は AWS API 仕様 + 参照実装から導出したが、実機
 //   API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
@@ -21,6 +45,25 @@ import { signRequest } from "./sigv4.js";
 import { SesameError, ERR } from "./errors.js";
 import { badRequest } from "./util.js";
 import { t } from "./i18n.js";
+
+// ---- P3-13: リトライ / タイムアウト実値 ----
+
+/** ソケット / コネクションタイムアウト (参照: _aws_sdk_ref/ClientConfiguration.java:33,36)。 */
+const AWS_TIMEOUT_MS = 15_000;
+/** 最大リトライ回数 (参照: _aws_sdk_ref/PredefinedRetryPolicies.java:50)。 */
+const AWS_MAX_RETRIES = 3;
+/** 指数バックオフ基底 ms。 */
+const AWS_RETRY_BASE_MS = 100;
+/**
+ * Throttling 系 errorCode (参照: _aws_sdk_ref/RetryUtils.java:34-41 — isThrottlingException)。
+ * Cognito は 400 または 429 でこれらの __type を返す。リトライ対象
+ * (PredefinedRetryPolicies.java:187-189)。
+ */
+const THROTTLING_CODES = new Set([
+  "Throttling",
+  "ThrottlingException",
+  "ProvisionedThroughputExceededException",
+]);
 
 // ---- 実値 (_sesame_sdk_ref/app.properties にチェックイン済みの本番値) ----
 
@@ -71,28 +114,83 @@ const DEFAULT_REFRESH_MARGIN_MS = 500_000;
  */
 
 /**
- * Cognito Identity (cognito-identity.<region>.amazonaws.com) の匿名 API を 1 回呼ぶ。
+ * Cognito Identity (cognito-identity.<region>.amazonaws.com) の匿名 API を呼ぶ。
  * AWS JSON 1.1 プロトコル: POST / + X-Amz-Target: AWSCognitoIdentityService.<Op>。
  * エラー応答は {__type, message} で返るため、__type を含む SesameError に写像する。
  *
- * @param {{fetchImpl: typeof globalThis.fetch, region: string, op: string, payload: object}} p
+ * P3-13: AbortSignal.timeout (15s) + 5xx/Throttling/ネットワーク例外で最大 3 回リトライ
+ * (参照: _aws_sdk_ref/ClientConfiguration.java:33,36 / PredefinedRetryPolicies.java:50)。
+ * NotAuthorizedException 等の 4xx はリトライ禁止。
+ *
+ * @param {{fetchImpl: typeof globalThis.fetch, region: string, op: string, payload: object,
+ *          timeoutMs?: number, maxRetries?: number}} p
  * @returns {Promise<any>} パース済み応答 JSON
  */
-async function cognitoIdentityCall({ fetchImpl, region, op, payload }) {
-  const res = await fetchImpl(`https://cognito-identity.${region}.amazonaws.com/`, {
+async function cognitoIdentityCall({
+  fetchImpl, region, op, payload,
+  timeoutMs = AWS_TIMEOUT_MS,
+  maxRetries = AWS_MAX_RETRIES,
+}) {
+  const url = `https://cognito-identity.${region}.amazonaws.com/`;
+  const init = {
     method: "POST",
     headers: {
       "content-type": "application/x-amz-json-1.1",
       "x-amz-target": `AWSCognitoIdentityService.${op}`,
     },
     body: JSON.stringify(payload),
-  });
+  };
+
+  let res;
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const cap = AWS_RETRY_BASE_MS * 2 ** attempt;
+      await new Promise((r) => setTimeout(r, Math.random() * cap));
+    }
+    try {
+      const signal = AbortSignal.timeout(timeoutMs);
+      res = await fetchImpl(url, { ...init, signal });
+    } catch (e) {
+      lastErr = e;
+      // AbortError (ユーザキャンセル) / TimeoutError (AbortSignal.timeout 発火) は
+      // リトライ禁止 (参照: RetryUtils.java:82-101 — SocketTimeoutException は
+      // InterruptedIOException サブクラスでリトライ除外)。
+      const name = /** @type {any} */ (e)?.name;
+      if (name === "AbortError" || name === "TimeoutError" || attempt >= maxRetries) throw e;
+      continue; // ネットワーク例外 (TypeError 等) — リトライ対象 (参照: IOException)
+    }
+    // 5xx: リトライ対象 (参照: PredefinedRetryPolicies.java:174-179 — 500/502/503/504)
+    if (res.status >= 500 && attempt < maxRetries) {
+      lastErr = new Error(`HTTP ${res.status}`);
+      continue;
+    }
+    // 4xx: Throttling 系のみリトライ対象
+    // (参照: PredefinedRetryPolicies.java:187-189 — isThrottlingException)
+    if (res.status >= 400 && res.status < 500 && attempt < maxRetries) {
+      let throttleCode = "";
+      try {
+        const cloneText = await res.clone().text();
+        const parsed = cloneText ? JSON.parse(cloneText) : {};
+        const rawType = typeof parsed.__type === "string" ? parsed.__type : "";
+        throttleCode = rawType.split("#").pop() ?? "";
+      } catch { /* パース失敗は非 Throttling として扱う */ }
+      if (THROTTLING_CODES.has(throttleCode)) {
+        lastErr = new Error(`Throttling: ${throttleCode}`);
+        continue;
+      }
+    }
+    break;
+  }
+  if (!res) throw lastErr;
+
   const text = await res.text();
   /** @type {any} */
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON body は下の status 判定で拒否 */ }
 
   const ok = typeof res.status === "number" && res.status >= 200 && res.status < 300;
+
   if (!ok || json?.__type) {
     // __type は "namespace#NotAuthorizedException" 形式のこともあるため "#" 以降を採る。
     const rawType = typeof json?.__type === "string" ? json.__type : "";
@@ -127,13 +225,47 @@ function expirationMsOf(v) {
 }
 
 /**
+ * P3-15 で永続化する AWS credentials の形。tokens.json の aws_credentials キーに収める。
+ * 参照: _aws_sdk_ref/CognitoCachingCredentialsProvider.java:86-98 (AK_KEY/SK_KEY/ST_KEY/EXP_KEY 定数)。
+ * @typedef {Object} PersistedAwsCredentials
+ * @property {string} identityId
+ * @property {string} accessKeyId
+ * @property {string} secretAccessKey
+ * @property {string} sessionToken
+ * @property {number} expirationMs epoch ms (参照: CognitoCachingCredentialsProvider.java:644 — long time)
+ */
+
+/**
+ * P3-15: credentialsStore が実装すべき最小インターフェース。
+ * FileTokenStore の拡張や in-memory fake を注入できる duck-typing インターフェース。
+ * @typedef {Object} CredentialsStoreLike
+ * @property {() => PersistedAwsCredentials|null} loadAwsCredentials
+ * @property {(c: PersistedAwsCredentials|null) => void} saveAwsCredentials
+ */
+
+/**
  * CognitoCachingCredentialsProvider 相当: User Pool の idToken を Identity Pool に連携し
  * (GetId → GetCredentialsForIdentity, logins = "cognito-idp.<region>.amazonaws.com/<userPoolId>")、
- * 一時 credentials を Expiration の refreshMarginMs 手前までメモリキャッシュする。
+ * 一時 credentials を Expiration の refreshMarginMs 手前まで再利用する。
+ *
+ * P3-14: Identity Pool 再解決 (GetId やり直し) のトリガを参照に合わせ
+ *   ResourceNotFoundException + ValidationException のみに修正。NotAuthorizedException は
+ *   即時 throw する (unauthenticated 扱い)。
+ *   参照: _aws_sdk_ref/CognitoCredentialsProvider.java:789-803 —
+ *     catch (ResourceNotFoundException)   → retryGetCredentialsForIdentity()
+ *     catch (AmazonServiceException) where errorCode == "ValidationException" → retry
+ *     それ以外 (NotAuthorizedException 含む) → throw ase
+ *
+ * P3-15: identityId と credentials を credentialsStore へ永続化し、
+ *   プロセス再起動後に GetId をスキップ。
+ *   参照: _aws_sdk_ref/CognitoCachingCredentialsProvider.java:434-435 — initialize 内の読み込み
+ *         _aws_sdk_ref/CognitoCachingCredentialsProvider.java:473-505 — loadCachedCredentials
+ *         _aws_sdk_ref/CognitoCachingCredentialsProvider.java:515-521 — refresh 後の saveCredentials
+ *         _aws_sdk_ref/CognitoCachingCredentialsProvider.java:638-646 — saveCredentials
+ *         _aws_sdk_ref/CognitoCachingCredentialsProvider.java:655-659 — saveIdentityId
  *
  * idToken の供給はコールバック注入 (auth.js へ依存しない)。同時呼び出しは single-flight で
- * 1 回の取得に合流させる。IdentityId もキャッシュし、失効 (ResourceNotFound / NotAuthorized)
- * を検出したら GetId からやり直す (Android SDK の identityId 再解決と同じ振る舞い)。
+ * 1 回の取得に合流させる。
  *
  * @param {{
  *   getIdToken: () => Promise<string>,
@@ -143,7 +275,8 @@ function expirationMsOf(v) {
  *   fetchImpl?: typeof globalThis.fetch,
  *   refreshMarginMs?: number,
  *   now?: () => number,
- * }} p now はテスト用の時計注入口。
+ *   credentialsStore?: CredentialsStoreLike|null,
+ * }} p now はテスト用の時計注入口。credentialsStore は永続化ストア (省略で in-memory のみ)。
  * @returns {CredentialsProviderLike & {clearCache: () => void}}
  */
 export function makeCognitoCredentialsProvider({
@@ -154,6 +287,7 @@ export function makeCognitoCredentialsProvider({
   fetchImpl = globalThis.fetch,
   refreshMarginMs = DEFAULT_REFRESH_MARGIN_MS,
   now = Date.now,
+  credentialsStore = null,
 } = /** @type {any} */ ({})) {
   if (typeof getIdToken !== "function") throw badRequest("domain.aws.getIdTokenRequired");
   if (typeof fetchImpl !== "function") throw badRequest("domain.aws.fetchRequired");
@@ -167,6 +301,33 @@ export function makeCognitoCredentialsProvider({
   let cached = null;
   /** @type {Promise<AwsTemporaryCredentials>|null} 進行中の取得 (single-flight) */
   let inflight = null;
+
+  // P3-15: 起動時に永続化ストアから読み込む
+  // (参照: CognitoCachingCredentialsProvider.java:434-435 getCachedIdentityId + loadCachedCredentials)
+  if (credentialsStore) {
+    try {
+      const persisted = /** @type {PersistedAwsCredentials|null} */ (credentialsStore.loadAwsCredentials?.());
+      if (persisted && typeof persisted.identityId === "string") {
+        identityId = persisted.identityId;
+        // 参照: CognitoCachingCredentialsProvider.java:473-505 — expirationKey 存在 + 全キー揃い
+        if (
+          persisted.accessKeyId && persisted.secretAccessKey &&
+          persisted.sessionToken && typeof persisted.expirationMs === "number"
+        ) {
+          cached = {
+            accessKeyId: persisted.accessKeyId,
+            secretAccessKey: persisted.secretAccessKey,
+            sessionToken: persisted.sessionToken,
+            expiration: new Date(persisted.expirationMs),
+            identityId: persisted.identityId,
+            expirationMs: persisted.expirationMs,
+          };
+        }
+      }
+    } catch {
+      // 破損ストアは無視して in-memory のみで続行
+    }
+  }
 
   /**
    * @param {Record<string, string>} logins
@@ -221,22 +382,42 @@ export function makeCognitoCredentialsProvider({
     /** @type {Record<string, string>} */
     const logins = { [loginKey]: String(idToken) };
 
-    const hadCachedIdentity = identityId != null;
     let id = identityId ?? (await resolveIdentityId(logins));
     try {
       cached = await fetchCredentialsFor(id, logins);
     } catch (e) {
-      // キャッシュ済み IdentityId が server 側で消えていた/連携が切れていた場合のみ、
-      // GetId からやり直して 1 回だけ再試行する (CognitoCachingCredentialsProvider の
-      // identityId 再解決相当)。GetId 直後の失敗はそのまま投げる。
+      // P3-14: recoverable = ResourceNotFoundException || ValidationException のみ。
+      // NotAuthorizedException はリトライせず即 throw (参照一致)。
+      // 参照: _aws_sdk_ref/CognitoCredentialsProvider.java:789-803 —
+      //   catch (ResourceNotFoundException)   → retryGetCredentialsForIdentity() (常に)
+      //   catch (AmazonServiceException) where errorCode == "ValidationException" → retry (常に)
+      //   それ以外                             → throw ase
+      // 参照は hadCachedIdentity ガードを持たない。GetId 直後でも recoverable 例外はリトライする。
       const type = e instanceof SesameError ? /** @type {{type?: string}|null} */ (e.data)?.type : null;
-      const recoverable = type === "ResourceNotFoundException" || type === "NotAuthorizedException";
-      if (!hadCachedIdentity || !recoverable) throw e;
+      const recoverable = type === "ResourceNotFoundException" || type === "ValidationException";
+      if (!recoverable) throw e;
       identityId = null;
       id = await resolveIdentityId(logins);
       cached = await fetchCredentialsFor(id, logins);
     }
     identityId = cached.identityId;
+
+    // P3-15: 取得後に永続化ストアへ保存
+    // (参照: CognitoCachingCredentialsProvider.java:515-521, 638-646, 655-659)
+    if (credentialsStore?.saveAwsCredentials) {
+      try {
+        credentialsStore.saveAwsCredentials(/** @type {PersistedAwsCredentials} */ ({
+          identityId: cached.identityId,
+          accessKeyId: cached.accessKeyId,
+          secretAccessKey: cached.secretAccessKey,
+          sessionToken: cached.sessionToken,
+          expirationMs: cached.expirationMs,
+        }));
+      } catch {
+        // 永続化失敗は in-memory キャッシュが残るので握り潰す
+      }
+    }
+
     return cached;
   }
 
@@ -253,6 +434,9 @@ export function makeCognitoCredentialsProvider({
     clearCache() {
       cached = null;
       identityId = null;
+      if (credentialsStore?.saveAwsCredentials) {
+        try { credentialsStore.saveAwsCredentials(null); } catch { /* ignore */ }
+      }
     },
   };
 }
@@ -355,6 +539,13 @@ function stripTrailingSlashes(s) {
  *   ヘッダ構成 (SigV4 + x-api-key) は参照実装
  *   (ApiClientConfigBuilder.kt:34-46, BaseApp.kt:95-102, AppIdentifyIdUtil.kt:42) から導出。
  *
+ * P3-13: AbortSignal.timeout (15s) + 5xx / Throttling (Throttling / ThrottlingException /
+ *   ProvisionedThroughputExceededException) / Clock Skew (RequestTimeTooSkewed / RequestExpired /
+ *   InvalidSignatureException / SignatureDoesNotMatch) / ネットワーク例外で最大 3 回リトライ。
+ *   タイムアウト (AbortError/TimeoutError) はリトライ禁止。
+ *   (参照: _aws_sdk_ref/ClientConfiguration.java:33,36 / PredefinedRetryPolicies.java:50 /
+ *    RetryUtils.java:34-41,65-73,82-101)
+ *
  * @param {{
  *   baseUrl: string,
  *   credentialsProvider: CredentialsProviderLike,
@@ -363,6 +554,8 @@ function stripTrailingSlashes(s) {
  *   region?: string,
  *   service?: string,
  *   fetchImpl?: typeof globalThis.fetch,
+ *   timeoutMs?: number,
+ *   maxRetries?: number,
  * }} p
  * @returns {(req: {method: string, path: string, body?: object}) => Promise<{status: number, text: string, json: any}>}
  */
@@ -374,6 +567,8 @@ export function makeApiGatewayTransport({
   region = AWS_REGION,
   service = "execute-api",
   fetchImpl = globalThis.fetch,
+  timeoutMs = AWS_TIMEOUT_MS,
+  maxRetries = AWS_MAX_RETRIES,
 }) {
   if (!baseUrl || typeof baseUrl !== "string") throw badRequest("domain.aws.baseUrlRequired");
   if (typeof credentialsProvider?.getCredentials !== "function") {
@@ -407,7 +602,56 @@ export function makeApiGatewayTransport({
       service,
       region,
     });
-    const res = await fetchImpl(url, { method, headers: signed.headers, body: bodyText });
+
+    // P3-13: リトライ付き fetch
+    //   参照: ClientConfiguration.java:33,36 / PredefinedRetryPolicies.java:50
+    //   注: SigV4 の clock-skew 系エラー (RequestTimeTooSkewed / InvalidSignatureException 等) は
+    //   ここではリトライしない。署名はループ外で 1 回生成され X-Amz-Date が固定されるため、
+    //   同一署名を再送しても skew は解消しない (正しく直すには応答 Date からオフセットを取って
+    //   再署名する必要があり、本 transport の責務外)。throttling / 5xx / ネットワークのみリトライする。
+    let res;
+    let lastErr;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        const cap = AWS_RETRY_BASE_MS * 2 ** attempt;
+        await new Promise((r) => setTimeout(r, Math.random() * cap));
+      }
+      try {
+        const signal = AbortSignal.timeout(timeoutMs);
+        res = await fetchImpl(url, { method, headers: signed.headers, body: bodyText, signal });
+      } catch (e) {
+        lastErr = e;
+        // AbortError (ユーザキャンセル) / TimeoutError (AbortSignal.timeout 発火) は
+        // リトライ禁止 (参照: RetryUtils.java:82-101 — SocketTimeoutException は
+        // InterruptedIOException サブクラスでリトライ除外)。
+        const name = /** @type {any} */ (e)?.name;
+        if (name === "AbortError" || name === "TimeoutError" || attempt >= maxRetries) throw e;
+        continue; // ネットワーク例外 (TypeError 等) — リトライ対象 (参照: IOException)
+      }
+      // 5xx: リトライ対象 (参照: PredefinedRetryPolicies.java:174-179 — 500/502/503/504)
+      if (res.status >= 500 && attempt < maxRetries) {
+        lastErr = new Error(`HTTP ${res.status}`);
+        continue;
+      }
+      // 4xx: Throttling 系のみリトライ対象
+      // (参照: PredefinedRetryPolicies.java:187-189 — isThrottlingException)
+      if (res.status >= 400 && res.status < 500 && attempt < maxRetries) {
+        let errorCode = "";
+        try {
+          const cloneText = await res.clone().text();
+          const parsed = cloneText ? JSON.parse(cloneText) : {};
+          const rawType = typeof parsed.__type === "string" ? parsed.__type : "";
+          errorCode = rawType.split("#").pop() ?? "";
+        } catch { /* パース失敗は非リトライとして扱う */ }
+        if (THROTTLING_CODES.has(errorCode)) {
+          lastErr = new Error(`Throttling: ${errorCode}`);
+          continue;
+        }
+      }
+      break;
+    }
+    if (!res) throw lastErr;
+
     const text = await res.text();
     /** @type {any} */
     let json = null;

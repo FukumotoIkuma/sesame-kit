@@ -112,8 +112,9 @@ function makeStubHub() {
  * @returns {Promise<import("../serve/daemon.js").HubLike>}
  */
 async function buildHub(program) {
-  // テストスタブは本番では絶対に使わない (NODE_ENV=production では無効化)。
-  if (process.env.SESAME_SERVE_TEST_HUB === "1" && process.env.NODE_ENV !== "production") return makeStubHub();
+  // テストスタブは opt-in: test 環境でのみ有効化 (NODE_ENV=test または VITEST 実行時)。
+  // 本番環境では絶対に使わない。
+  if (process.env.SESAME_SERVE_TEST_HUB === "1" && (process.env.NODE_ENV === "test" || process.env.VITEST)) return makeStubHub();
   const g = program.opts();
   // SesameHub3 は HubLike の上位互換だが onDeviceUpdate の items が string 厳密 (HubLike は
   // unknown) で、関数引数の非変性により直接代入できない。daemon が触る面は安全なため
