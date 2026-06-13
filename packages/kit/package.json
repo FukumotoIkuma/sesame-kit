@@ -1,6 +1,6 @@
 {
   "name": "sesame-kit",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Control your SESAME smart lock from your own code — even directly over Bluetooth, offline. BLE + cloud, CLI, Node library, and a JSON-RPC server for any language. Hub3 IR, device management. Unofficial.",
   "author": "Ikuma Fukumoto",
   "license": "MIT",
@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.5.2",
-    "@sesame-kit/core": "0.6.2",
+    "@sesame-kit/core": "0.6.3",
     "commander": "^15.0.0",
     "ws": "^8.18.0"
   },

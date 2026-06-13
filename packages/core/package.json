@@ -1,6 +1,6 @@
 {
   "name": "@sesame-kit/core",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "SESAME smart-lock library: BLE + cloud transport, auth, crypto, device management. The library core of sesame-kit (CLI/serve/SDK live in the sesame-kit package). Unofficial.",
   "author": "Ikuma Fukumoto",
   "license": "MIT",
