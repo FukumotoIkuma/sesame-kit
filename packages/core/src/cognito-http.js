@@ -49,6 +49,8 @@ const AWS_TIMEOUT_MS = 15_000;
 const AWS_MAX_RETRIES = 3;
 /** 指数バックオフ: 2^attempt * 100ms (SDK の FullJitterBackoffStrategy 相当)。 */
 const AWS_RETRY_BASE_MS = 100;
+/** throttling errorCode 集合 (参照: _aws_sdk_ref/RetryUtils.java:34-41 isThrottlingException)。 */
+const THROTTLING_CODES = new Set(["Throttling", "ThrottlingException", "ProvisionedThroughputExceededException"]);
 
 /**
  * Cognito AuthenticationResult (旧 @aws-sdk AuthenticationResultType 互換の最小形)。
@@ -109,12 +111,6 @@ export async function cognitoCall(op, payload, {
     body: JSON.stringify(payload ?? {}),
   };
 
-  // throttling errorCode 集合 (参照: _aws_sdk_ref/RetryUtils.java:34-41 isThrottlingException)
-  const THROTTLING_CODES = new Set([
-    "Throttling",
-    "ThrottlingException",
-    "ProvisionedThroughputExceededException",
-  ]);
 
   // 1 回目試行。5xx / Throttling はリトライループへ。
   let resp;

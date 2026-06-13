@@ -374,13 +374,13 @@ describe("P3-13: makeApiGatewayTransport — リトライ", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  // ClockSkew リトライ (SigV4 固有。RetryUtils.java:65-73 — isClockSkewError)
-  it("SignatureDoesNotMatch (clock skew) → リトライして成功 (makeApiGatewayTransport, ClockSkew)", async () => {
-    // 参照: RetryUtils.java:65-73 — isClockSkewError: SignatureDoesNotMatch
-    //       PredefinedRetryPolicies.java:193-197 — clock skew はリトライ対象
+  // Clock-skew 系 (SignatureDoesNotMatch / RequestTimeTooSkewed 等) は **リトライしない**。
+  // 署名はループ外で 1 回生成され X-Amz-Date が固定されるため、同一署名の再送では skew は
+  // 解消しない (再署名にはオフセット補正が要り transport の責務外)。1 回で応答を返す。
+  it("SignatureDoesNotMatch (clock skew) → リトライせず 1 回で応答を返す (makeApiGatewayTransport)", async () => {
     const fetchImpl = scriptedFetch([
       { status: 403, body: { __type: "SignatureDoesNotMatch", message: "Signature mismatch" } },
-      { status: 200, body: { result: "ok" } },
+      { status: 200, body: { result: "should-not-be-reached" } },
     ]);
     const transport = makeApiGatewayTransport({
       baseUrl: DEFAULT_CH_API_BASE_URL,
@@ -390,25 +390,7 @@ describe("P3-13: makeApiGatewayTransport — リトライ", () => {
       maxRetries: 3,
     });
     const res = await transport({ method: "GET", path: "/device/list" });
-    expect(res.status).toBe(200);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-  });
-
-  it("RequestTimeTooSkewed (clock skew) → リトライして成功 (ClockSkew)", async () => {
-    // 参照: RetryUtils.java:70 — "RequestTimeTooSkewed"
-    const fetchImpl = scriptedFetch([
-      { status: 400, body: { __type: "RequestTimeTooSkewed", message: "Request time too skewed" } },
-      { status: 200, body: { result: "ok" } },
-    ]);
-    const transport = makeApiGatewayTransport({
-      baseUrl: DEFAULT_CH_API_BASE_URL,
-      credentialsProvider: fakeProvider,
-      fetchImpl,
-      timeoutMs: 100,
-      maxRetries: 3,
-    });
-    const res = await transport({ method: "GET", path: "/device/list" });
-    expect(res.status).toBe(200);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(res.status).toBe(403);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });

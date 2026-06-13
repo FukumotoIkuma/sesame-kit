@@ -568,16 +568,15 @@ export async function loginVerify(store, code) {
   // pool が email → UUID 写像する場合、pending.usernameInternal に UUID が格納されている。
   // 参照: _aws_sdk_ref/ChallengeContinuation.java:162 + CognitoUser.java:3214-3216, 3950-3955
   // (updateInternalUsername が全チャレンジ回答で usernameInternal を USERNAME に使う)。
-  const usernameForChallenge = s.usernameInternal ?? s.username;
-  // P3-10: DEVICE_KEY 照合も usernameInternal ?? s.username で行う。
+  // P3-10: チャレンジ回答の USERNAME も DEVICE_KEY 照合も内部ユーザー名で行う。
   // 参照: _aws_sdk_ref/CognitoUser.java:3601-3602 — getDeviceKey は内部ユーザー名キーで引く。
-  const usernameForDeviceMatch = s.usernameInternal ?? s.username;
+  const usernameInternal = s.usernameInternal ?? s.username;
   /** @type {Record<string, string>} */
   const challengeResponses = {
-    USERNAME: usernameForChallenge,
+    USERNAME: usernameInternal,
     ANSWER: code,
   };
-  if ((existing.username === usernameForDeviceMatch || existing.username === s.username) && existing.deviceKey) {
+  if ((existing.username === usernameInternal || existing.username === s.username) && existing.deviceKey) {
     challengeResponses.DEVICE_KEY = existing.deviceKey;
   }
   const resp = await cognitoCall("RespondToAuthChallenge", {

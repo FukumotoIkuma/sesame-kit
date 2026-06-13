@@ -605,15 +605,10 @@ export function makeApiGatewayTransport({
 
     // P3-13: リトライ付き fetch
     //   参照: ClientConfiguration.java:33,36 / PredefinedRetryPolicies.java:50
-    //   SigV4: clock skew errorCode もリトライ対象
-    //   (RetryUtils.java:65-73 — isClockSkewError: RequestTimeTooSkewed / RequestExpired /
-    //    InvalidSignatureException / SignatureDoesNotMatch)。
-    const CLOCK_SKEW_CODES = new Set([
-      "RequestTimeTooSkewed",
-      "RequestExpired",
-      "InvalidSignatureException",
-      "SignatureDoesNotMatch",
-    ]);
+    //   注: SigV4 の clock-skew 系エラー (RequestTimeTooSkewed / InvalidSignatureException 等) は
+    //   ここではリトライしない。署名はループ外で 1 回生成され X-Amz-Date が固定されるため、
+    //   同一署名を再送しても skew は解消しない (正しく直すには応答 Date からオフセットを取って
+    //   再署名する必要があり、本 transport の責務外)。throttling / 5xx / ネットワークのみリトライする。
     let res;
     let lastErr;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -638,8 +633,8 @@ export function makeApiGatewayTransport({
         lastErr = new Error(`HTTP ${res.status}`);
         continue;
       }
-      // 4xx: Throttling 系 + Clock Skew 系のみリトライ対象
-      // (参照: PredefinedRetryPolicies.java:187-197 — isThrottlingException / isClockSkewError)
+      // 4xx: Throttling 系のみリトライ対象
+      // (参照: PredefinedRetryPolicies.java:187-189 — isThrottlingException)
       if (res.status >= 400 && res.status < 500 && attempt < maxRetries) {
         let errorCode = "";
         try {
@@ -648,8 +643,8 @@ export function makeApiGatewayTransport({
           const rawType = typeof parsed.__type === "string" ? parsed.__type : "";
           errorCode = rawType.split("#").pop() ?? "";
         } catch { /* パース失敗は非リトライとして扱う */ }
-        if (THROTTLING_CODES.has(errorCode) || CLOCK_SKEW_CODES.has(errorCode)) {
-          lastErr = new Error(`Retryable: ${errorCode}`);
+        if (THROTTLING_CODES.has(errorCode)) {
+          lastErr = new Error(`Throttling: ${errorCode}`);
           continue;
         }
       }
