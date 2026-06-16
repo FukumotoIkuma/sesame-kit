@@ -109,10 +109,12 @@ it("[AUTH-0007] ChallengeResponses のキー集合が AWSMobileClient と一致�
 1. ~~**pilot**: `auth.md` / `lock.md` + 本フレーム + ガード~~ ✅ 完了（書式・ID 規約確定）。
 2. ~~`planned` ドメインへ多エージェント横展開（1 ドメイン 1 ファイル）~~ ✅ 完了 — 全 24 ファイル。
 3. ~~**デュアルエージェント品質監査**（各ドメインに独立 2 監査人 + アライナ → 人間が差分裁定 → 適用）~~ ✅ 完了 — 不足の補完・クロスドメイン重複の正典統合・実バグ抽出を実施。全 ref 実在をガードが機械検証。
-4. **← いま ここ**: テスト実装に合わせて各 spec を `planned → covered` へ昇格。ガードで被覆率を単調増加させる。
+4. ~~テスト実装に合わせて各 spec を `planned → covered` へ昇格（TDD: 同一タスクに sonnet 2 ライタ → 統合 → ドメイン毎コミット）~~ ✅ 完了 — 全 24 ドメインに `[ID]` タグ付きテストを実装（`packages/*/tests/_spec/`）。
+5. ~~**red-fix フェーズ**（各 red を独立 2 エージェントが診断 → 人間が test-bug / code-divergence を裁定 → 適用）~~ ✅ 完了 — 全 red を解消、実バグはコード修正。
+6. **← いま ここ**: 完了。`unit`/`e2e` 全グリーン。以後は機能追加時に spec エントリ + `[ID]` テストを追記し、ガードで被覆率を単調維持。
 
-> **現状サマリ（spec 作成 + 品質監査フェーズ完了）**: 24 ドメイン spec が出揃い、デュアル監査済み。全 **1,635 エントリ**（`planned` 約 1,561 / `waived` 74 = 実機/実クラウド限定 E2E + クロスドメイン重複の正典統合）。テスト本体（`[ID]` タグ付き）はこれから。
+> **現状サマリ（TDD フェーズ完了）**: 24 ドメイン spec すべて `covered`。`[ID]` タグ付きテスト本体を実装し、`unit`（≈8,677）/`e2e`（381）全グリーン。`waived` 74（実機/実クラウド限定 E2E + クロスドメイン重複の正典統合）。
 >
-> **監査で抽出した実装バグ（spec ではなくコード側、別タスク）**: ① `sesame org keys device` が `{list,hasMore}` を配列扱い（常に「none」） ② `sesame remote add` が preset リモコンにも `irOperation:"learnEmit"` をハードコード ③ `lock-ops.js` の到達不能 `op==="bot"` デッドブランチ。いずれもタスクチップ化済み。
+> **監査で抽出し修正した実装バグ（red-fix フェーズで根本修正済み）**: ① **ORG-0100** `sesame org keys device` が `{list,hasMore}` を配列扱い（常に「none」/count 0）→ 分割代入。 ② **ORG-0110** `removeEmployeeGroupBindDeviceGroup` が gid 未検証で送信 → `badRequest("org.req.gid")` 追加。 ③ **CFG-0096** `syncRemotesFromServer` が irType 変化時に irOperation を再導出せず stale → `deriveIrOperation` で是正。 ④ **CFG-0037** `sesame remote add` が preset にも `irOperation:"learnEmit"` をハードコード → `addRemote` の導出に委譲。 ⑤ **ACC-0078** `passcodes name` に非 v4 UUID 警告が無い（`cards name` と非対称）→ 対称化。 ＊`lock-ops.js` の到達不能 `op==="bot"` デッドブランチは挙動中立のため別タスク（cosmetic）として残置。
 >
 > **クロスドメイン正典（重複統合の方針）**: 暗号 KAT→`CRY` / イベント購読ライフサイクル→`EVT` / 契約自己整合→`CTR` / per-transport 符号化→`SRV` / i18n カタログ完全性→`I18N` / webapi→`WEB` / account→`AUTH` / locks·remote CLI→`CFG`。重複側は `status: waived: 重複（正典 [[OWNER]]）` で ID 保持。
