@@ -883,6 +883,9 @@ export class ConfigStore {
         if (alias && rm.alias !== alias) { rm.alias = alias; changed = true; }
         if (code != null && rm.code !== code) { rm.code = code; changed = true; }
         if (state != null && rm.state !== state) { rm.state = state; changed = true; }
+        // P3-8: irType が変化したとき irOperation も再導出する (syncRemotesFromDevices:823-824 と対称)。
+        const op = deriveIrOperation(Number.isFinite(irType) ? irType : rm.irType);
+        if (rm.irOperation !== op) { rm.irOperation = op; changed = true; }
         if (changed) result.updated.push(existingName);
         continue;
       }
