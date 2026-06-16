@@ -227,8 +227,10 @@ export async function runCloudOp(op, entry, program) {
       return;
     }
     // click (Bot の BLE クリック) は cloud では botClick(cmd=89) に対応。
+    // ("bot" は DEVICE_ACTIONS=CONTROL_OPS∪status に含まれず cmdDeviceOp が事前に
+    //  unknownAction で die するため到達不能。旧 op==="bot" デッドブランチを撤去。LOCK-0110)
     const hubAny = /** @type {Record<string, (name: string) => Promise<any>>} */ (/** @type {unknown} */ (hub));
-    const resp = /** @type {{ data?: Record<string, unknown> }} */ ((op === "bot" || op === "click") ? await hub.botClick(entry.name) : await hubAny[op](entry.name)); // lock/unlock/toggle
+    const resp = /** @type {{ data?: Record<string, unknown> }} */ ((op === "click") ? await hub.botClick(entry.name) : await hubAny[op](entry.name)); // lock/unlock/toggle
     out(opts.json, () => {
       console.log(`OK: ${op} (${entry.name})`);
       if (resp?.data && Object.keys(resp.data).length) console.log(`   ${JSON.stringify(resp.data)}`);

@@ -980,7 +980,7 @@ Android アプリ方式(AWSMobileClient 2.77.0: CUSTOM_AUTH + device SRP + Confi
 - ref: packages/core/src/aws-credentials.js:606-650; _aws_sdk_ref/PredefinedRetryPolicies.java:191-197; _aws_sdk_ref/RetryUtils.java:65-73
 - kind: error-path
 - status: covered
-- note: 実装(606-650)は ClockSkew 非リトライ(throttling/5xx/network のみ)。JSDoc P3-13(542-547)は ClockSkew リトライと記すが本体は非リトライ=ドキュメント乖離(別タスクで JSDoc 訂正を flag 済み)。spec 化して非リトライ挙動を固定する。
+- note: 実装(606-651)は ClockSkew 非リトライ(throttling/5xx/network のみ)。【修正済】JSDoc P3-13 のドキュメント乖離(旧記述は ClockSkew リトライ)を訂正し、本体どおり「ClockSkew 系 4xx は意図的に非リトライ(再署名は transport 責務外)」へ改めた。本 spec が非リトライ挙動を固定する。
 
 ## account whoami (core)
 
