@@ -505,14 +505,16 @@ describe("LOCK-0108: cmdDeviceOp autolock — seconds 引数欠落は exit 2", (
     // cmdDeviceOp のロジック: const seconds = action === "autolock" ? (args && args[0]) : null;
     // if (action === "autolock" && (seconds == null)) die(autolockNeedsSeconds, 2)
     const args = [];
-    const seconds = "autolock" === "autolock" ? (args && args[0]) : null;
+    const action = "autolock"; // cmdDeviceOp の action 変数を再現
+    const seconds = action === "autolock" ? (args && args[0]) : null;
     // undefined == null → true → die(exit 2) 条件
     expect(seconds == null).toBe(true);
   });
 
   it("[LOCK-0108] autolock の args=undefined の場合も seconds == null が成立する", () => {
     const args = undefined;
-    const seconds = "autolock" === "autolock" ? (args && args[0]) : null;
+    const action = "autolock"; // cmdDeviceOp の action 変数を再現
+    const seconds = action === "autolock" ? (args && args[0]) : null;
     expect(seconds == null).toBe(true);
   });
 
@@ -524,7 +526,8 @@ describe("LOCK-0108: cmdDeviceOp autolock — seconds 引数欠落は exit 2", (
 
   it("[LOCK-0108] autolock の args=[300] の場合 seconds=300 (正常値, die 条件不成立)", () => {
     const args = ["300"];
-    const seconds = "autolock" === "autolock" ? (args && args[0]) : null;
+    const action = "autolock"; // cmdDeviceOp の action 変数を再現
+    const seconds = action === "autolock" ? (args && args[0]) : null;
     expect(seconds == null).toBe(false);
     expect(seconds).toBe("300");
   });

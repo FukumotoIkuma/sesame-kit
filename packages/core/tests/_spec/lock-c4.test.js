@@ -320,7 +320,7 @@ describe("LOCK-0082: OS2 mechStatus 度数換算 (Math.trunc(raw*360/1024))", ()
     // Kotlin の Int 除算は 0 方向切捨てで数値 0 を返す。JS の -0 は許容 (実用上同値)。
     const buf2 = makeMechBuf({ position: -1 });
     const deg = parseMechStatus(buf2).positionDeg;
-    expect(deg == 0).toBe(true); // -0 == 0 は true (絶対値 0 を確認)
+    expect(deg === 0).toBe(true); // -0 === 0 も true (絶対値 0 を確認)
   });
 
   it("[LOCK-0082] target=-32768 (Short.MIN_VALUE) → target=null, targetDeg=null", () => {

@@ -1004,7 +1004,8 @@ describe("[EVT-0034] HTTP SSE は ?topics= を事前検証し event-stream で�
     const h = await startHttpFraming(d, { port: 0, token: TOKEN });
     handles.push(h);
 
-    const ssePromise = new Promise(async (resolve, reject) => {
+    const ssePromise = new Promise((resolve, reject) => {
+      void (async () => {
       try {
         const res = await fetch(`${h.url}/events?topics=lockState`, {
           headers: { authorization: `Bearer ${TOKEN}` },
@@ -1036,6 +1037,7 @@ describe("[EVT-0034] HTTP SSE は ?topics= を事前検証し event-stream で�
         }
         reject(new Error("SSE timeout"));
       } catch (e) { reject(e); }
+      })();
     });
 
     const ev = await ssePromise;
@@ -1048,7 +1050,8 @@ describe("[EVT-0034] HTTP SSE は ?topics= を事前検証し event-stream で�
     const h = await startHttpFraming(d, { port: 0, token: TOKEN });
     handles.push(h);
 
-    const readyPromise = new Promise(async (resolve, reject) => {
+    const readyPromise = new Promise((resolve, reject) => {
+      void (async () => {
       try {
         const res = await fetch(`${h.url}/events?topics=lockState`, {
           headers: { authorization: `Bearer ${TOKEN}` },
@@ -1074,6 +1077,7 @@ describe("[EVT-0034] HTTP SSE は ?topics= を事前検証し event-stream で�
         }
         reject(new Error("SSE ready timeout"));
       } catch (e) { reject(e); }
+      })();
     });
 
     const ev = await readyPromise;

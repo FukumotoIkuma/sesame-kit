@@ -13,8 +13,9 @@ import { NAMESPACE_OPS } from "../../src/org.js";
 import { mockClient } from "../helpers/mock-ws.js";
 import { Command } from "commander";
 import { registerOrgCommands } from "../../../kit/src/cli/org.js";
-import rpcParams from "../../../kit/src/serve/rpc-params.generated.json" assert { type: "json" };
-import grpcMethods from "../../../kit/src/serve/grpc-methods.generated.json" assert { type: "json" };
+import { readFileSync } from "node:fs";
+const rpcParams = JSON.parse(readFileSync(new URL("../../../kit/src/serve/rpc-params.generated.json", import.meta.url)));
+const grpcMethods = JSON.parse(readFileSync(new URL("../../../kit/src/serve/grpc-methods.generated.json", import.meta.url)));
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  CLI helper (倣元: packages/kit/tests/cli/org-role-keys.test.js)

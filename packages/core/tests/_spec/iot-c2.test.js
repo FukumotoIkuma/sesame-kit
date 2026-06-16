@@ -38,8 +38,8 @@ import { NAMESPACE_OPS } from "../../src/iot.js";
 import { registerIotCommands } from "../../../kit/src/cli/iot.js";
 
 // ── JSON contracts (static generated files) ───────────────────────────────────
-import rpcParams from "../../../kit/src/serve/rpc-params.generated.json" assert { type: "json" };
-import grpcMethods from "../../../kit/src/serve/grpc-methods.generated.json" assert { type: "json" };
+const rpcParams = JSON.parse(readFileSync(new URL("../../../kit/src/serve/rpc-params.generated.json", import.meta.url)));
+const grpcMethods = JSON.parse(readFileSync(new URL("../../../kit/src/serve/grpc-methods.generated.json", import.meta.url)));
 
 // ── File paths for text-based contracts ───────────────────────────────────────
 const __dirname = dirname(fileURLToPath(import.meta.url));

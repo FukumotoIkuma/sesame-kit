@@ -405,14 +405,12 @@ describe("[BLE2-0065] serve ble.os2.invoke: op/secretKey/keyIndex/ssmPublicKey �
 // ─────────────────────────────────────────────────────────────────────────────
 describe("[BLE2-0066] SesameOS2Ble.registerOnce の localServerAuth/productType/ak 正規化", () => {
   it("[BLE2-0066] localServerAuth:true が既定 (params.localServerAuth !== false) — false 以外は true 扱い", () => {
-    const localServerAuth1 = (undefined !== false); // true
-    const localServerAuth2 = (null !== false);      // true
-    const localServerAuth3 = (false !== false);     // false
-    const localServerAuth4 = (true !== false);      // true
-    expect(localServerAuth1).toBe(true);
-    expect(localServerAuth2).toBe(true);
-    expect(localServerAuth3).toBe(false);
-    expect(localServerAuth4).toBe(true);
+    // 実装の既定式 params.localServerAuth !== false を再現 (false 以外は true 扱い)。
+    const norm = (v) => v !== false;
+    expect(norm(undefined)).toBe(true);
+    expect(norm(null)).toBe(true);
+    expect(norm(false)).toBe(false);
+    expect(norm(true)).toBe(true);
   });
 
   it("[BLE2-0066] productType: params.productType ?? params.model ?? undefined の解決順", () => {
