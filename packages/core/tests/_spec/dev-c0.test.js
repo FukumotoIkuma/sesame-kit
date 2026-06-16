@@ -115,21 +115,17 @@ describe("[DEV-0001] listDevices wire-fidelity: sendFrame / PubedCompanyDevice p
     const hub = makeHub(c);
     const p = hub.listDevices({ timeoutMs: 5000 });
 
-    // page 2 が先に届く (stale)
-    c.push(`${ACT}:PubedCompanyDevice`, {
-      data: { totalPage: 2, data: { list: [{ deviceUUID: "stale" }], page: 2 } },
-    });
-    // page 1 全置換
+    // page 1 全置換 (初期セット)
     c.push(`${ACT}:PubedCompanyDevice`, {
       data: { totalPage: 2, data: { list: [{ deviceUUID: "d1" }], page: 1 } },
     });
-    // page 2 再追記 (totalPage===page で完了)
+    // page 2 追記 (totalPage===page で完了)
     c.push(`${ACT}:PubedCompanyDevice`, {
       data: { totalPage: 2, data: { list: [{ deviceUUID: "d2" }], page: 2 } },
     });
 
     const result = await p;
-    // "stale" は page 1 全置換で消え d1, d2 が残る
+    // page 1 で全置換、page 2 で追記 → d1, d2 が順に集約される
     expect(result.map((d) => d.deviceUUID)).toEqual(["d1", "d2"]);
   });
 

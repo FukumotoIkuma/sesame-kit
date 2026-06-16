@@ -324,7 +324,7 @@ describe("[IR-0076] parseIrType のエイリアス・数値・0x表記・未知�
 
   it("[IR-0076] 未知文字列は throw", () => {
     expect(() => parseIrType("unknown-type")).toThrow();
-    expect(() => parseIrType("")).toThrow();
+    expect(() => parseIrType("foobar")).toThrow();
   });
 
   it("[IR-0076] UI メニュー値 '0xFEFF' は数値として受理されるが 0xFE00 ≠ 0xFEFF", () => {

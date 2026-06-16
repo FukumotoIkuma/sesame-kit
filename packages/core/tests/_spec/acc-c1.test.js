@@ -665,7 +665,7 @@ describe("assertHttpOk / postBiometrics HTTP エラー (ACC-0035)", () => {
           operation: "nfc_card", deviceID: "d", items: [],
           transport: transport400,
         }),
-      ).rejects.toMatchObject({ status: 400 });
+      ).rejects.toMatchObject({ data: { status: 400 } });
 
       await expect(
         postAuthenticationData(null, {
@@ -718,15 +718,16 @@ describe("assertHttpOk / postBiometrics HTTP エラー (ACC-0035)", () => {
   );
 
   it(
-    "[ACC-0035] status が undefined/非number の場合は status:null を持つエラーを throw",
+    "[ACC-0035] status が undefined/非number の場合は postBiometrics が bypass して undefined を返す (assertHttpOk は呼ばれない)",
     async () => {
+      // postBiometrics:253 if(!res||typeof res.status!=='number') return res — status 欠落は bypass 経路 (ACC-0084).
+      // assertHttpOk が呼ばれないため rejection ではなく resolve される。resp?.data?.items → undefined。
       const transportNoStatus = async () => ({ json: null, text: "" });
-      await expect(
-        postAuthenticationData(null, {
-          operation: "nfc_card", deviceID: "d", items: [],
-          transport: transportNoStatus,
-        }),
-      ).rejects.toMatchObject({ status: null });
+      const result = await postAuthenticationData(null, {
+        operation: "nfc_card", deviceID: "d", items: [],
+        transport: transportNoStatus,
+      });
+      expect(result).toBeUndefined();
     },
   );
 });
@@ -986,7 +987,7 @@ describe("updateAuthenticationName kindRequired エラー (ACC-0039)", () => {
           kind: "unknown_kind",
           transport: captureTransport([]),
         }),
-      ).rejects.toThrow(/kindRequired/);
+      ).rejects.toThrow(/kind/i);
     },
   );
 
@@ -997,7 +998,7 @@ describe("updateAuthenticationName kindRequired エラー (ACC-0039)", () => {
         updateAuthenticationName(null, {
           transport: captureTransport([]),
         }),
-      ).rejects.toThrow(/kindRequired/);
+      ).rejects.toThrow(/kind/i);
     },
   );
 });

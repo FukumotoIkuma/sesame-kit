@@ -258,14 +258,36 @@ describe("[SRV-0004] gen-grpc-proto optional 付与規則: required/repeated は
   });
 
   it("[SRV-0004] 無効フィールド名は単一 string params(jsonFields) に畳む", async () => {
-    const { generateProto } = await import("../../../../../scripts/gen-grpc-proto.mjs");
-    const { nameMap } = await generateProto();
-
-    // jsonFields に "params" が含まれるエントリが存在する (無効名の畳み込み)
-    const hasParamsJsonField = Object.values(nameMap).some(
-      (v) => v.jsonFields.includes("params")
-    );
-    expect(hasParamsJsonField).toBe(true);
+    // 現行 registry データに無効フィールド名は存在しないため、合成レジストリで
+    // validField()=false ブランチ (gen-grpc-proto.mjs:66-69) を直接検証する。
+    // vi.doMock は非ホイスト。vi.resetModules() でキャッシュを無効化してから
+    // モックを登録し、フレッシュ import でモック版を取得する。
+    const REGISTRY_PATH = "../../src/serve/registry.js";
+    vi.resetModules();
+    vi.doMock(REGISTRY_PATH, () => ({
+      buildRegistry: () => {
+        const reg = new Map();
+        // "(params)" はプロト識別子として無効 ([a-zA-Z_][a-zA-Z0-9_]* に不一致)。
+        // generateProto は validField()=false → フィールドを単一 string "params" に畳み、
+        // jsonFields に "params" を追加する (gen-grpc-proto.mjs:66-69)。
+        reg.set("test.invalidFieldName", {
+          params: [{ name: "(params)", required: false, schema: { type: "string" } }],
+        });
+        return reg;
+      },
+    }));
+    try {
+      const { generateProto } = await import("../../../../../scripts/gen-grpc-proto.mjs");
+      const { nameMap } = await generateProto();
+      // TestInvalidFieldName エントリの jsonFields に "params" が含まれること
+      const hasParamsJsonField = Object.values(nameMap).some(
+        (v) => v.jsonFields.includes("params")
+      );
+      expect(hasParamsJsonField).toBe(true);
+    } finally {
+      vi.doUnmock(REGISTRY_PATH);
+      vi.resetModules();
+    }
   });
 });
 

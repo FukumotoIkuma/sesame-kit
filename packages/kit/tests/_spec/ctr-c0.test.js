@@ -29,6 +29,27 @@ import {
   eventProvenanceOf,
 } from "../../src/serve/stability.js";
 import { CONTRACT_VERSION, KNOWN_FINGERPRINTS } from "@sesame-kit/core/jsonrpc";
+import { NAMESPACE_OPS as SCHEDULE_OPS } from "@sesame-kit/core/schedule";
+import { NAMESPACE_OPS as ORG_OPS } from "@sesame-kit/core/org";
+import { NAMESPACE_OPS as COMPANY_OPS } from "@sesame-kit/core/company";
+import { NAMESPACE_OPS as PAYMENT_OPS } from "@sesame-kit/core/payment";
+import { NAMESPACE_OPS as ACCESS_OPS } from "@sesame-kit/core/access";
+import { NAMESPACE_OPS as IOT_OPS } from "@sesame-kit/core/iot";
+import { NAMESPACE_OPS as PRESETIR_OPS } from "@sesame-kit/core/presetir";
+
+// CTR-0003: NAMESPACE_OPS-derived expected set. Keyed by namespace name (mirrors NS_MODULES in registry.js).
+// Using this instead of startsWith() filtering avoids counting explicitly-registered ops
+// (e.g. access.registerCards, access.postAuthenticationData) that share the access.* prefix
+// but are NOT from the NS_MODULES auto-loop (entries/device.js accessAuthEntries).
+const NS_OPS_MAP = {
+  schedule: SCHEDULE_OPS,
+  org: ORG_OPS,
+  company: COMPANY_OPS,
+  payment: PAYMENT_OPS,
+  access: ACCESS_OPS,
+  iot: IOT_OPS,
+  presetir: PRESETIR_OPS,
+};
 
 // ── shared fixtures ──────────────────────────────────────────────────────────
 
@@ -240,13 +261,23 @@ describe("[CTR-0003] 各 NAMESPACE_OPS が公開 op の単一真実源として 
   });
 
   it("[CTR-0003] NAMESPACE_OPS の計 70 op が registry に存在し、捏造/欠落ゼロ (単一真実源)", () => {
-    const nsKeys = ["schedule", "org", "company", "payment", "access", "iot", "presetir"];
-    let total = 0;
-    for (const ns of nsKeys) {
-      const nsOps = [...registeredMethods].filter((k) => k.startsWith(`${ns}.`));
-      total += nsOps.length;
+    // 各モジュールの NAMESPACE_OPS から期待集合を動的に導出して検証する。
+    // startsWith() で registry をカウントすると、NAMESPACE_OPS 外の明示エントリ
+    // (entries/device.js の accessAuthEntries: registerCards / registerPasscodes /
+    //  postAuthenticationData / putAuthenticationData / deleteAuthenticationData /
+    //  updateAuthenticationName など) を誤集計するため使用しない。
+    const expectedSet = new Set();
+    for (const [ns, ops] of Object.entries(NS_OPS_MAP)) {
+      for (const op of ops) expectedSet.add(`${ns}.${op}`);
     }
-    expect(total).toBe(70);
+    // 欠落ゼロ: NAMESPACE_OPS から導出した全 op が registry に存在する
+    const missing = [...expectedSet].filter((key) => !registeredMethods.has(key));
+    expect(
+      missing,
+      `NAMESPACE_OPS 由来の op が registry に存在しない (欠落): ${missing.join(", ")}`,
+    ).toEqual([]);
+    // spec 記載の合計数と一致: schedule 2 + org 34 + company 4 + payment 6 + access 11 + iot 10 + presetir 3 = 70
+    expect(expectedSet.size).toBe(70);
   });
 });
 

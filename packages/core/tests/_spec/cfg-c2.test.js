@@ -108,6 +108,7 @@ let workDir;
 let configPath;
 
 beforeEach(() => {
+  vi.clearAllMocks();
   workDir = mkdtempSync(join(tmpdir(), "sesame-cfg-c2-"));
   configPath = join(workDir, "nested", "config.json");
 

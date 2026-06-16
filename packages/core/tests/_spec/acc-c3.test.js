@@ -115,14 +115,23 @@ function makeFakeBle(records, { failConnect = false, noBiometric = false, noCard
           if (mode === 1) for (const r of records) emit(r);
         },
       };
-  return {
+  const obj = {
     calls,
-    ...(noBiometric
-      ? { get biometric() { throw new Error("not biometric"); } }
-      : { biometric: bio }),
     async connect() { calls.push(["connect"]); if (failConnect) throw new Error("ble down"); },
     async close()   { calls.push(["close"]); },
   };
+  if (noBiometric) {
+    // Object.defineProperty を使って getter を定義する。
+    // スプレッド構文 {...{get biometric(){throw}}} はスプレッド時にゲッタを呼び出すため
+    // オブジェクト生成時点で例外が発生してしまう (makeFakeBle 呼び出し側が死ぬ)。
+    Object.defineProperty(obj, "biometric", {
+      get() { throw new Error("not biometric"); },
+      configurable: true,
+    });
+  } else {
+    obj.biometric = bio;
+  }
+  return obj;
 }
 
 /** パスコード enroll 用 fake BLE。passcodeModeSet(1) で delegate.onKeyBoardReceive へ流す。 */
@@ -471,13 +480,14 @@ describe("[ACC-0064] cli access cards name: 非v4 cardNameUUID で警告 stderr 
         ["access", "cards", "name", "--json", JSON.stringify(item)],
         { from: "user" },
       );
+      // mock.calls を mockRestore() の前に検証する (mockRestore は mock.calls をリセットするため)
+      expect(stderrSpy).toHaveBeenCalled();
+      expect(stderrSpy.mock.calls[0][0]).toMatch(/Warning/);
+      expect(stderrSpy.mock.calls[0][0]).toMatch(nonV4UUID);
+      expect(hub.access.updateCardName).toHaveBeenCalledTimes(1);
     } finally {
       stderrSpy.mockRestore();
     }
-    expect(stderrSpy).toHaveBeenCalled();
-    expect(stderrSpy.mock.calls[0][0]).toMatch(/Warning/);
-    expect(stderrSpy.mock.calls[0][0]).toMatch(nonV4UUID);
-    expect(hub.access.updateCardName).toHaveBeenCalledTimes(1);
   });
 
   it("[ACC-0064] item.nameUUID も cardNameUUID と同じ非v4 判定パスを使う (フォールバック)", async () => {
@@ -490,11 +500,12 @@ describe("[ACC-0064] cli access cards name: 非v4 cardNameUUID で警告 stderr 
         ["access", "cards", "name", "--json", JSON.stringify(item)],
         { from: "user" },
       );
+      // mock.calls を mockRestore() の前に検証する (mockRestore は mock.calls をリセットするため)
+      expect(stderrSpy).toHaveBeenCalled();
+      expect(hub.access.updateCardName).toHaveBeenCalledTimes(1);
     } finally {
       stderrSpy.mockRestore();
     }
-    expect(stderrSpy).toHaveBeenCalled();
-    expect(hub.access.updateCardName).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -631,7 +642,7 @@ describe("[ACC-0067] cli access cards enroll: 複数タップ集約 → hub.regi
       { cardID: "AA11", cardName: "n1", cardType: 1 },
       { cardID: "BB22", cardName: "n2", cardType: 0 },
     ]);
-    const { ctx, outputs } = makeCtx({ hub, ble, canPrompt: false });
+    const { ctx, outputs } = makeCtx({ hub, ble, canPrompt: true });
     await buildProgram(ctx).parseAsync(
       ["access", "cards", "enroll", "--device", "u1"],
       { from: "user" },
@@ -653,7 +664,7 @@ describe("[ACC-0067] cli access cards enroll: 複数タップ集約 → hub.regi
       registerCards: vi.fn(async () => ({ ok: true })),
     };
     const ble = makeFakeBle([{ cardID: "AA11", cardName: "n1", cardType: 1 }]);
-    const { ctx } = makeCtx({ hub, ble, canPrompt: false });
+    const { ctx } = makeCtx({ hub, ble, canPrompt: true });
     await buildProgram(ctx).parseAsync(
       ["access", "cards", "enroll", "--device", "u1"],
       { from: "user" },
@@ -680,7 +691,7 @@ describe("[ACC-0068] cli access passcodes enroll: onKeyBoardReceive 収集 → h
       { cardID: "1234", cardName: "31323334", cardType: 0 },
       { cardID: "5678", cardName: "35363738", cardType: 0 },
     ]);
-    const { ctx, outputs } = makeCtx({ hub, ble, canPrompt: false });
+    const { ctx, outputs } = makeCtx({ hub, ble, canPrompt: true });
     await buildProgram(ctx).parseAsync(
       ["access", "passcodes", "enroll", "--device", "u1"],
       { from: "user" },
@@ -702,7 +713,7 @@ describe("[ACC-0068] cli access passcodes enroll: onKeyBoardReceive 収集 → h
       registerPasscodes: vi.fn(async () => ({ ok: true })),
     };
     const ble = makeFakePasscodeBle([{ cardID: "1234", cardName: "n", cardType: 0 }]);
-    const { ctx } = makeCtx({ hub, ble, canPrompt: false });
+    const { ctx } = makeCtx({ hub, ble, canPrompt: true });
     await buildProgram(ctx).parseAsync(
       ["access", "passcodes", "enroll", "--device", "u1"],
       { from: "user" },
@@ -727,7 +738,7 @@ describe("[ACC-0069] cli enroll: 同一 id 重複排除と 0 件時 enrolled:0 �
       { cardID: "AA11", cardName: "n1",     cardType: 1 },
       { cardID: "AA11", cardName: "n1-dup", cardType: 1 },
     ]);
-    const { ctx } = makeCtx({ hub, ble, canPrompt: false });
+    const { ctx } = makeCtx({ hub, ble, canPrompt: true });
     await buildProgram(ctx).parseAsync(
       ["access", "cards", "enroll", "--device", "u1"],
       { from: "user" },
@@ -741,7 +752,7 @@ describe("[ACC-0069] cli enroll: 同一 id 重複排除と 0 件時 enrolled:0 �
       registerCards: vi.fn(),
     };
     const ble = makeFakeBle([]);
-    const { ctx, outputs } = makeCtx({ hub, ble, canPrompt: false });
+    const { ctx, outputs } = makeCtx({ hub, ble, canPrompt: true });
     await buildProgram(ctx).parseAsync(
       ["access", "cards", "enroll", "--device", "u1"],
       { from: "user" },
@@ -759,7 +770,7 @@ describe("[ACC-0069] cli enroll: 同一 id 重複排除と 0 件時 enrolled:0 �
       { cardID: "1111", cardName: "n1",     cardType: 0 },
       { cardID: "1111", cardName: "n1-dup", cardType: 0 },
     ]);
-    const { ctx } = makeCtx({ hub, ble, canPrompt: false });
+    const { ctx } = makeCtx({ hub, ble, canPrompt: true });
     await buildProgram(ctx).parseAsync(
       ["access", "passcodes", "enroll", "--device", "u1"],
       { from: "user" },
@@ -773,7 +784,7 @@ describe("[ACC-0069] cli enroll: 同一 id 重複排除と 0 件時 enrolled:0 �
       registerPasscodes: vi.fn(),
     };
     const ble = makeFakePasscodeBle([]);
-    const { ctx, outputs } = makeCtx({ hub, ble, canPrompt: false });
+    const { ctx, outputs } = makeCtx({ hub, ble, canPrompt: true });
     await buildProgram(ctx).parseAsync(
       ["access", "passcodes", "enroll", "--device", "u1"],
       { from: "user" },
@@ -1173,10 +1184,11 @@ describe("[ACC-0075] cli auth-data 系の --json 出力封筒 (ctx.out human/jso
           "--items", "[]"],
         { from: "user" },
       );
+      // mock.calls を mockRestore() の前に検証する (mockRestore は mock.calls をリセットするため)
+      expect(outputs).toHaveLength(0);
+      expect(logSpy).toHaveBeenCalled();
     } finally {
       logSpy.mockRestore();
     }
-    expect(outputs).toHaveLength(0);
-    expect(logSpy).toHaveBeenCalled();
   });
 });

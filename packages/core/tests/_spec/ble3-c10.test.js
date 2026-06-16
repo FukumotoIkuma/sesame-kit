@@ -377,15 +377,17 @@ describe("[BLE3-0194] SesameBle#remoteNano/#biometric: 非対応機種で明示�
   });
 
   it("[BLE3-0194] bot_2: biometric ゲッタは biometricNotSupported で throw", () => {
-    expect(() => bleBot2.biometric).toThrow(/biometricNotSupported/);
+    // テスト実行ロケール=ja → t("ble.biometricNotSupported") の JA 訳文にマッチ (キー文字列はメッセージに含まれない)
+    expect(() => bleBot2.biometric).toThrow(/生体・アクセス制御デバイスではない/);
   });
 
   it("[BLE3-0194] bot_2: remoteNano ゲッタは remoteNanoNotSupported で throw", () => {
-    expect(() => bleBot2.remoteNano).toThrow(/remoteNanoNotSupported/);
+    // テスト実行ロケール=ja → t("ble.remoteNanoNotSupported") の JA 訳文にマッチ
+    expect(() => bleBot2.remoteNano).toThrow(/Remote Nano ではないため/);
   });
 
   it("[BLE3-0194] sesame_face: remoteNano ゲッタは remoteNanoNotSupported で throw (biometric kind だが isRemote=false)", () => {
-    expect(() => bleFace.remoteNano).toThrow(/remoteNanoNotSupported/);
+    expect(() => bleFace.remoteNano).toThrow(/Remote Nano ではないため/);
   });
 
   it("[BLE3-0194] remote: remoteNano ゲッタは取得できる (isRemote=true)", () => {
@@ -421,7 +423,8 @@ describe("[BLE3-0195] remote/remote_nano: biometric ゲッタは biometricNoCaps
         model,
         transport: fakeTransport,
       });
-      expect(() => ble.biometric).toThrow(/biometricNoCaps/);
+      // テスト実行ロケール=ja → t("ble.biometricNoCaps") の JA 訳文にマッチ (キー文字列はメッセージに含まれない)
+      expect(() => ble.biometric).toThrow(/capability 集合は空/);
     }
   );
 
@@ -489,7 +492,8 @@ describe("[BLE3-0196] SesameBle#fingerPrint: bike_3 のみ露出、他機種は 
         model,
         transport: fakeTransport,
       });
-      expect(() => ble.fingerPrint).toThrow(/fingerPrintNotSupported/);
+      // テスト実行ロケール=ja → t("ble.fingerPrintNotSupported") の JA 訳文にマッチ (キー文字列はメッセージに含まれない)
+      expect(() => ble.fingerPrint).toThrow(/指紋登録に対応していない/);
     }
   );
 

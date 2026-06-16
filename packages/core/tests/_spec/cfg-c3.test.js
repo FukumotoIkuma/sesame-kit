@@ -24,17 +24,17 @@ import {
   migrateConfig,
   SCHEMA_VERSION,
   isLockModel,
-} from "../../packages/core/src/config.js";
-import { SesameError, ERR } from "../../packages/core/src/errors.js";
-import { errorFromThrow } from "../../packages/core/src/jsonrpc.js";
+} from "../../src/config.js";
+import { SesameError, ERR } from "../../src/errors.js";
+import { errorFromThrow } from "../../src/jsonrpc.js";
 import {
   withFileLock,
   writeSecretJson,
   SECRET_FILE_MODE,
   SECRET_DIR_MODE,
   ensureSecureDir,
-} from "../../packages/core/src/secure-fs.js";
-import { resolveConfigDir } from "../../packages/core/src/paths.js";
+} from "../../src/secure-fs.js";
+import { resolveConfigDir } from "../../src/paths.js";
 
 // ---------------------------------------------------------------------------
 // テスト共通ヘルパ
@@ -129,7 +129,7 @@ describe("[CFG-0060] locks ls: 未初期化 / --json redact 契約", () => {
   });
 
   it("[CFG-0060] redactConfig が secretKey を深く走査してマスクする", async () => {
-    const { redactConfig } = await import("../../packages/kit/src/cli/ctx.js");
+    const { redactConfig } = await import("../../../kit/src/cli/ctx.js");
     const RAW = "5ccec6781bb7509bdd58fa21565b647b";
     const cfg = {
       default: "L1",
@@ -149,7 +149,7 @@ describe("[CFG-0060] locks ls: 未初期化 / --json redact 契約", () => {
   });
 
   it("[CFG-0060] redactConfig は元オブジェクトを破壊しない", async () => {
-    const { redactConfig } = await import("../../packages/kit/src/cli/ctx.js");
+    const { redactConfig } = await import("../../../kit/src/cli/ctx.js");
     const RAW = "0123456789abcdef0123456789abcdef";
     const cfg = { locks: { L1: { secretKey: RAW } } };
     redactConfig(cfg);
@@ -157,7 +157,7 @@ describe("[CFG-0060] locks ls: 未初期化 / --json redact 契約", () => {
   });
 
   it("[CFG-0060] redactConfig はネストされた secretKey をすべてマスクする", async () => {
-    const { redactConfig } = await import("../../packages/kit/src/cli/ctx.js");
+    const { redactConfig } = await import("../../../kit/src/cli/ctx.js");
     const cfg = {
       locks: {
         a: { secretKey: "aabbccddaabbccddaabbccddaabbccdd" },
@@ -260,7 +260,7 @@ describe("[CFG-0061] syncLocksFromDevices: accept 条件 + prune + LOCAL_ONLY_KE
 
 describe("[CFG-0062] CLI locks sync-from-devices: --prune と printSyncResult 契約", () => {
   it("[CFG-0062] printSyncResult が {ok:true, kind, added, updated, removed} を JSON 出力する", async () => {
-    const { printSyncResult } = await import("../../packages/kit/src/cli/pickers.js");
+    const { printSyncResult } = await import("../../../kit/src/cli/pickers.js");
     const lines = [];
     const origLog = console.log;
     console.log = (...args) => lines.push(args.join(" "));
@@ -279,7 +279,7 @@ describe("[CFG-0062] CLI locks sync-from-devices: --prune と printSyncResult �
   });
 
   it("[CFG-0062] registerLocksCommands が存在し sync-from-devices コマンドに --prune が登録されている", async () => {
-    const locksModule = await import("../../packages/kit/src/cli/locks.js");
+    const locksModule = await import("../../../kit/src/cli/locks.js");
     expect(typeof locksModule.registerLocksCommands).toBe("function");
 
     // Commander を最小モックで --prune 登録を検証
@@ -513,7 +513,7 @@ describe("[CFG-0067] init({uiLang, lang}): 言語設定を永続化", () => {
 
 describe("[CFG-0068] config show: redactConfig がツリー全体の secretKey をマスク", () => {
   it("[CFG-0068] devices と locks の双方で secretKey をマスクする", async () => {
-    const { redactConfig } = await import("../../packages/kit/src/cli/ctx.js");
+    const { redactConfig } = await import("../../../kit/src/cli/ctx.js");
     const RAW = "0123456789abcdef0123456789abcdef";
     const cfg = {
       devices: { front: { deviceUUID: "A", secretKey: RAW, deviceModel: "sesame_5" } },
@@ -527,7 +527,7 @@ describe("[CFG-0068] config show: redactConfig がツリー全体の secretKey �
   });
 
   it("[CFG-0068] JSON.stringify 出力に生 secretKey が残らない (全ツリー走査)", async () => {
-    const { redactConfig } = await import("../../packages/kit/src/cli/ctx.js");
+    const { redactConfig } = await import("../../../kit/src/cli/ctx.js");
     const RAW = "5ccec6781bb7509bdd58fa21565b647b";
     const cfg = {
       devices: { L1: { secretKey: RAW } },
@@ -538,18 +538,18 @@ describe("[CFG-0068] config show: redactConfig がツリー全体の secretKey �
   });
 
   it("[CFG-0068] null を渡すと null のまま返す", async () => {
-    const { redactConfig } = await import("../../packages/kit/src/cli/ctx.js");
+    const { redactConfig } = await import("../../../kit/src/cli/ctx.js");
     expect(redactConfig(null)).toBeNull();
   });
 
   it("[CFG-0068] undefined/非オブジェクトをそのまま返す", async () => {
-    const { redactConfig } = await import("../../packages/kit/src/cli/ctx.js");
+    const { redactConfig } = await import("../../../kit/src/cli/ctx.js");
     expect(redactConfig(undefined)).toBeUndefined();
     expect(redactConfig("string")).toBe("string");
   });
 
   it("[CFG-0068] 秘密でないフィールドは保持する", async () => {
-    const { redactConfig } = await import("../../packages/kit/src/cli/ctx.js");
+    const { redactConfig } = await import("../../../kit/src/cli/ctx.js");
     const cfg = { companyID: "test-co", locks: { L1: { secretKey: "x".repeat(32), model: "sesame_5" } } };
     const r = redactConfig(cfg);
     expect(r.companyID).toBe("test-co");
@@ -783,8 +783,12 @@ describe("[CFG-0073] save(): mergeConfigData による lost-update 防止", () =
   it("[CFG-0073] 意図的削除は disk 側に残っていても復活しない (baselineKeys 判定)", () => {
     const store1 = makeStore();
     store1.addLock("L1", validLock());
-    // load 時点の baseline に L1 が記録される
-    store1.removeLock("L1");
+    // load 時点の baseline に L1 が記録される。削除は save() を挟まず in-memory で行い、
+    // 削除を確定する save() の merge 時点で baseline が L1 を保持しているようにする
+    // (tombstone を持たない設計 (config.js 規則3) なので、削除確定 save と外部復活を
+    //  同一 save サイクル内で競合させるのが本契約の検証になる)。
+    const cfg = store1.load();
+    delete cfg.devices["L1"]; // 意図的削除 (まだ save しない)
 
     // 別プロセス相当: ディスクを直接書き換えて L1 を復活させる
     const raw = JSON.parse(readFileSync(configPath, "utf8"));
@@ -796,7 +800,8 @@ describe("[CFG-0073] save(): mergeConfigData による lost-update 防止", () =
     };
     writeFileSync(configPath, JSON.stringify(raw, null, 2) + "\n");
 
-    // store1 で別の L2 を追加して save → merge で L1 は baseline 追跡で消えたまま
+    // L2 を追加して save → merge: baseline に在り incoming に無い L1 は意図的削除として除外、
+    // ディスクに外部復活した L1 も baseline 判定で復活させない
     store1.addLock("L2", validLock({ deviceUUID: "00000000-0000-0000-0000-000000000002", secretKey: "ffeeddccbbaa99887766554433221100" }));
 
     const saved = JSON.parse(readFileSync(configPath, "utf8"));
@@ -872,7 +877,9 @@ describe("[CFG-0074] withFileLock: 取得/解放/stale 奪取/timeout", () => {
     writeFileSync(lockPath, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
     expect(() =>
       withFileLock(lockTarget, () => {}, { timeoutMs: 80, staleMs: 60_000, retryIntervalMs: 10 })
-    ).toThrow(/lockTimeout|lock.*timeout/i);
+    // ja ロケール実行のため domain.securefs.lockTimeout のローカライズ済み文言で検証
+    // (既存 secure-fs-lock.test.js と同方式。badRequest/Error はキー名を保持せず message のみ)。
+    ).toThrow(/以内にファイルロックを取得できませんでした|failed to acquire file lock/i);
   });
 });
 
