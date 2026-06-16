@@ -16,7 +16,6 @@ import {
   buildSendFrame,
   parseRecvFrame,
   loginPayload,
-  sessionToken as buildSessionToken,
   OP,
   ITEM,
   SEG,
@@ -49,8 +48,6 @@ function makeSsmPublicKey() {
 }
 
 const SSM_PUB_KEY_BUF = makeSsmPublicKey();
-/** hex string for constructors that accept hex */
-const SSM_PUB_KEY_HEX = SSM_PUB_KEY_BUF.toString("hex");
 
 // ======================================================================
 // [BLE2-0001] OS2 login は SYNC opCode で PLAINTEXT 送信 (_sendPlain)
@@ -211,7 +208,7 @@ describe("[BLE2-0003] signLogin 指定時はサーバ署名 sessionAuth を使�
       ssmPublicKey, // no secretKey — server auth path
     });
 
-    const connectPromise = session.connect({ signLogin }).catch(() => {});
+    session.connect({ signLogin }).catch(() => {}); // fire-and-forget (下で await しない)
 
     // Deliver initial token
     await new Promise(r => setImmediate(r));

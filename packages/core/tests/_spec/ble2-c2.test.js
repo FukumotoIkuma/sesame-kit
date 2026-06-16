@@ -4,7 +4,7 @@
 //      BLE2-0044 BLE2-0045 BLE2-0046 BLE2-0047 BLE2-0052 BLE2-0053 BLE2-0054
 //      BLE2-0055 BLE2-0056 BLE2-0057 BLE2-0058
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Buffer } from "node:buffer";
 import {
   parseMechStatus,

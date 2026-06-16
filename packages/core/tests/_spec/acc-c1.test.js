@@ -7,7 +7,7 @@
 //   - assert は spec の assert フィールドに従う (実装に歪めない)
 //   - ネットワーク/実機なし、すべて mock / 純関数
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   updatePasscodeName,
   updateCardOwner,

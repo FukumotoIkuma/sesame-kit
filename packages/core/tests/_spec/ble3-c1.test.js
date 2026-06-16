@@ -18,12 +18,10 @@ import {
   OP,
   ITEM,
   SEG,
-  RESULT,
   resultName,
 } from "../../src/ble/protocol.js";
 import { SesameBleSession, BleResultError } from "../../src/ble/session.js";
 import { SesameBle } from "../../src/ble/index.js";
-import { KIND } from "../../src/ble/devicemodel.js";
 
 // ── 共通定数 ────────────────────────────────────────────────────────────────
 const SECRET = "0102030405060708090a0b0c0d0e0f10";

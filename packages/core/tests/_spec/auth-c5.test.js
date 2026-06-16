@@ -765,7 +765,7 @@ describe("AUTH-0111: gRPC unary が 3 メソッド result を {json:...} で運�
     expect(typeof pingParsed.rttMs).toBe("number");
 
     // null の場合
-    const nullJson = JSON.stringify(null ?? null);
+    const nullJson = JSON.stringify(null);
     expect(JSON.parse(nullJson)).toBeNull();
   });
 });

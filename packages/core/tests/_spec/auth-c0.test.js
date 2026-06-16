@@ -89,14 +89,6 @@ const PV_CHALLENGE_PARAMS_UUID = {
   SECRET_BLOCK: Buffer.from("test-secret-block").toString("base64"),
 };
 
-// loginVerify で使う pending の共通ベース
-const PENDING_BASE = {
-  clientId: CONSUMER_CLIENT_ID,
-  username: EMAIL,
-  session: "sess-1",
-  initiatedAt: "2026-06-01T00:00:00.000Z",
-};
-
 // loginVerify が setNicknameIfNeeded → GetUser を呼ぶため、
 // AuthenticationResult の次に GetUser の応答を必ずモックする (best-effort で .catch されるため
 // undefined でも throw はしないが、mockResolvedValueOnce を付けることで余分な呼び出しを防ぐ)。

@@ -1160,7 +1160,8 @@ describe("[AUTH-0094] status authState の 3 値 (ok/degraded/expired) が daemo
   }
 
   async function simulateConnectLoop(hub, tokenStore) {
-    let authState = "degraded";
+    // try/catch のどちらかで必ず代入されるため初期値は持たせない (useless assignment 回避)。
+    let authState;
     try {
       await hub.connect();
       authState = "ok";

@@ -16,7 +16,6 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { existsSync, mkdtempSync, rmSync, unlinkSync, statSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomBytes } from "node:crypto";
 
 // --------------------------------------------------------------------------
 // SRP / crypto 関連のテストは BigInt modPow が重いため timeout を延ばす。
@@ -29,7 +28,6 @@ import {
   installFetchMock,
   cognitoOk,
   cognitoError,
-  cognitoCalls,
   cognitoOps,
 } from "../auth/cognito-fetch-mock.js";
 

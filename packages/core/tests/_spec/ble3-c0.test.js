@@ -145,7 +145,7 @@ describe("BLE3-0002: parseAdvertisement productType → model/kind マッピン�
   });
 
   it("[BLE3-0002] PRODUCT_TYPES テーブルに全 productType が model/kind を持つ", () => {
-    for (const [pt, entry] of Object.entries(PRODUCT_TYPES)) {
+    for (const entry of Object.values(PRODUCT_TYPES)) {
       expect(typeof entry.model).toBe("string");
       expect(typeof entry.kind).toBe("string");
     }

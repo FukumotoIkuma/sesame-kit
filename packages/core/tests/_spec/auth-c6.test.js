@@ -12,7 +12,7 @@
 //   AUTH-0119~0130: B の cognito-fetch-mock 方式 + A の補完
 // =============================================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 
 // ---- cognito fetch mock (tests/auth と同方式) ----
 import {
