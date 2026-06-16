@@ -615,7 +615,9 @@ export function registerOrgCommands(program, ctx) {
     .option("--limit <n>", t("org.keys.device.opt"), (v) => Number(v), 0)
     .action((deviceUUID, cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
-        const { list, hasMore } = await hub.org.getDeviceEmployeeKeys({ deviceUUID, limit: cmdOpts.limit });
+        const { list, hasMore } = /** @type {{ list: any[], hasMore?: boolean }} */ (
+          await hub.org.getDeviceEmployeeKeys({ deviceUUID, limit: cmdOpts.limit })
+        );
         ctx.out(opts.json, () => {
           if (!Array.isArray(list) || list.length === 0) {
             console.log(t("org.keys.device.none"));

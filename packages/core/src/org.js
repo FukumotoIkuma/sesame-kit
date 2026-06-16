@@ -371,9 +371,9 @@ export async function removeEmployeeInGroup(client, { companyID, gid, uuids, ite
 /**
  * 従業員グループからデバイスグループを解除する。
  * biz3: { action, cid, ...data, op:'removeBindDeviceGroup' } (useManageEmployee.js:375-389)。
- * data の中身 (gid 等) は biz3 UI 依存で未確認。
+ * data の中身は biz3 UI 依存だが gid は必須 (send 前に検証)。
  * @param {import("./transport.js").Hub3WsClient} client
- * @param {{companyID:string, data:object, timeoutMs?:number}} params
+ * @param {{companyID:string, data:{gid?:string|null}&Record<string,unknown>, timeoutMs?:number}} params
  * @returns {Promise<object>} 応答 message
  */
 export async function removeEmployeeGroupBindDeviceGroup(client, { companyID, data, timeoutMs = DEFAULT_TIMEOUT_MS }) {
