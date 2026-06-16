@@ -40,17 +40,17 @@
     "release": "bash scripts/release.sh"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.16",
+    "@biomejs/biome": "2.5.0",
     "@grpc/grpc-js": "^1.14.4",
     "@grpc/proto-loader": "^0.8.1",
     "@types/react": "^19.2.17",
     "@types/ws": "^8.18.1",
-    "ink": "^7.0.5",
+    "ink": "^7.0.6",
     "ink-select-input": "^6.2.0",
     "ink-testing-library": "^4.0.0",
     "ink-text-input": "^6.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.9"
   },
   "overrides": {
     "@mapbox/node-pre-gyp": "^2.0.3",
