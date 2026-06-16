@@ -47,7 +47,7 @@ See [command reference](./docs/en/commands.md), [library usage](./docs/en/librar
 
 Requires Node.js 20+ (matches CI; uses ESM and the `node:` protocol).
 
-> **Note (publish in progress):** `@sesame-kit/core` has not been published to npm yet (E404 if you try), and the latest `sesame-kit` on npm is the pre-split 0.6.1 whose dependency layout differs from this repo. Until 0.6.2+ is released, **use the git clone + workspace path below**. This notice will be removed once both packages are published.
+> **Note (publish in progress):** `@sesame-kit/core` has not been published to npm yet (E404 if you try), and the latest `sesame-kit` on npm is the pre-split 0.6.1 whose dependency layout differs from this repo. Until 0.7.0+ is released, **use the git clone + workspace path below**. This notice will be removed once both packages are published.
 
 From source (current recommended path):
 
@@ -56,7 +56,7 @@ git clone https://github.com/FukumotoIkuma/sesame-kit.git
 cd sesame-kit && npm install   # workspace install wires @sesame-kit/core ↔ sesame-kit
 ```
 
-Once published (0.6.2+):
+Once published (0.7.0+):
 
 ```bash
 npm install -g sesame-kit       # global CLI: `sesame ...` (+ the `sesame serve` daemon)

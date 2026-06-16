@@ -47,7 +47,7 @@
 
 要件は Node.js 20 以上です (CI と一致 / ESM・`node:` プロトコルを使用)。
 
-> **注（publish 準備中）:** `@sesame-kit/core` は現在 npm に未公開（試すと E404）で、npm 上の `sesame-kit` 最新は分割前の 0.6.1 であり依存構成も異なります。0.6.2+ がリリースされるまでは、**下記の git clone + workspace 手順をお使いください**。両パッケージ publish 後にこの注記を撤去します。
+> **注（publish 準備中）:** `@sesame-kit/core` は現在 npm に未公開（試すと E404）で、npm 上の `sesame-kit` 最新は分割前の 0.6.1 であり依存構成も異なります。0.7.0+ がリリースされるまでは、**下記の git clone + workspace 手順をお使いください**。両パッケージ publish 後にこの注記を撤去します。
 
 ソースから（現在の推奨手順）:
 
@@ -56,7 +56,7 @@ git clone https://github.com/FukumotoIkuma/sesame-kit.git
 cd sesame-kit && npm install   # workspace install で @sesame-kit/core ↔ sesame-kit を結線
 ```
 
-publish 後（0.6.2+）:
+publish 後（0.7.0+）:
 
 ```bash
 npm install -g sesame-kit       # グローバル CLI: `sesame ...`（+ `sesame serve` デーモン）
