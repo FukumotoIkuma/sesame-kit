@@ -716,11 +716,7 @@ describe("LOCK-0123: SDK lock.* methods exist (contract-existence)", () => {
 
   it("[LOCK-0123b] TypeScript SDK sesame-client.ts に lock.* メソッドが存在する (ファイル読み取り確認)", async () => {
     const fs = await import("node:fs");
-    const path = await import("node:path");
-    const tsPath = path.join(
-      "/Users/user111/program/sesami_hub3_app",
-      "packages/kit/sdk/ts/sesame-client.ts",
-    );
+    const tsPath = new URL("../../../kit/sdk/ts/sesame-client.ts", import.meta.url);
     const src = fs.readFileSync(tsPath, "utf8");
     // lock namespace ブロック内に全メソッドが存在すること
     const lockBlock = src.slice(src.indexOf("readonly lock ="), src.indexOf("readonly org ="));

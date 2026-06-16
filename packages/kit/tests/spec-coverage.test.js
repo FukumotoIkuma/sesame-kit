@@ -37,6 +37,8 @@ const REQUIRED_FIELDS = ["surface", "backend", "command", "branch", "assert", "r
 const CANONICAL_ORDER = ["surface", "backend", "command", "branch", "assert", "ref", "kind", "status", "note"];
 // ref 1 部分の形: "local-contract" または "path:line" / "path:line-range" / カンマ複数 ("path:12,34-56")。
 const REF_PART_RE = /^.+:\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/;
+// 移植元参照ツリー (.gitignore 済・ローカルのみ)。不在環境 (CI) では ref 存在検証を省く。
+const EXTERNAL_REF_ROOTS = ["references_web", "_sesame_sdk_ref", "_aws_sdk_ref"];
 const SURFACE_VOCAB = new Set(["core", "serve", "sdk", "cli"]);
 const BACKEND_VOCAB = new Set(["cloud", "ble", "ble-os2", "local"]);
 const KIND_VOCAB = new Set([
@@ -233,6 +235,12 @@ describe("spec↔test ガード: 構造検証", () => {
         if (part === "local-contract") continue;
         if (!REF_PART_RE.test(part)) { badFormat.push(`${e.id}: '${part}'`); continue; }
         const path = part.slice(0, part.lastIndexOf(":"));
+        // 移植元参照ツリー (references_web / _sesame_sdk_ref / _aws_sdk_ref) は .gitignore 済で
+        // CI 等には存在しない。そのルートが不在の環境では存在検証をスキップする (format は検証済)。
+        // ローカル (参照ツリーあり) では従来どおり存在検証し、ハルシネ ref を捕捉する。
+        // committed なパス (packages/ ・schema/ ・scripts/ 等) は常に存在検証する。
+        const root = path.split("/")[0];
+        if (EXTERNAL_REF_ROOTS.includes(root) && !existsSync(join(REPO_ROOT, root))) continue;
         if (!existsSync(join(REPO_ROOT, path))) missingFile.push(`${e.id}: '${part}'`);
       }
     }
