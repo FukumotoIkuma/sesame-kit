@@ -615,7 +615,7 @@ export function registerOrgCommands(program, ctx) {
     .option("--limit <n>", t("org.keys.device.opt"), (v) => Number(v), 0)
     .action((deviceUUID, cmdOpts) =>
       ctx.withAccount(async (hub, { opts }) => {
-        const list = await hub.org.getDeviceEmployeeKeys({ deviceUUID, limit: cmdOpts.limit });
+        const { list, hasMore } = await hub.org.getDeviceEmployeeKeys({ deviceUUID, limit: cmdOpts.limit });
         ctx.out(opts.json, () => {
           if (!Array.isArray(list) || list.length === 0) {
             console.log(t("org.keys.device.none"));
@@ -628,7 +628,7 @@ export function registerOrgCommands(program, ctx) {
             const guest = k.guestKeyId && String(k.guestKeyId).length > 0 ? " [guest]" : "";
             console.log(`  lv${lv}\t${who}${guest}`);
           }
-        }, { ok: true, count: Array.isArray(list) ? list.length : 0, keys: list });
+        }, { ok: true, count: list.length, keys: list, hasMore });
       }),
     );
 

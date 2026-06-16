@@ -378,6 +378,7 @@ export async function removeEmployeeInGroup(client, { companyID, gid, uuids, ite
  */
 export async function removeEmployeeGroupBindDeviceGroup(client, { companyID, data, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!companyID) throw badRequest("org.req.companyID");
+  if (!data?.gid) throw badRequest("org.req.gid");
   const resp = await client.request(
     { action: ACT_EMPLOYEE_GROUP, cid: companyID, ...data, op: "removeBindDeviceGroup" },
     timeoutMs,
