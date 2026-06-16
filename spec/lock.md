@@ -1343,7 +1343,7 @@ cloud/ble op の実行振り分け・未ログイン die・--json 封筒・statu
 - ref: packages/kit/src/cli/lock-ops.js:229-236; packages/kit/src/cli/lock-ops.js:268-271; packages/core/src/lock.js:144-151; packages/core/src/ble/devicemodel.js:124; _sesame_sdk_ref/doc/class/SesameItemCode_jp.md:105-112
 - kind: wire-fidelity
 - status: covered
-- note: cmd code 出典 SesameProtocols.kt:36 (lock82/unlock83/toggle88/click89), 11=autolock は同 kt:34。lock-ops.js:231 の振り分けは (op==='bot'||op==='click')→hub.botClick : hubAny[op] だが、'bot' は DEVICE_ACTIONS(=CONTROL_OPS∪status, devicemodel.js:124 順序に 'bot' 無し)に含まれず cmdDeviceOp:268-271 が unknownAction で die するため到達不能=デッドコード。本 spec は到達する 'click' のみを境界とする(コード側のデッドブランチ除去は別途)。lock.js:144-151 が lockLock(82)/lockUnlock(83)/lockToggle(88)/botClick(89)。SesameItemCode_jp.md:105/106/111/112=lock82/unlock83/toggle88/click89。
+- note: cmd code 出典 SesameProtocols.kt:36 (lock82/unlock83/toggle88/click89), 11=autolock は同 kt:34。lock-ops.js:231 の振り分けは (op==='bot'||op==='click')→hub.botClick : hubAny[op] だが、'bot' は DEVICE_ACTIONS(=CONTROL_OPS∪status, devicemodel.js:124 順序に 'bot' 無し)に含まれず cmdDeviceOp:268-271 が unknownAction で die するため到達不能=デッドコード。本 spec は到達する 'click' のみを境界とする(【撤去済】コード側 op==='bot' デッドブランチは削除し、現在は (op==='click')→botClick : hubAny[op])。lock.js:144-151 が lockLock(82)/lockUnlock(83)/lockToggle(88)/botClick(89)。SesameItemCode_jp.md:105/106/111/112=lock82/unlock83/toggle88/click89。
 
 ### [LOCK-0111] cloud transport は未ログインで exit 2 (login 案内)
 - surface: cli
