@@ -540,9 +540,13 @@ function stripTrailingSlashes(s) {
  *   (ApiClientConfigBuilder.kt:34-46, BaseApp.kt:95-102, AppIdentifyIdUtil.kt:42) から導出。
  *
  * P3-13: AbortSignal.timeout (15s) + 5xx / Throttling (Throttling / ThrottlingException /
- *   ProvisionedThroughputExceededException) / Clock Skew (RequestTimeTooSkewed / RequestExpired /
- *   InvalidSignatureException / SignatureDoesNotMatch) / ネットワーク例外で最大 3 回リトライ。
+ *   ProvisionedThroughputExceededException) / ネットワーク例外で最大 3 回リトライ。
  *   タイムアウト (AbortError/TimeoutError) はリトライ禁止。
+ *   Clock Skew 系 4xx (RequestTimeTooSkewed / RequestExpired / InvalidSignatureException /
+ *   SignatureDoesNotMatch) は **意図的に非リトライ**: 署名はループ外で 1 回生成され
+ *   X-Amz-Date が固定のため再送しても skew は解消せず、応答 Date からオフセットを取って
+ *   再署名するのは本 transport の責務外。参照の isClockSkewError はリトライ対象だが
+ *   ここでは意図的逸脱とする (本体実装 606-651 / 境界 spec AUTH-0086)。
  *   (参照: _aws_sdk_ref/ClientConfiguration.java:33,36 / PredefinedRetryPolicies.java:50 /
  *    RetryUtils.java:34-41,65-73,82-101)
  *

@@ -523,6 +523,19 @@ export function registerAccessCommands(program, ctx) {
         }
         const item = ctx.parseJson(subOpts.json, "item");
         if (item === undefined) return;
+        // P3-9 と対称: 非 v4 keyBoardPassCodeNameUUID の警告。
+        // biz3 updateItemName (useManageAuthData.js:431-471) は isUUIDV4(uuidValue) で判定し、
+        // card / password 両方に SSM_OS3_CARD_CHANGE / SSM_OS3_PASSCODE_CHANGE を適用する。
+        // cards name (:330-338) と対称に、非 v4 検出時は警告のみで処理継続する。
+        const nameUUID = item.keyBoardPassCodeNameUUID ?? item.nameUUID;
+        if (nameUUID && !isUuidV4(nameUUID)) {
+          console.error(
+            `[sesame] Warning: keyBoardPassCodeNameUUID "${nameUUID}" is not UUID v4. ` +
+            "biz3 would run BLE SSM_OS3_PASSCODE_CHANGE to assign a v4 UUID first. " +
+            "Run BLE passcodeChange with a new v4 UUID if your firmware requires it " +
+            "(ref: useManageAuthData.js:431-471).",
+          );
+        }
         const resp = await hub.access.updatePasscodeName({ item });
         ctx.out(opts.json, () => {
           console.log(t("access.passcodes.nameUpdated", { keyBoardPassCode: item.keyBoardPassCode ?? "?" }));

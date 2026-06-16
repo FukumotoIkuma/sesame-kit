@@ -146,11 +146,14 @@ async function cmdRemoteAdd(_opts, program) {
       ? await promptText(t("cli.configName"), { defaultValue: defaultName })
       : defaultName;
 
+    // irOperation は明示せず addRemote の deriveIrOperation(irType) 導出に委ねる
+    // (config.js:574)。chosen.type がプリセット (0xC000 等) なら 'remoteEmit'、
+    // 自己学習 (0xFE00) なら 'learnEmit'。無条件 'learnEmit' ハードコードは
+    // プリセットを learnEmit 経路で発射し誤動作する (CFG-0037 / vendor remote-air:370)。
     /** @type {ConfigStore} */ (hub.configStore).addRemote(name, {
       hub3: hub3Name,
       irDeviceUUID: chosen.uuid,
       irType: chosen.type,
-      irOperation: "learnEmit",
       alias: chosen.alias,
       keys: {},
     });
