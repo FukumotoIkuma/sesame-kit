@@ -47,21 +47,17 @@ See [command reference](./docs/en/commands.md), [library usage](./docs/en/librar
 
 Requires Node.js 20+ (matches CI; uses ESM and the `node:` protocol).
 
-> **Note (publish in progress):** `@sesame-kit/core` has not been published to npm yet (E404 if you try), and the latest `sesame-kit` on npm is the pre-split 0.6.1 whose dependency layout differs from this repo. Until 0.7.0+ is released, **use the git clone + workspace path below**. This notice will be removed once both packages are published.
-
-From source (current recommended path):
-
-```bash
-git clone https://github.com/FukumotoIkuma/sesame-kit.git
-cd sesame-kit && npm install   # workspace install wires @sesame-kit/core ↔ sesame-kit
-```
-
-Once published (0.7.0+):
-
 ```bash
 npm install -g sesame-kit       # global CLI: `sesame ...` (+ the `sesame serve` daemon)
 npx sesame-kit --help           # or run without installing
 npm install @sesame-kit/core    # as a library in your project (BLE + cloud, no CLI/serve deps)
+```
+
+From source (for working on the kit itself):
+
+```bash
+git clone https://github.com/FukumotoIkuma/sesame-kit.git
+cd sesame-kit && npm install   # workspace install wires @sesame-kit/core ↔ sesame-kit
 ```
 
 This repo is an npm workspace split into two published packages:
@@ -463,8 +459,6 @@ npm trusted publishing **cannot create a package that does not exist yet** — t
    (`@sesame-kit/core@0.0.0` can be `npm deprecate`d afterwards.)
 3. **Register the Trusted Publisher** on npmjs.com for **both** `@sesame-kit/core` *and* `sesame-kit` — package settings → "Trusted Publisher" → GitHub repo `FukumotoIkuma/sesame-kit`, workflow `release.yml`.
 4. Run the normal release flow above. The idempotent publish step skips any version already on the registry and publishes the real `X.Y.Z` for both packages via OIDC.
-
-Once both packages are published at `0.7.0+`, remove the "publish in progress" note in the [Install](#install) section.
 
 ## See also
 
