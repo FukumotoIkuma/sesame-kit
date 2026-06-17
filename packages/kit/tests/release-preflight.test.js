@@ -103,18 +103,21 @@ describe("release preflight: version consistency", () => {
 describe("release preflight: publish ステップ構成確認", () => {
   // release.yml が workspace フラグ付きで publish していることを静的に検証する。
   // これにより「ルート private で EPRIVATE 即死」という P2-2 の根本原因の再発を防ぐ。
-  it("release.yml の publish ステップが -w packages/core -w packages/kit を含む", () => {
+  it("release.yml の publish ステップが core→kit の順で workspace を provenance 付き publish する", () => {
     const yml = readFileSync(resolve(ROOT, ".github/workflows/release.yml"), "utf8");
-    // workspace フラグが存在し、core→kit の順で指定されていることを確認
+    // 冪等化により workspace ごとに publish_ws(ws) 経由で publish する。
+    // publish コマンド自体が provenance + access public + workspace フラグ付きであること。
     const publishLine = yml
       .split("\n")
       .find((line) => line.includes("npm publish") && line.includes("--provenance"));
     expect(publishLine).toBeDefined();
-    expect(publishLine).toContain("-w packages/core");
-    expect(publishLine).toContain("-w packages/kit");
-    // core が kit より前であること(依存順)
-    const coreIdx = publishLine.indexOf("-w packages/core");
-    const kitIdx = publishLine.indexOf("-w packages/kit");
+    expect(publishLine).toContain("--access public");
+    expect(publishLine).toContain("-w "); // workspace 指定 (ルート publish による EPRIVATE 回避)
+    // core → kit の順で両 workspace を publish していること(依存順)
+    const coreIdx = yml.indexOf("publish_ws packages/core");
+    const kitIdx = yml.indexOf("publish_ws packages/kit");
+    expect(coreIdx, "publish_ws packages/core が見つからない").toBeGreaterThan(-1);
+    expect(kitIdx, "publish_ws packages/kit が見つからない").toBeGreaterThan(-1);
     expect(coreIdx).toBeLessThan(kitIdx);
   });
 
