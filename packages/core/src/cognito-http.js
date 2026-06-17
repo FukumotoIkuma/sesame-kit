@@ -1,6 +1,6 @@
 // Cognito Identity Provider を素の HTTP (fetch) で呼ぶ互換層。
 //
-// 背景 (REFACTORING_PLAN.md P2-2 / ARCH-02):
+// 背景:
 //   auth.js が使う Cognito API は現在 8 種 (InitiateAuth / RespondToAuthChallenge / SignUp /
 //   ConfirmDevice / ForgetDevice / RevokeToken / GetUser / UpdateUserAttributes) で、
 //   すべて SigV4 署名不要の匿名 API。

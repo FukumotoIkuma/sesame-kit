@@ -1,6 +1,6 @@
 // Cognito Identity Pool の一時 AWS credentials 取得 + API Gateway 署名付き transport。
 //
-// 公式アプリの REST (API Gateway) 認可基盤の Node 移植 (REFACTORING_PLAN P2-1):
+// 公式アプリの REST (API Gateway) 認可基盤の Node 移植:
 //   - ApiClientConfigBuilder.kt:34-46 — ApiClientFactory()
 //       .credentialsProvider(credentialsProvider).apiKey(apiKey).region("ap-northeast-1")
 //   - ApiClientConfigBuilder.kt:51-61 — CognitoCachingCredentialsProvider(identityPoolId, region)
@@ -38,7 +38,7 @@
 //   失効閾値 500s は既存実装と参照一致 (CognitoCredentialsProvider.java:67)。
 //
 // ★ 実機未検証マーカー: リクエスト形は AWS API 仕様 + 参照実装から導出したが、実機
-//   API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
+//   API Gateway での受理は未検証。
 
 import { randomUUID } from "node:crypto";
 import { signRequest } from "./sigv4.js";
@@ -447,7 +447,7 @@ export function makeCognitoCredentialsProvider({
  * appidentifyid を新規生成する。形式は "ap-northeast-1:<安定 ID>"
  * (AppIdentifyIdUtil.kt:42 `"ap-northeast-1:" + getAndroidIdOrNull(context)`)。
  * Node には ANDROID_ID 相当のホスト固有 ID が無いため、ランダム UUID を初回生成して
- * 永続化する方式を採る (REFACTORING_PLAN P2-1 手順 3)。
+ * 永続化する方式を採る。
  * @param {{uuid?: () => string}} [p] テスト用 UUID 注入口。
  * @returns {string}
  */
@@ -496,7 +496,7 @@ function stripTrailingSlashes(s) {
  * (ApiClientConfigBuilder.kt:34-46 の ApiClientFactory 相当)。
  * devices.js makeRegisterTransport / access.js makeBiometricsTransport が共用する基盤。
  *
- * ── appidentifyid の per-op 化 (REFACTORING_PLAN バックログ8) ──
+ * ── appidentifyid の per-op 化 ──
  * 参照では appidentifyid は transport 全体のヘッダではなく、CHAPIClient.kt の
  * `@Parameter(name="appidentifyid", location="header")` が付いたエンドポイントのみに乗る。
  * 全列挙 (出典: _sesame_sdk_ref/sesame-sdk/.../server/CHAPIClient.kt — 全 @Operation を確認):
@@ -535,7 +535,7 @@ function stripTrailingSlashes(s) {
  *   makeRegisterTransport) と biometrics 用 (access.js makeBiometricsTransport) は
  *   上表どおり「なし」なので値を渡さない。
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
+ * @experimental 実機 API Gateway での受理は未検証。
  *   ヘッダ構成 (SigV4 + x-api-key) は参照実装
  *   (ApiClientConfigBuilder.kt:34-46, BaseApp.kt:95-102, AppIdentifyIdUtil.kt:42) から導出。
  *

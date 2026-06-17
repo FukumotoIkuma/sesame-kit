@@ -1,6 +1,6 @@
 // src/sigv4.js — AWS Signature Version 4 自前実装の既知ベクタテスト。
 //
-// 期待値の出典 (REFACTORING_PLAN P2-1 手順 2「既知ベクタテストを必ず付ける」):
+// 期待値の出典 (既知ベクタテストを必ず付ける方針):
 //   (A) AWS General Reference「Signature Version 4 signing process」掲載の IAM ListUsers 例。
 //       固定日時 20150830T123600Z・固定鍵 AKIDEXAMPLE / wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY
 //       に対する canonical request hash / string-to-sign / signing key / signature が

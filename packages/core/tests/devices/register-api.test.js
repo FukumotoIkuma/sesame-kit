@@ -19,7 +19,7 @@
 // ★検証範囲: fake transport / fetch モックで **リクエスト整形とヘッダ構成** を検証する
 //   (フィールド名 / deviceId 大文字化 / token hex / パス / productType 文字列化 /
 //    SigV4 + x-api-key + appidentifyid)。実機 API Gateway での受理は未検証
-//   (REFACTORING_PLAN §9 V4/V5。src/devices.js のブロック注記参照)。
+//   (src/devices.js のブロック注記参照)。
 
 import { describe, it, expect } from "vitest";
 import {
@@ -186,7 +186,7 @@ describe("registerSesame5 (CHHub3Device.kt:183-186)", () => {
 });
 
 describe("makeRegisterTransport (SigV4 + x-api-key、appidentifyid 無し — バックログ8)", () => {
-  // 認可方式の出典 (REFACTORING_PLAN P2-1):
+  // 認可方式の出典:
   //   ApiClientConfigBuilder.kt:34-46 (credentialsProvider + apiKey + region),
   //   BaseApp.kt:95-102 (apiKey = API_GATEWAY_API_KEY),
   //   app.properties:2-5,8-9 (ホスト / API key / IdentityPool / UserPool の実値)。

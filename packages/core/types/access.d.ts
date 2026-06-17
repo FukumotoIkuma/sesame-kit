@@ -2,7 +2,7 @@
  * Kotlin SDK の CHAPIClient#biometricsOperation と同じ POST /device/v1/biometrics transport。
  *
  * 認可は公式アプリと同じ「SigV4 (Cognito Identity Pool の一時 credentials) + x-api-key」
- * (REFACTORING_PLAN P2-1 / BIZ-07。基盤 = src/aws-credentials.js + src/sigv4.js):
+ * (基盤 = src/aws-credentials.js + src/sigv4.js):
  *   - ApiClientConfigBuilder.kt:34-46 — credentialsProvider + apiKey + region
  *   - BaseApp.kt:95-102 — credentialsProvider = AWSMobileClient.getInstance(),
  *     apiKey = BuildConfig.API_GATEWAY_API_KEY
@@ -20,7 +20,7 @@
  * (IAM 認可) には拒否される。SesameHub3 (client.js) は SigV4 + x-api-key 経路
  * (_biometricsTransportOpts) へ移行済みのため、本引数は互換受け入れのみで以後は無視される。
  *
- * @experimental SigV4 経路の実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
+ * @experimental SigV4 経路の実機 API Gateway での受理は未検証。
  *
  * @param {BiometricsAuthOptions} opts
  * @returns {BiometricsTransport}

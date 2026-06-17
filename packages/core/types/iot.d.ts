@@ -275,7 +275,7 @@ export const NAMESPACE_OPS: string[];
  * hex 文字列を Uint8Array に変換 (biz3utils.js:221-235)。
  * null/undefined は空配列 (biz3utils と同挙動)。奇数長は例外。
  *
- * 変換・検証は crypto.js:hexToBuf に委譲 (REFACTORING_PLAN P5-4 / ARCH-08)。エラーは従来どおり
+ * 変換・検証は crypto.js:hexToBuf に委譲。エラーは従来どおり
  * i18n キー iot.err.invalidHexString の badRequest。
  * ★意図的な参照からの逸脱: biz3utils の parseInt 実装は非 hex 文字 (偶数長) を黙って 0 に
  *   化けさせるが、ここを通る値は sesameId / secretKey 等の鍵素材であり、化けたバイト列を

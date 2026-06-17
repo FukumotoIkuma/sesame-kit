@@ -77,7 +77,7 @@ export function cmacTime(hexKey) {
 /**
  * hex 文字列 → Buffer (奇数長 / 非 hex 文字は明示エラー)。
  *
- * ★一本化の動機 (REFACTORING_PLAN P5-4 / ARCH-08): hex 変換が biometric/iot/transport/cli に
+ * ★一本化の動機: hex 変換が biometric/iot/transport/cli に
  *   4+ 実装され、検証強度がバラバラだった (Buffer.from(hex,"hex") や parseInt は不正入力を
  *   黙って切り詰め/0 化する)。検証付き変換をここに集約し、各所はエラー文言 (i18n) だけ
  *   ローカルに保ちつつ内部検証を本関数へ委譲する。
@@ -142,10 +142,10 @@ export function uuidToHistoryBase64(uuid, prefix = "000c") {
  *   BLE 側 (noble) は小文字を返す。正規化せずに比較するとフィルタが取りこぼす。
  *   一方、鍵導出用の raw hex (insertSesamesData の noHashUUID 等) は大小を変えても
  *   バイト列は変わらないが、SDK 原文は大小変換なし (1:1 ポート規範)。
- *   鍵導出には src/ble/wm2.js, hub3.js の stripDashes を使うこと (P5-4)。
+ *   鍵導出には src/ble/wm2.js, hub3.js の stripDashes を使うこと。
  *
  * ★ client.js/lock.js/iot.js/config.js/cli/*.js/ble/index.js/ble/transport.js の
- *   14 箇所に重複していた同義実装をここに統合 (REFACTORING_PLAN P5-4 / ARCH-05)。
+ *   14 箇所に重複していた同義実装をここに統合。
  *
  * @param {unknown} s UUID 文字列 (非文字列は "" を返す)
  * @returns {string} 32 文字小文字 hex (ハイフンなし)、または "" (非文字列入力)
@@ -220,7 +220,7 @@ export function isUuidV4(tag) {
  *   固定 prefix の連結なので落ちないが、不正長を黙って通さないよう防壁として検証する。
  *
  * ★ transport.js の旧 hexToUuid / wm2.js の noHashToUUID / hub3.js の noHashToUUID の
- *   3 重実装をここに統合 (REFACTORING_PLAN P5-4 / ARCH-05)。
+ *   3 重実装をここに統合。
  *
  * @param {string} hex 32 桁の小文字 hex
  * @returns {string} "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (小文字)

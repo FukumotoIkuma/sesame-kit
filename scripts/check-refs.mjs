@@ -27,7 +27,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 
 // プレースホルダ検出: 14 バイトの "404: Not Found" が過去に混入していた
-// (REFACTORING_PLAN.md §0.1 規範9 / P2-1 の発生源)
 const PLACEHOLDER = "404: Not Found";
 
 /** @type {Array<{label: string, file: string, symbol: string}>} */

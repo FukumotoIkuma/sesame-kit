@@ -1,7 +1,7 @@
 // auth-c0.test.js — AUTH-0001 〜 AUTH-0018 統合 TDD spec テスト
 //
 // 対象: packages/core/src/auth.js の loginInitiate / loginVerify
-// 規範 (REFACTORING_PLAN.md §0.1): Android アプリ (AWSMobileClient 2.77.0 + CUSTOM_AUTH) 忠実。
+// 規範: Android アプリ (AWSMobileClient 2.77.0 + CUSTOM_AUTH) 忠実。
 // 一次参照: packages/core/src/auth.js / device-srp.js + _aws_sdk_ref/CognitoUser.java 他。
 //
 // モック方針: global.fetch を ../auth/cognito-fetch-mock.js で差し替え。ネットワーク・実機に触れない。

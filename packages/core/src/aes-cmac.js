@@ -1,6 +1,6 @@
 // AES-128-CMAC (RFC 4493) の内製実装 — node:crypto の AES-128-ECB/CBC のみ使用。
 //
-// ★内製化の動機 (REFACTORING_PLAN P5-2 / ARCH-03):
+// ★内製化の動機:
 //   従来依存していた `node-aes-cmac` は 2014 年公開以降無メンテで、内部で deprecated な
 //   `new Buffer(...)` コンストラクタを使用していた。AES-CMAC はロック施錠 MAC 生成・
 //   セッション鍵導出というセキュリティ要所であり、無メンテ外部パッケージへの依存を排して

@@ -30,7 +30,7 @@
 //   (2) データ本体: { action, op:'pubCardLinkedIDs', data:{ deviceUUID, page, list } }
 //                  ← page===1 で list 置換、それ以外は累積 (ページング)。
 //   passcode は op が 'getPasscodes' / 'pubPasscodeLinkedIDs' になる (同型)。
-//   (1)/(2) の到着順序は参照から導出できず **未確認** (REFACTORING_PLAN §9 V8)。完了通知が
+//   (1)/(2) の到着順序は参照から導出できず **未確認**。完了通知が
 //   先に届く逆順サーバも許容するため、fetchAuthData は欠落デバイスがある間は短い grace
 //   window で残 push を吸収してから確定する (P3-12)。
 
@@ -151,7 +151,7 @@ function assertHttpOk(res, op) {
  * Kotlin SDK の CHAPIClient#biometricsOperation と同じ POST /device/v1/biometrics transport。
  *
  * 認可は公式アプリと同じ「SigV4 (Cognito Identity Pool の一時 credentials) + x-api-key」
- * (REFACTORING_PLAN P2-1 / BIZ-07。基盤 = src/aws-credentials.js + src/sigv4.js):
+ * (基盤 = src/aws-credentials.js + src/sigv4.js):
  *   - ApiClientConfigBuilder.kt:34-46 — credentialsProvider + apiKey + region
  *   - BaseApp.kt:95-102 — credentialsProvider = AWSMobileClient.getInstance(),
  *     apiKey = BuildConfig.API_GATEWAY_API_KEY
@@ -169,7 +169,7 @@ function assertHttpOk(res, op) {
  * (IAM 認可) には拒否される。SesameHub3 (client.js) は SigV4 + x-api-key 経路
  * (_biometricsTransportOpts) へ移行済みのため、本引数は互換受け入れのみで以後は無視される。
  *
- * @experimental SigV4 経路の実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
+ * @experimental SigV4 経路の実機 API Gateway での受理は未検証。
  *
  * @param {BiometricsAuthOptions} opts
  * @returns {BiometricsTransport}
@@ -266,7 +266,7 @@ async function postBiometrics(transport, body, opLabel) {
  *      { data:{ deviceUUID, page, list } } を複数回 push (page でページング)。
  *   3. 完了通知 { op:'getCards'/'getPasscodes' } (data 無し) が届く。
  *      ⚠️ 完了通知と pub push の到着順序は参照 (web は両方を独立に処理するだけ) から
- *      導出できず **未確認** (REFACTORING_PLAN §9 V8)。「完了通知は必ず全 push の後」とは
+ *      導出できず **未確認**。「完了通知は必ず全 push の後」とは
  *      仮定しない。
  *
  * CLI では (1) 送信 → (2) pub を集約 → (3) 完了通知 or timeout で確定、という流れで

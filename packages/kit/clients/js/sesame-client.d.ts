@@ -29,8 +29,8 @@ export type SesameErrorKind =
   | (string & {});
 
 /**
- * HTTP status → SesameRpcError.kind mapping (canonical table: REFACTORING_PLAN.md P4-5/SURF-10,
- * pinned by tests/fixtures/http-kind-map.json — shared with sdk/ts, sdk/python and clients/python).
+ * HTTP status → SesameRpcError.kind mapping (pinned by tests/fixtures/http-kind-map.json —
+ * shared with sdk/ts, sdk/python and clients/python).
  * Exported for test cross-checking.
  */
 export declare function httpKind(status: number): SesameErrorKind;

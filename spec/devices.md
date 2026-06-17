@@ -401,7 +401,7 @@ devices.* / device.* / firmware.list のクラウド管理操作 (一覧/追加/
 - ref: references_web/src/components/MobileBatteryChart.js:38-55; packages/core/src/devices.js:411-417; packages/core/src/util.js:34-43
 - kind: error-path
 - status: covered
-- note: MobileBatteryChart.js:38-55 getBatteryRecordCallback は success 未参照で message.data.records を読む。core devices.js:415 assertSuccess(resp,...) は strict 未指定=非 strict(util.js:35 failed=!resp||resp.success===false)。実応答での success フィールド有無は未確認 (REFACTORING_PLAN §9 V9)。
+- note: MobileBatteryChart.js:38-55 getBatteryRecordCallback は success 未参照で message.data.records を読む。core devices.js:415 assertSuccess(resp,...) は strict 未指定=非 strict(util.js:35 failed=!resp||resp.success===false)。実応答での success フィールド有無は未確認。
 
 ### [DEV-0033] device.battery → serve lastEvaluatedKey (object カーソル) 往復
 - surface: serve
@@ -497,7 +497,7 @@ WebAPI 透過呼び出し (action:biz3InvokeWebAPIs, op=func, body 常時送信)
 - ref: local-contract
 - kind: error-path
 - status: waived: 重複（正典 [[WEB-0004]]）
-- note: 正典 spec/webapi.md WEB-0004(success 欠落 OK)/WEB-0005(success:false reject) が同一 ref(devices.js:494-498, useDeveloper.js:18-31)で先取り済み。webapi ドメインが assertSuccess 非strict 契約を所有。実応答での success 有無は未確認 (REFACTORING_PLAN §9 V9)。
+- note: 正典 spec/webapi.md WEB-0004(success 欠落 OK)/WEB-0005(success:false reject) が同一 ref(devices.js:494-498, useDeveloper.js:18-31)で先取り済み。webapi ドメインが assertSuccess 非strict 契約を所有。実応答での success 有無は未確認。
 
 ## webapi.deviceHistory
 

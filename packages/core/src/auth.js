@@ -1,6 +1,6 @@
 // Cognito 認証。
 //
-// 規範 (REFACTORING_PLAN.md §0.1): ログイン/トークン管理は Android アプリ
+// 規範: ログイン/トークン管理は Android アプリ
 // (AWSMobileClient 2.77.0 + CUSTOM_AUTH) のトレースとする。web (useAuthState.js) は使用禁止。
 //   - 一次参照 (ワイヤ形・数式): _aws_sdk_ref/CognitoUser.java /
 //     _aws_sdk_ref/ChallengeContinuation.java /

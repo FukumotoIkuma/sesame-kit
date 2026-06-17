@@ -4,7 +4,7 @@
 // を検証する。生体クラウドに接続する処理は main ガードの内側に隔離され、direct 実行時のみ
 // 走るべき。
 //
-// 背景 (REFACTORING_PLAN.md §0.2): 監査時に canary-upstream.mjs を import した際、main ガード
+// 背景: 監査時に canary-upstream.mjs を import した際、main ガード
 // 欠落により runLive() が発火し、保存済みトークンで実クラウドへ接続した。本テストはその再発を防ぐ。
 import { describe, it, expect } from "vitest";
 import { fileURLToPath } from "node:url";

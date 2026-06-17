@@ -12,7 +12,7 @@ import { dirname, resolve } from "node:path";
 import { tokenMatches, parseBearer } from "./token.js";
 import { errorFromThrow } from "@sesame-kit/core/jsonrpc";
 import { t } from "@sesame-kit/core/i18n";
-// @grpc/grpc-js / @grpc/proto-loader は optional peerDependencies (REFACTORING_PLAN P5-1):
+// @grpc/grpc-js / @grpc/proto-loader は optional peerDependencies:
 // ライブラリ利用者に gRPC スタックを強制しないため、トップレベル import せず
 // startGrpcFraming() 内で遅延 import する。未導入時は importOptional が
 // 「npm i @grpc/grpc-js @grpc/proto-loader で --grpc が使える」案内エラーを投げる。
@@ -56,7 +56,7 @@ function endStreamWithError(call, code, message) {
 function metaToken(call) {
   const md = call.metadata?.get?.("authorization");
   const raw = md && md[0] ? String(md[0]) : "";
-  // Bearer 解析は token.js の parseBearer に一本化 (REFACTORING_PLAN P1-17)。
+  // Bearer 解析は token.js の parseBearer に一本化。
   // 旧 `/^Bearer\s+(.+)$/i` は token.js が ReDoS を実測して廃止した禁止パターンの再実装だった。
   return parseBearer(raw) ?? "";
 }

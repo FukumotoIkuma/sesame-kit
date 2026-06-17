@@ -568,7 +568,7 @@ config.sync*(サーバ取り込み)とローカル定義管理(locks/remote/hub3
 - ref: packages/kit/src/cli/locks.js:88-89; references_web/src/utils/biz3utils.js:121
 - kind: payload-fidelity
 - status: covered
-- note: 確認済: biz3utils.js:121 `secretKey = guestInfo.guestKeyId || deviceKey.secretKey`。CLI コメント locks.js:88-89。REFACTORING_PLAN §9 V15 系: guest 鍵 sentinel は実機鍵ストア往復が必要。解析境界のみ検証。
+- note: 確認済: biz3utils.js:121 `secretKey = guestInfo.guestKeyId || deviceKey.secretKey`。CLI コメント locks.js:88-89。guest 鍵 sentinel は実機鍵ストア往復が必要。解析境界のみ検証。
 
 ### [CFG-0051] addLock 必須検証: name/deviceUUID/secretKey 欠落で BAD_REQUEST
 - surface: core, serve
@@ -621,7 +621,7 @@ config.sync*(サーバ取り込み)とローカル定義管理(locks/remote/hub3
 - assert: --push でローカル登録後に putKey(transport, CHUserKey) を呼ぶ。body は {deviceUUID,deviceModel,keyIndex,secretKey,sesame2PublicKey,deviceName,keyLevel} 形 (CHUserKey.kt:36-47)、PUT /device に appidentifyid ヘッダ付き (CHAPIClient.kt:29-33)。同期失敗はローカル成功に影響させず警告。
 - ref: packages/kit/src/cli/locks.js:145-168; packages/core/src/devices.js:828-834; packages/core/src/devices.js:738-763; _sesame_sdk_ref/sesame-sdk/src/main/java/co/candyhouse/sesame/server/CHAPIClient.kt:29-33; _sesame_sdk_ref/sesame-sdk/src/main/java/co/candyhouse/sesame/server/dto/CHUserKey.kt:36-47
 - kind: wire-fidelity
-- status: waived: 実機 API Gateway 受理が必要 (@experimental REFACTORING_PLAN §9 V15)
+- status: waived: 実機 API Gateway 受理が必要 (@experimental)
 - note: 確認済: locks.js:145-168 が --push 経路 (putKey 呼出+失敗時 warnLockPushFailed で継続)、devices.js:828-834 が PUT /device (body=key)、738-763 が makeKeyStoreTransport (appidentifyid 解決)。CHAPIClient.kt:29-33 が PUT /device + appidentifyid header、CHUserKey.kt:36-47 が data class CHUserKey (deviceUUID..keyLevel フィールド)。PUT /device の受理は実クラウド往復でしか確認不能。
 
 ### [CFG-0056] locks add --push の keyLevel が固定 2 (app は device 実 level)

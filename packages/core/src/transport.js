@@ -22,8 +22,8 @@
 //     同じでも op/payload が異なる request を握り潰すため、こちらは全件保持し
 //     QUEUE_ENTRY_MAX_AGE_MS の鮮度切りだけ行う)
 
-// 型は devDependencies の @types/ws が提供する (REFACTORING_PLAN P5-7/ARCH-15:
-// 旧 @ts-expect-error + 自前 WsLike 最小 typedef を正式型へ置き換え)。
+// 型は devDependencies の @types/ws が提供する
+// (旧 @ts-expect-error + 自前 WsLike 最小 typedef を正式型へ置き換え)。
 import WebSocket from "ws";
 import { ACTION_TYPES } from "./vendor/biz3/constants/messageConstants.js";
 import { t } from "./i18n.js";

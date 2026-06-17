@@ -70,7 +70,7 @@ describe("P1-3 gRPC proto3 field presence — LockClick", () => {
 
   it("LockClick({name, scriptIndex: 0}) — 明示 0 は botClickScript(name,0) を呼ぶ (0を一律delete禁止の保証)", async () => {
     // 修正の核心: scriptIndex:0 を明示的に送った場合は「台本0」として届くことを保証する。
-    // 安直修正「0 を delete」は台本0実行を不能にするため禁止(REFACTORING_PLAN P1-3 §修正手順③)。
+    // 安直修正「0 を delete」は台本0実行を不能にするため禁止(修正手順③)。
     hub = fakeHub();
     const d = new Daemon({ hub });
     d.authState = "ok";

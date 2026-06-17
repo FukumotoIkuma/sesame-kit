@@ -320,7 +320,7 @@ export type ConfigData = {
     companyID?: string | undefined;
     wsUrl?: string | undefined;
     lang?: string | undefined;
-    uiLang?: "en" | "ja" | undefined;
+    uiLang?: "ja" | "en" | undefined;
     default: ConfigDefault;
     /**
      * 単一の真実: 全 SESAME device。

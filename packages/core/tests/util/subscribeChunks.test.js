@@ -1,4 +1,4 @@
-// src/util.js subscribeChunks の境界テスト (REFACTORING_PLAN P5-7 / ARCH-17)。
+// src/util.js subscribeChunks の境界テスト。
 // biz3 のページング/集約パターンの共通ライフサイクルの防御要所を直接検証する:
 //   - finish の二重呼び (二重解決ガード)
 //   - onMessage 内 throw → reject
@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { subscribeChunks } from "../../src/util.js";
 import { SesameError, ERR } from "../../src/errors.js";
-// 共有 fake (P5-7 / ARCH-16) を土台に、subscribeChunks 固有の onMessage (errorAction 経路) を
+// 共有 fake を土台に、subscribeChunks 固有の onMessage (errorAction 経路) を
 // 必要なテストだけ withOnMessage() で追加する。
 import { chunkMockClient } from "../helpers/mock-ws.js";
 

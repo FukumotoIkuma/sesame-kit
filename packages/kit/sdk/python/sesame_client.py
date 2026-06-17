@@ -36,7 +36,7 @@ class SesameRpcError(Exception):
 # HTTP status → machine-readable error kind (matches src/serve/jsonrpc.js KIND taxonomy and
 # docs/en/integration.md). Used only when an HTTP-level failure has no JSON-RPC error body.
 # Shared by all four client implementations (sdk/ts, sdk/python, clients/js, clients/python).
-# Canonical table: REFACTORING_PLAN.md P4-5/SURF-10, pinned by tests/fixtures/http-kind-map.json.
+# Pinned by tests/fixtures/http-kind-map.json.
 #   400/413/415 → bad_params · 401/403 → not_authenticated · 404 → not_implemented
 #   408/429/5xx → connection_lost (retryable) · anything else → internal (not retryable)
 _HTTP_STATUS_KIND = {
