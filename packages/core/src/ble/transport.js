@@ -22,7 +22,7 @@ import { spawnSync } from "node:child_process";
 import { t } from "../i18n.js";
 import { GATT, COMPANY_ID } from "./protocol.js";
 import { PRODUCT_TYPES, KIND } from "./devicemodel.js";
-// UUID 正規化・hex→UUID 変換は crypto.js に統合 (REFACTORING_PLAN P5-4)。
+// UUID 正規化・hex→UUID 変換は crypto.js に統合。
 import { normalizeUuid, hexToUuid } from "../crypto.js";
 // BLE アダプタ層の SesameError 体系化 (P5-5 / R3:ARCH-10)。
 import { SesameError, ERR } from "../errors.js";

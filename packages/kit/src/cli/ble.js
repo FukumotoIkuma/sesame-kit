@@ -34,7 +34,7 @@ import { collectBiometricList, BIO_LIST } from "@sesame-kit/core/ble";
 // ではなく直接 import する (serve 層全体 = rpc-params.generated.json 等を巻き込まない)。
 import { invokePath, collectWifiScan, wifiViewOf, bleCommandAck } from "@sesame-kit/core/ble";
 import { resolveRegisterTransport } from "@sesame-kit/core/devices";
-// hex 検証/UUID 正規化は crypto.js に一本化 (REFACTORING_PLAN P5-4)。
+// hex 検証/UUID 正規化は crypto.js に一本化。
 import { hexToBuf, normalizeUuid } from "@sesame-kit/core/crypto";
 
 /**

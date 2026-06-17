@@ -134,7 +134,7 @@ REST メッセージ形 (method/path/header/body) と応答正規化が CHAPICli
 - assert: 実 API Gateway が keystore REST(GET /device/list・PUT /device・DELETE /device) を SigV4+x-api-key+appidentifyid で受理し CHUserKey[] / server response を返す往復
 - ref: _sesame_sdk_ref/sesame-sdk/src/main/java/co/candyhouse/sesame/server/CHAPIClient.kt:22-46; _sesame_sdk_ref/sesame-sdk/src/main/java/co/candyhouse/sesame/server/dto/CHUserKey.kt:36-47; packages/core/src/devices.js:736-763
 - kind: wire-fidelity
-- status: waived: 実 API Gateway 受理は SigV4+x-api-key+appidentifyid を通す実クラウド往復でしか検証不能 (REFACTORING_PLAN P3-2/R3:CLOUD-P-03 §9 登録, @experimental, 同 line 26)。
+- status: waived: 実 API Gateway 受理は SigV4+x-api-key+appidentifyid を通す実クラウド往復でしか検証不能 (@experimental, 同 line 26)。
 - note: 検証済: CHAPIClient.kt:22-46 が POST(22-26)/PUT(29-32)/GET list(36-39)/DELETE(42-45) を appidentifyid ヘッダ付き CHUserKey[] 返しで宣言; CHUserKey.kt:36-47 が応答 DTO 形; devices.js:736-763 makeKeyStoreTransport が SigV4+x-api-key+appidentifyid transport を構築。修正: 元 devices.js:716-718 は auth コメント+@experimental 注のみで往復実装を支持せず → 実装関数 736-763 へ置換し CHUserKey.kt を追加。assert を実 op パス (/device/list, /device PUT/DELETE) に明確化。未確認: devices.js の in-code 注 '§9 V15' は誤マップ(V15-V19 表で V15=biz3 del/R3:CLOUD-P-01)。keystore は P3-2(R3:CLOUD-P-03)で §9 へ汎用登録(line 214 受け入れ基準)であり固有 V 番号は未割当 — status 出典を P3-2/§9 に補正。
 
 ## payload

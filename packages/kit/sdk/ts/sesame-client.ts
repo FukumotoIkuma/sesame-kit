@@ -32,8 +32,7 @@ export class SesameRpcError extends Error {
 export const API_VERSION = "1.4.0";
 
 // HTTP status → error kind/retryable mapping, shared by all four client implementations
-// (sdk/ts, sdk/python, clients/js, clients/python). Canonical table: REFACTORING_PLAN.md
-// P4-5/SURF-10, pinned by tests/fixtures/http-kind-map.json.
+// (sdk/ts, sdk/python, clients/js, clients/python). Pinned by tests/fixtures/http-kind-map.json.
 //   400/413/415 → bad_params · 401/403 → not_authenticated · 404 → not_implemented
 //   408/429/5xx → connection_lost (retryable) · anything else → internal (not retryable)
 const HTTP_KIND_BY_STATUS: Record<number, string> = {

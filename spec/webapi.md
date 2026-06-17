@@ -50,7 +50,7 @@ invokeWebAPI の送出フレーム形 (action/op/apiKeyId/body/query) を vendor
 - ref: packages/core/src/devices.js:498; packages/core/src/util.js:34; packages/core/src/util.js:35; references_web/src/api/useDeveloper.js:18; references_web/src/api/useDeveloper.js:31
 - kind: error-path
 - status: covered
-- note: 検証済: devices.js:498 は assertSuccess(resp, ...) を opts 無し=strict:false で呼ぶ。util.js:34 シグネチャ {strict=false}、util.js:35 `failed = strict ? !resp?.success : !resp || resp.success===false` で success 欠落は許容。vendor useDeveloper.js:18-31 handleAPIInfoResponse は switch(message.action) のみで success 非参照。実応答の success 有無は実機未確認 (REFACTORING_PLAN §9 V9) だが非strict 緩和ロジック自体は fake で検証可。manage-ops.test.js:203-207 参照 (タグ未付与のため status=planned 維持)。
+- note: 検証済: devices.js:498 は assertSuccess(resp, ...) を opts 無し=strict:false で呼ぶ。util.js:34 シグネチャ {strict=false}、util.js:35 `failed = strict ? !resp?.success : !resp || resp.success===false` で success 欠落は許容。vendor useDeveloper.js:18-31 handleAPIInfoResponse は switch(message.action) のみで success 非参照。実応答の success 有無は実機未確認だが非strict 緩和ロジック自体は fake で検証可。manage-ops.test.js:203-207 参照 (タグ未付与のため status=planned 維持)。
 
 ### [WEB-0005] invokeWebAPI: success:false なら reject (非strict でも明示失敗は拒否)
 - surface: core

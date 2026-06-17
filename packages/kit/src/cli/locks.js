@@ -141,7 +141,7 @@ async function cmdLockAdd(opts, program) {
   });
 
   // P3-2: --push で個人アカウント鍵ストアへ同期 (CHAPIClientBiz.kt:102-103 putKey 相当)。
-  // @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+  // @experimental 実機 API Gateway での受理は未検証。
   if (opts.push) {
     const { tokenStore } = loadCtx(program);
     const cfg = configStore.load();
@@ -222,7 +222,7 @@ async function cmdLockSyncFromDevices(options, program) {
  * ローカル config に登録していない鍵を locks に追加する (P3-2)。
  * CHAPIClientBiz.kt:105-106 の getDevicesList 相当。
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * @experimental 実機 API Gateway での受理は未検証。
  *
  * @param {CmdOpts} _opts
  * @param {Program} program

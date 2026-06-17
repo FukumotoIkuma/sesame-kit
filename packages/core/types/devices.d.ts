@@ -322,7 +322,7 @@ export function webapiSendCmd(client: WsClient, { apiKeyId, deviceId, cmd, sign,
  *     一時 credentials を取得する (BaseApp.kt:99 の AWSMobileClient.getInstance() 相当)。
  *   - credentialsProvider — 取得済み provider を直接注入 (テスト / 上級用)。
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
+ * @experimental 実機 API Gateway での受理は未検証。
  *
  * @param {{baseUrl?:string,
  *          tokenStore?:import("./tokens.js").TokenStore,
@@ -388,7 +388,7 @@ export function resolveRegisterTransport({ baseUrl, config, configStore, tokenSt
  * (CHAPIClient.kt:29-46 の GET /device/list, PUT /device, DELETE /device は全て
  * @Parameter(name="appidentifyid") あり — 参照の per-op 表参照)。
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * @experimental 実機 API Gateway での受理は未検証。
  *
  * @param {{baseUrl?:string,
  *          tokenStore?:import("./tokens.js").TokenStore,
@@ -444,7 +444,7 @@ export function makeKeyStoreTransport({ baseUrl, tokenStore, credentialsProvider
  * GET /device/list — 個人アカウントの鍵ストア全件取得。
  * (CHAPIClient.kt:36-39, CHAPIClientBiz.kt:105-106)
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * @experimental 実機 API Gateway での受理は未検証。
  * 実機未検証 (参照: CHAPIClient.kt:36-39)
  *
  * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。
@@ -457,7 +457,7 @@ export function getDevicesList(transport: RegisterTransport): Promise<CHUserKey[
  *
  * body は CHUserKey 形オブジェクト (Gson 直列化 → JSON object)。
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * @experimental 実機 API Gateway での受理は未検証。
  * 実機未検証 (参照: CHAPIClient.kt:29-33)
  *
  * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。
@@ -473,7 +473,7 @@ export function putKey(transport: RegisterTransport, key: CHUserKey): Promise<an
  * 参照: CHAPIClientBiz.kt:109 `cHApiClient.removeKey(identifyId(), keyId)` で keyId は
  * `targetDevice.deviceId.toString()` (CHDeviceViewModel.kt:567)。
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * @experimental 実機 API Gateway での受理は未検証。
  * 実機未検証 (参照: CHAPIClient.kt:42-46)
  *
  * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。

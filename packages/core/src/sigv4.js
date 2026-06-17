@@ -6,8 +6,7 @@
 //   - 参照アプリ側の対応物: AWS Android SDK の ApiClientFactory が API Gateway リクエストへ
 //     SigV4 署名を付ける (_sesame_sdk_ref/.../utils/ApiClientConfigBuilder.kt:34-46 —
 //     credentialsProvider + apiKey + region)。
-//   - 依存追加 (@smithy/signature-v4 等) は REFACTORING_PLAN P2-1 手順 2 / ARCH-01 の
-//     依存方針により行わず、ここで自前実装する。
+//   - 依存追加 (@smithy/signature-v4 等) は依存方針により行わず、ここで自前実装する。
 //
 // 既知ベクタ検証: tests/sigv4/sigv4.test.js
 //   - AWS ドキュメント掲載の IAM ListUsers 署名例 (固定日時 20150830T123600Z・固定鍵

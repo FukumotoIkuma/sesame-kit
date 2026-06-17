@@ -1,4 +1,4 @@
-// SURF-10 (REFACTORING_PLAN.md P4-5): HTTP ステータス → kind/retryable 写像が
+// HTTP ステータス → kind/retryable 写像が
 // 4 実装 (sdk/ts / sdk/python / clients/js / clients/python) で食い違わないことの固定。
 // 正は tests/fixtures/http-kind-map.json。検証は 3 系統:
 //   (1) clients/js  : httpKind() を import して実照合
@@ -95,8 +95,9 @@ describe("SURF-10: HTTP→kind 写像 (生成テンプレート)", () => {
     expect(src).toMatch(/retryable = kind == "connection_lost"/);
   });
 
-  it("4 実装すべてに出典コメント (P4-5/SURF-10) がある", () => {
+  it("4 実装すべてに出典コメント (http-kind-map.json) がある", () => {
     // scripts/ はリポジトリルート、clients/ は kit パッケージルート配下。
+    // 4 実装が同一の正典 (tests/fixtures/http-kind-map.json) を出典として明記していることを固定する。
     for (const [base, ...rel] of [
       [REPO_ROOT, "scripts", "gen-sdk-ts.mjs"],
       [REPO_ROOT, "scripts", "gen-sdk-py.mjs"],
@@ -104,7 +105,6 @@ describe("SURF-10: HTTP→kind 写像 (生成テンプレート)", () => {
       [ROOT, "clients", "python", "sesame_client.py"],
     ]) {
       const src = readFileSync(resolve(base, ...rel), "utf8");
-      expect(src, rel.join("/")).toContain("SURF-10");
       expect(src, rel.join("/")).toContain("http-kind-map.json");
     }
   });

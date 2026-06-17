@@ -256,7 +256,7 @@ export function webapiEntries() {
 
 /**
  * 個人アカウント鍵ストア REST API の RPC 公開仕様 (P3-2)。
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * @experimental 実機 API Gateway での受理は未検証。
  *
  * CHAPIClient.kt:29-46 の PUT /device, GET /device/list, DELETE /device に相当。
  * registry パッチ方式は v2 教訓で禁止。buildRegistry 呼び出しは CONTRACT_VERSION bump を

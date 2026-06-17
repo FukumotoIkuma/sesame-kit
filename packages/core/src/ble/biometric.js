@@ -24,7 +24,7 @@
 import { Buffer } from "node:buffer";
 import { ITEM_CODES, STP_ITEM_CODES } from "../itemcodes.js";
 import { capabilitiesForModel } from "./devicemodel.js";
-// hex 変換/UUID 正規化は crypto.js に一本化 (REFACTORING_PLAN P5-4)。
+// hex 変換/UUID 正規化は crypto.js に一本化。
 import { hexToBuf, bufToHex, normalizeUuid } from "../crypto.js";
 
 const ITEM = ITEM_CODES;

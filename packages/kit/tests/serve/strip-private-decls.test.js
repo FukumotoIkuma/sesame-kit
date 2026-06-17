@@ -1,4 +1,4 @@
-// scripts/strip-private-decls.mjs の単体テスト (REFACTORING_PLAN P1-16)。
+// scripts/strip-private-decls.mjs の単体テスト。
 // fixture の d.ts 文字列に stripPrivateMembers を直接適用して検査する。
 // 「types/ 配下に `_` 始まり公開メンバが残っていない」検査は生成物が古い間は失敗するため
 // ここでは行わない (統括が `npm run build` 後に確認する)。
