@@ -39,6 +39,12 @@ jobs:
           # trusted publishing でも publish 先 registry の明示が必要
           registry-url: 'https://registry.npmjs.org'
 
+      # tokenless OIDC trusted publishing は npm >= 11.5.1 が必須。
+      # Node 22 同梱の npm は 10.x のため、ここで明示的に上げないと publish が
+      # OIDC 認証できず E404 (PUT) で失敗する。
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: npm ci
 
@@ -73,8 +79,32 @@ jobs:
 
       # NODE_AUTH_TOKEN は設定しない — trusted publishing (OIDC) で認証する。
       # core を先に publish し、その後 kit を publish する (kit は core に依存するため)。
+      #
+      # 冪等化: 各 workspace を個別に publish し、対象バージョンが既に registry に
+      # 存在する場合は skip する。これにより
+      #   - 部分失敗 (core 成功 / kit 失敗 等) からの再実行が安全になり、
+      #   - 新規 scoped パッケージ (@sesame-kit/core) の初回 publish を別バージョンで
+      #     bootstrap 済みでも、本リリースのバージョンだけを後から publish できる。
+      # 詳細な前提 (org 作成 / Trusted Publisher 登録 / 初回 bootstrap) は
+      # README の "Releasing (maintainers)" を参照。
       - name: Publish (provenance)
-        run: npm publish --provenance --access public -w packages/core -w packages/kit
+        run: |
+          publish_ws() {
+            ws="$1"
+            name="$(node -p "require('./${ws}/package.json').name")"
+            version="$(node -p "require('./${ws}/package.json').version")"
+            # name@version が既に存在すれば version 文字列が返る (非空)。
+            # パッケージ自体が未存在 (E404) でも空文字になり publish へ進む。
+            existing="$(npm view "${name}@${version}" version 2>/dev/null || true)"
+            if [ -n "$existing" ]; then
+              echo "::notice::${name}@${version} は既に publish 済み — skip"
+              return 0
+            fi
+            echo "Publishing ${name}@${version} ..."
+            npm publish --provenance --access public -w "${ws}"
+          }
+          publish_ws packages/core
+          publish_ws packages/kit
 
   github-release:
     name: Create GitHub Release

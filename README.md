@@ -432,6 +432,40 @@ Running on Windows will print a warning to stderr once per process and continue 
 - `apiKeyId required`: for `webapi` commands, set `apiKeyId` in config.json (issue one in the biz3 dev console).
 - **BLE could not initialize** (`sesame ble …` / `--ble-only`): the CLI exits with code `1` (a runtime failure of the environment, not a usage error) and a friendly message (`{ error, code, bleCode }` under `--json`) instead of crashing silently. `bleCode: BLE_UNAUTHORIZED` → grant the terminal Bluetooth access (macOS: System Settings → Privacy & Security → Bluetooth); `BLE_UNSUPPORTED` → no adapter / insufficient privileges (Linux / Raspberry Pi / headless — need a real adapter and `setcap cap_net_raw+eip`); `BLE_POWERED_OFF` → turn Bluetooth on; `BLE_INIT_TIMEOUT` → Bluetooth did not become ready in time. See [docs/en/ble.md](./docs/en/ble.md#troubleshooting).
 
+## Releasing (maintainers)
+
+Publishing is done by the **`Release` workflow** ([`.github/workflows/release.yml`](./.github/workflows/release.yml)), triggered by pushing a `v*` tag. It authenticates to npm via **OIDC trusted publishing** (no `NPM_TOKEN` secret) and attaches `--provenance`. The normal flow:
+
+```bash
+# 1. Bump all three versions in lockstep (root / packages/core / packages/kit)
+npm version <patch|minor|major> --no-git-tag-version --workspaces --include-workspace-root
+#    then align packages/kit dependencies["@sesame-kit/core"] to the same string
+git commit -am "chore: bump to vX.Y.Z" && git push origin main
+# 2. Preflight (clean tree, main synced, tests, build drift, version match) + tag push
+npm run release            # scripts/release.sh — CI takes over from the tag push
+```
+
+The publish step is **idempotent**: each workspace is published only if its target version is not already on the registry, so a partial failure (e.g. core published, kit not) is safe to re-run.
+
+### First-publish bootstrap (one-time, per new package)
+
+npm trusted publishing **cannot create a package that does not exist yet** — the Trusted Publisher is configured on an *existing* package's settings page. So the very first publish of a brand-new package must be bootstrapped manually. This applies to the **scoped `@sesame-kit/core`** introduced by the workspace split (the unscoped `sesame-kit` already exists on npm and only needs step 3).
+
+1. **Create the `@sesame-kit` org** on npmjs.com (free for public packages); the scope must map to an org/user you control.
+2. **Bootstrap `@sesame-kit/core` with a throwaway version**, using a local granular/automation token (one-time only — CI never uses a token):
+   ```bash
+   npm whoami                                   # confirm you are logged in to the right account
+   cd packages/core
+   npm version 0.0.0 --no-git-tag-version        # throwaway placeholder
+   npm publish --access public                    # creates the package on the registry
+   git checkout package.json                      # discard the 0.0.0 churn — do NOT commit it
+   ```
+   (`@sesame-kit/core@0.0.0` can be `npm deprecate`d afterwards.)
+3. **Register the Trusted Publisher** on npmjs.com for **both** `@sesame-kit/core` *and* `sesame-kit` — package settings → "Trusted Publisher" → GitHub repo `FukumotoIkuma/sesame-kit`, workflow `release.yml`.
+4. Run the normal release flow above. The idempotent publish step skips any version already on the registry and publishes the real `X.Y.Z` for both packages via OIDC.
+
+Once both packages are published at `0.7.0+`, remove the "publish in progress" note in the [Install](#install) section.
+
 ## See also
 
 - [SesameSDK_iOS_with_DemoApp](https://github.com/CANDY-HOUSE/SesameSDK_iOS_with_DemoApp) / [SesameSDK_Android_with_DemoApp](https://github.com/CANDY-HOUSE/SesameSDK_Android_with_DemoApp) — the official SDKs referenced
