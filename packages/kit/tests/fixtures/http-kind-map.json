@@ -1,5 +1,5 @@
 {
-  "$comment": "HTTP ステータス → SesameError kind/retryable 写像の正 (REFACTORING_PLAN.md P4-5/SURF-10)。4 実装 (sdk/ts=gen-sdk-ts.mjs, sdk/python=gen-sdk-py.mjs, clients/js/sesame-client.mjs, clients/python/sesame_client.py) はこの表に一致させる。thin クライアント (clients/) は retryable フィールドを持たないため kind のみ照合する。検証: tests/serve/http-kind-map.test.js",
+  "$comment": "HTTP ステータス → SesameError kind/retryable 写像の正。4 実装 (sdk/ts=gen-sdk-ts.mjs, sdk/python=gen-sdk-py.mjs, clients/js/sesame-client.mjs, clients/python/sesame_client.py) はこの表に一致させる。thin クライアント (clients/) は retryable フィールドを持たないため kind のみ照合する。検証: tests/serve/http-kind-map.test.js",
   "statuses": {
     "400": { "kind": "bad_params", "retryable": false },
     "401": { "kind": "not_authenticated", "retryable": false },

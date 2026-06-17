@@ -75,7 +75,7 @@ class SesameRpcError(RuntimeError):
 SesameError = SesameRpcError
 
 
-# HTTP ステータス → SesameRpcError.kind 写像 (出典: REFACTORING_PLAN.md P4-5/SURF-10)。
+# HTTP ステータス → SesameRpcError.kind 写像。
 # sdk/ts・sdk/python・clients/js と共通の正で、tests/fixtures/http-kind-map.json に固定。
 #   400/413/415→bad_params, 401/403→not_authenticated, 404→not_implemented,
 #   408/429/5xx→connection_lost (再試行可), その他→internal

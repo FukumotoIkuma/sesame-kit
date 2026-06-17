@@ -2,8 +2,8 @@
 // 1 接続 = 持続 Connection。events.subscribe で event 通知がそのまま流れる。
 // 接続時に loopback token (?token= / Authorization: Bearer) を要求。
 
-// 型は devDependencies の @types/ws が提供する (REFACTORING_PLAN P5-7/ARCH-15:
-// 旧 @ts-expect-error + 自前 WsSocket 最小 typedef を正式型へ置き換え)。
+// 型は devDependencies の @types/ws が提供する
+// (旧 @ts-expect-error + 自前 WsSocket 最小 typedef を正式型へ置き換え)。
 import { WebSocketServer } from "ws";
 import { tokenMatches, extractToken } from "./token.js";
 import { t } from "@sesame-kit/core/i18n";

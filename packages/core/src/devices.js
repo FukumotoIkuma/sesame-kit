@@ -411,7 +411,7 @@ export async function getBatteryRecord(client, { deviceUUID, lastEvaluatedKey = 
   // P3-18: vendor (MobileBatteryChart.js:39-50 getBatteryRecordCallback) は success を見ずに
   // message.data.records を読む。strict:true だと success を省略する正常応答を例外化するため、
   // 非 strict (success===false のみ拒否) に緩める。
-  // 注: 実応答で success フィールドの有無は未確認 (REFACTORING_PLAN §9 V9)。
+  // 注: 実応答で success フィールドの有無は未確認。
   assertSuccess(resp, "getBatteryRecord");
   return resp.data || { records: [], lastEvaluatedKey: null };
 }
@@ -494,7 +494,7 @@ export async function invokeWebAPI(client, { func, apiKeyId, query, body }) {
   // P3-18: vendor (useDeveloper.js:18-31 handleAPIInfoResponse) は success を見ずに応答を
   // そのままコールバックへ流す。strict:true だと success を省略する正常応答を例外化するため、
   // 非 strict (success===false のみ拒否) に緩める。
-  // 注: 実応答で success フィールドの有無は未確認 (REFACTORING_PLAN §9 V9)。
+  // 注: 実応答で success フィールドの有無は未確認。
   assertSuccess(resp, `invokeWebAPI(${func})`);
   return resp.data;
 }
@@ -544,7 +544,7 @@ export function webapiSendCmd(client, { apiKeyId, deviceId, cmd, sign, history }
 
 // ---------- BLE デバイス登録 / 初期ペアリング REST API クライアント (reg-guestkey-sign-client) ----------
 //
-// 認可方式 (参照実装と一致。REFACTORING_PLAN P2-1 / AUTH-01 + AUTH-02):
+// 認可方式 (参照実装と一致):
 //   公式の REST (API Gateway) 認可は「SigV4 (Cognito Identity Pool の一時 credentials) +
 //   x-api-key + appidentifyid」である:
 //     - ApiClientConfigBuilder.kt:34-46 — ApiClientFactory()
@@ -560,7 +560,7 @@ export function webapiSendCmd(client, { apiKeyId, deviceId, cmd, sign, history }
 //   + src/sigv4.js (SigV4 自前実装)。
 //
 // ★ 実機未検証マーカー: ヘッダ構成は参照実装から導出したが、実機 API Gateway での受理は
-//   未検証 (REFACTORING_PLAN §9 V4/V5)。
+//   未検証。
 //
 // 原典 (CANDY-HOUSE SesameSDK):
 //   co/candyhouse/sesame/server/CHAPIClient.kt:84-96 — エンドポイント定義:
@@ -631,7 +631,7 @@ const DEFAULT_REGISTER_BASE_URL = DEFAULT_CH_API_BASE_URL;
  *     一時 credentials を取得する (BaseApp.kt:99 の AWSMobileClient.getInstance() 相当)。
  *   - credentialsProvider — 取得済み provider を直接注入 (テスト / 上級用)。
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V4/V5)。
+ * @experimental 実機 API Gateway での受理は未検証。
  *
  * @param {{baseUrl?:string,
  *          tokenStore?:import("./tokens.js").TokenStore,
@@ -715,7 +715,7 @@ export function resolveRegisterTransport({ baseUrl, config, configStore, tokenSt
 //
 // 認可: SigV4 + x-api-key + appidentifyid (register 系と同じ transport 基盤。appidentifyid あり)。
 //
-// ★ @experimental: 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+// ★ @experimental: 実機 API Gateway での受理は未検証。
 
 /**
  * 個人アカウント鍵ストア REST API の transport を作る。
@@ -723,7 +723,7 @@ export function resolveRegisterTransport({ baseUrl, config, configStore, tokenSt
  * (CHAPIClient.kt:29-46 の GET /device/list, PUT /device, DELETE /device は全て
  * @Parameter(name="appidentifyid") あり — 参照の per-op 表参照)。
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * @experimental 実機 API Gateway での受理は未検証。
  *
  * @param {{baseUrl?:string,
  *          tokenStore?:import("./tokens.js").TokenStore,
@@ -798,7 +798,7 @@ export function makeKeyStoreTransport({
  * GET /device/list — 個人アカウントの鍵ストア全件取得。
  * (CHAPIClient.kt:36-39, CHAPIClientBiz.kt:105-106)
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * @experimental 実機 API Gateway での受理は未検証。
  * 実機未検証 (参照: CHAPIClient.kt:36-39)
  *
  * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。
@@ -818,7 +818,7 @@ export async function getDevicesList(transport) {
  *
  * body は CHUserKey 形オブジェクト (Gson 直列化 → JSON object)。
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * @experimental 実機 API Gateway での受理は未検証。
  * 実機未検証 (参照: CHAPIClient.kt:29-33)
  *
  * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。
@@ -841,7 +841,7 @@ export async function putKey(transport, key) {
  * 参照: CHAPIClientBiz.kt:109 `cHApiClient.removeKey(identifyId(), keyId)` で keyId は
  * `targetDevice.deviceId.toString()` (CHDeviceViewModel.kt:567)。
  *
- * @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ * @experimental 実機 API Gateway での受理は未検証。
  * 実機未検証 (参照: CHAPIClient.kt:42-46)
  *
  * @param {RegisterTransport} transport makeKeyStoreTransport の戻り値、または fake。

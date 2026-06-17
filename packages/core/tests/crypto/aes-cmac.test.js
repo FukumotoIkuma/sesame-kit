@@ -1,7 +1,7 @@
 // 内製 AES-128-CMAC (src/aes-cmac.js) の RFC 4493 準拠検証。
 //
 // ベクタ出典: RFC 4493 §4 "Test Vectors" (Example 1-4 全件)。
-// 旧依存 node-aes-cmac の置き換え (REFACTORING_PLAN P5-2) の受け入れテスト。
+// 旧依存 node-aes-cmac の置き換えの受け入れテスト。
 // 既存の tests/crypto/cmacTime.test.js (Test Vector 2) もこの実装経由で通ること。
 
 import { describe, it, expect } from "vitest";

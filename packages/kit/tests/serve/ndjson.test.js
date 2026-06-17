@@ -1,4 +1,4 @@
-// src/serve/framing/ndjson.js (makeLineConnection) の境界テスト (REFACTORING_PLAN P5-7 / ARCH-17)。
+// src/serve/framing/ndjson.js (makeLineConnection) の境界テスト。
 // stdio / Unix socket が共有する NDJSON Connection の防御要所を直接検証する:
 //   - maxLine 超過 (改行が来ないまま 1 行が上限超過) → DoS とみなし切断
 //   - 出力背圧: write が false を返したら queue に積み、drain で順序を保って flush

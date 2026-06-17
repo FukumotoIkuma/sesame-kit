@@ -1,4 +1,4 @@
-// テスト共有の WS クライアント fake (REFACTORING_PLAN P5-7 / ARCH-16)。
+// テスト共有の WS クライアント fake。
 //
 // org/access/iot/payment/company/schedule/account の各テストで個別に再実装されていた
 // 「sent[] 記録 + request 固定応答 + subscribe/push 疑似配信」を 1 箇所に集約する。

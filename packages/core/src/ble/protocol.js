@@ -13,7 +13,7 @@
 import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 // AES-CMAC は内製実装 (RFC 4493 準拠, src/aes-cmac.js)。旧 node-aes-cmac は無メンテ +
-// deprecated Buffer コンストラクタ使用のため置き換えた (REFACTORING_PLAN P5-2)。
+// deprecated Buffer コンストラクタ使用のため置き換えた。
 import { aesCmac } from "../aes-cmac.js";
 import { t } from "../i18n.js";
 import { ITEM_CODES, WM2_ACTION_CODES } from "../itemcodes.js";

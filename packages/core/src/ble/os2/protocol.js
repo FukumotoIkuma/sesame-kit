@@ -22,7 +22,7 @@
 
 import { Buffer } from "node:buffer";
 // AES-CMAC は内製実装 (RFC 4493 準拠, src/aes-cmac.js)。旧 node-aes-cmac は無メンテ +
-// deprecated Buffer コンストラクタ使用のため置き換えた (REFACTORING_PLAN P5-2)。
+// deprecated Buffer コンストラクタ使用のため置き換えた。
 import { aesCmac } from "../../aes-cmac.js";
 import { ITEM_CODES } from "../../itemcodes.js";
 // セグメント下層・op コード・toUInt32ByteArray は OS2/OS3 共通。親 protocol.js を再利用 (編集はしない)。

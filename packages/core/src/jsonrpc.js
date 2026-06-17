@@ -39,7 +39,7 @@
  *   1.4.0: 以下の追加・変更 (すべて後方互換)。メソッド集合は 202→205 に増加。
  *     - Phase3 P3-2: keystore.list / keystore.put / keystore.remove を追加 (計 205 メソッド)。
  *       個人アカウント鍵ストア REST API (CHAPIClient.kt:29-46) の RPC 公開。
- *       @experimental 実機 API Gateway での受理は未検証 (REFACTORING_PLAN §9 V15)。
+ *       @experimental 実機 API Gateway での受理は未検証。
  *     - Phase4 P4-2: ble.os2.* イベント / BLE status 取得の MechStatus に含まれる isStop が
  *       boolean|null の 3 値型に変更 (os2lock=null / os2bot=boolean / os2bike=boolean)。
  *       メソッド集合は不変 (result 形変更のみ)。参照: CHSesame2.kt:40 / CHSesameBotDevice.kt:286-293。

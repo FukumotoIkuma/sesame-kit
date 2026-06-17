@@ -1,7 +1,6 @@
 // tsc が生成する各ワークスペースの types/ 配下の .d.ts から `_` 始まりの private メンバ宣言を
 // 除去する。(tsc は JS ソースの `_x` 慣習メンバも declaration に出力するため、配布物の公開型から
-//  内部 API を落とす後処理。中期的には tsc `stripInternal` + `/** @internal */` への移行を検討
-//  — REFACTORING_PLAN P1-16)
+//  内部 API を落とす後処理。中期的には tsc `stripInternal` + `/** @internal */` への移行を検討)
 import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { join, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -41,7 +40,7 @@ function removeTrailingJsdoc(out) {
  * d.ts テキストから `_` 始まりのクラスメンバ宣言 (直前の JSDoc 込み) を除去する。
  * 対象はプロパティ `_x:` / `_x?:` だけでなくメソッド `_x(` / `_x?(` も含む
  * (旧 regex は `:` のみ対象で、`_ensureConnected()` 等の内部メソッドが types/client.d.ts に
- *  漏れていた — REFACTORING_PLAN P1-16)。`private` 修飾子付きも対象。
+ *  漏れていた)。`private` 修飾子付きも対象。
  * @param {string} text
  * @param {string} [label] 警告ログ用のファイル名等
  * @returns {string}

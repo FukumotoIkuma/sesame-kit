@@ -1,4 +1,4 @@
-// optional peerDependencies の遅延 import ヘルパー (REFACTORING_PLAN P5-1 段階1)。
+// optional peerDependencies の遅延 import ヘルパー。
 //
 // ★動機: `@sesame-kit/core` ライブラリ利用者に CLI/TUI/serve 専用の重い依存
 //   (@grpc/grpc-js, @grpc/proto-loader, ink, react, ...) を強制しないため、これらを
@@ -10,7 +10,7 @@
 // 利用箇所: packages/kit/src/serve/framing/grpc.js (--grpc)、
 //   packages/kit/src/cli/session.js (session-ui 遅延 import)。
 //   session UI (ink/react 等) の配線は cli/session.js で rethrowMissingOptional を
-//   catch に足す形で実装済み (P5-1/P5-3 完了)。
+//   catch に足す形で実装済み。
 
 /**
  * モジュール解決失敗 (= 未インストール) かどうかの判定。

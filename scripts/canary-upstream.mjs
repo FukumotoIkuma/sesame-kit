@@ -183,7 +183,7 @@ function finish(against, source) {
 }
 
 // main ガード: import 副作用を隔離し、直接実行時のみ生体クラウド通信を実行する。
-// 規範 11 参照 (REFACTORING_PLAN.md §0.1)。他のスクリプト (gen-grpc-proto.mjs 等) が手本。
+// 他のスクリプト (gen-grpc-proto.mjs 等) が手本。
 export { runReplay, runLive, finish, validate };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {

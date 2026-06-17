@@ -1,4 +1,4 @@
-// src/serve/framing/token.js の境界テスト (REFACTORING_PLAN P1-17 / ARCH-17)。
+// src/serve/framing/token.js の境界テスト。
 // parseBearer は HTTP/WS/gRPC の Bearer 解析の単一実装 (grpc.js metaToken もこれを使う)。
 // ReDoS 回帰: 旧 `^Bearer\s+(.+)$` は `Bearer ` + 大量空白でポリノミアル backtracking を起こした。
 import { describe, it, expect } from "vitest";
