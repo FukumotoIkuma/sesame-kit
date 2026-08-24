@@ -44,10 +44,10 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@inquirer/prompts": "^8.5.2",
+    "@inquirer/prompts": "^8.6.0",
     "@sesame-kit/core": "0.7.0",
     "commander": "^15.0.0",
-    "ws": "^8.18.0"
+    "ws": "^8.21.3"
   },
   "peerDependencies": {
     "@grpc/grpc-js": "^1.14.4",

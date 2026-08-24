@@ -144,7 +144,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.21.3"
   },
   "optionalDependencies": {
     "@abandonware/noble": "^1.9.2-25"
